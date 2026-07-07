@@ -72,12 +72,27 @@ impl Default for OutputCfg {
     }
 }
 
+/// Shared `{ template: ... }` block; a standalone struct (not an inline
+/// enum variant) because serde ignores `deny_unknown_fields` on struct
+/// variants of untagged enums.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateBlock {
+    pub template: String,
+}
+
+/// Shared `{ external: ... }` block; standalone for the same
+/// `deny_unknown_fields` reason as [`TemplateBlock`].
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalBlock {
+    pub external: Locator,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum FilenameCfg {
-    Template {
-        template: String,
-    },
+    Template(TemplateBlock),
     Keyword(String),
 }
 
@@ -119,9 +134,7 @@ pub struct TrackRule {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum SourceCfg {
-    External {
-        external: Locator,
-    },
+    External(ExternalBlock),
     Keyword(String),
 }
 
@@ -184,9 +197,7 @@ pub struct AttachmentRule {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ChaptersCfg {
-    External {
-        external: Locator,
-    },
+    External(ExternalBlock),
     Keyword(String),
 }
 
@@ -217,9 +228,7 @@ impl Default for TagsCfg {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TitleCfg {
-    Template {
-        template: String,
-    },
+    Template(TemplateBlock),
     Keyword(String),
 }
 
