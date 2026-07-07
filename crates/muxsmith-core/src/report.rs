@@ -23,6 +23,8 @@ macro_rules! diag_codes {
         }
 
         impl DiagCode {
+            pub const ALL: &'static [DiagCode] = &[$(DiagCode::$variant),+];
+
             pub fn key(self) -> &'static str {
                 match self {
                     $(DiagCode::$variant => $key),+
@@ -163,5 +165,23 @@ mod tests {
         assert_eq!(json["severity"], "error");
         assert_eq!(json["code"], "unknown-property");
         assert_eq!(json["params"]["property"], "foo");
+    }
+
+    #[test]
+    fn all_keys_match_serde_encoding() {
+        for &code in DiagCode::ALL {
+            assert_eq!(
+                serde_json::to_value(code).unwrap(),
+                serde_json::Value::String(code.key().to_string()),
+                "key()/serde mismatch for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_keys_are_unique() {
+        let keys: std::collections::BTreeSet<&'static str> =
+            DiagCode::ALL.iter().map(|c| c.key()).collect();
+        assert_eq!(keys.len(), DiagCode::ALL.len());
     }
 }
