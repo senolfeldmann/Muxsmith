@@ -8,7 +8,7 @@ fn main() {
                 eprintln!("cannot read {}: {e}", args[2]);
                 process::exit(1);
             });
-            let code = xtask::gen::generate(&schema).unwrap_or_else(|e| {
+            let code = xtask::codegen::generate(&schema).unwrap_or_else(|e| {
                 eprintln!("generation failed: {e}");
                 process::exit(1);
             });

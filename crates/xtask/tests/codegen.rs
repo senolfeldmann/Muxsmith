@@ -1,4 +1,4 @@
-use xtask::gen::generate;
+use xtask::codegen::generate;
 
 #[test]
 fn generates_matchable_table_from_schema() {
