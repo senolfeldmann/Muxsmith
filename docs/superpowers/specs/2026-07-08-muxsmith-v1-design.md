@@ -26,6 +26,8 @@ Muxsmith is a rule-based bulk muxing tool. The user defines a reusable **profile
 | mkvtoolnix dependency | External, user-installed, CLI invocation only | No linking, no GPL implications, no bundling burden. Detected at startup. |
 | Identification schema | Build-time data extraction, never redistributed | Property names/types are generated into the capability model at build time; sidesteps schema licensing and runtime fetching entirely. |
 | DRY strategy | One core crate; diagnostics as data; frontend does zero semantic validation | Validation, planning and execution share one code path; GUI and CLI are renderers. |
+| Localization | i18n-ready from day one; English-only content ships in v1 | No hardcoded user-facing strings anywhere. One Fluent catalog set shared by the Rust CLI (fluent-rs) and the frontend (@fluent/bundle); long-form help as per-locale markdown. Adding a locale is content work, not a refactor. |
+| Discoverability | Self-explanatory UI plus an integrated help mode | Tooltips and inline explanations everywhere; a dedicated hover-to-explain help mode with sidebar (8.3). More UI surface, accepted deliberately: modern tools underinvest here. |
 
 ## 3. Concepts
 
@@ -236,8 +238,10 @@ For each primary file, independently per rule:
 Diagnostics are data, produced only by `muxsmith-core`:
 
 ```
-diagnostic := { code, severity: error|warning|info, config_path, file?, message, hint?, suggestion_ref? }
+diagnostic := { code, severity: error|warning|info, config_path, file?, params, suggestion_ref? }
 ```
+
+Core emits no user-facing prose: `code` plus structured `params` select and fill a message and hint template from the shared catalog at presentation time (8.4). `--json` output carries code and params plus the rendered message in the active locale, so scripts key on codes, humans read text.
 
 | Code | Severity | Condition |
 |---|---|---|
@@ -287,10 +291,12 @@ Identification cache: in-memory per session, keyed on path + mtime + size, share
 ```
 Muxsmith/
 ├── crates/
-│   ├── muxsmith-core/      # all logic (below)
+│   ├── muxsmith-core/      # all logic (below); emits no user-facing prose
 │   └── muxsmith-cli/       # thin clap binary over core
 ├── src-tauri/              # Tauri shell: commands + job event stream, no logic
-└── src/                    # React + TypeScript frontend
+├── src/                    # React + TypeScript frontend
+├── locales/                # Fluent catalogs (locales/en/*.ftl), shared by CLI and frontend
+└── help/                   # long-form help topics, markdown per locale (help/en/<help-id>.md)
 ```
 
 `muxsmith-core` modules, each independently testable:
@@ -341,6 +347,28 @@ App settings (not profile data): mkvmerge path override, default parallelism. St
 
 First-run and startup: detect mkvtoolnix (PATH, then platform-standard install locations, then configured override); if missing, per-OS installation guidance. Minimum supported mkvtoolnix version is fixed during implementation and enforced with a clear error.
 
+### 8.3 Self-explanation and help mode
+
+Baseline discoverability: every non-obvious control carries a tooltip; views carry small inline explanations where a first-time user would otherwise guess. The UI must be usable without reading external documentation.
+
+On top of that, an integrated **help mode**:
+
+- A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc) exits.
+- Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
+- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings).
+- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked or help mode exits.
+
+Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
+
+### 8.4 Internationalization architecture
+
+Localization readiness is structural, not deferred polish:
+
+- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown.
+- One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
+- Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
+- v1 ships English content only (non-goal 11); the mechanism ships complete.
+
 ## 9. Capability model and version skew
 
 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
@@ -353,6 +381,7 @@ First-run and startup: detect mkvtoolnix (PATH, then platform-standard install l
 - Integration: real mkvmerge in CI generates tiny fixture MKVs (from srt/wav seeds via mkvmerge itself); end-to-end dry-run and run against them.
 - CLI rendering: snapshot tests (insta).
 - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
+- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. eslint (no-literal-string rule) keeps hardcoded strings out of the frontend; core is prose-free by construction.
 - CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags.
 
 ## 11. Non-goals for v1
@@ -367,7 +396,7 @@ First-run and startup: detect mkvtoolnix (PATH, then platform-standard install l
 - mkvpropedit fast path for metadata-only changes.
 - Bundling mkvtoolnix binaries; a Windows convenience downloader is a v1.x candidate.
 - On-disk identification cache.
-- UI localization (English only in v1).
+- UI localization content: only English catalogs and help topics ship in v1. The mechanism (8.4) ships complete; adding a locale is content work, not a refactor.
 
 ## 12. Licensing
 
