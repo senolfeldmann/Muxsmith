@@ -18,6 +18,9 @@ enum Segment {
     Field { name: String, filter: Filter },
 }
 
+/// Parse errors. `pos` is a CHARACTER offset (index into the template's
+/// `chars()` sequence), not a byte offset: do not byte-slice the template
+/// string with it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateError {
     UnclosedBrace { pos: usize },
@@ -74,18 +77,24 @@ impl Template {
                     if inner.is_empty() {
                         return Err(TemplateError::EmptyField { pos: i });
                     }
-                    let (name, filter) = match inner.split_once(':') {
-                        None => (inner.as_str(), Filter::Raw),
-                        Some((n, "int")) => (n, Filter::Int),
-                        Some((n, "pad2")) => (n, Filter::Pad2),
-                        Some((n, "pad3")) => (n, Filter::Pad3),
-                        Some((_, f)) => {
-                            return Err(TemplateError::UnknownFilter { name: f.to_string() })
-                        }
+                    // Split name from filter BEFORE resolving the filter, so an
+                    // empty name reports EmptyField even when a filter is present.
+                    let (name, maybe_filter) = match inner.split_once(':') {
+                        None => (inner.as_str(), None),
+                        Some((n, f)) => (n, Some(f)),
                     };
                     if name.is_empty() {
                         return Err(TemplateError::EmptyField { pos: i });
                     }
+                    let filter = match maybe_filter {
+                        None => Filter::Raw,
+                        Some("int") => Filter::Int,
+                        Some("pad2") => Filter::Pad2,
+                        Some("pad3") => Filter::Pad3,
+                        Some(f) => {
+                            return Err(TemplateError::UnknownFilter { name: f.to_string() })
+                        }
+                    };
                     if !literal.is_empty() {
                         segments.push(Segment::Literal(std::mem::take(&mut literal)));
                     }
@@ -155,6 +164,11 @@ fn apply_filter(value: &str, filter: Filter) -> String {
     match filter {
         Filter::Raw => value.to_string(),
         Filter::Int => {
+            // Missing fields render as empty (Ctx contract); only non-empty
+            // all-zero input collapses to "0".
+            if value.is_empty() {
+                return String::new();
+            }
             let stripped = value.trim_start_matches('0');
             if stripped.is_empty() {
                 "0".to_string()
@@ -199,6 +213,28 @@ mod tests {
             Template::parse("S{}"),
             Err(TemplateError::EmptyField { .. })
         ));
+        assert!(matches!(
+            Template::parse("{x:}"),
+            Err(TemplateError::UnknownFilter { .. })
+        ));
+    }
+
+    #[test]
+    fn empty_name_with_filter_is_empty_field() {
+        assert!(matches!(
+            Template::parse("{:int}"),
+            Err(TemplateError::EmptyField { .. })
+        ));
+        assert!(matches!(
+            Template::parse("{:}"),
+            Err(TemplateError::EmptyField { .. })
+        ));
+    }
+
+    #[test]
+    fn int_filter_on_missing_field_renders_empty() {
+        let t = Template::parse("{n:int}").unwrap();
+        assert_eq!(t.render_literal(&Ctx::new()), "");
     }
 
     #[test]
