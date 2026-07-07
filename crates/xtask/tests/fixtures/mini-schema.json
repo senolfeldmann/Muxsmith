@@ -1,0 +1,28 @@
+{
+  "title": "synthetic mini schema for generator tests",
+  "type": "object",
+  "properties": {
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "codec": { "type": "string" },
+          "id": { "type": "integer" },
+          "type": { "type": "string" },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "audio_channels": { "type": "integer" },
+              "default_track": { "type": "boolean" },
+              "display_dimensions": { "type": "string" },
+              "forced_track": { "type": "boolean" },
+              "language": { "type": "string" },
+              "track_name": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
