@@ -534,15 +534,306 @@ fn finalize_plans(files: &mut [FileReport]) {
     }
 }
 
-// The suggestion engine is added in the next commit; until then it emits none.
+// A candidate refinement plus the concrete delta to splice into the rule.
+struct Candidate {
+    edit: StructuredEdit,
+    apply: MatchExpr,
+    rank: (u8, String, String),
+}
+
+/// Generates and validates suggestions for every `AmbiguousRule` conflict
+/// (spec 5.3, D6). For each conflicted primary-source rule: gather the matched
+/// (conflicting) tracks across all affected files, derive discriminator
+/// candidates, simulate each against the whole batch via [`plan_core`], and
+/// keep only those that resolve the ambiguity everywhere with no new
+/// diagnostic. Deterministic; capped at 3 per rule. OverlappingRules
+/// suggestions and the no-single-fix partition report are deferred (Plan 2
+/// scope note).
 #[allow(clippy::too_many_arguments)]
 fn suggest(
-    _profile: &Profile,
-    _run: &RunInputs,
-    _primaries: &[PrimaryFile],
-    _id: &mut dyn Identify,
-    _lang: &LanguageIndex,
-    _baseline: &Batch,
+    profile: &Profile,
+    run: &RunInputs,
+    primaries: &[PrimaryFile],
+    id: &mut dyn Identify,
+    lang: &LanguageIndex,
+    baseline: &Batch,
 ) -> Vec<Suggestion> {
-    Vec::new()
+    let base_sig = diag_signature(baseline);
+
+    let mut conflicted: Vec<usize> = baseline
+        .files
+        .iter()
+        .flat_map(|f| f.diagnostics.iter())
+        .filter(|d| d.code == DiagCode::AmbiguousRule)
+        .filter_map(|d| rule_index_of(&d.config_path))
+        .collect();
+    conflicted.sort_unstable();
+    conflicted.dedup();
+
+    let mut out = Vec::new();
+    for ri in conflicted {
+        let Some(rule) = profile.tracks.get(ri) else {
+            continue;
+        };
+        // Only primary-source rules get suggestions in v1 (external deferred).
+        if matches!(rule.source, SourceCfg::External(_)) {
+            continue;
+        }
+        let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
+        let mut accepted: Vec<Candidate> = Vec::new();
+        for cand in candidates {
+            let edited = with_rule_match(profile, ri, &cand.apply);
+            let sim = plan_core(&edited, run, primaries, id, lang);
+            if resolves_without_regression(&sim, ri, &base_sig) {
+                accepted.push(cand);
+            }
+        }
+        accepted.sort_by(|a, b| a.rank.cmp(&b.rank));
+        accepted.truncate(3);
+        for cand in accepted {
+            out.push(Suggestion {
+                resolves: DiagCode::AmbiguousRule,
+                config_path: format!("tracks[{ri}].match"),
+                yaml_fragment: yaml_fragment(ri, &cand.edit),
+                edit: cand.edit,
+            });
+        }
+    }
+    out
+}
+
+// Discriminator candidates for a rule, drawn from the property vectors of the
+// tracks it ambiguously matches, across every affected file.
+fn candidates_for_rule(
+    profile: &Profile,
+    ri: usize,
+    primaries: &[PrimaryFile],
+    id: &mut dyn Identify,
+    lang: &LanguageIndex,
+) -> Vec<Candidate> {
+    let rule = &profile.tracks[ri];
+    let mut raw: Vec<Candidate> = Vec::new();
+    let mut seen: std::collections::BTreeSet<(String, String, u8)> =
+        std::collections::BTreeSet::new();
+
+    for primary in primaries {
+        let Ok(ident) = id.identify(&primary.path) else {
+            continue;
+        };
+        let matched: Vec<&crate::identify::Track> = ident
+            .tracks
+            .iter()
+            .filter(|t| matcher::matches(&rule.match_expr, t, lang))
+            .collect();
+        if matched.len() < 2 {
+            continue;
+        }
+        for t in &matched {
+            // Own the property list, including the top-level `type` pseudo-prop.
+            let mut props: Vec<(String, crate::identify::PropValue)> = t
+                .properties
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            props.push((
+                "type".to_string(),
+                crate::identify::PropValue::Str(t.kind.clone()),
+            ));
+            for (prop, val) in &props {
+                if crate::capability::matchable_type(prop).is_none() {
+                    continue;
+                }
+                let Some((display, scalar)) = prop_value_as(val) else {
+                    continue;
+                };
+                for (polarity, edit) in [
+                    (
+                        0u8,
+                        StructuredEdit::AddExact {
+                            property: prop.clone(),
+                            value: display.clone(),
+                        },
+                    ),
+                    (
+                        1u8,
+                        StructuredEdit::AddNotExact {
+                            property: prop.clone(),
+                            value: display.clone(),
+                        },
+                    ),
+                ] {
+                    if seen.insert((prop.clone(), display.clone(), polarity)) {
+                        raw.push(Candidate {
+                            apply: delta_for(&edit, &scalar),
+                            rank: (rank_of(prop, polarity), prop.clone(), display.clone()),
+                            edit,
+                        });
+                    }
+                }
+            }
+            if let Some(crate::identify::PropValue::Str(name)) = t.get("track_name") {
+                for tok in name.split_whitespace() {
+                    for (polarity, edit) in [
+                        (
+                            0u8,
+                            StructuredEdit::AddSubstring {
+                                value: tok.to_string(),
+                            },
+                        ),
+                        (
+                            1u8,
+                            StructuredEdit::AddNotSubstring {
+                                value: tok.to_string(),
+                            },
+                        ),
+                    ] {
+                        let key = ("track_name~".to_string(), tok.to_string(), polarity);
+                        if seen.insert(key) {
+                            raw.push(Candidate {
+                                apply: delta_for(&edit, &Scalar::Str(tok.to_string())),
+                                rank: (rank_substring(polarity), "track_name".into(), tok.to_string()),
+                                edit,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    raw
+}
+
+// Builds the MatchExpr delta a candidate edit represents.
+fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
+    let mut m = MatchExpr::default();
+    match edit {
+        StructuredEdit::AddExact { property, .. } => {
+            let mut map = BTreeMap::new();
+            map.insert(property.clone(), scalar.clone());
+            m.exact = Some(map);
+        }
+        StructuredEdit::AddNotExact { property, .. } => {
+            let mut inner = MatchExpr::default();
+            let mut map = BTreeMap::new();
+            map.insert(property.clone(), scalar.clone());
+            inner.exact = Some(map);
+            m.not = Some(vec![inner]);
+        }
+        StructuredEdit::AddSubstring { value } => {
+            let mut map = BTreeMap::new();
+            map.insert("track_name".to_string(), value.clone());
+            m.substring = Some(map);
+        }
+        StructuredEdit::AddNotSubstring { value } => {
+            let mut inner = MatchExpr::default();
+            let mut map = BTreeMap::new();
+            map.insert("track_name".to_string(), value.clone());
+            inner.substring = Some(map);
+            m.not = Some(vec![inner]);
+        }
+    }
+    m
+}
+
+// Merges a delta into rule `ri`'s match expression, returning an edited profile.
+fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+    let mut p = profile.clone();
+    let expr = &mut p.tracks[ri].match_expr;
+    if let Some(add) = &delta.exact {
+        expr.exact.get_or_insert_with(BTreeMap::new).extend(add.clone());
+    }
+    if let Some(add) = &delta.substring {
+        expr.substring
+            .get_or_insert_with(BTreeMap::new)
+            .extend(add.clone());
+    }
+    if let Some(add) = &delta.not {
+        expr.not.get_or_insert_with(Vec::new).extend(add.clone());
+    }
+    p
+}
+
+// Accept iff rule `ri` has no AmbiguousRule anywhere in the simulation and no
+// diagnostic in the simulation is absent from the baseline (no regression).
+fn resolves_without_regression(
+    sim: &Batch,
+    ri: usize,
+    base_sig: &std::collections::BTreeSet<String>,
+) -> bool {
+    let still_ambiguous = sim
+        .files
+        .iter()
+        .flat_map(|f| f.diagnostics.iter())
+        .any(|d| d.code == DiagCode::AmbiguousRule && rule_index_of(&d.config_path) == Some(ri));
+    if still_ambiguous {
+        return false;
+    }
+    diag_signature(sim).iter().all(|s| base_sig.contains(s))
+}
+
+// A comparable signature set of all diagnostics: code + config_path + file.
+fn diag_signature(batch: &Batch) -> std::collections::BTreeSet<String> {
+    let mut set = std::collections::BTreeSet::new();
+    let all = batch
+        .batch_diagnostics
+        .iter()
+        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()));
+    for d in all {
+        let file = d
+            .file
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        set.insert(format!("{}|{}|{}", d.code.key(), d.config_path, file));
+    }
+    set
+}
+
+fn rule_index_of(config_path: &str) -> Option<usize> {
+    let start = config_path.find("tracks[")? + "tracks[".len();
+    let end = config_path[start..].find(']')? + start;
+    config_path[start..end].parse().ok()
+}
+
+// Rank: typed flags/booleans (0) < language (1) < other exact (2); positive
+// exact before its negation at equal property rank.
+fn rank_of(prop: &str, polarity: u8) -> u8 {
+    let base = match prop {
+        "forced_track" | "default_track" | "flag_hearing_impaired" | "flag_visual_impaired"
+        | "flag_commentary" | "flag_original" | "enabled_track" => 0,
+        "language" | "language_ietf" => 1,
+        _ => 2,
+    };
+    base * 2 + polarity
+}
+
+fn rank_substring(polarity: u8) -> u8 {
+    6 + polarity
+}
+
+fn prop_value_as(v: &crate::identify::PropValue) -> Option<(String, Scalar)> {
+    match v {
+        crate::identify::PropValue::Bool(b) => Some((b.to_string(), Scalar::Bool(*b))),
+        crate::identify::PropValue::Int(i) => Some((i.to_string(), Scalar::Int(*i))),
+        crate::identify::PropValue::Str(s) => Some((s.clone(), Scalar::Str(s.clone()))),
+        crate::identify::PropValue::Float(_) => None,
+    }
+}
+
+fn yaml_fragment(ri: usize, edit: &StructuredEdit) -> String {
+    let body = match edit {
+        StructuredEdit::AddExact { property, value } => {
+            format!("match:\n  exact: {{ {property}: {value} }}")
+        }
+        StructuredEdit::AddNotExact { property, value } => {
+            format!("match:\n  not:\n    - exact: {{ {property}: {value} }}")
+        }
+        StructuredEdit::AddSubstring { value } => {
+            format!("match:\n  substring: {{ track_name: {value} }}")
+        }
+        StructuredEdit::AddNotSubstring { value } => {
+            format!("match:\n  not:\n    - substring: {{ track_name: {value} }}")
+        }
+    };
+    format!("# tracks[{ri}] - add:\n{body}")
 }
