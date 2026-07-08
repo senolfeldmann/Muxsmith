@@ -102,3 +102,10 @@ variant. Pending decisions: go-public timing + CI matrix revert; Dependabot
 cadence if enabled. Plan 4 installs parked: Tauri system deps, pnpm via
 corepack. Plan 2 awaits explicit go; Şenol announced additional context
 before that go.
+
+**Addendum, same day.** The salvage pass itself nearly failed twice: the
+archive commit initially contained only the journal because the copied sdd
+directory carried the tooling's own `.gitignore` (a bare `*`), silently
+excluding all 49 artifacts; caught by reading the commit stat line, fixed in
+411087f. Lesson recorded: after any archive/copy commit, verify the file
+count in the commit, not the working tree.
