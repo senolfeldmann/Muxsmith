@@ -35,3 +35,7 @@ donor-is-primary = External donor file { $donor } is itself a primary source.
 ignored-file = File matches the extension list but not the input pattern.
 multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
 unknown-property-skew = Property "{ $property }" is unknown to this Muxsmith build but reported by the local mkvmerge; it is matched untyped.
+codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").

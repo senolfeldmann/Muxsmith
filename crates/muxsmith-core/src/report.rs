@@ -77,6 +77,10 @@ diag_codes! {
     InvalidRegex => "invalid-regex",
     /// A match condition references a property absent from the capability model's matchable set (config-time error, spec 5.2).
     UnknownProperty => "unknown-property",
+    /// `codec_kind` was used under a `substring`/`regex` condition; it is a curated alias and matchable only under `exact` (spec 4.4). Pattern-match `codec_id` instead. `condition` param names the misused condition.
+    CodecKindExactOnly => "codec-kind-exact-only",
+    /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender, `allowed` a hint sample.
+    InvalidPropertyValue => "invalid-property-value",
     /// A `substring` or `regex` condition targets a non-string property; both are defined for string properties only (spec 4.3).
     NotStringProperty => "not-string-property",
     /// A condition or change value's type does not fit the property's declared type (an integer fits a float property, never the reverse).
@@ -112,6 +116,10 @@ diag_codes! {
     AmbiguousExternal => "ambiguous-external",
     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
     OutputCollision => "output-collision",
+    /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
+    PathSeparatorInRenderedName => "path-separator-in-rendered-name",
+    /// The rendered output filename has an empty stem or is `.`/`..` (spec 4.8); the ".mkv appended if missing" rule would otherwise produce a hidden or invalid file. `name` param carries the rendered name.
+    EmptyRenderedName => "empty-rendered-name",
     /// An output path equals an input path: a hard error regardless of collision policy, since sources are never modified (spec 4.8).
     SourceOverwrite => "source-overwrite",
     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
@@ -265,6 +273,25 @@ mod tests {
                 serde_json::Value::String(code.key().to_string()),
                 "key()/serde mismatch for {code:?}"
             );
+        }
+    }
+
+    #[test]
+    fn plan2_codes_are_registered_with_keys() {
+        assert_eq!(DiagCode::CodecKindExactOnly.key(), "codec-kind-exact-only");
+        assert_eq!(DiagCode::InvalidPropertyValue.key(), "invalid-property-value");
+        assert_eq!(
+            DiagCode::PathSeparatorInRenderedName.key(),
+            "path-separator-in-rendered-name"
+        );
+        assert_eq!(DiagCode::EmptyRenderedName.key(), "empty-rendered-name");
+        for c in [
+            DiagCode::CodecKindExactOnly,
+            DiagCode::InvalidPropertyValue,
+            DiagCode::PathSeparatorInRenderedName,
+            DiagCode::EmptyRenderedName,
+        ] {
+            assert!(DiagCode::ALL.contains(&c), "{c:?} missing from ALL");
         }
     }
 
