@@ -4,11 +4,18 @@
 
 use std::collections::BTreeMap;
 
+/// Rendering filter applied to a template field's value (spec 4.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Filter {
+    /// No transformation; the captured value as-is (e.g. `03`).
     Raw,
+    /// Strips leading zeros (`03` -> `3`); a non-empty all-zero value
+    /// collapses to `"0"`, and a missing field still renders empty (never
+    /// `"0"` for an absent value).
     Int,
+    /// Zero-pads to at least 2 characters (`3` -> `03`).
     Pad2,
+    /// Zero-pads to at least 3 characters (`3` -> `003`).
     Pad3,
 }
 
@@ -23,26 +30,47 @@ enum Segment {
 /// string with it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TemplateError {
-    UnclosedBrace { pos: usize },
-    EmptyField { pos: usize },
-    UnknownFilter { name: String },
+    /// A `{` was opened but never closed before the template's end.
+    UnclosedBrace {
+        /// Character offset of the opening `{` (see the `pos` contract above).
+        pos: usize,
+    },
+    /// A field had no name, with or without a filter (e.g. `{}` or `{:int}`).
+    EmptyField {
+        /// Character offset of the opening `{` of the empty field.
+        pos: usize,
+    },
+    /// A field used a filter name other than `int`, `pad2`, or `pad3`.
+    UnknownFilter {
+        /// The unrecognized filter name as written (without the `:`).
+        name: String,
+    },
 }
 
+/// A parsed template: literal segments and field references (spec 4.7).
+/// Produced once by [`Template::parse`], rendered any number of times via
+/// [`Template::render_literal`] or [`Template::render_regex_pattern`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Template {
     segments: Vec<Segment>,
 }
 
+/// Field values available to a template render (spec 4.7): `{match}`,
+/// named/numbered capture groups, `{source_stem}`. A field with no
+/// corresponding `set` call renders as empty string rather than erroring.
 #[derive(Debug, Default)]
 pub struct Ctx {
     values: BTreeMap<String, String>,
 }
 
 impl Ctx {
+    /// An empty context; equivalent to [`Ctx::default`].
     pub fn new() -> Self {
         Ctx::default()
     }
 
+    /// Binds `name` to `value` for later field interpolation; a repeated
+    /// `set` for the same name overwrites the previous value.
     pub fn set(&mut self, name: impl Into<String>, value: impl Into<String>) {
         self.values.insert(name.into(), value.into());
     }
@@ -53,6 +81,11 @@ impl Ctx {
 }
 
 impl Template {
+    /// Parses template source into a reusable [`Template`] (spec 4.7).
+    /// `{{`/`}}` are literal braces; `{name}` and `{name:filter}` are
+    /// fields, where `filter` must be one of `int`/`pad2`/`pad3` (default
+    /// `Raw` if omitted). Fails on an unclosed `{`, an empty field name, or
+    /// an unrecognized filter.
     pub fn parse(text: &str) -> Result<Template, TemplateError> {
         let mut segments = Vec::new();
         let mut literal = String::new();
@@ -118,6 +151,10 @@ impl Template {
         Ok(Template { segments })
     }
 
+    /// Every field name referenced by the template, in order of
+    /// appearance (duplicates included). `validate.rs` checks each against
+    /// the allowed field set for the template's context, emitting
+    /// `UnknownTemplateField` for anything not in that set.
     pub fn field_names(&self) -> Vec<&str> {
         self.segments
             .iter()
@@ -128,6 +165,8 @@ impl Template {
             .collect()
     }
 
+    /// Literal-mode render (spec 4.7): field values interpolate as plain
+    /// strings, no escaping. Used for output filenames and titles.
     pub fn render_literal(&self, ctx: &Ctx) -> String {
         self.render(ctx, false)
     }

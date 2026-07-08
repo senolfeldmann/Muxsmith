@@ -1,3 +1,8 @@
+//! Capability-table codegen (spec 9.1): turns a pinned mkvmerge
+//! identification output schema into the generated
+//! `capability::MATCHABLE_PROPERTIES` table. Run via `cargo run -p xtask --
+//! gen-capability <schema.json> <out.rs>`, never at ordinary build time.
+
 use serde_json::Value;
 
 /// Extract matchable track property names and types from the mkvmerge

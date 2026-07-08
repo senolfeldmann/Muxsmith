@@ -1,3 +1,7 @@
+//! `cargo run -p xtask -- gen-capability <schema.json> <out.rs>`: the CLI
+//! entry point for [`xtask::codegen::generate`] (spec 9.1). Maintainer
+//! tooling only; never invoked at build time by the core/cli crates.
+
 use std::{env, fs, process};
 
 fn main() {

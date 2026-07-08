@@ -7,6 +7,10 @@ use unic_langid::LanguageIdentifier;
 const EN_DIAGNOSTICS: &str = include_str!("../../../locales/en/diagnostics.ftl");
 const EN_CLI: &str = include_str!("../../../locales/en/cli.ftl");
 
+/// Fluent-based renderer: the only place on the CLI side where diagnostic
+/// codes and params become human text (spec 8.4). Embeds the English
+/// catalogs at build time; v1 ships English content only, but the
+/// mechanism is locale-generic.
 pub struct Renderer {
     bundle: FluentBundle<FluentResource>,
 }
@@ -33,6 +37,11 @@ impl Renderer {
         Renderer { bundle }
     }
 
+    /// Renders one Fluent message by id, interpolating `args`. Falls back
+    /// to the raw `id` when the catalog has no such message or the message
+    /// has no value pattern, so a missing translation stays visible in the
+    /// output instead of silently disappearing (CI's catalog-completeness
+    /// guard, spec 10, is the other half of this contract).
     pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
         let Some(message) = self.bundle.get_message(id) else {
             // Missing catalog entry: fall back to the raw id so the
@@ -52,6 +61,10 @@ impl Renderer {
             .into_owned()
     }
 
+    /// Renders one core [`Diagnostic`](muxsmith_core::report::Diagnostic)
+    /// as a single human-readable line: severity, config path, and the
+    /// message resolved from `code`/`params` (spec 5.2, 8.4), composed via
+    /// the `diagnostic-line` catalog entry.
     pub fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
         let params: Vec<(&str, &str)> = d
             .params

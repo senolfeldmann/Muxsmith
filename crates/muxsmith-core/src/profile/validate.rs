@@ -12,6 +12,12 @@ use super::model::{
     AttachmentRule, ChaptersCfg, FilenameCfg, Locator, Profile, SourceCfg, TitleCfg,
 };
 
+/// Config-time semantic validation (spec 5.4): profile version, regex
+/// compilation, template well-formedness, property existence/type checks
+/// for every `match`/`changes`/locator, and keyword validity. Returns every
+/// diagnostic found rather than stopping at the first (no fail-fast);
+/// touches no filesystem beyond the profile itself and never replaces the
+/// planner's runtime checks (5.1-5.3).
 pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 

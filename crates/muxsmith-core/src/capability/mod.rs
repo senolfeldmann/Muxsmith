@@ -6,14 +6,27 @@
 
 mod generated;
 
+/// Value type of a matchable or settable property (spec 4.4); drives
+/// `validate.rs`'s scalar type-checking (`ValueTypeMismatch`,
+/// `NotStringProperty`) for both `match` conditions and `changes`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropType {
+    /// String value (language codes, track names, codec ids, ...).
     String,
+    /// Boolean flag (`default_track`, `forced_track`, ...).
     Boolean,
+    /// Whole-number value (track `id`, `audio_channels`, ...).
     Integer,
+    /// Floating-point value (`min_luminance`, projection pose angles, ...).
     Float,
 }
 
+/// Looks up a matchable property's type (spec 4.4): the build-time
+/// generated identification schema fields (`generated::MATCHABLE_PROPERTIES`)
+/// plus the `codec_kind` virtual property, a curated alias over `codec_id`
+/// prefixes ([`codec_kind_prefixes`]) and therefore always `String`-typed.
+/// `None` means the name is not in the capability model at all, the
+/// config-time `UnknownProperty` condition (spec 5.2).
 pub fn matchable_type(name: &str) -> Option<PropType> {
     if name == "codec_kind" {
         return Some(PropType::String);
@@ -46,6 +59,10 @@ pub static SETTABLE: &[(&str, PropType, &str)] = &[
     ("sub_charset", PropType::String, "--sub-charset"),
 ];
 
+/// Looks up a settable (`changes`) property's type and mkvmerge option
+/// (spec 4.4 table). `None` means the name is not in [`SETTABLE`], the
+/// config-time `UnknownSettableProperty` condition; `codec_kind` is
+/// matchable-only and never resolves here.
 pub fn settable(name: &str) -> Option<(PropType, &'static str)> {
     SETTABLE
         .iter()
@@ -74,6 +91,9 @@ pub static CODEC_KINDS: &[(&str, &[&str])] = &[
     ("vp9", &["V_VP9"]),
 ];
 
+/// Resolves a `codec_kind` alias (e.g. `srt`, `h264`) to the `codec_id`
+/// prefixes it expands to at match time (spec 4.4). `None` if `kind` is not
+/// a curated alias in [`CODEC_KINDS`].
 pub fn codec_kind_prefixes(kind: &str) -> Option<&'static [&'static str]> {
     CODEC_KINDS
         .iter()

@@ -9,6 +9,12 @@ use crate::report::{DiagCode, Diagnostic};
 use super::match_expr::MatchExpr;
 use super::model::{Profile, SourceCfg};
 
+/// Static overlap lint (spec 5.4): flags pairs of primary-source,
+/// exact-only track rules where one rule's condition map is a subset of
+/// the other's, so any track matching the superset rule necessarily also
+/// matches the subset rule. Emits `ProvableOverlap` warnings; a
+/// conservative, decidable subset of the planner's runtime
+/// `OverlappingRules` error (spec 5.2) that never replaces the dry run.
 pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let exact_only: Vec<(usize, &MatchExpr)> = profile

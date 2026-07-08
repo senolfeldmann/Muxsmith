@@ -1,3 +1,7 @@
+//! `muxsmith` binary entry point: parses CLI args ([`muxsmith_cli::cli`])
+//! and dispatches to the matching command module, exiting with the
+//! mkvmerge-style code the command returns (spec 8.1).
+
 use clap::Parser;
 use muxsmith_cli::{cli, commands, i18n};
 
