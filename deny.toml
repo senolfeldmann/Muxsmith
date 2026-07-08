@@ -1,0 +1,33 @@
+# cargo-deny configuration (https://embarkstudios.github.io/cargo-deny/).
+# Linux-only CI job; see .github/workflows/ci.yml. Advisories, license
+# policy, and multiple-version detection for the whole workspace.
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# MIT project (spec 12); allow exactly the permissive licenses our dependency
+# tree actually uses today. Extend deliberately when a new dependency needs
+# one, never with a blanket allow.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Intra-workspace path dependencies (muxsmith-cli -> muxsmith-core) have no
+# version requirement. The workspace crates are publish = false (Muxsmith
+# ships as app bundles, not crates.io packages), which is what lets this
+# exemption apply to their path deps.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

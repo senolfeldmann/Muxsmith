@@ -25,3 +25,13 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  deny:
+    # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on
+    # Linux always, independent of the test matrix trim.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
