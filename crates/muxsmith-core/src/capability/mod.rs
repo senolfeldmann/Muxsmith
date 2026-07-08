@@ -37,6 +37,27 @@ pub fn matchable_type(name: &str) -> Option<PropType> {
         .map(|(_, t)| *t)
 }
 
+/// The closed set of `type` values mkvmerge reports for a track. Curated
+/// rather than generated: the upstream identification schema (v20) types
+/// `type` as a plain string with no enum, and mkvmerge's track types are
+/// long-stable. Verified against `mkvmerge -J` output, where `track.type` is
+/// exactly one of these.
+pub static TYPE_VALUES: &[&str] = &["audio", "buttons", "subtitles", "video"];
+
+/// The closed set of legal values for a matchable property, or `None` if the
+/// property is open-valued (free text, numbers) or has a runtime-only domain.
+/// Backs the config-time `InvalidPropertyValue` check (spec 4.4, D2): `type`
+/// and `codec_kind` are curated closed sets; `language`'s domain needs
+/// `mkvmerge --list-languages` and is validated at plan time, so it is `None`
+/// here.
+pub fn matchable_domain(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        "type" => Some(TYPE_VALUES),
+        "codec_kind" => Some(CODEC_KIND_NAMES),
+        _ => None,
+    }
+}
+
 /// (profile name, value type, mkvmerge option) - spec 4.4 table.
 pub static SETTABLE: &[(&str, PropType, &str)] = &[
     ("language", PropType::String, "--language"),
@@ -89,6 +110,14 @@ pub static CODEC_KINDS: &[(&str, &[&str])] = &[
     ("h265", &["V_MPEGH/ISO/HEVC"]),
     ("av1", &["V_AV1"]),
     ("vp9", &["V_VP9"]),
+];
+
+/// The curated `codec_kind` alias names ([`CODEC_KINDS`] keys), the closed
+/// domain of the `codec_kind` virtual property. Kept in sync with
+/// `CODEC_KINDS` by the `codec_kind_domain_matches_kinds` test.
+pub static CODEC_KIND_NAMES: &[&str] = &[
+    "srt", "ass", "pgs", "vobsub", "webvtt", "aac", "ac3", "eac3", "dts", "truehd", "flac", "opus",
+    "mp3", "h264", "h265", "av1", "vp9",
 ];
 
 /// Resolves a `codec_kind` alias (e.g. `srt`, `h264`) to the `codec_id`
@@ -164,6 +193,25 @@ mod tests {
             assert_eq!(settable(name), Some((ty, option)), "mismatch for {name}");
         }
         assert_eq!(settable("codec_kind"), None); // matchable only, never settable
+    }
+
+    #[test]
+    fn value_domains_are_closed_for_type_and_codec_kind() {
+        let type_domain = matchable_domain("type").expect("type has a closed domain");
+        assert!(type_domain.contains(&"video"));
+        assert!(type_domain.contains(&"audio"));
+        assert!(type_domain.contains(&"subtitles"));
+        let ck = matchable_domain("codec_kind").expect("codec_kind has a closed domain");
+        assert!(ck.contains(&"srt"));
+        assert!(ck.contains(&"h264"));
+        assert_eq!(matchable_domain("track_name"), None);
+        assert_eq!(matchable_domain("language"), None); // validated at plan time
+    }
+
+    #[test]
+    fn codec_kind_domain_matches_kinds() {
+        let from_kinds: Vec<&str> = CODEC_KINDS.iter().map(|(k, _)| *k).collect();
+        assert_eq!(from_kinds, CODEC_KIND_NAMES);
     }
 
     #[test]
