@@ -1,0 +1,80 @@
+//! Fluent-based rendering. The ONLY place where diagnostic codes and
+//! params become human text on the CLI side (spec 8.4).
+
+use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
+use unic_langid::LanguageIdentifier;
+
+const EN_DIAGNOSTICS: &str = include_str!("../../../locales/en/diagnostics.ftl");
+const EN_CLI: &str = include_str!("../../../locales/en/cli.ftl");
+
+pub struct Renderer {
+    bundle: FluentBundle<FluentResource>,
+}
+
+impl Renderer {
+    /// v1 ships English only; `locale` is accepted for interface stability
+    /// and falls back to en for any unknown tag (spec 8.4).
+    pub fn new(locale: Option<&str>) -> Renderer {
+        let requested = locale
+            .map(str::to_owned)
+            .or_else(sys_locale::get_locale)
+            .unwrap_or_else(|| "en".into());
+        let langid: LanguageIdentifier =
+            requested.parse().unwrap_or_else(|_| "en".parse().unwrap());
+        let mut bundle = FluentBundle::new(vec![langid]);
+        // No Unicode isolation marks around placeables: CLI output must be
+        // plain grep-able text.
+        bundle.set_use_isolating(false);
+        for source in [EN_DIAGNOSTICS, EN_CLI] {
+            let res =
+                FluentResource::try_new(source.to_owned()).expect("embedded catalog must parse");
+            bundle.add_resource_overriding(res);
+        }
+        Renderer { bundle }
+    }
+
+    pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
+        let Some(message) = self.bundle.get_message(id) else {
+            // Missing catalog entry: fall back to the raw id so the
+            // problem is visible instead of hidden. CI guards this case.
+            return id.to_string();
+        };
+        let Some(pattern) = message.value() else {
+            return id.to_string();
+        };
+        let mut fargs = FluentArgs::new();
+        for (k, v) in args {
+            fargs.set(*k, *v);
+        }
+        let mut errors = Vec::new();
+        self.bundle
+            .format_pattern(pattern, Some(&fargs), &mut errors)
+            .into_owned()
+    }
+
+    pub fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+        let params: Vec<(&str, &str)> = d
+            .params
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let message = self.msg(d.code.key(), &params);
+        let severity = self.msg(severity_key(d.severity), &[]);
+        self.msg(
+            "diagnostic-line",
+            &[
+                ("severity", &severity),
+                ("config_path", &d.config_path),
+                ("message", &message),
+            ],
+        )
+    }
+}
+
+fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
+    match s {
+        muxsmith_core::report::Severity::Error => "severity-error",
+        muxsmith_core::report::Severity::Warning => "severity-warning",
+        muxsmith_core::report::Severity::Info => "severity-info",
+    }
+}

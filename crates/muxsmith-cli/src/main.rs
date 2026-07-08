@@ -1,4 +1,6 @@
 mod cli;
+mod commands;
+mod i18n;
 
 use clap::Parser;
 
@@ -10,10 +12,13 @@ fn main() {
             println!("{}", serde_json::to_string_pretty(&schema).unwrap());
             0
         }
-        cli::Cmd::Validate { .. } => {
-            // Implemented in the next task (i18n renderer required first;
-            // no hardcoded strings allowed here).
-            2
+        cli::Cmd::Validate {
+            profile,
+            json,
+            locale,
+        } => {
+            let renderer = i18n::Renderer::new(locale.as_deref());
+            commands::validate::run(&profile, json, &renderer)
         }
     };
     std::process::exit(code);

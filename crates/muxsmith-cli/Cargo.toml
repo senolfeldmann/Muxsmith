@@ -10,10 +10,14 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
+fluent-bundle = "0.16.0"
 muxsmith-core = { path = "../muxsmith-core" }
 schemars = "1.2.1"
 serde_json = "1.0.150"
+sys-locale = "0.3.2"
+unic-langid = "0.9.6"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
+tempfile = "3.27.0"
