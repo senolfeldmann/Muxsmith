@@ -38,6 +38,26 @@ fn locator_with_both_match_options_is_conflict() {
 }
 
 #[test]
+fn match_to_source_false_is_rejected() {
+    let y = format!(
+        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+    );
+    let c = codes(&y);
+    assert!(c.contains(&DiagCode::InvalidKeyword));
+    assert!(!c.contains(&DiagCode::LocatorConflict));
+}
+
+#[test]
+fn match_to_source_false_with_pattern_is_not_conflict() {
+    let y = format!(
+        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+    );
+    let c = codes(&y);
+    assert!(c.contains(&DiagCode::InvalidKeyword));
+    assert!(!c.contains(&DiagCode::LocatorConflict));
+}
+
+#[test]
 fn match_pattern_with_unknown_field_is_flagged() {
     let y = format!(
         "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_pattern: 'x{{volume}}y' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
@@ -74,7 +94,27 @@ fn filename_template_with_path_separator_is_flagged() {
 #[test]
 fn bad_template_syntax_is_invalid_template() {
     let y = BASE.to_string() + "output:\n  filename: { template: 'S{season' }\n";
-    assert!(codes(&y).contains(&DiagCode::InvalidTemplate));
+    let ds = validate(&parse(&y));
+    let d = ds
+        .iter()
+        .find(|d| d.code == DiagCode::InvalidTemplate)
+        .expect("expected InvalidTemplate diagnostic");
+    assert_eq!(
+        d.params.get("kind").map(String::as_str),
+        Some("unclosed-brace")
+    );
+    assert!(d.params.contains_key("pos"));
+}
+
+#[test]
+fn unknown_template_filter_carries_name() {
+    let y = BASE.to_string() + "output:\n  filename: { template: 'S{season:frobnicate}.mkv' }\n";
+    let ds = validate(&parse(&y));
+    let d = ds
+        .iter()
+        .find(|d| d.code == DiagCode::UnknownTemplateFilter)
+        .expect("expected UnknownTemplateFilter diagnostic");
+    assert_eq!(d.params.get("name").map(String::as_str), Some("frobnicate"));
 }
 
 #[test]
@@ -107,4 +147,23 @@ tracks:
   - match: { exact: { type: video } }
 "#;
     assert!(!codes(y).contains(&DiagCode::UnknownTemplateField));
+}
+
+#[test]
+fn empty_locator_extensions_flagged() {
+    let y = format!(
+        "{BASE}  - source:\n      external: {{ path: '.', extensions: [] }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+    );
+    let ds = validate(&parse(&y));
+    let d = ds
+        .iter()
+        .find(|d| d.code == DiagCode::EmptyExtensions)
+        .expect("expected EmptyExtensions diagnostic");
+    assert!(d.config_path.ends_with(".source.external.extensions"));
+}
+
+#[test]
+fn filename_keyword_misuse_flagged() {
+    let y = BASE.to_string() + "output:\n  filename: wipe\n";
+    assert!(codes(&y).contains(&DiagCode::InvalidKeyword));
 }

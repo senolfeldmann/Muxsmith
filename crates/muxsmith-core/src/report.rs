@@ -183,8 +183,13 @@ mod tests {
 
     #[test]
     fn all_keys_are_unique() {
-        let keys: std::collections::BTreeSet<&'static str> =
-            DiagCode::ALL.iter().map(|c| c.key()).collect();
-        assert_eq!(keys.len(), DiagCode::ALL.len());
+        let mut map: BTreeMap<&str, DiagCode> = BTreeMap::new();
+        for &code in DiagCode::ALL {
+            assert!(
+                map.insert(code.key(), code).is_none(),
+                "duplicate key: {}",
+                code.key()
+            );
+        }
     }
 }

@@ -324,11 +324,18 @@ fn validate_locator(
             format!("{path}.extensions"),
         ));
     }
-    if locator.match_to_source.is_some() && locator.match_pattern.is_some() {
+    if matches!(locator.match_to_source, Some(true)) && locator.match_pattern.is_some() {
         diags.push(Diagnostic::error(
             DiagCode::LocatorConflict,
             path.to_string(),
         ));
+    }
+    if locator.match_to_source == Some(false) {
+        diags.push(
+            Diagnostic::error(DiagCode::InvalidKeyword, format!("{path}.match_to_source"))
+                .with("found", "false")
+                .with("allowed", "true"),
+        );
     }
     if let Some(pattern) = &locator.match_pattern {
         // source_stem is literal-mode only: template_fields never contains it
@@ -354,20 +361,23 @@ fn validate_template(
     let template = match Template::parse(text) {
         Ok(t) => t,
         Err(e) => {
-            let (code, detail) = match e {
-                TemplateError::UnknownFilter { name } => (
-                    DiagCode::UnknownTemplateFilter,
-                    format!("unknown filter: {name}"),
-                ),
-                TemplateError::UnclosedBrace { pos } => (
-                    DiagCode::InvalidTemplate,
-                    format!("unclosed brace at {pos}"),
-                ),
+            let diag = match e {
+                TemplateError::UnknownFilter { name } => {
+                    Diagnostic::error(DiagCode::UnknownTemplateFilter, path.to_string())
+                        .with("name", name)
+                }
+                TemplateError::UnclosedBrace { pos } => {
+                    Diagnostic::error(DiagCode::InvalidTemplate, path.to_string())
+                        .with("kind", "unclosed-brace")
+                        .with("pos", pos.to_string())
+                }
                 TemplateError::EmptyField { pos } => {
-                    (DiagCode::InvalidTemplate, format!("empty field at {pos}"))
+                    Diagnostic::error(DiagCode::InvalidTemplate, path.to_string())
+                        .with("kind", "empty-field")
+                        .with("pos", pos.to_string())
                 }
             };
-            diags.push(Diagnostic::error(code, path.to_string()).with("detail", detail));
+            diags.push(diag);
             return;
         }
     };

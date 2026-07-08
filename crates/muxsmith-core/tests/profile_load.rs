@@ -27,6 +27,8 @@ fn reference_profile_parses() {
             assert_eq!(block.external.extensions, vec!["srt"]);
             assert_eq!(block.external.match_to_source, Some(true));
             assert!(block.external.match_pattern.is_none());
+            assert!(!block.external.recursive);
+            assert!(!block.external.case_sensitive);
         }
         other => panic!("expected external source, got {other:?}"),
     }

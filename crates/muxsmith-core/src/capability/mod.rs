@@ -118,18 +118,31 @@ mod tests {
 
     #[test]
     fn settable_maps_to_mkvmerge_options() {
-        assert_eq!(
-            settable("track_name"),
-            Some((PropType::String, "--track-name"))
-        );
-        assert_eq!(
-            settable("default_track"),
-            Some((PropType::Boolean, "--default-track-flag"))
-        );
-        assert_eq!(
-            settable("forced_track"),
-            Some((PropType::Boolean, "--forced-display-flag"))
-        );
+        // Spec 4.4 table.
+        const EXPECTED: &[(&str, PropType, &str)] = &[
+            ("language", PropType::String, "--language"),
+            ("track_name", PropType::String, "--track-name"),
+            ("default_track", PropType::Boolean, "--default-track-flag"),
+            ("forced_track", PropType::Boolean, "--forced-display-flag"),
+            (
+                "flag_hearing_impaired",
+                PropType::Boolean,
+                "--hearing-impaired-flag",
+            ),
+            (
+                "flag_visual_impaired",
+                PropType::Boolean,
+                "--visual-impaired-flag",
+            ),
+            ("flag_commentary", PropType::Boolean, "--commentary-flag"),
+            ("flag_original", PropType::Boolean, "--original-flag"),
+            ("enabled_track", PropType::Boolean, "--track-enabled-flag"),
+            ("sub_charset", PropType::String, "--sub-charset"),
+        ];
+        assert_eq!(EXPECTED.len(), SETTABLE.len());
+        for &(name, ty, option) in EXPECTED {
+            assert_eq!(settable(name), Some((ty, option)), "mismatch for {name}");
+        }
         assert_eq!(settable("codec_kind"), None); // matchable only, never settable
     }
 

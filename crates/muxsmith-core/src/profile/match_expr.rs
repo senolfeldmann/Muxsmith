@@ -86,8 +86,16 @@ any:
   - regex: { track_name: '(?i)forced' }
 "#;
         let e: MatchExpr = yaml_serde::from_str(y).unwrap();
-        assert_eq!(e.not.as_ref().unwrap().len(), 2);
-        assert_eq!(e.any.as_ref().unwrap().len(), 1);
+        let not = e.not.as_ref().unwrap();
+        assert_eq!(not.len(), 2);
+        assert_eq!(not[0].substring.as_ref().unwrap()["track_name"], "SDH");
+        assert_eq!(
+            not[1].exact.as_ref().unwrap()["flag_hearing_impaired"],
+            Scalar::Bool(true)
+        );
+        let any = e.any.as_ref().unwrap();
+        assert_eq!(any.len(), 1);
+        assert_eq!(any[0].regex.as_ref().unwrap()["track_name"], "(?i)forced");
     }
 
     #[test]
