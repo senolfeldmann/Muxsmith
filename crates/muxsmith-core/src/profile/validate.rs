@@ -243,13 +243,13 @@ fn validate_expr(
                             .with("condition", kind.to_string()),
                     ),
                 }
-                if kind == "regex" {
-                    if let Err(e) = regex::Regex::new(value) {
-                        diags.push(
-                            Diagnostic::error(DiagCode::InvalidRegex, p)
-                                .with("detail", flatten_regex_error(&e)),
-                        );
-                    }
+                if kind == "regex"
+                    && let Err(e) = regex::Regex::new(value)
+                {
+                    diags.push(
+                        Diagnostic::error(DiagCode::InvalidRegex, p)
+                            .with("detail", flatten_regex_error(&e)),
+                    );
                 }
             }
         }

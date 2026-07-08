@@ -1,4 +1,4 @@
-use muxsmith_core::profile::load::{from_str, Format};
+use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::validate::validate;
 use muxsmith_core::report::{DiagCode, Severity};
 
@@ -51,7 +51,10 @@ tracks: []
 fn unknown_match_property_is_flagged_with_path() {
     let p = profile("  - match: { exact: { colour_depth: 10 } }");
     let diags = validate(&p);
-    let d = diags.iter().find(|d| d.code == DiagCode::UnknownProperty).unwrap();
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::UnknownProperty)
+        .unwrap();
     assert_eq!(d.config_path, "tracks[0].match.exact.colour_depth");
     assert_eq!(d.params["property"], "colour_depth");
 }
@@ -85,12 +88,16 @@ fn invalid_condition_regex_is_flagged() {
 
 #[test]
 fn nested_any_and_not_are_validated_recursively() {
-    let p = profile(
-        "  - match:\n      any:\n        - exact: { nonexistent_prop: 1 }",
-    );
+    let p = profile("  - match:\n      any:\n        - exact: { nonexistent_prop: 1 }");
     let diags = validate(&p);
-    let d = diags.iter().find(|d| d.code == DiagCode::UnknownProperty).unwrap();
-    assert_eq!(d.config_path, "tracks[0].match.any[0].exact.nonexistent_prop");
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::UnknownProperty)
+        .unwrap();
+    assert_eq!(
+        d.config_path,
+        "tracks[0].match.any[0].exact.nonexistent_prop"
+    );
 }
 
 #[test]
@@ -106,17 +113,13 @@ fn empty_match_expression_is_warning() {
 
 #[test]
 fn unknown_change_property_is_flagged() {
-    let p = profile(
-        "  - match: { exact: { type: video } }\n    changes: { bitrate: 5000 }",
-    );
+    let p = profile("  - match: { exact: { type: video } }\n    changes: { bitrate: 5000 }");
     assert!(codes(&p).contains(&DiagCode::UnknownSettableProperty));
 }
 
 #[test]
 fn change_value_type_mismatch_is_flagged() {
-    let p = profile(
-        "  - match: { exact: { type: video } }\n    changes: { default_track: 'yes' }",
-    );
+    let p = profile("  - match: { exact: { type: video } }\n    changes: { default_track: 'yes' }");
     assert!(codes(&p).contains(&DiagCode::ValueTypeMismatch));
 }
 

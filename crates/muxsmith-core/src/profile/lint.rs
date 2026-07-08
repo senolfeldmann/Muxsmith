@@ -24,12 +24,9 @@ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
         for (b_idx, b) in exact_only.iter().skip(ai + 1) {
             if subset_of(a, b) || subset_of(b, a) {
                 diags.push(
-                    Diagnostic::warning(
-                        DiagCode::ProvableOverlap,
-                        format!("tracks[{b_idx}]"),
-                    )
-                    .with("rule_a", a_idx.to_string())
-                    .with("rule_b", b_idx.to_string()),
+                    Diagnostic::warning(DiagCode::ProvableOverlap, format!("tracks[{b_idx}]"))
+                        .with("rule_a", a_idx.to_string())
+                        .with("rule_b", b_idx.to_string()),
                 );
             }
         }
@@ -38,7 +35,10 @@ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
 }
 
 fn is_exact_only(e: &MatchExpr) -> bool {
-    e.substring.is_none() && e.regex.is_none() && e.any.is_none() && e.not.is_none()
+    e.substring.is_none()
+        && e.regex.is_none()
+        && e.any.is_none()
+        && e.not.is_none()
         && e.exact.as_ref().is_some_and(|m| !m.is_empty())
 }
 
@@ -54,7 +54,7 @@ fn subset_of(a: &MatchExpr, b: &MatchExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::load::{from_str, Format};
+    use crate::profile::load::{Format, from_str};
     use crate::report::DiagCode;
 
     fn lint(y: &str) -> Vec<crate::report::Diagnostic> {

@@ -134,7 +134,10 @@ mod tests {
     fn diag_code_keys_are_kebab_case() {
         assert_eq!(DiagCode::InvalidRegex.key(), "invalid-regex");
         assert_eq!(DiagCode::AmbiguousRule.key(), "ambiguous-rule");
-        assert_eq!(DiagCode::UnknownSettableProperty.key(), "unknown-settable-property");
+        assert_eq!(
+            DiagCode::UnknownSettableProperty.key(),
+            "unknown-settable-property"
+        );
     }
 
     #[test]

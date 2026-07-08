@@ -30,8 +30,16 @@ pub static SETTABLE: &[(&str, PropType, &str)] = &[
     ("track_name", PropType::String, "--track-name"),
     ("default_track", PropType::Boolean, "--default-track-flag"),
     ("forced_track", PropType::Boolean, "--forced-display-flag"),
-    ("flag_hearing_impaired", PropType::Boolean, "--hearing-impaired-flag"),
-    ("flag_visual_impaired", PropType::Boolean, "--visual-impaired-flag"),
+    (
+        "flag_hearing_impaired",
+        PropType::Boolean,
+        "--hearing-impaired-flag",
+    ),
+    (
+        "flag_visual_impaired",
+        PropType::Boolean,
+        "--visual-impaired-flag",
+    ),
     ("flag_commentary", PropType::Boolean, "--commentary-flag"),
     ("flag_original", PropType::Boolean, "--original-flag"),
     ("enabled_track", PropType::Boolean, "--track-enabled-flag"),
@@ -100,7 +108,11 @@ mod tests {
         assert_eq!(matchable_type("codec_kind"), Some(PropType::String));
         assert!(codec_kind_prefixes("srt").unwrap().contains(&"S_TEXT/UTF8"));
         assert!(codec_kind_prefixes("pgs").unwrap().contains(&"S_HDMV/PGS"));
-        assert!(codec_kind_prefixes("h264").unwrap().contains(&"V_MPEG4/ISO/AVC"));
+        assert!(
+            codec_kind_prefixes("h264")
+                .unwrap()
+                .contains(&"V_MPEG4/ISO/AVC")
+        );
         assert!(codec_kind_prefixes("nope").is_none());
     }
 
@@ -123,8 +135,10 @@ mod tests {
 
     #[test]
     fn attachment_properties_are_defined() {
-        assert!(ATTACHMENT_PROPERTIES
-            .iter()
-            .any(|(n, t)| *n == "content_type" && *t == PropType::String));
+        assert!(
+            ATTACHMENT_PROPERTIES
+                .iter()
+                .any(|(n, t)| *n == "content_type" && *t == PropType::String)
+        );
     }
 }

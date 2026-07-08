@@ -36,7 +36,9 @@ pub fn generate(schema_json: &str) -> Result<String, String> {
     let mut out = String::new();
     out.push_str("// GENERATED FILE - do not edit.\n");
     out.push_str("// Regenerate: cargo run -p xtask -- gen-capability <schema.json> <this file>\n");
-    out.push_str("// Source: mkvmerge identification output schema (facts only, not the schema).\n\n");
+    out.push_str(
+        "// Source: mkvmerge identification output schema (facts only, not the schema).\n\n",
+    );
     out.push_str("use super::PropType;\n\n");
     out.push_str("pub static MATCHABLE_PROPERTIES: &[(&str, PropType)] = &[\n");
     for (name, ty) in &entries {

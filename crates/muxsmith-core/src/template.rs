@@ -92,7 +92,9 @@ impl Template {
                         Some("pad2") => Filter::Pad2,
                         Some("pad3") => Filter::Pad3,
                         Some(f) => {
-                            return Err(TemplateError::UnknownFilter { name: f.to_string() })
+                            return Err(TemplateError::UnknownFilter {
+                                name: f.to_string(),
+                            });
                         }
                     };
                     if !literal.is_empty() {
@@ -282,7 +284,13 @@ mod tests {
     #[test]
     fn case_sensitive_flag_controls_inline_i() {
         let t = Template::parse("abc").unwrap();
-        assert!(t.render_regex_pattern(&Ctx::new(), false).starts_with("(?i)"));
-        assert!(!t.render_regex_pattern(&Ctx::new(), true).starts_with("(?i)"));
+        assert!(
+            t.render_regex_pattern(&Ctx::new(), false)
+                .starts_with("(?i)")
+        );
+        assert!(
+            !t.render_regex_pattern(&Ctx::new(), true)
+                .starts_with("(?i)")
+        );
     }
 }

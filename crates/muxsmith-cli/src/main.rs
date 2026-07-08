@@ -1,8 +1,5 @@
-mod cli;
-mod commands;
-mod i18n;
-
 use clap::Parser;
+use muxsmith_cli::{cli, commands, i18n};
 
 fn main() {
     let args = cli::Cli::parse();

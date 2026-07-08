@@ -1,7 +1,7 @@
+use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::model::{
     ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, SourceCfg, TitleCfg,
 };
-use muxsmith_core::profile::load::{from_str, Format};
 use muxsmith_core::report::DiagCode;
 
 const REFERENCE: &str = include_str!("fixtures/reference.yaml");

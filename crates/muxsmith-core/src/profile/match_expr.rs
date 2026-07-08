@@ -66,7 +66,10 @@ substring: { track_name: SDH }
             e.exact.as_ref().unwrap()["type"],
             Scalar::Str("subtitles".into())
         );
-        assert_eq!(e.exact.as_ref().unwrap()["forced_track"], Scalar::Bool(true));
+        assert_eq!(
+            e.exact.as_ref().unwrap()["forced_track"],
+            Scalar::Bool(true)
+        );
         assert_eq!(e.substring.as_ref().unwrap()["track_name"], "SDH");
         assert!(e.any.is_none() && e.not.is_none());
         assert!(!e.is_empty());
