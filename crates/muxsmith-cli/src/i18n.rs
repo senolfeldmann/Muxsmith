@@ -78,3 +78,20 @@ fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
         muxsmith_core::report::Severity::Info => "severity-info",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_message_id_falls_back_to_raw_id() {
+        let renderer = Renderer::new(Some("en"));
+        assert_eq!(renderer.msg("no-such-id", &[]), "no-such-id");
+    }
+
+    #[test]
+    fn invalid_locale_falls_back_to_en_and_renders() {
+        let renderer = Renderer::new(Some("zz-ZZ-invalid!"));
+        assert_eq!(renderer.msg("validate-ok", &[]), "Profile is valid.");
+    }
+}

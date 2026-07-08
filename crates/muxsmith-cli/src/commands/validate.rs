@@ -6,7 +6,9 @@ use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
 use crate::i18n::Renderer;
 
 pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
-    let diagnostics = collect(profile_path);
+    // Error-first, stable within a severity; both output modes share it.
+    let mut diagnostics = collect(profile_path);
+    diagnostics.sort_by_key(|d| std::cmp::Reverse(d.severity));
     let exit = match worst_severity(&diagnostics) {
         Some(Severity::Error) => 2,
         Some(Severity::Warning) => 1,
@@ -26,9 +28,7 @@ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
     } else if diagnostics.is_empty() {
         println!("{}", renderer.msg("validate-ok", &[]));
     } else {
-        let mut sorted = diagnostics.clone();
-        sorted.sort_by_key(|d| std::cmp::Reverse(d.severity));
-        for d in &sorted {
+        for d in &diagnostics {
             println!("{}", renderer.diagnostic(d));
         }
         let count = |s| {

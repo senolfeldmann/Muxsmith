@@ -67,6 +67,9 @@ fn json_output_is_machine_readable() {
     assert!(first["code"].is_string());
     assert!(first["severity"].is_string());
     assert!(first["rendered"].is_string());
+    // bad.yaml yields both errors and a warning; sorted output leads
+    // with an error, same order as the text rendering.
+    assert_eq!(first["severity"], "error");
 }
 
 #[test]
