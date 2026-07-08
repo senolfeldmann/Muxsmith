@@ -5,9 +5,12 @@ use std::collections::BTreeMap;
 
 use crate::capability::{self, PropType};
 use crate::report::{DiagCode, Diagnostic};
+use crate::template::{Template, TemplateError};
 
 use super::match_expr::{MatchExpr, Scalar};
-use super::model::{AttachmentRule, Profile};
+use super::model::{
+    AttachmentRule, ChaptersCfg, FilenameCfg, Locator, Profile, SourceCfg, TitleCfg,
+};
 
 pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -18,6 +21,33 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
                 .with("found", profile.profile_version.to_string())
                 .with("supported", "1"),
         );
+    }
+
+    // input.pattern must compile; its groups define the template fields.
+    let mut template_fields: Vec<String> = vec!["match".into()];
+    match regex::Regex::new(&profile.input.pattern) {
+        Err(e) => diags.push(
+            Diagnostic::error(DiagCode::InvalidRegex, "input.pattern")
+                .with("detail", flatten_regex_error(&e)),
+        ),
+        Ok(re) => {
+            for (i, name) in re.capture_names().enumerate() {
+                if i == 0 {
+                    continue; // group 0 is the whole match
+                }
+                template_fields.push(format!("g{i}"));
+                if let Some(n) = name {
+                    template_fields.push(n.to_string());
+                }
+            }
+        }
+    }
+
+    if profile.input.extensions.is_empty() {
+        diags.push(Diagnostic::error(
+            DiagCode::EmptyExtensions,
+            "input.extensions",
+        ));
     }
 
     if profile.tracks.is_empty() {
@@ -41,14 +71,96 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
         if let Some(changes) = &rule.changes {
             validate_changes(changes, &format!("{base}.changes"), &mut diags);
         }
+
+        match &rule.source {
+            SourceCfg::Keyword(k) if k == "primary" => {}
+            SourceCfg::Keyword(k) => diags.push(
+                Diagnostic::error(DiagCode::InvalidKeyword, format!("{base}.source"))
+                    .with("found", k.clone())
+                    .with("allowed", "primary"),
+            ),
+            SourceCfg::External(block) => {
+                validate_locator(
+                    &block.external,
+                    &format!("{base}.source.external"),
+                    &template_fields,
+                    &mut diags,
+                );
+            }
+        }
     }
 
     for (i, rule) in profile.attachments.rules.iter().enumerate() {
         let base = format!("attachments.rules[{i}]");
-        validate_attachment_rule(rule, &base, &mut diags);
+        validate_attachment_rule(rule, &base, &template_fields, &mut diags);
+    }
+
+    // output.filename
+    match &profile.output.filename {
+        FilenameCfg::Keyword(k) if k == "keep" => {}
+        FilenameCfg::Keyword(k) => diags.push(
+            Diagnostic::error(DiagCode::InvalidKeyword, "output.filename")
+                .with("found", k.clone())
+                .with("allowed", "keep"),
+        ),
+        FilenameCfg::Template(block) => {
+            let mut fields = template_fields.clone();
+            fields.push("source_stem".into());
+            validate_template(
+                &block.template,
+                "output.filename.template",
+                &fields,
+                true,
+                &mut diags,
+            );
+        }
+    }
+
+    match &profile.chapters {
+        ChaptersCfg::Keyword(k) if k == "keep" || k == "drop" => {}
+        ChaptersCfg::Keyword(k) => diags.push(
+            Diagnostic::error(DiagCode::InvalidKeyword, "chapters")
+                .with("found", k.clone())
+                .with("allowed", "keep, drop"),
+        ),
+        ChaptersCfg::External(block) => {
+            validate_locator(
+                &block.external,
+                "chapters.external",
+                &template_fields,
+                &mut diags,
+            );
+        }
+    }
+
+    match &profile.title {
+        TitleCfg::Keyword(k) if k == "keep" || k == "clear" => {}
+        TitleCfg::Keyword(k) => diags.push(
+            Diagnostic::error(DiagCode::InvalidKeyword, "title")
+                .with("found", k.clone())
+                .with("allowed", "keep, clear"),
+        ),
+        TitleCfg::Template(block) => {
+            let mut fields = template_fields.clone();
+            fields.push("source_stem".into());
+            validate_template(
+                &block.template,
+                "title.template",
+                &fields,
+                false,
+                &mut diags,
+            );
+        }
     }
 
     diags
+}
+
+fn flatten_regex_error(e: &regex::Error) -> String {
+    e.to_string()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn track_prop_type(name: &str) -> Option<PropType> {
@@ -62,7 +174,12 @@ fn attachment_prop_type(name: &str) -> Option<PropType> {
         .map(|(_, t)| *t)
 }
 
-fn validate_attachment_rule(rule: &AttachmentRule, base: &str, diags: &mut Vec<Diagnostic>) {
+fn validate_attachment_rule(
+    rule: &AttachmentRule,
+    base: &str,
+    template_fields: &[String],
+    diags: &mut Vec<Diagnostic>,
+) {
     let actions = [
         rule.select.is_some(),
         rule.drop.is_some(),
@@ -83,7 +200,9 @@ fn validate_attachment_rule(rule: &AttachmentRule, base: &str, diags: &mut Vec<D
     if let Some(expr) = &rule.drop {
         validate_expr(expr, &format!("{base}.drop"), attachment_prop_type, diags);
     }
-    // rule.add locator validation arrives with Task 9.
+    if let Some(locator) = &rule.add {
+        validate_locator(locator, &format!("{base}.add"), template_fields, diags);
+    }
 }
 
 fn validate_expr(
@@ -128,7 +247,7 @@ fn validate_expr(
                     if let Err(e) = regex::Regex::new(value) {
                         diags.push(
                             Diagnostic::error(DiagCode::InvalidRegex, p)
-                                .with("detail", e.to_string()),
+                                .with("detail", flatten_regex_error(&e)),
                         );
                     }
                 }
@@ -147,11 +266,7 @@ fn validate_expr(
     }
 }
 
-fn validate_changes(
-    changes: &BTreeMap<String, Scalar>,
-    path: &str,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn validate_changes(changes: &BTreeMap<String, Scalar>, path: &str, diags: &mut Vec<Diagnostic>) {
     for (prop, value) in changes {
         let p = format!("{path}.{prop}");
         match capability::settable(prop) {
@@ -194,5 +309,81 @@ fn type_label(t: PropType) -> &'static str {
         PropType::Boolean => "boolean",
         PropType::Integer => "integer",
         PropType::Float => "float",
+    }
+}
+
+fn validate_locator(
+    locator: &Locator,
+    path: &str,
+    template_fields: &[String],
+    diags: &mut Vec<Diagnostic>,
+) {
+    if locator.extensions.is_empty() {
+        diags.push(Diagnostic::error(
+            DiagCode::EmptyExtensions,
+            format!("{path}.extensions"),
+        ));
+    }
+    if locator.match_to_source.is_some() && locator.match_pattern.is_some() {
+        diags.push(Diagnostic::error(
+            DiagCode::LocatorConflict,
+            path.to_string(),
+        ));
+    }
+    if let Some(pattern) = &locator.match_pattern {
+        // source_stem is literal-mode only: template_fields never contains it
+        // here, so a match_pattern using {source_stem} is UnknownTemplateField
+        // (spec 4.7).
+        validate_template(
+            pattern,
+            &format!("{path}.match_pattern"),
+            template_fields,
+            false,
+            diags,
+        );
+    }
+}
+
+fn validate_template(
+    text: &str,
+    path: &str,
+    allowed_fields: &[String],
+    forbid_path_separators: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let template = match Template::parse(text) {
+        Ok(t) => t,
+        Err(e) => {
+            let (code, detail) = match e {
+                TemplateError::UnknownFilter { name } => (
+                    DiagCode::UnknownTemplateFilter,
+                    format!("unknown filter: {name}"),
+                ),
+                TemplateError::UnclosedBrace { pos } => (
+                    DiagCode::InvalidTemplate,
+                    format!("unclosed brace at {pos}"),
+                ),
+                TemplateError::EmptyField { pos } => {
+                    (DiagCode::InvalidTemplate, format!("empty field at {pos}"))
+                }
+            };
+            diags.push(Diagnostic::error(code, path.to_string()).with("detail", detail));
+            return;
+        }
+    };
+    for field in template.field_names() {
+        if !allowed_fields.iter().any(|f| f == field) {
+            diags.push(
+                Diagnostic::error(DiagCode::UnknownTemplateField, path.to_string())
+                    .with("field", field)
+                    .with("allowed", allowed_fields.join(", ")),
+            );
+        }
+    }
+    if forbid_path_separators && (text.contains('/') || text.contains('\\')) {
+        diags.push(Diagnostic::error(
+            DiagCode::PathSeparatorInTemplate,
+            path.to_string(),
+        ));
     }
 }
