@@ -256,7 +256,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
 | `IgnoredFile` | info | extension matches but `input.pattern` does not |
 | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
-| `UnknownProperty` | error | a match condition or change references a property not in the capability model (config-time) |
+| `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`) |
 | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
 
 ### 5.3 Suggestion engine
