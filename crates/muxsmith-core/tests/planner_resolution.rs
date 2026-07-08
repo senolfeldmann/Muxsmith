@@ -30,7 +30,11 @@ fn lang() -> LanguageIndex {
 
 const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
 
-fn plan_one(profile_yaml: &str, file_name: &str, ident_json: &str) -> muxsmith_core::planner::Batch {
+fn plan_one(
+    profile_yaml: &str,
+    file_name: &str,
+    ident_json: &str,
+) -> muxsmith_core::planner::Batch {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join(file_name), b"x").unwrap();
     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
@@ -81,7 +85,11 @@ tracks:
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
-    assert!(fr.diagnostics.iter().any(|d| d.code == DiagCode::AmbiguousRule));
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::AmbiguousRule)
+    );
 }
 
 #[test]
@@ -95,7 +103,11 @@ tracks:
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
-    assert!(fr.diagnostics.iter().any(|d| d.code == DiagCode::MissingTrack));
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingTrack)
+    );
 }
 
 #[test]
@@ -127,7 +139,11 @@ tracks:
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
-    assert!(fr.diagnostics.iter().any(|d| d.code == DiagCode::OverlappingRules));
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::OverlappingRules)
+    );
 }
 
 #[test]

@@ -209,10 +209,13 @@ fn walk_exact_languages(
         && lang.normalize(v).is_none()
     {
         diags.push(
-            Diagnostic::error(DiagCode::InvalidPropertyValue, format!("{path}.exact.language"))
-                .with("property", "language")
-                .with("value", v.clone())
-                .with("allowed", "a valid ISO 639/BCP-47 language code"),
+            Diagnostic::error(
+                DiagCode::InvalidPropertyValue,
+                format!("{path}.exact.language"),
+            )
+            .with("property", "language")
+            .with("value", v.clone())
+            .with("allowed", "a valid ISO 639/BCP-47 language code"),
         );
     }
     if let Some(any) = &expr.any {
@@ -691,7 +694,11 @@ fn candidates_for_rule(
                         if seen.insert(key) {
                             raw.push(Candidate {
                                 apply: delta_for(&edit, &Scalar::Str(tok.to_string())),
-                                rank: (rank_substring(polarity), "track_name".into(), tok.to_string()),
+                                rank: (
+                                    rank_substring(polarity),
+                                    "track_name".into(),
+                                    tok.to_string(),
+                                ),
                                 edit,
                             });
                         }
@@ -740,7 +747,9 @@ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
     let mut p = profile.clone();
     let expr = &mut p.tracks[ri].match_expr;
     if let Some(add) = &delta.exact {
-        expr.exact.get_or_insert_with(BTreeMap::new).extend(add.clone());
+        expr.exact
+            .get_or_insert_with(BTreeMap::new)
+            .extend(add.clone());
     }
     if let Some(add) = &delta.substring {
         expr.substring
@@ -799,8 +808,13 @@ fn rule_index_of(config_path: &str) -> Option<usize> {
 // exact before its negation at equal property rank.
 fn rank_of(prop: &str, polarity: u8) -> u8 {
     let base = match prop {
-        "forced_track" | "default_track" | "flag_hearing_impaired" | "flag_visual_impaired"
-        | "flag_commentary" | "flag_original" | "enabled_track" => 0,
+        "forced_track"
+        | "default_track"
+        | "flag_hearing_impaired"
+        | "flag_visual_impaired"
+        | "flag_commentary"
+        | "flag_original"
+        | "enabled_track" => 0,
         "language" | "language_ietf" => 1,
         _ => 2,
     };

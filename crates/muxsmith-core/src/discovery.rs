@@ -110,7 +110,10 @@ pub fn scan_primaries(source: &Path, input: &Input) -> (Vec<PrimaryFile>, Vec<Di
     // DuplicateIdentifier across the batch (spec 5.2).
     let mut by_id: BTreeMap<&str, Vec<&PrimaryFile>> = BTreeMap::new();
     for p in &primaries {
-        by_id.entry(p.identifier.whole.as_str()).or_default().push(p);
+        by_id
+            .entry(p.identifier.whole.as_str())
+            .or_default()
+            .push(p);
     }
     for (id, group) in &by_id {
         if group.len() >= 2 {
@@ -242,7 +245,11 @@ mod tests {
 
         let (primaries, diags) = scan_primaries(
             dir.path(),
-            &input(r"S(?<season>\d{2})E(?<episode>\d{2})", &["mkv", "mp4"], true),
+            &input(
+                r"S(?<season>\d{2})E(?<episode>\d{2})",
+                &["mkv", "mp4"],
+                true,
+            ),
         );
         assert_eq!(primaries.len(), 2);
         let e02 = primaries
@@ -265,7 +272,11 @@ mod tests {
             &input(r"S(?<season>\d{2})E(?<episode>\d{2})", &["mkv"], true),
         );
         assert_eq!(primaries.len(), 2);
-        assert!(diags.iter().any(|d| d.code == DiagCode::DuplicateIdentifier));
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == DiagCode::DuplicateIdentifier)
+        );
     }
 
     #[test]

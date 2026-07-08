@@ -7,7 +7,8 @@ fn codes(yaml: &str) -> Vec<DiagCode> {
     validate(&p).into_iter().map(|d| d.code).collect()
 }
 
-const HEAD: &str = "profile_version: 1\ninput: { pattern: 'E(\\d+)', extensions: [mkv] }\ntracks:\n";
+const HEAD: &str =
+    "profile_version: 1\ninput: { pattern: 'E(\\d+)', extensions: [mkv] }\ntracks:\n";
 
 #[test]
 fn codec_kind_under_substring_is_exact_only() {

@@ -304,9 +304,15 @@ mod tests {
     #[test]
     fn prop_value_from_json_scalars_only() {
         use serde_json::json;
-        assert_eq!(PropValue::from_json(&json!(true)), Some(PropValue::Bool(true)));
+        assert_eq!(
+            PropValue::from_json(&json!(true)),
+            Some(PropValue::Bool(true))
+        );
         assert_eq!(PropValue::from_json(&json!(7)), Some(PropValue::Int(7)));
-        assert_eq!(PropValue::from_json(&json!(1.5)), Some(PropValue::Float(1.5)));
+        assert_eq!(
+            PropValue::from_json(&json!(1.5)),
+            Some(PropValue::Float(1.5))
+        );
         assert_eq!(
             PropValue::from_json(&json!("x")),
             Some(PropValue::Str("x".into()))

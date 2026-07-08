@@ -279,7 +279,10 @@ mod tests {
     #[test]
     fn plan2_codes_are_registered_with_keys() {
         assert_eq!(DiagCode::CodecKindExactOnly.key(), "codec-kind-exact-only");
-        assert_eq!(DiagCode::InvalidPropertyValue.key(), "invalid-property-value");
+        assert_eq!(
+            DiagCode::InvalidPropertyValue.key(),
+            "invalid-property-value"
+        );
         assert_eq!(
             DiagCode::PathSeparatorInRenderedName.key(),
             "path-separator-in-rendered-name"

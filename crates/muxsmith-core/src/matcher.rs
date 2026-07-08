@@ -63,7 +63,9 @@ fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex)
         // language matches against both `language` and `language_ietf`,
         // normalized so `de` and `ger` are equal (spec 4.4).
         "language" => {
-            let Scalar::Str(want) = want else { return false };
+            let Scalar::Str(want) = want else {
+                return false;
+            };
             ["language", "language_ietf"]
                 .iter()
                 .filter_map(|f| track_str(f, track))
@@ -71,7 +73,9 @@ fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex)
         }
         // codec_kind is a codec_id prefix match over a curated alias set.
         "codec_kind" => {
-            let Scalar::Str(kind) = want else { return false };
+            let Scalar::Str(kind) = want else {
+                return false;
+            };
             let Some(prefixes) = codec_kind_prefixes(kind) else {
                 return false;
             };
@@ -165,7 +169,11 @@ mod tests {
             &t,
             &lang()
         ));
-        assert!(!matches(&expr("exact: { default_track: true }"), &t, &lang()));
+        assert!(!matches(
+            &expr("exact: { default_track: true }"),
+            &t,
+            &lang()
+        ));
     }
 
     #[test]
@@ -210,13 +218,21 @@ mod tests {
             "subtitles",
             &[("track_name", PropValue::Str("English SDH".into()))],
         );
-        assert!(matches(&expr("substring: { track_name: sdh }"), &t, &lang()));
+        assert!(matches(
+            &expr("substring: { track_name: sdh }"),
+            &t,
+            &lang()
+        ));
         assert!(matches(
             &expr("regex: { track_name: '(?i)^english' }"),
             &t,
             &lang()
         ));
-        assert!(!matches(&expr("regex: { track_name: '^SDH' }"), &t, &lang()));
+        assert!(!matches(
+            &expr("regex: { track_name: '^SDH' }"),
+            &t,
+            &lang()
+        ));
     }
 
     #[test]
@@ -226,7 +242,9 @@ mod tests {
             &[("track_name", PropValue::Str("English SDH".into()))],
         );
         assert!(matches(
-            &expr("any:\n  - substring: { track_name: SDH }\n  - substring: { track_name: forced }"),
+            &expr(
+                "any:\n  - substring: { track_name: SDH }\n  - substring: { track_name: forced }"
+            ),
             &t,
             &lang()
         ));
