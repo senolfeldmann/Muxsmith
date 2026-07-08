@@ -7,6 +7,7 @@
 
 pub mod capability;
 pub mod identify;
+pub mod matcher;
 pub mod profile;
 pub mod report;
 pub mod template;
