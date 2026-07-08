@@ -21,6 +21,20 @@ fn main() {
             let renderer = i18n::Renderer::new(locale.as_deref());
             commands::validate::run(&profile, json, &renderer)
         }
+        cli::Cmd::DryRun {
+            profile,
+            source,
+            output,
+            json,
+            locale,
+        } => {
+            let renderer = i18n::Renderer::new(locale.as_deref());
+            commands::dry_run::run(&profile, source, output, json, &renderer)
+        }
+        cli::Cmd::Identify { file, json, locale } => {
+            let renderer = i18n::Renderer::new(locale.as_deref());
+            commands::identify::run(&file, json, &renderer)
+        }
     };
     std::process::exit(code);
 }

@@ -1,3 +1,12 @@
 validate-ok = Profile is valid.
 validate-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info(s).
 diagnostic-line = [{ $severity }] { $config_path }: { $message }
+mkvmerge-not-found = mkvmerge was not found on PATH. Install MKVToolNix or set the mkvmerge path.
+mkvmerge-query-failed = Querying mkvmerge failed.
+identify-failed = Could not identify { $file }.
+identify-not-media = { $file } is not a recognized media file.
+identify-track-line = Track { $id }: { $type } [{ $codec }] { $language }
+dry-run-file = { $file } (identifier: { $id })
+dry-run-assignment =   rule { $rule } -> track { $track }
+dry-run-output =   output: { $path }
+dry-run-suggestion = Suggestion for { $config_path }:
