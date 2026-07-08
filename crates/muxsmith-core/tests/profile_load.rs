@@ -23,7 +23,7 @@ fn reference_profile_parses() {
     let last = p.tracks.last().unwrap();
     match &last.source {
         SourceCfg::External(block) => {
-            assert_eq!(block.external.path, ".");
+            assert_eq!(block.external.path, std::path::Path::new("."));
             assert_eq!(block.external.extensions, vec!["srt"]);
             assert_eq!(block.external.match_to_source, Some(true));
             assert!(block.external.match_pattern.is_none());

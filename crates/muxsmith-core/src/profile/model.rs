@@ -241,8 +241,10 @@ impl SourceCfg {
 #[serde(deny_unknown_fields)]
 pub struct Locator {
     /// Directory to search, relative to the primary file's directory, or
-    /// absolute.
-    pub path: String,
+    /// absolute. A filesystem path; serialized as a plain string, so the
+    /// profile format is unchanged. Use forward slashes in profiles for
+    /// portability (Windows accepts them).
+    pub path: PathBuf,
     /// Whether the search descends into subdirectories of `path`. Defaults
     /// to `false`, deliberately asymmetric with `input.recursive`
     /// (default `true`).
