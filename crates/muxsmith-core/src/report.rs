@@ -22,12 +22,11 @@ pub enum Severity {
     Error,
 }
 
-/// Generates `DiagCode` from a flat list of `variant => key` pairs.
-/// Per-variant semantics live in the spec 5.2 catalog table rather than in
-/// per-variant doc comments, since this macro has no channel to carry prose
-/// distinct from the wire key without changing every call site below.
+/// Generates `DiagCode` from a list of `variant => key` pairs, forwarding
+/// each variant's doc attributes onto the generated enum so the wire
+/// contract stays documented per code in rustdoc.
 macro_rules! diag_codes {
-    ($($variant:ident => $key:literal),+ $(,)?) => {
+    ($($(#[$meta:meta])* $variant:ident => $key:literal),+ $(,)?) => {
         /// Diagnostic code identifying the condition that produced a
         /// [`Diagnostic`] (spec 5.2). Every variant corresponds to exactly
         /// one row of the spec 5.2 catalog table (condition + severity).
@@ -39,10 +38,7 @@ macro_rules! diag_codes {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
         #[serde(rename_all = "kebab-case")]
         pub enum DiagCode {
-            $(
-                #[doc = "See the spec 5.2 catalog table for this code's condition and severity."]
-                $variant
-            ),+
+            $($(#[$meta])* $variant),+
         }
 
         impl DiagCode {
@@ -67,36 +63,66 @@ macro_rules! diag_codes {
 
 diag_codes! {
     // Config-time (validate)
+    /// The profile declares a `profile_version` this build does not read; v1 accepts only 1 (spec 4).
     UnsupportedProfileVersion => "unsupported-profile-version",
+    /// The profile file could not be read or deserialized; `detail` carries the underlying I/O or serde message, `config_path`/`at` the failing field when known.
     ParseError => "parse-error",
+    /// `tracks` is empty: a profile must select at least one track to produce any output.
     NoTrackRules => "no-track-rules",
+    /// A rule's match expression imposes no condition at all, so it would match every track of its source (warning).
     EmptyMatchExpression => "empty-match-expression",
+    /// An `extensions` list (input or locator) is empty, so no file could ever qualify as a candidate.
     EmptyExtensions => "empty-extensions",
+    /// A regex failed to compile (`input.pattern` or a `regex` condition); `detail` carries the compiler message.
     InvalidRegex => "invalid-regex",
+    /// A match condition references a property absent from the capability model's matchable set (config-time error, spec 5.2).
     UnknownProperty => "unknown-property",
+    /// A `substring` or `regex` condition targets a non-string property; both are defined for string properties only (spec 4.3).
     NotStringProperty => "not-string-property",
+    /// A condition or change value's type does not fit the property's declared type (an integer fits a float property, never the reverse).
     ValueTypeMismatch => "value-type-mismatch",
+    /// A `changes` key is not in the curated settable table (spec 4.4); matchable-only properties cannot be set.
     UnknownSettableProperty => "unknown-settable-property",
+    /// A keyword-position string is not an allowed keyword for that field; the `found`/`allowed` params spell out both.
     InvalidKeyword => "invalid-keyword",
+    /// A locator sets both `match_to_source` and `match_pattern`, which are mutually exclusive (spec 4.6).
     LocatorConflict => "locator-conflict",
+    /// Template source failed to parse (unclosed brace or empty field); `kind`/`pos` params identify the failure, `pos` as a char offset.
     InvalidTemplate => "invalid-template",
+    /// A template references a field outside its context's allowed set (`{match}`, pattern capture groups, `{source_stem}` in literal mode only).
     UnknownTemplateField => "unknown-template-field",
+    /// A template field uses a filter other than `int`, `pad2`, or `pad3` (spec 4.7).
     UnknownTemplateFilter => "unknown-template-filter",
+    /// An output filename template contains a path separator; v1 never creates subdirectories (spec 4.8).
     PathSeparatorInTemplate => "path-separator-in-template",
+    /// An attachment rule does not set exactly one of `select`/`drop`/`add` (spec 4.9).
     AttachmentRuleShape => "attachment-rule-shape",
+    /// Static lint: one exact-only rule's conditions subsume another's, so any track matching the stricter rule must overlap the looser one (warning, spec 5.4).
     ProvableOverlap => "provable-overlap",
     // Planning-time (produced from Plan 2 on; defined now for a stable catalog)
+    /// A rule matched two or more tracks of its source; strict uniqueness requires exactly one, and `optional` does not relax this (spec 5.2).
     AmbiguousRule => "ambiguous-rule",
+    /// One track is claimed by two or more rules; every overlap is an error under strict independent uniqueness (spec 2, 5.2).
     OverlappingRules => "overlapping-rules",
+    /// A non-optional rule matched zero tracks; the hint lists near-misses (same type/language) and which condition each failed (spec 5.2).
     MissingTrack => "missing-track",
+    /// An external locator (track rule or chapters) found zero files for a non-optional use (spec 5.2).
     MissingExternal => "missing-external",
+    /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
     AmbiguousExternal => "ambiguous-external",
+    /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
     OutputCollision => "output-collision",
+    /// An output path equals an input path: a hard error regardless of collision policy, since sources are never modified (spec 4.8).
     SourceOverwrite => "source-overwrite",
+    /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
     DuplicateIdentifier => "duplicate-identifier",
+    /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
     DonorIsPrimary => "donor-is-primary",
+    /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
     IgnoredFile => "ignored-file",
+    /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
     MultipleIdentifierMatches => "multiple-identifier-matches",
+    /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
     UnknownPropertySkew => "unknown-property-skew",
 }
 
