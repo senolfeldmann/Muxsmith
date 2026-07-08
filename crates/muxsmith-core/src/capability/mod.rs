@@ -5,6 +5,7 @@
 // Generated from identification schema v20.
 
 mod generated;
+pub mod runtime;
 
 /// Value type of a matchable or settable property (spec 4.4); drives
 /// `validate.rs`'s scalar type-checking (`ValueTypeMismatch`,
