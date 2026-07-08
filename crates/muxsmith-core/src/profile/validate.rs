@@ -225,11 +225,26 @@ fn validate_expr(
                 Some(t) => {
                     if !scalar_fits(value, t) {
                         diags.push(
-                            Diagnostic::error(DiagCode::ValueTypeMismatch, p)
+                            Diagnostic::error(DiagCode::ValueTypeMismatch, p.clone())
                                 .with("property", prop.clone())
                                 .with("expected", type_label(t))
                                 .with("found", value.type_name()),
                         );
+                    } else if let (Scalar::Str(s), Some(domain)) =
+                        (value, capability::matchable_domain(prop))
+                    {
+                        // Closed-domain string property (type, codec_kind): the
+                        // value must be a domain member (D2). language is
+                        // deliberately absent from the domain map (validated at
+                        // plan time), so this never fires for it.
+                        if !domain.contains(&s.as_str()) {
+                            diags.push(
+                                Diagnostic::error(DiagCode::InvalidPropertyValue, p.clone())
+                                    .with("property", prop.clone())
+                                    .with("value", s.clone())
+                                    .with("allowed", domain_hint(domain)),
+                            );
+                        }
                     }
                 }
             }
@@ -239,6 +254,26 @@ fn validate_expr(
         if let Some(map) = map {
             for (prop, value) in map.iter() {
                 let p = format!("{path}.{kind}.{prop}");
+                // codec_kind is a curated alias, matchable only under exact
+                // (D1). Guard before the string-type check so it reports
+                // CodecKindExactOnly rather than the misleading (codec_kind is
+                // String-typed) success. Only fires where codec_kind is a known
+                // property of this context (track rules, not attachments).
+                if prop == "codec_kind" && prop_type(prop).is_some() {
+                    diags.push(
+                        Diagnostic::error(DiagCode::CodecKindExactOnly, p.clone())
+                            .with("condition", kind.to_string()),
+                    );
+                    if kind == "regex"
+                        && let Err(e) = regex::Regex::new(value)
+                    {
+                        diags.push(
+                            Diagnostic::error(DiagCode::InvalidRegex, p)
+                                .with("detail", flatten_regex_error(&e)),
+                        );
+                    }
+                    continue;
+                }
                 match prop_type(prop) {
                     None => diags.push(unknown_property(&p, prop)),
                     Some(PropType::String) => {}
@@ -307,6 +342,18 @@ fn scalar_fits(value: &Scalar, t: PropType) -> bool {
             | (Scalar::Int(_), PropType::Float)
             | (Scalar::Float(_), PropType::Float)
     )
+}
+
+/// A short, deterministic sample of a closed value domain for the
+/// `InvalidPropertyValue` hint: the full list if small, else the first few
+/// plus an ellipsis marker. Keeps the message bounded for large domains.
+fn domain_hint(domain: &[&str]) -> String {
+    const MAX: usize = 8;
+    if domain.len() <= MAX {
+        domain.join(", ")
+    } else {
+        format!("{}, ...", domain[..MAX].join(", "))
+    }
 }
 
 fn type_label(t: PropType) -> &'static str {

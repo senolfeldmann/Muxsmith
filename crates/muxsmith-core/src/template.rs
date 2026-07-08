@@ -292,6 +292,18 @@ mod tests {
     }
 
     #[test]
+    fn lone_closing_brace_is_literal_and_lone_open_is_error() {
+        // A lone `}` cannot start a field, so it is a literal (D5).
+        let t = Template::parse("a}b").expect("lone } is literal");
+        assert_eq!(t.render_literal(&Ctx::new()), "a}b");
+        // A lone unclosed `{` is a hard error (ambiguous, user mistake).
+        assert!(matches!(
+            Template::parse("a{b"),
+            Err(TemplateError::UnclosedBrace { .. })
+        ));
+    }
+
+    #[test]
     fn double_braces_are_literal() {
         let t = Template::parse("a{{b}}c").unwrap();
         assert_eq!(t.render_literal(&Ctx::new()), "a{b}c");
