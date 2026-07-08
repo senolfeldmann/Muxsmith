@@ -383,7 +383,7 @@ Localization readiness is structural, not deferred polish:
 - CLI rendering: snapshot tests (insta).
 - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
 - i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. eslint (no-literal-string rule) keeps hardcoded strings out of the frontend; core is prose-free by construction.
-- CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags.
+- CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags. While the repo is private, branch pushes run Linux only (Actions minute multipliers: Windows 2x, macOS 10x); the full matrix runs on PRs, tags and manual dispatch. Reverts to the full matrix on every push when the repo goes public.
 
 ## 11. Non-goals for v1
 

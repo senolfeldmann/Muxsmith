@@ -2,14 +2,19 @@ name: ci
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
     strategy:
       fail-fast: false
+      # Private-repo minute economy: branch pushes run Linux only
+      # (macOS bills 10x, Windows 2x); PRs, tags and manual dispatch
+      # run the full matrix. Revert to a static 3-OS list on going public.
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON((github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest", "macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
