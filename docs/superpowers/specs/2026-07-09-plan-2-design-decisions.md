@@ -1,9 +1,10 @@
 # Plan 2 design decisions
 
-Status: decided 2026-07-09 (pre-Plan-2, strongest-model session), pending Şenol's
-announced additional context. Each decision below stands unless that context
-overrides it. When Plan 2 is written, fold the accepted decisions into the v1
-design spec (amendment targets noted per decision) and into Plan 2 tasks.
+Status: FINAL 2026-07-09. Şenol confirmed no additional context is coming, so
+these decisions are accepted, not provisional. The normative rules (D1-D5) are
+folded into the v1 design spec (sections 4.4, 4.8, 5.2, 5.4, 9); this memo
+remains the decision record (rationale) and the home of the D6 suggestion-engine
+algorithm. On any spec/memo conflict the spec wins per repo convention.
 
 Grounding: v1 design spec (authoritative), Plan 1 code as committed at 33d6587
 (`capability/mod.rs`, `profile/model.rs`, `template.rs`, `report.rs`).

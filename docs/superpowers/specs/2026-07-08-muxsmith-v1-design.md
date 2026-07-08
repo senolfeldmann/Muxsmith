@@ -164,8 +164,9 @@ Two disjoint property sets, both owned by the `capability` module (section 9):
 Conveniences:
 
 - `language` (matching): accepts ISO 639-2 (`ger`) and BCP-47 (`de`); matched semantically against both `language` and `language_ietf` as reported by mkvmerge. Valid values come from `mkvmerge --list-languages` at runtime.
-- `codec_kind` (matching): friendly alias mapped to `codec_id` sets, e.g. `srt` -> `S_TEXT/UTF8`, `ass`, `pgs`, `vobsub`, plus common audio/video kinds. Curated in `capability`.
+- `codec_kind` (matching): friendly alias mapped to `codec_id` sets, e.g. `srt` -> `S_TEXT/UTF8`, `ass`, `pgs`, `vobsub`, plus common audio/video kinds. Curated in `capability`. Usable only under `exact`; `substring`/`regex` on `codec_kind` is a config-time error (`CodecKindExactOnly`), since a pattern over the curated alias token is ill-defined; pattern-match `codec_id` instead.
 - `sub_charset`: validated leniently (iconv names are open-ended); passed through to mkvmerge.
+- **Closed-domain values.** For properties whose value set is closed, an `exact` value outside the domain is `InvalidPropertyValue` (not a silent never-match): `type` and `codec_kind` at config time (against the pinned schema enum and the alias table respectively), `language` at plan time (against `mkvmerge --list-languages`). Open-ended values (`sub_charset`, free-text `track_name`) are exempt.
 
 ### 4.5 Track rules
 
@@ -212,7 +213,7 @@ Example: `match_pattern: 'staffel0*{season:int}episode0*{episode:int}'` matches 
 ### 4.8 `output`
 
 - `directory`: profile default, usually overridden per run.
-- `filename`: `keep` (source basename, `.mkv` extension enforced) or `template` (literal mode; `.mkv` appended if missing; path separators in the rendered name are errors, no subdirectory creation in v1).
+- `filename`: `keep` (source basename, `.mkv` extension enforced) or `template` (literal mode; `.mkv` appended if missing; no subdirectory creation in v1). Two invariants are checked on the RENDERED name (not just the template text), identically on all platforms: a path separator (`/` or `\`) is `PathSeparatorInRenderedName`; an empty stem or `.`/`..` is `EmptyRenderedName`.
 - `on_collision`: `error | skip | overwrite`, default `error`. Applies to existing files and to two planned outputs rendering to the same path. An output path equal to any input path is a hard error regardless of policy.
 
 ### 4.9 Attachments, chapters, tags, title
@@ -251,12 +252,16 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `MissingExternal` | error | locator (track rule or chapters) finds 0 files for a non-optional use |
 | `AmbiguousExternal` | error | locator (track rule or chapters) finds >= 2 files |
 | `OutputCollision` | per policy | rendered output path exists or is produced twice |
+| `PathSeparatorInRenderedName` | error | rendered output filename contains `/` or `\` (checked on all platforms) |
+| `EmptyRenderedName` | error | rendered output stem is empty or is `.`/`..` |
 | `SourceOverwrite` | error (hard) | output path equals any input path |
 | `DuplicateIdentifier` | warning | two primaries yield the same identifier match (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, templates may collide |
 | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
 | `IgnoredFile` | info | extension matches but `input.pattern` does not |
 | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
 | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`) |
+| `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+| `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
 | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
 
 ### 5.3 Suggestion engine
@@ -265,9 +270,11 @@ Contract: for `AmbiguousRule` and `OverlappingRules`, generate candidate refinem
 
 Suggestions are structured edits (`config_path` + proposed change), not prose; the GUI offers one-click apply, the CLI prints them as exact YAML fragments.
 
+Algorithm (closed edit grammar, discriminator generation, batch simulation via the real planner, acceptance invariant, deterministic ranking, no-single-fix partition): `docs/superpowers/specs/2026-07-09-plan-2-design-decisions.md` D6.
+
 ### 5.4 Static lint
 
-Best-effort, file-independent checks at validate time: regex/template compilation, type errors, unknown properties, and provable rule overlaps (rule A's condition set logically subsumes rule B's, so any track matching B must overlap A). Static analysis never replaces the dry run; it catches what is decidable without looking at files.
+Best-effort, file-independent checks at validate time: regex/template compilation, type errors, unknown properties, closed-domain value checks (`type`, `codec_kind`; `language`'s domain needs runtime and is checked at plan time), `codec_kind` exact-only, and provable rule overlaps (rule A's condition set logically subsumes rule B's, so any track matching B must overlap A). Static analysis never replaces the dry run; it catches what is decidable without looking at files.
 
 ### 5.5 Operation levels
 
@@ -372,7 +379,7 @@ Localization readiness is structural, not deferred polish:
 
 ## 9. Capability model and version skew
 
-1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
+1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code, including the closed value domains of enum-typed properties (e.g. `type`) for config-time `InvalidPropertyValue` checks. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
 2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownPropertySkew` warning instead of failing (forward compatibility without lying about type safety).
 
 ## 10. Testing
