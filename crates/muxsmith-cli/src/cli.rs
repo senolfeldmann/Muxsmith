@@ -9,7 +9,8 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "muxsmith", version, about)]
 pub struct Cli {
-    /// The invoked subcommand.
+    /// Selected operation; every command shares the exit-code contract
+    /// 0 clean / 1 warnings / 2 errors (spec 8.1).
     #[command(subcommand)]
     pub command: Cmd,
 }

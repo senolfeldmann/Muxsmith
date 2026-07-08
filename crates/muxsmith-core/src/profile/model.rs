@@ -54,7 +54,8 @@ pub struct Meta {
     /// Human-readable profile name (e.g. shown in the GUI's recent-profiles list).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Free-form description of the profile's intent.
+    /// Prose note for humans reading the profile file; carried through
+    /// serialization but never interpreted or rendered by the tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
@@ -166,7 +167,8 @@ pub enum CollisionPolicy {
     Error,
     /// Skip (do not produce) the colliding output.
     Skip,
-    /// Overwrite the existing file.
+    /// Replace the existing file. Only reaches files that are not inputs:
+    /// the `SourceOverwrite` check runs first and is never overridden.
     Overwrite,
 }
 
@@ -175,9 +177,11 @@ pub enum CollisionPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum KeepDrop {
-    /// Retain the item in the output.
+    /// Copy the corresponding structure from the sources into the output
+    /// (mkvmerge's default behavior, left untouched).
     Keep,
-    /// Omit the item from the output.
+    /// Exclude the corresponding structure from the output (mapped to the
+    /// matching `--no-*` mkvmerge option at command generation).
     Drop,
 }
 

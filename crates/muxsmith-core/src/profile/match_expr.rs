@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 
 /// A scalar value inside `exact`/`changes` maps (spec 4.3/4.4).
 /// `#[serde(untagged)]`: deserialization tries each variant in the order
-/// declared below, so ordering is semantically load-bearing. A plain
-/// numeric literal (`3`) matches `Int` before it ever reaches `Float`
-/// (Int is tried first), so only literals with a decimal point become
-/// `Float`; `Bool` is tried before `Str` so `true`/`false` bind as booleans
-/// rather than one-word strings.
+/// declared below, so ordering is semantically load-bearing for numbers:
+/// a plain numeric literal (`3`) matches `Int` before it ever reaches
+/// `Float`, so only literals with a decimal point become `Float`. The
+/// `Bool`-before-`Str` order is not load-bearing for typed YAML/JSON input
+/// (a boolean node never deserializes as a string) but is kept explicit
+/// for clarity.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum Scalar {
