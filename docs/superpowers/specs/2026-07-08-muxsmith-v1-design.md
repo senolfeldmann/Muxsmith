@@ -256,7 +256,8 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
 | `IgnoredFile` | info | extension matches but `input.pattern` does not |
 | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
-| `UnknownProperty` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
+| `UnknownProperty` | error | a match condition or change references a property not in the capability model (config-time) |
+| `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
 
 ### 5.3 Suggestion engine
 
@@ -364,7 +365,7 @@ Mechanics: every help-annotated element carries a stable `help-id`; help content
 
 Localization readiness is structural, not deferred polish:
 
-- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown.
+- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, and third-party error text passed through as a `detail` param (regex, serde, I/O).
 - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
 - Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
 - v1 ships English content only (non-goal 11); the mechanism ships complete.
@@ -372,7 +373,7 @@ Localization readiness is structural, not deferred polish:
 ## 9. Capability model and version skew
 
 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
-2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownProperty` warning instead of failing (forward compatibility without lying about type safety).
+2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownPropertySkew` warning instead of failing (forward compatibility without lying about type safety).
 
 ## 10. Testing
 
