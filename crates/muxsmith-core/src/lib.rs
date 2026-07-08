@@ -6,6 +6,7 @@
 //! 5.2, 8.4), for the CLI and GUI renderers to turn into localized text.
 
 pub mod capability;
+pub mod identify;
 pub mod profile;
 pub mod report;
 pub mod template;

@@ -91,6 +91,17 @@ impl Mkvmerge {
     pub fn list_languages(&self) -> Result<LanguageIndex, RuntimeError> {
         Ok(parse_list_languages(&self.run(&["--list-languages"])?))
     }
+
+    /// Runs `mkvmerge -J <file>` and returns the raw JSON stdout (spec 5.5).
+    /// mkvmerge exits 0 for a non-media file too (with
+    /// `container.recognized: false`), so a non-zero exit here is a genuine
+    /// invocation failure, not a "not media" signal.
+    pub fn identify_json(&self, file: &Path) -> Result<String, RuntimeError> {
+        let file = file.to_str().ok_or_else(|| {
+            RuntimeError::Parse("non-UTF-8 path cannot be passed to mkvmerge".into())
+        })?;
+        self.run(&["-J", file])
+    }
 }
 
 /// Extracts the bracketed extension lists from `mkvmerge --list-types` output.

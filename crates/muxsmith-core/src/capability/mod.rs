@@ -7,6 +7,11 @@
 mod generated;
 pub mod runtime;
 
+/// The mkvmerge identification-output schema version this build was generated
+/// against (spec 9). A file whose `-J` `identification_format_version` exceeds
+/// this triggers the `UnknownPropertySkew` warning (untyped forward matching).
+pub const PINNED_IDENTIFICATION_FORMAT_VERSION: u64 = 20;
+
 /// Value type of a matchable or settable property (spec 4.4); drives
 /// `validate.rs`'s scalar type-checking (`ValueTypeMismatch`,
 /// `NotStringProperty`) for both `match` conditions and `changes`.
