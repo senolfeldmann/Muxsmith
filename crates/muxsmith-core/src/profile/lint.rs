@@ -118,6 +118,51 @@ tracks:
     }
 
     #[test]
+    fn reversed_direction_overlap_is_flagged() {
+        // Superset-conditions rule first: locks the subset_of(b, a) branch.
+        let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: audio, language: en } }
+  - match: { exact: { type: audio } }
+"#;
+        let diags = lint(y);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].params["rule_a"], "0");
+        assert_eq!(diags[0].params["rule_b"], "1");
+    }
+
+    #[test]
+    fn rules_with_any_are_skipped() {
+        let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: subtitles } }
+  - match:
+      exact: { type: subtitles }
+      any:
+        - substring: { track_name: SDH }
+"#;
+        assert!(lint(y).is_empty());
+    }
+
+    #[test]
+    fn rules_with_substring_are_skipped() {
+        let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: subtitles } }
+  - match:
+      exact: { type: subtitles }
+      substring: { track_name: SDH }
+"#;
+        assert!(lint(y).is_empty());
+    }
+
+    #[test]
     fn external_source_rules_are_skipped() {
         let y = r#"
 profile_version: 1
