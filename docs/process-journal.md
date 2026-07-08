@@ -109,3 +109,68 @@ directory carried the tooling's own `.gitignore` (a bare `*`), silently
 excluding all 49 artifacts; caught by reading the commit stat line, fixed in
 411087f. Lesson recorded: after any archive/copy commit, verify the file
 count in the commit, not the working tree.
+
+## 2026-07-09 | Plan 2 written and implemented | session (Peter, Opus 4.8)
+
+**Scope.** Plan 2 design finalization, plan authoring, and full implementation.
+Commits `3b71a71..e1bfba7`. Design memo + spec fold-in, the 12-task plan doc,
+then all 12 tasks executed. 125 workspace tests green; CI green at e1bfba7
+(`test` + new `deny`).
+
+**Decisions and why.**
+- Session opened under a Fable quota crunch; Şenol asked what was worth the last
+  Fable tokens. Decided: spend model strength on the DECISIONS (D1-D6) not the
+  transcription. Wrote the design memo first, then folded D1-D5 into the
+  authoritative spec so "spec wins on conflict" could not silently override them
+  (4.3+4.4 previously implied codec_kind under substring; a bad enum value
+  degraded to MissingTrack). Then quota moved to Opus and the rest proceeded.
+- D2 dropped an xtask codegen path: the v20 identification schema types `type`
+  as a plain string (no enum) and only `aac_is_sbr` carries a schema enum, so
+  generating value domains for one irrelevant field was an abstraction the scale
+  had not earned. `type`/`codec_kind` domains are curated in `capability`
+  instead. Grounded in the source Şenol dropped at ~/Downloads/mkvtoolnix.
+- Execution deviated from Plan 1's subagent-driven-development: the controller
+  (Opus) executed the tasks inline with live `cargo` verification, rather than
+  dispatching a fresh subagent per task. Rationale: the plan's code was fully
+  specified and every task was locally compile/test-verifiable, so the SDD
+  apparatus (implementer + reviewer subagents) was overhead for mechanical
+  transcription. Tradeoff: no independent per-task reviewer; a whole-branch
+  adversarial review is still owed (open thread).
+- mkvmerge `-J` shape, `--list-languages`/`--list-types` formats, and the track
+  `type` domain were confirmed empirically by running the installed v99 binary
+  rather than trusting memory or the schema alone. Both the identify parser and
+  the runtime parsers passed against real output first try.
+
+**What the process caught.**
+- CI (test job) caught fmt-dirty commits: tasks 3 and 5 were pushed after
+  running clippy but not `cargo fmt --check`; the intermediate run at 0e64c1e
+  failed only on `cargo fmt --all --check`. Fixed by rustfmt commit 72c59d2.
+  Origin: controller discipline gap, not the plan.
+- clippy caught two collapsible-if blocks in the matcher (let-chains), pre-push;
+  fixed by amend. Origin: implementer (plan code was pre-let-chain style).
+- cargo-deny caught the intra-workspace path dependency as a wildcard; resolved
+  by marking the workspace crates `publish = false` (Muxsmith ships as app
+  bundles, not crates.io packages), which is also correct on its own terms.
+  Also trimmed the license allow-list from a speculative 8 to the 3 actually
+  used (MIT, Apache-2.0, Unicode-3.0).
+
+**Process mechanics.** 12 tasks, 0 subagent dispatches (controller-inline
+execution). Model: Opus 4.8 (1M) throughout after the Fable handoff. One clippy
+amend, one rustfmt catch-up commit, one style commit. ~14 commits in the range.
+Every push logged in gh-log.md. Live end-to-end dry-run demonstrated the
+suggestion engine emitting three forced_track discriminators for an ambiguous
+English-SRT rule.
+
+**Deltas.** Task 4 shrank from an xtask-codegen task to a curated-domains task
+after checking the real schema (above). Plan's `candidates_for_rule` iterator
+chain had a temporary-borrow bug flagged in the plan itself; implemented via the
+owned-Vec workaround the plan noted. Plan's Task 10/11 split (extract plan_core)
+was collapsed: planner written with plan_core/plan_batch in final shape from the
+start, suggestion engine added as the placeholder->real step.
+
+**Open threads.** Whole-branch adversarial review still owed (executed inline,
+no independent reviewer). Deferred: OverlappingRules auto-suggestions and the
+no-single-fix partition report (D6 remainder); Plan 3 (attachments/chapters/
+tags/title, command generation, executor); `--list-types` extension validation
+(no diag code yet); CI does not install mkvtoolnix so the gated tests self-skip
+there. See HANDOFF.md.
