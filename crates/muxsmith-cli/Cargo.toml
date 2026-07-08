@@ -9,4 +9,11 @@ name = "muxsmith"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
 muxsmith-core = { path = "../muxsmith-core" }
+schemars = "1.2.1"
+serde_json = "1.0.150"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
