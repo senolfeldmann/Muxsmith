@@ -1,0 +1,232 @@
+# Review package: e78847d..HEAD
+
+## Commits
+4750abb feat(core): capability model with generated matchable table and curated settable set
+
+## Files changed
+ crates/muxsmith-core/src/capability/generated.rs |  70 ++++++++++++
+ crates/muxsmith-core/src/capability/mod.rs       | 130 +++++++++++++++++++++++
+ crates/muxsmith-core/src/lib.rs                  |   1 +
+ 3 files changed, 201 insertions(+)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/capability/generated.rs b/crates/muxsmith-core/src/capability/generated.rs
+new file mode 100644
+index 0000000..7869470
+--- /dev/null
++++ b/crates/muxsmith-core/src/capability/generated.rs
+@@ -0,0 +1,70 @@
++// GENERATED FILE - do not edit.
++// Regenerate: cargo run -p xtask -- gen-capability <schema.json> <this file>
++// Source: mkvmerge identification output schema (facts only, not the schema).
++
++use super::PropType;
++
++pub static MATCHABLE_PROPERTIES: &[(&str, PropType)] = &[
++    ("aac_is_sbr", PropType::String),
++    ("alpha_mode", PropType::Integer),
++    ("audio_bits_per_sample", PropType::Integer),
++    ("audio_channels", PropType::Integer),
++    ("audio_emphasis", PropType::Integer),
++    ("audio_sampling_frequency", PropType::Integer),
++    ("cb_subsample", PropType::String),
++    ("chroma_siting", PropType::String),
++    ("chroma_subsample", PropType::String),
++    ("chromaticity_coordinates", PropType::String),
++    ("codec", PropType::String),
++    ("codec_delay", PropType::Integer),
++    ("codec_id", PropType::String),
++    ("codec_name", PropType::String),
++    ("codec_private_data", PropType::String),
++    ("codec_private_length", PropType::Integer),
++    ("color_bits_per_channel", PropType::Integer),
++    ("color_matrix_coefficients", PropType::Integer),
++    ("color_primaries", PropType::Integer),
++    ("color_range", PropType::Integer),
++    ("color_transfer_characteristics", PropType::Integer),
++    ("content_encoding_algorithms", PropType::String),
++    ("default_duration", PropType::Integer),
++    ("default_track", PropType::Boolean),
++    ("display_dimensions", PropType::String),
++    ("display_unit", PropType::Integer),
++    ("enabled_track", PropType::Boolean),
++    ("encoding", PropType::String),
++    ("flag_commentary", PropType::Boolean),
++    ("flag_hearing_impaired", PropType::Boolean),
++    ("flag_original", PropType::Boolean),
++    ("flag_text_descriptions", PropType::Boolean),
++    ("flag_visual_impaired", PropType::Boolean),
++    ("forced_track", PropType::Boolean),
++    ("id", PropType::Integer),
++    ("language", PropType::String),
++    ("language_ietf", PropType::String),
++    ("max_content_light", PropType::Integer),
++    ("max_frame_light", PropType::Integer),
++    ("max_luminance", PropType::Float),
++    ("min_luminance", PropType::Float),
++    ("minimum_timestamp", PropType::Integer),
++    ("multiplexed_tracks", PropType::String),
++    ("num_index_entries", PropType::Integer),
++    ("number", PropType::Integer),
++    ("packetizer", PropType::String),
++    ("pixel_dimensions", PropType::String),
++    ("program_number", PropType::Integer),
++    ("projection_pose_pitch", PropType::Float),
++    ("projection_pose_roll", PropType::Float),
++    ("projection_pose_yaw", PropType::Float),
++    ("projection_private", PropType::String),
++    ("projection_type", PropType::Integer),
++    ("stereo_mode", PropType::Integer),
++    ("stream_id", PropType::Integer),
++    ("sub_stream_id", PropType::Integer),
++    ("teletext_page", PropType::Integer),
++    ("text_subtitles", PropType::Boolean),
++    ("track_name", PropType::String),
++    ("type", PropType::String),
++    ("uid", PropType::Integer),
++    ("white_color_coordinates", PropType::String),
++];
+diff --git a/crates/muxsmith-core/src/capability/mod.rs b/crates/muxsmith-core/src/capability/mod.rs
+new file mode 100644
+index 0000000..56a73f2
+--- /dev/null
++++ b/crates/muxsmith-core/src/capability/mod.rs
+@@ -0,0 +1,130 @@
++//! mkvtoolnix capability model (spec 4.4 / 9). Matchable properties are
++//! generated from the identification schema; settable properties and
++//! codec_kind aliases are curated here. Runtime queries (--list-types,
++//! --list-languages, --version) arrive in Plan 2.
++// Generated from identification schema v20.
++
++mod generated;
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum PropType {
++    String,
++    Boolean,
++    Integer,
++    Float,
++}
++
++pub fn matchable_type(name: &str) -> Option<PropType> {
++    if name == "codec_kind" {
++        return Some(PropType::String);
++    }
++    generated::MATCHABLE_PROPERTIES
++        .iter()
++        .find(|(n, _)| *n == name)
++        .map(|(_, t)| *t)
++}
++
++/// (profile name, value type, mkvmerge option) - spec 4.4 table.
++pub static SETTABLE: &[(&str, PropType, &str)] = &[
++    ("language", PropType::String, "--language"),
++    ("track_name", PropType::String, "--track-name"),
++    ("default_track", PropType::Boolean, "--default-track-flag"),
++    ("forced_track", PropType::Boolean, "--forced-display-flag"),
++    ("flag_hearing_impaired", PropType::Boolean, "--hearing-impaired-flag"),
++    ("flag_visual_impaired", PropType::Boolean, "--visual-impaired-flag"),
++    ("flag_commentary", PropType::Boolean, "--commentary-flag"),
++    ("flag_original", PropType::Boolean, "--original-flag"),
++    ("enabled_track", PropType::Boolean, "--track-enabled-flag"),
++    ("sub_charset", PropType::String, "--sub-charset"),
++];
++
++pub fn settable(name: &str) -> Option<(PropType, &'static str)> {
++    SETTABLE
++        .iter()
++        .find(|(n, _, _)| *n == name)
++        .map(|(_, t, o)| (*t, *o))
++}
++
++/// codec_kind aliases -> codec_id prefixes (prefix match at plan time).
++pub static CODEC_KINDS: &[(&str, &[&str])] = &[
++    ("srt", &["S_TEXT/UTF8"]),
++    ("ass", &["S_TEXT/ASS", "S_TEXT/SSA"]),
++    ("pgs", &["S_HDMV/PGS"]),
++    ("vobsub", &["S_VOBSUB"]),
++    ("webvtt", &["S_TEXT/WEBVTT"]),
++    ("aac", &["A_AAC"]),
++    ("ac3", &["A_AC3"]),
++    ("eac3", &["A_EAC3"]),
++    ("dts", &["A_DTS"]),
++    ("truehd", &["A_TRUEHD"]),
++    ("flac", &["A_FLAC"]),
++    ("opus", &["A_OPUS"]),
++    ("mp3", &["A_MPEG/L3"]),
++    ("h264", &["V_MPEG4/ISO/AVC"]),
++    ("h265", &["V_MPEGH/ISO/HEVC"]),
++    ("av1", &["V_AV1"]),
++    ("vp9", &["V_VP9"]),
++];
++
++pub fn codec_kind_prefixes(kind: &str) -> Option<&'static [&'static str]> {
++    CODEC_KINDS
++        .iter()
++        .find(|(k, _)| *k == kind)
++        .map(|(_, p)| *p)
++}
++
++/// Attachment match properties (spec 4.9); not part of the track schema.
++pub static ATTACHMENT_PROPERTIES: &[(&str, PropType)] = &[
++    ("content_type", PropType::String),
++    ("description", PropType::String),
++    ("file_name", PropType::String),
++    ("id", PropType::Integer),
++    ("size", PropType::Integer),
++];
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn matchable_types_from_generated_table() {
++        assert_eq!(matchable_type("language"), Some(PropType::String));
++        assert_eq!(matchable_type("forced_track"), Some(PropType::Boolean));
++        assert_eq!(matchable_type("audio_channels"), Some(PropType::Integer));
++        assert_eq!(matchable_type("type"), Some(PropType::String));
++        assert_eq!(matchable_type("no_such_property"), None);
++    }
++
++    #[test]
++    fn codec_kind_is_virtual_matchable() {
++        assert_eq!(matchable_type("codec_kind"), Some(PropType::String));
++        assert!(codec_kind_prefixes("srt").unwrap().contains(&"S_TEXT/UTF8"));
++        assert!(codec_kind_prefixes("pgs").unwrap().contains(&"S_HDMV/PGS"));
++        assert!(codec_kind_prefixes("h264").unwrap().contains(&"V_MPEG4/ISO/AVC"));
++        assert!(codec_kind_prefixes("nope").is_none());
++    }
++
++    #[test]
++    fn settable_maps_to_mkvmerge_options() {
++        assert_eq!(
++            settable("track_name"),
++            Some((PropType::String, "--track-name"))
++        );
++        assert_eq!(
++            settable("default_track"),
++            Some((PropType::Boolean, "--default-track-flag"))
++        );
++        assert_eq!(
++            settable("forced_track"),
++            Some((PropType::Boolean, "--forced-display-flag"))
++        );
++        assert_eq!(settable("codec_kind"), None); // matchable only, never settable
++    }
++
++    #[test]
++    fn attachment_properties_are_defined() {
++        assert!(ATTACHMENT_PROPERTIES
++            .iter()
++            .any(|(n, t)| *n == "content_type" && *t == PropType::String));
++    }
++}
+diff --git a/crates/muxsmith-core/src/lib.rs b/crates/muxsmith-core/src/lib.rs
+index 1d8a026..c4639b5 100644
+--- a/crates/muxsmith-core/src/lib.rs
++++ b/crates/muxsmith-core/src/lib.rs
+@@ -1,2 +1,3 @@
++pub mod capability;
+ pub mod profile;
+ pub mod report;

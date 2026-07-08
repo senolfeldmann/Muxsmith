@@ -1,0 +1,154 @@
+# Review package: 2d87c6a..HEAD
+
+## Commits
+2254eca fix(core): template parser error precedence and empty-value int filter
+
+## Files changed
+ crates/muxsmith-core/src/template.rs | 52 ++++++++++++++++++++++++++++++------
+ 1 file changed, 44 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/template.rs b/crates/muxsmith-core/src/template.rs
+index 3337d9c..84d8060 100644
+--- a/crates/muxsmith-core/src/template.rs
++++ b/crates/muxsmith-core/src/template.rs
+@@ -11,20 +11,23 @@ pub enum Filter {
+     Pad2,
+     Pad3,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq)]
+ enum Segment {
+     Literal(String),
+     Field { name: String, filter: Filter },
+ }
+ 
++/// Parse errors. `pos` is a CHARACTER offset (index into the template's
++/// `chars()` sequence), not a byte offset: do not byte-slice the template
++/// string with it.
+ #[derive(Debug, Clone, PartialEq)]
+ pub enum TemplateError {
+     UnclosedBrace { pos: usize },
+     EmptyField { pos: usize },
+     UnknownFilter { name: String },
+ }
+ 
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct Template {
+     segments: Vec<Segment>,
+@@ -67,32 +70,38 @@ impl Template {
+                 }
+                 '{' => {
+                     let close = chars[i + 1..]
+                         .iter()
+                         .position(|&c| c == '}')
+                         .ok_or(TemplateError::UnclosedBrace { pos: i })?;
+                     let inner: String = chars[i + 1..i + 1 + close].iter().collect();
+                     if inner.is_empty() {
+                         return Err(TemplateError::EmptyField { pos: i });
+                     }
+-                    let (name, filter) = match inner.split_once(':') {
+-                        None => (inner.as_str(), Filter::Raw),
+-                        Some((n, "int")) => (n, Filter::Int),
+-                        Some((n, "pad2")) => (n, Filter::Pad2),
+-                        Some((n, "pad3")) => (n, Filter::Pad3),
+-                        Some((_, f)) => {
+-                            return Err(TemplateError::UnknownFilter { name: f.to_string() })
+-                        }
++                    // Split name from filter BEFORE resolving the filter, so an
++                    // empty name reports EmptyField even when a filter is present.
++                    let (name, maybe_filter) = match inner.split_once(':') {
++                        None => (inner.as_str(), None),
++                        Some((n, f)) => (n, Some(f)),
+                     };
+                     if name.is_empty() {
+                         return Err(TemplateError::EmptyField { pos: i });
+                     }
++                    let filter = match maybe_filter {
++                        None => Filter::Raw,
++                        Some("int") => Filter::Int,
++                        Some("pad2") => Filter::Pad2,
++                        Some("pad3") => Filter::Pad3,
++                        Some(f) => {
++                            return Err(TemplateError::UnknownFilter { name: f.to_string() })
++                        }
++                    };
+                     if !literal.is_empty() {
+                         segments.push(Segment::Literal(std::mem::take(&mut literal)));
+                     }
+                     segments.push(Segment::Field {
+                         name: name.to_string(),
+                         filter,
+                     });
+                     i += close + 2;
+                 }
+                 c => {
+@@ -148,20 +157,25 @@ impl Template {
+             }
+         }
+         out
+     }
+ }
+ 
+ fn apply_filter(value: &str, filter: Filter) -> String {
+     match filter {
+         Filter::Raw => value.to_string(),
+         Filter::Int => {
++            // Missing fields render as empty (Ctx contract); only non-empty
++            // all-zero input collapses to "0".
++            if value.is_empty() {
++                return String::new();
++            }
+             let stripped = value.trim_start_matches('0');
+             if stripped.is_empty() {
+                 "0".to_string()
+             } else {
+                 stripped.to_string()
+             }
+         }
+         Filter::Pad2 => format!("{value:0>2}"),
+         Filter::Pad3 => format!("{value:0>3}"),
+     }
+@@ -192,20 +206,42 @@ mod tests {
+             Err(TemplateError::UnknownFilter { .. })
+         ));
+         assert!(matches!(
+             Template::parse("S{season"),
+             Err(TemplateError::UnclosedBrace { .. })
+         ));
+         assert!(matches!(
+             Template::parse("S{}"),
+             Err(TemplateError::EmptyField { .. })
+         ));
++        assert!(matches!(
++            Template::parse("{x:}"),
++            Err(TemplateError::UnknownFilter { .. })
++        ));
++    }
++
++    #[test]
++    fn empty_name_with_filter_is_empty_field() {
++        assert!(matches!(
++            Template::parse("{:int}"),
++            Err(TemplateError::EmptyField { .. })
++        ));
++        assert!(matches!(
++            Template::parse("{:}"),
++            Err(TemplateError::EmptyField { .. })
++        ));
++    }
++
++    #[test]
++    fn int_filter_on_missing_field_renders_empty() {
++        let t = Template::parse("{n:int}").unwrap();
++        assert_eq!(t.render_literal(&Ctx::new()), "");
+     }
+ 
+     #[test]
+     fn renders_literal_with_filters() {
+         let t = Template::parse("S{season:int}E{episode:pad3} of {show}").unwrap();
+         let c = ctx(&[("season", "03"), ("episode", "1"), ("show", "X")]);
+         assert_eq!(t.render_literal(&c), "S3E001 of X");
+     }
+ 
+     #[test]

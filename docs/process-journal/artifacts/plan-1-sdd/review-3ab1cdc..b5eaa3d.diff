@@ -1,0 +1,262 @@
+# Review package: 3ab1cdc..HEAD
+
+## Commits
+b5eaa3d fix(core): enforce unknown-key rejection inside untagged config blocks
+
+## Files changed
+ crates/muxsmith-core/Cargo.toml            |  3 --
+ crates/muxsmith-core/src/profile/model.rs  | 33 ++++++++++++++--------
+ crates/muxsmith-core/tests/profile_load.rs | 45 ++++++++++++++++++++++++++----
+ 3 files changed, 60 insertions(+), 21 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 418ad2e..bc1555f 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -3,13 +3,10 @@ name = "muxsmith-core"
+ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ 
+ [dependencies]
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ serde_path_to_error = "0.1.20"
+ yaml_serde = "0.10.4"
+-
+-[dev-dependencies]
+-serde_json = "1.0.150"
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index d931491..278b1cc 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -65,26 +65,41 @@ pub struct OutputCfg {
+ impl Default for OutputCfg {
+     fn default() -> Self {
+         OutputCfg {
+             directory: None,
+             filename: FilenameCfg::keep(),
+             on_collision: CollisionPolicy::default(),
+         }
+     }
+ }
+ 
++/// Shared `{ template: ... }` block; a standalone struct (not an inline
++/// enum variant) because serde ignores `deny_unknown_fields` on struct
++/// variants of untagged enums.
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct TemplateBlock {
++    pub template: String,
++}
++
++/// Shared `{ external: ... }` block; standalone for the same
++/// `deny_unknown_fields` reason as [`TemplateBlock`].
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct ExternalBlock {
++    pub external: Locator,
++}
++
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum FilenameCfg {
+-    Template {
+-        template: String,
+-    },
++    Template(TemplateBlock),
+     Keyword(String),
+ }
+ 
+ impl FilenameCfg {
+     pub fn keep() -> Self {
+         FilenameCfg::Keyword("keep".into())
+     }
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+@@ -112,23 +127,21 @@ pub struct TrackRule {
+     pub match_expr: MatchExpr,
+     #[serde(default)]
+     pub optional: bool,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub changes: Option<BTreeMap<String, Scalar>>,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum SourceCfg {
+-    External {
+-        external: Locator,
+-    },
++    External(ExternalBlock),
+     Keyword(String),
+ }
+ 
+ impl SourceCfg {
+     pub fn primary() -> Self {
+         SourceCfg::Keyword("primary".into())
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+@@ -177,23 +190,21 @@ pub struct AttachmentRule {
+     pub select: Option<MatchExpr>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub drop: Option<MatchExpr>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub add: Option<Locator>,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum ChaptersCfg {
+-    External {
+-        external: Locator,
+-    },
++    External(ExternalBlock),
+     Keyword(String),
+ }
+ 
+ impl Default for ChaptersCfg {
+     fn default() -> Self {
+         ChaptersCfg::Keyword("keep".into())
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+@@ -210,21 +221,19 @@ impl Default for TagsCfg {
+         TagsCfg {
+             global: KeepDrop::Keep,
+             track: KeepDrop::Keep,
+         }
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum TitleCfg {
+-    Template {
+-        template: String,
+-    },
++    Template(TemplateBlock),
+     Keyword(String),
+ }
+ 
+ impl Default for TitleCfg {
+     fn default() -> Self {
+         TitleCfg::Keyword("keep".into())
+     }
+ }
+diff --git a/crates/muxsmith-core/tests/profile_load.rs b/crates/muxsmith-core/tests/profile_load.rs
+index f0b811d..45b0d9f 100644
+--- a/crates/muxsmith-core/tests/profile_load.rs
++++ b/crates/muxsmith-core/tests/profile_load.rs
+@@ -1,11 +1,13 @@
+-use muxsmith_core::profile::model::{ChaptersCfg, FilenameCfg, KeepDrop, SourceCfg, TitleCfg};
++use muxsmith_core::profile::model::{
++    ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, SourceCfg, TitleCfg,
++};
+ use muxsmith_core::profile::load::{from_str, Format};
+ use muxsmith_core::report::DiagCode;
+ 
+ const REFERENCE: &str = include_str!("fixtures/reference.yaml");
+ 
+ #[test]
+ fn reference_profile_parses() {
+     let p = from_str(REFERENCE, Format::Yaml).unwrap();
+     assert_eq!(p.profile_version, 1);
+     assert_eq!(p.input.pattern, r"S(?<season>\d{2})E(?<episode>\d{2})");
+@@ -13,25 +15,25 @@ fn reference_profile_parses() {
+     assert_eq!(p.tracks.len(), 10); // 1 video + 2 audio + 6 subs + 1 external
+     assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
+     assert!(matches!(p.chapters, ChaptersCfg::Keyword(ref k) if k == "keep"));
+     assert!(matches!(p.title, TitleCfg::Keyword(ref k) if k == "clear"));
+     assert_eq!(p.tags.global, KeepDrop::Drop);
+     assert_eq!(p.tags.track, KeepDrop::Keep);
+     assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
+ 
+     let last = p.tracks.last().unwrap();
+     match &last.source {
+-        SourceCfg::External { external } => {
+-            assert_eq!(external.path, ".");
+-            assert_eq!(external.extensions, vec!["srt"]);
+-            assert_eq!(external.match_to_source, Some(true));
+-            assert!(external.match_pattern.is_none());
++        SourceCfg::External(block) => {
++            assert_eq!(block.external.path, ".");
++            assert_eq!(block.external.extensions, vec!["srt"]);
++            assert_eq!(block.external.match_to_source, Some(true));
++            assert!(block.external.match_pattern.is_none());
+         }
+         other => panic!("expected external source, got {other:?}"),
+     }
+     let changes = last.changes.as_ref().unwrap();
+     assert!(changes.contains_key("language") && changes.contains_key("track_name"));
+ }
+ 
+ #[test]
+ fn json_profile_parses_identically_to_yaml() {
+     let yaml = r#"
+@@ -53,28 +55,59 @@ tracks:
+ #[test]
+ fn defaults_apply_when_sections_absent() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: video } }
+ "#;
+     let p = from_str(y, Format::Yaml).unwrap();
+     assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
++    assert_eq!(p.output.on_collision, CollisionPolicy::Error);
++    assert!(matches!(p.chapters, ChaptersCfg::Keyword(ref k) if k == "keep"));
++    assert!(matches!(p.title, TitleCfg::Keyword(ref k) if k == "keep"));
+     assert_eq!(p.tags.global, KeepDrop::Keep);
++    assert_eq!(p.tags.track, KeepDrop::Keep);
++    assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
+     assert!(matches!(p.tracks[0].source, SourceCfg::Keyword(ref k) if k == "primary"));
+     assert!(!p.tracks[0].optional);
+ }
+ 
+ #[test]
+ fn unknown_key_is_parse_error_with_path() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: video } }
+     optionall: true
+ "#;
+     let err = from_str(y, Format::Yaml).unwrap_err();
+     assert_eq!(err.code, DiagCode::ParseError);
+     assert!(err.params["detail"].contains("optionall"));
++    assert!(err.params.contains_key("at"));
++}
++
++#[test]
++fn unknown_key_inside_filename_template_is_rejected() {
++    let y = r#"
++profile_version: 1
++input: { pattern: 'E(\d+)', extensions: [mkv] }
++output:
++  filename: { template: 'x{g1}', extra: 1 }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    assert!(from_str(y, Format::Yaml).is_err());
++}
++
++#[test]
++fn unknown_key_inside_source_external_is_rejected() {
++    let y = r#"
++profile_version: 1
++input: { pattern: 'E(\d+)', extensions: [mkv] }
++tracks:
++  - source: { external: { path: '.', extensions: [srt] }, bogus: true }
++    match: { exact: { type: subtitles } }
++"#;
++    assert!(from_str(y, Format::Yaml).is_err());
+ }

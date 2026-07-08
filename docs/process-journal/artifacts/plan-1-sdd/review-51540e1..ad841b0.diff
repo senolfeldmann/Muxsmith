@@ -1,0 +1,121 @@
+# Review package: 51540e1..HEAD
+
+## Commits
+ad841b0 fix(cli): sort diagnostics before json output; renderer fallback tests
+
+## Files changed
+ crates/muxsmith-cli/src/commands/validate.rs |  8 ++++----
+ crates/muxsmith-cli/src/i18n.rs              | 17 +++++++++++++++++
+ crates/muxsmith-cli/tests/cli_validate.rs    |  3 +++
+ 3 files changed, 24 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/validate.rs b/crates/muxsmith-cli/src/commands/validate.rs
+index 1e9e83a..153a7ca 100644
+--- a/crates/muxsmith-cli/src/commands/validate.rs
++++ b/crates/muxsmith-cli/src/commands/validate.rs
+@@ -1,41 +1,41 @@
+ use std::path::Path;
+ 
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
+ 
+ use crate::i18n::Renderer;
+ 
+ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
+-    let diagnostics = collect(profile_path);
++    // Error-first, stable within a severity; both output modes share it.
++    let mut diagnostics = collect(profile_path);
++    diagnostics.sort_by_key(|d| std::cmp::Reverse(d.severity));
+     let exit = match worst_severity(&diagnostics) {
+         Some(Severity::Error) => 2,
+         Some(Severity::Warning) => 1,
+         _ => 0,
+     };
+ 
+     if json {
+         let entries: Vec<serde_json::Value> = diagnostics
+             .iter()
+             .map(|d| {
+                 let mut v = serde_json::to_value(d).unwrap();
+                 v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
+                 v
+             })
+             .collect();
+         println!("{}", serde_json::json!({ "diagnostics": entries }));
+     } else if diagnostics.is_empty() {
+         println!("{}", renderer.msg("validate-ok", &[]));
+     } else {
+-        let mut sorted = diagnostics.clone();
+-        sorted.sort_by_key(|d| std::cmp::Reverse(d.severity));
+-        for d in &sorted {
++        for d in &diagnostics {
+             println!("{}", renderer.diagnostic(d));
+         }
+         let count = |s| {
+             diagnostics
+                 .iter()
+                 .filter(|d| d.severity == s)
+                 .count()
+                 .to_string()
+         };
+         println!(
+diff --git a/crates/muxsmith-cli/src/i18n.rs b/crates/muxsmith-cli/src/i18n.rs
+index 80e869a..9fe209e 100644
+--- a/crates/muxsmith-cli/src/i18n.rs
++++ b/crates/muxsmith-cli/src/i18n.rs
+@@ -71,10 +71,27 @@ impl Renderer {
+     }
+ }
+ 
+ fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
+     match s {
+         muxsmith_core::report::Severity::Error => "severity-error",
+         muxsmith_core::report::Severity::Warning => "severity-warning",
+         muxsmith_core::report::Severity::Info => "severity-info",
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn unknown_message_id_falls_back_to_raw_id() {
++        let renderer = Renderer::new(Some("en"));
++        assert_eq!(renderer.msg("no-such-id", &[]), "no-such-id");
++    }
++
++    #[test]
++    fn invalid_locale_falls_back_to_en_and_renders() {
++        let renderer = Renderer::new(Some("zz-ZZ-invalid!"));
++        assert_eq!(renderer.msg("validate-ok", &[]), "Profile is valid.");
++    }
++}
+diff --git a/crates/muxsmith-cli/tests/cli_validate.rs b/crates/muxsmith-cli/tests/cli_validate.rs
+index e1e0a92..79e0987 100644
+--- a/crates/muxsmith-cli/tests/cli_validate.rs
++++ b/crates/muxsmith-cli/tests/cli_validate.rs
+@@ -60,19 +60,22 @@ fn json_output_is_machine_readable() {
+         .get_output()
+         .stdout
+         .clone();
+     let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+     let diags = v["diagnostics"].as_array().unwrap();
+     assert!(!diags.is_empty());
+     let first = &diags[0];
+     assert!(first["code"].is_string());
+     assert!(first["severity"].is_string());
+     assert!(first["rendered"].is_string());
++    // bad.yaml yields both errors and a warning; sorted output leads
++    // with an error, same order as the text rendering.
++    assert_eq!(first["severity"], "error");
+ }
+ 
+ #[test]
+ fn missing_file_is_parse_error_exit_two() {
+     muxsmith()
+         .args(["validate", "/nonexistent/profile.yaml"])
+         .assert()
+         .code(2);
+ }

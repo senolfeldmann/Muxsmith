@@ -1,0 +1,478 @@
+# Review package: c7a70f7..HEAD
+
+## Commits
+cd3f239 docs(spec): split UnknownProperty (config error) from UnknownPropertySkew (version skew); record v1 i18n exceptions
+3c24845 fix: final-review findings - prose-free template errors, match_to_source semantics, hardened tests
+
+## Files changed
+ crates/muxsmith-core/src/capability/mod.rs         | 37 ++++++++-----
+ crates/muxsmith-core/src/profile/match_expr.rs     | 12 ++++-
+ crates/muxsmith-core/src/profile/validate.rs       | 34 +++++++-----
+ crates/muxsmith-core/src/report.rs                 | 11 ++--
+ crates/muxsmith-core/tests/profile_load.rs         |  2 +
+ crates/muxsmith-core/tests/validate_structure.rs   | 61 +++++++++++++++++++++-
+ .../specs/2026-07-08-muxsmith-v1-design.md         |  7 +--
+ locales/en/diagnostics.ftl                         |  9 ++--
+ 8 files changed, 137 insertions(+), 36 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/capability/mod.rs b/crates/muxsmith-core/src/capability/mod.rs
+index 1a32156..78ad3bc 100644
+--- a/crates/muxsmith-core/src/capability/mod.rs
++++ b/crates/muxsmith-core/src/capability/mod.rs
+@@ -111,32 +111,45 @@ mod tests {
+         assert!(
+             codec_kind_prefixes("h264")
+                 .unwrap()
+                 .contains(&"V_MPEG4/ISO/AVC")
+         );
+         assert!(codec_kind_prefixes("nope").is_none());
+     }
+ 
+     #[test]
+     fn settable_maps_to_mkvmerge_options() {
+-        assert_eq!(
+-            settable("track_name"),
+-            Some((PropType::String, "--track-name"))
+-        );
+-        assert_eq!(
+-            settable("default_track"),
+-            Some((PropType::Boolean, "--default-track-flag"))
+-        );
+-        assert_eq!(
+-            settable("forced_track"),
+-            Some((PropType::Boolean, "--forced-display-flag"))
+-        );
++        // Spec 4.4 table.
++        const EXPECTED: &[(&str, PropType, &str)] = &[
++            ("language", PropType::String, "--language"),
++            ("track_name", PropType::String, "--track-name"),
++            ("default_track", PropType::Boolean, "--default-track-flag"),
++            ("forced_track", PropType::Boolean, "--forced-display-flag"),
++            (
++                "flag_hearing_impaired",
++                PropType::Boolean,
++                "--hearing-impaired-flag",
++            ),
++            (
++                "flag_visual_impaired",
++                PropType::Boolean,
++                "--visual-impaired-flag",
++            ),
++            ("flag_commentary", PropType::Boolean, "--commentary-flag"),
++            ("flag_original", PropType::Boolean, "--original-flag"),
++            ("enabled_track", PropType::Boolean, "--track-enabled-flag"),
++            ("sub_charset", PropType::String, "--sub-charset"),
++        ];
++        assert_eq!(EXPECTED.len(), SETTABLE.len());
++        for &(name, ty, option) in EXPECTED {
++            assert_eq!(settable(name), Some((ty, option)), "mismatch for {name}");
++        }
+         assert_eq!(settable("codec_kind"), None); // matchable only, never settable
+     }
+ 
+     #[test]
+     fn attachment_properties_are_defined() {
+         assert!(
+             ATTACHMENT_PROPERTIES
+                 .iter()
+                 .any(|(n, t)| *n == "content_type" && *t == PropType::String)
+         );
+diff --git a/crates/muxsmith-core/src/profile/match_expr.rs b/crates/muxsmith-core/src/profile/match_expr.rs
+index 948e14b..826cc10 100644
+--- a/crates/muxsmith-core/src/profile/match_expr.rs
++++ b/crates/muxsmith-core/src/profile/match_expr.rs
+@@ -79,22 +79,30 @@ substring: { track_name: SDH }
+     fn parses_nested_any_and_not() {
+         let y = r#"
+ exact: { type: subtitles }
+ not:
+   - substring: { track_name: SDH }
+   - exact: { flag_hearing_impaired: true }
+ any:
+   - regex: { track_name: '(?i)forced' }
+ "#;
+         let e: MatchExpr = yaml_serde::from_str(y).unwrap();
+-        assert_eq!(e.not.as_ref().unwrap().len(), 2);
+-        assert_eq!(e.any.as_ref().unwrap().len(), 1);
++        let not = e.not.as_ref().unwrap();
++        assert_eq!(not.len(), 2);
++        assert_eq!(not[0].substring.as_ref().unwrap()["track_name"], "SDH");
++        assert_eq!(
++            not[1].exact.as_ref().unwrap()["flag_hearing_impaired"],
++            Scalar::Bool(true)
++        );
++        let any = e.any.as_ref().unwrap();
++        assert_eq!(any.len(), 1);
++        assert_eq!(any[0].regex.as_ref().unwrap()["track_name"], "(?i)forced");
+     }
+ 
+     #[test]
+     fn rejects_unknown_keys() {
+         let y = "exactt: { type: video }";
+         assert!(yaml_serde::from_str::<MatchExpr>(y).is_err());
+     }
+ 
+     #[test]
+     fn empty_expression_reports_empty() {
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index a1f19db..00737e9 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -317,26 +317,33 @@ fn validate_locator(
+     path: &str,
+     template_fields: &[String],
+     diags: &mut Vec<Diagnostic>,
+ ) {
+     if locator.extensions.is_empty() {
+         diags.push(Diagnostic::error(
+             DiagCode::EmptyExtensions,
+             format!("{path}.extensions"),
+         ));
+     }
+-    if locator.match_to_source.is_some() && locator.match_pattern.is_some() {
++    if matches!(locator.match_to_source, Some(true)) && locator.match_pattern.is_some() {
+         diags.push(Diagnostic::error(
+             DiagCode::LocatorConflict,
+             path.to_string(),
+         ));
+     }
++    if locator.match_to_source == Some(false) {
++        diags.push(
++            Diagnostic::error(DiagCode::InvalidKeyword, format!("{path}.match_to_source"))
++                .with("found", "false")
++                .with("allowed", "true"),
++        );
++    }
+     if let Some(pattern) = &locator.match_pattern {
+         // source_stem is literal-mode only: template_fields never contains it
+         // here, so a match_pattern using {source_stem} is UnknownTemplateField
+         // (spec 4.7).
+         validate_template(
+             pattern,
+             &format!("{path}.match_pattern"),
+             template_fields,
+             false,
+             diags,
+@@ -347,34 +354,37 @@ fn validate_locator(
+ fn validate_template(
+     text: &str,
+     path: &str,
+     allowed_fields: &[String],
+     forbid_path_separators: bool,
+     diags: &mut Vec<Diagnostic>,
+ ) {
+     let template = match Template::parse(text) {
+         Ok(t) => t,
+         Err(e) => {
+-            let (code, detail) = match e {
+-                TemplateError::UnknownFilter { name } => (
+-                    DiagCode::UnknownTemplateFilter,
+-                    format!("unknown filter: {name}"),
+-                ),
+-                TemplateError::UnclosedBrace { pos } => (
+-                    DiagCode::InvalidTemplate,
+-                    format!("unclosed brace at {pos}"),
+-                ),
++            let diag = match e {
++                TemplateError::UnknownFilter { name } => {
++                    Diagnostic::error(DiagCode::UnknownTemplateFilter, path.to_string())
++                        .with("name", name)
++                }
++                TemplateError::UnclosedBrace { pos } => {
++                    Diagnostic::error(DiagCode::InvalidTemplate, path.to_string())
++                        .with("kind", "unclosed-brace")
++                        .with("pos", pos.to_string())
++                }
+                 TemplateError::EmptyField { pos } => {
+-                    (DiagCode::InvalidTemplate, format!("empty field at {pos}"))
++                    Diagnostic::error(DiagCode::InvalidTemplate, path.to_string())
++                        .with("kind", "empty-field")
++                        .with("pos", pos.to_string())
+                 }
+             };
+-            diags.push(Diagnostic::error(code, path.to_string()).with("detail", detail));
++            diags.push(diag);
+             return;
+         }
+     };
+     for field in template.field_names() {
+         if !allowed_fields.iter().any(|f| f == field) {
+             diags.push(
+                 Diagnostic::error(DiagCode::UnknownTemplateField, path.to_string())
+                     .with("field", field)
+                     .with("allowed", allowed_fields.join(", ")),
+             );
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index 5d78846..708cc95 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -176,15 +176,20 @@ mod tests {
+             assert_eq!(
+                 serde_json::to_value(code).unwrap(),
+                 serde_json::Value::String(code.key().to_string()),
+                 "key()/serde mismatch for {code:?}"
+             );
+         }
+     }
+ 
+     #[test]
+     fn all_keys_are_unique() {
+-        let keys: std::collections::BTreeSet<&'static str> =
+-            DiagCode::ALL.iter().map(|c| c.key()).collect();
+-        assert_eq!(keys.len(), DiagCode::ALL.len());
++        let mut map: BTreeMap<&str, DiagCode> = BTreeMap::new();
++        for &code in DiagCode::ALL {
++            assert!(
++                map.insert(code.key(), code).is_none(),
++                "duplicate key: {}",
++                code.key()
++            );
++        }
+     }
+ }
+diff --git a/crates/muxsmith-core/tests/profile_load.rs b/crates/muxsmith-core/tests/profile_load.rs
+index 26b0a38..f76d9e2 100644
+--- a/crates/muxsmith-core/tests/profile_load.rs
++++ b/crates/muxsmith-core/tests/profile_load.rs
+@@ -20,20 +20,22 @@ fn reference_profile_parses() {
+     assert_eq!(p.tags.track, KeepDrop::Keep);
+     assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
+ 
+     let last = p.tracks.last().unwrap();
+     match &last.source {
+         SourceCfg::External(block) => {
+             assert_eq!(block.external.path, ".");
+             assert_eq!(block.external.extensions, vec!["srt"]);
+             assert_eq!(block.external.match_to_source, Some(true));
+             assert!(block.external.match_pattern.is_none());
++            assert!(!block.external.recursive);
++            assert!(!block.external.case_sensitive);
+         }
+         other => panic!("expected external source, got {other:?}"),
+     }
+     let changes = last.changes.as_ref().unwrap();
+     assert!(changes.contains_key("language") && changes.contains_key("track_name"));
+ }
+ 
+ #[test]
+ fn json_profile_parses_identically_to_yaml() {
+     let yaml = r#"
+diff --git a/crates/muxsmith-core/tests/validate_structure.rs b/crates/muxsmith-core/tests/validate_structure.rs
+index 3f857f4..0e1084b 100644
+--- a/crates/muxsmith-core/tests/validate_structure.rs
++++ b/crates/muxsmith-core/tests/validate_structure.rs
+@@ -30,20 +30,40 @@ fn empty_extensions_flagged_for_input_and_locator() {
+ }
+ 
+ #[test]
+ fn locator_with_both_match_options_is_conflict() {
+     let y = format!(
+         "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: true, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     assert!(codes(&y).contains(&DiagCode::LocatorConflict));
+ }
+ 
++#[test]
++fn match_to_source_false_is_rejected() {
++    let y = format!(
++        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++    );
++    let c = codes(&y);
++    assert!(c.contains(&DiagCode::InvalidKeyword));
++    assert!(!c.contains(&DiagCode::LocatorConflict));
++}
++
++#[test]
++fn match_to_source_false_with_pattern_is_not_conflict() {
++    let y = format!(
++        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++    );
++    let c = codes(&y);
++    assert!(c.contains(&DiagCode::InvalidKeyword));
++    assert!(!c.contains(&DiagCode::LocatorConflict));
++}
++
+ #[test]
+ fn match_pattern_with_unknown_field_is_flagged() {
+     let y = format!(
+         "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_pattern: 'x{{volume}}y' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     let c = codes(&y);
+     assert!(c.contains(&DiagCode::UnknownTemplateField));
+ }
+ 
+ #[test]
+@@ -67,21 +87,41 @@ fn filename_template_fields_checked_against_pattern_groups() {
+ 
+ #[test]
+ fn filename_template_with_path_separator_is_flagged() {
+     let y = BASE.to_string() + "output:\n  filename: { template: 'sub/dir{season}.mkv' }\n";
+     assert!(codes(&y).contains(&DiagCode::PathSeparatorInTemplate));
+ }
+ 
+ #[test]
+ fn bad_template_syntax_is_invalid_template() {
+     let y = BASE.to_string() + "output:\n  filename: { template: 'S{season' }\n";
+-    assert!(codes(&y).contains(&DiagCode::InvalidTemplate));
++    let ds = validate(&parse(&y));
++    let d = ds
++        .iter()
++        .find(|d| d.code == DiagCode::InvalidTemplate)
++        .expect("expected InvalidTemplate diagnostic");
++    assert_eq!(
++        d.params.get("kind").map(String::as_str),
++        Some("unclosed-brace")
++    );
++    assert!(d.params.contains_key("pos"));
++}
++
++#[test]
++fn unknown_template_filter_carries_name() {
++    let y = BASE.to_string() + "output:\n  filename: { template: 'S{season:frobnicate}.mkv' }\n";
++    let ds = validate(&parse(&y));
++    let d = ds
++        .iter()
++        .find(|d| d.code == DiagCode::UnknownTemplateFilter)
++        .expect("expected UnknownTemplateFilter diagnostic");
++    assert_eq!(d.params.get("name").map(String::as_str), Some("frobnicate"));
+ }
+ 
+ #[test]
+ fn unknown_keywords_are_flagged() {
+     for (snippet, _section) in [
+         ("chapters: discard\n", "chapters"),
+         ("title: wipe\n", "title"),
+     ] {
+         let y = BASE.to_string() + snippet;
+         assert!(
+@@ -101,10 +141,29 @@ fn numbered_group_fields_are_accepted() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'S(\d{2})E(\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'S{g1}E{g2}.mkv' }
+ tracks:
+   - match: { exact: { type: video } }
+ "#;
+     assert!(!codes(y).contains(&DiagCode::UnknownTemplateField));
+ }
++
++#[test]
++fn empty_locator_extensions_flagged() {
++    let y = format!(
++        "{BASE}  - source:\n      external: {{ path: '.', extensions: [] }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++    );
++    let ds = validate(&parse(&y));
++    let d = ds
++        .iter()
++        .find(|d| d.code == DiagCode::EmptyExtensions)
++        .expect("expected EmptyExtensions diagnostic");
++    assert!(d.config_path.ends_with(".source.external.extensions"));
++}
++
++#[test]
++fn filename_keyword_misuse_flagged() {
++    let y = BASE.to_string() + "output:\n  filename: wipe\n";
++    assert!(codes(&y).contains(&DiagCode::InvalidKeyword));
++}
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index 0bb4230..c9805a1 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -249,21 +249,22 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `OverlappingRules` | error | one track claimed by >= 2 rules |
+ | `MissingTrack` | error | non-optional rule matches 0 tracks; hint lists near-misses (tracks of same type/language and which condition each failed) |
+ | `MissingExternal` | error | locator (track rule or chapters) finds 0 files for a non-optional use |
+ | `AmbiguousExternal` | error | locator (track rule or chapters) finds >= 2 files |
+ | `OutputCollision` | per policy | rendered output path exists or is produced twice |
+ | `SourceOverwrite` | error (hard) | output path equals any input path |
+ | `DuplicateIdentifier` | warning | two primaries yield the same identifier match (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, templates may collide |
+ | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
+ | `IgnoredFile` | info | extension matches but `input.pattern` does not |
+ | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
+-| `UnknownProperty` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
++| `UnknownProperty` | error | a match condition or change references a property not in the capability model (config-time) |
++| `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
+ 
+ ### 5.3 Suggestion engine
+ 
+ Contract: for `AmbiguousRule` and `OverlappingRules`, generate candidate refinements by diffing the properties of the conflicting tracks across **all** affected files, then simulate each candidate against the cached identification data of the **entire batch**. Emit only refinements that (a) resolve every instance of the conflict batch-wide and (b) introduce no new diagnostic for any file. If no single refinement satisfies both, report that explicitly and list the files requiring different resolutions.
+ 
+ Suggestions are structured edits (`config_path` + proposed change), not prose; the GUI offers one-click apply, the CLI prints them as exact YAML fragments.
+ 
+ ### 5.4 Static lint
+ 
+ Best-effort, file-independent checks at validate time: regex/template compilation, type errors, unknown properties, and provable rule overlaps (rule A's condition set logically subsumes rule B's, so any track matching B must overlap A). Static analysis never replaces the dry run; it catches what is decidable without looking at files.
+@@ -357,29 +358,29 @@ On top of that, an integrated **help mode**:
+ - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
+ - Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings).
+ - Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked or help mode exits.
+ 
+ Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
+ 
+ ### 8.4 Internationalization architecture
+ 
+ Localization readiness is structural, not deferred polish:
+ 
+-- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown.
++- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, and third-party error text passed through as a `detail` param (regex, serde, I/O).
+ - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
+ - Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
+ - v1 ships English content only (non-goal 11); the mechanism ships complete.
+ 
+ ## 9. Capability model and version skew
+ 
+ 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
+-2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownProperty` warning instead of failing (forward compatibility without lying about type safety).
++2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownPropertySkew` warning instead of failing (forward compatibility without lying about type safety).
+ 
+ ## 10. Testing
+ 
+ - `matcher` + planning semantics: unit tests plus property-based tests (proptest); this is the correctness core.
+ - `command`: golden tests, fixture identification JSON -> expected argv.
+ - Integration: real mkvmerge in CI generates tiny fixture MKVs (from srt/wav seeds via mkvmerge itself); end-to-end dry-run and run against them.
+ - CLI rendering: snapshot tests (insta).
+ - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
+ - i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. eslint (no-literal-string rule) keeps hardcoded strings out of the frontend; core is prose-free by construction.
+ - CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags.
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 9880643..6b24516 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -1,29 +1,32 @@
+ severity-error = error
+ severity-warning = warning
+ severity-info = info
+ 
+ unsupported-profile-version = Unsupported profile_version { $found } (supported: { $supported }).
+-parse-error = The profile could not be parsed at "{ $at }": { $detail }
++parse-error = The profile could not be parsed: { $detail }
+ no-track-rules = The profile defines no track rules; at least one is required.
+ empty-match-expression = This match expression is empty and would match every track.
+ empty-extensions = The extensions list must not be empty.
+ invalid-regex = Invalid regular expression: { $detail }
+ unknown-property = Unknown property "{ $property }". It is not part of the mkvmerge identification model.
+ not-string-property = Property "{ $property }" has type { $actual_type }; { $condition } conditions require a string property.
+ value-type-mismatch = Value for "{ $property }" has type { $found }, expected { $expected }.
+ unknown-settable-property = "{ $property }" is not a settable track property.
+ invalid-keyword = Invalid keyword "{ $found }". Allowed: { $allowed }.
+ locator-conflict = match_to_source and match_pattern are mutually exclusive; set only one.
+-invalid-template = Invalid template: { $detail }
++invalid-template = Invalid template: { $kind ->
++    [unclosed-brace] unclosed brace at position { $pos }
++   *[empty-field] empty field at position { $pos }
++}
+ unknown-template-field = Unknown template field "{ $field }". Available fields: { $allowed }.
+-unknown-template-filter = Unknown template filter: { $detail }
++unknown-template-filter = Unknown template filter "{ $name }".
+ path-separator-in-template = Filename templates must not contain path separators.
+ attachment-rule-shape = Each attachment rule needs exactly one of select, drop, add (found { $found }).
+ provable-overlap = Rules { $rule_a } and { $rule_b } provably overlap: every track matching one also matches the other. Add a distinguishing condition to one of them.
+ ambiguous-rule = Rule matches { $count } tracks; it must match exactly one.
+ overlapping-rules = Rules { $rule_a } and { $rule_b } both claim track { $track }.
+ missing-track = No track matches this non-optional rule.
+ missing-external = No file matches this external locator.
+ ambiguous-external = { $count } files match this external locator; exactly one is required.
+ output-collision = Output path { $path } collides with an existing file or another planned output.
+ source-overwrite = Output path { $path } would overwrite a source file. This is never allowed.

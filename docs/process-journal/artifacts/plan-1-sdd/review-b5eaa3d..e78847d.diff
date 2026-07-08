@@ -1,0 +1,237 @@
+# Review package: b5eaa3d..HEAD
+
+## Commits
+e78847d fix(xtask): rename gen module to codegen for edition-2024 compatibility
+830dc47 feat(xtask): capability table generator from identification schema
+
+## Files changed
+ Cargo.lock                                   |  7 +++++
+ Cargo.toml                                   |  2 +-
+ crates/xtask/Cargo.toml                      | 12 +++++++
+ crates/xtask/src/codegen.rs                  | 47 ++++++++++++++++++++++++++++
+ crates/xtask/src/lib.rs                      |  1 +
+ crates/xtask/src/main.rs                     | 26 +++++++++++++++
+ crates/xtask/tests/codegen.rs                | 22 +++++++++++++
+ crates/xtask/tests/fixtures/mini-schema.json | 28 +++++++++++++++++
+ 8 files changed, 144 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index e0d6598..a8b92e0 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -210,20 +210,27 @@ dependencies = [
+  "quote",
+  "unicode-ident",
+ ]
+ 
+ [[package]]
+ name = "unicode-ident"
+ version = "1.0.24"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+ 
++[[package]]
++name = "xtask"
++version = "0.1.0"
++dependencies = [
++ "serde_json",
++]
++
+ [[package]]
+ name = "yaml_serde"
+ version = "0.10.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "08c7c1b1a6a7c8a6b2741a6c21a4f8918e51899b111cfa08d1288202656e3975"
+ dependencies = [
+  "indexmap",
+  "itoa",
+  "libyaml-rs",
+  "ryu",
+diff --git a/Cargo.toml b/Cargo.toml
+index 1081bf4..28cf918 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,9 +1,9 @@
+ [workspace]
+ resolver = "2"
+-members = ["crates/muxsmith-core", "crates/muxsmith-cli"]
++members = ["crates/muxsmith-core", "crates/muxsmith-cli", "crates/xtask"]
+ 
+ [workspace.package]
+ version = "0.1.0"
+ edition = "2024"
+ license = "MIT"
+ repository = "https://github.com/senolf/muxsmith"
+diff --git a/crates/xtask/Cargo.toml b/crates/xtask/Cargo.toml
+new file mode 100644
+index 0000000..3edcc1d
+--- /dev/null
++++ b/crates/xtask/Cargo.toml
+@@ -0,0 +1,12 @@
++[package]
++name = "xtask"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++publish = false
++
++[dependencies]
++serde_json = "1"
++
++[lib]
++path = "src/lib.rs"
+diff --git a/crates/xtask/src/codegen.rs b/crates/xtask/src/codegen.rs
+new file mode 100644
+index 0000000..1d075d4
+--- /dev/null
++++ b/crates/xtask/src/codegen.rs
+@@ -0,0 +1,47 @@
++use serde_json::Value;
++
++/// Extract matchable track property names and types from the mkvmerge
++/// identification output schema. Only derived FACTS are emitted; the
++/// schema text itself is never redistributed (spec 9).
++pub fn generate(schema_json: &str) -> Result<String, String> {
++    let schema: Value =
++        serde_json::from_str(schema_json).map_err(|e| format!("invalid JSON: {e}"))?;
++
++    let track_props = schema
++        .pointer("/properties/tracks/items/properties/properties/properties")
++        .and_then(Value::as_object)
++        .ok_or("schema has no tracks.items.properties.properties.properties object")?;
++
++    let mut entries: Vec<(String, &'static str)> = vec![
++        // Track-level fields outside the nested properties object.
++        ("type".into(), "String"),
++        ("codec".into(), "String"),
++        ("id".into(), "Integer"),
++    ];
++
++    for (name, def) in track_props {
++        let prop_type = match def.get("type").and_then(Value::as_str) {
++            Some("boolean") => "Boolean",
++            Some("integer") => "Integer",
++            Some("number") => "Float",
++            // Strings, unions and anything exotic degrade to String:
++            // matching still works, only exact-type checks get looser.
++            _ => "String",
++        };
++        entries.push((name.clone(), prop_type));
++    }
++    entries.sort();
++    entries.dedup_by(|a, b| a.0 == b.0);
++
++    let mut out = String::new();
++    out.push_str("// GENERATED FILE - do not edit.\n");
++    out.push_str("// Regenerate: cargo run -p xtask -- gen-capability <schema.json> <this file>\n");
++    out.push_str("// Source: mkvmerge identification output schema (facts only, not the schema).\n\n");
++    out.push_str("use super::PropType;\n\n");
++    out.push_str("pub static MATCHABLE_PROPERTIES: &[(&str, PropType)] = &[\n");
++    for (name, ty) in &entries {
++        out.push_str(&format!("    (\"{name}\", PropType::{ty}),\n"));
++    }
++    out.push_str("];\n");
++    Ok(out)
++}
+diff --git a/crates/xtask/src/lib.rs b/crates/xtask/src/lib.rs
+new file mode 100644
+index 0000000..24ccbdd
+--- /dev/null
++++ b/crates/xtask/src/lib.rs
+@@ -0,0 +1 @@
++pub mod codegen;
+diff --git a/crates/xtask/src/main.rs b/crates/xtask/src/main.rs
+new file mode 100644
+index 0000000..b5d674e
+--- /dev/null
++++ b/crates/xtask/src/main.rs
+@@ -0,0 +1,26 @@
++use std::{env, fs, process};
++
++fn main() {
++    let args: Vec<String> = env::args().collect();
++    match args.get(1).map(String::as_str) {
++        Some("gen-capability") if args.len() == 4 => {
++            let schema = fs::read_to_string(&args[2]).unwrap_or_else(|e| {
++                eprintln!("cannot read {}: {e}", args[2]);
++                process::exit(1);
++            });
++            let code = xtask::codegen::generate(&schema).unwrap_or_else(|e| {
++                eprintln!("generation failed: {e}");
++                process::exit(1);
++            });
++            fs::write(&args[3], code).unwrap_or_else(|e| {
++                eprintln!("cannot write {}: {e}", args[3]);
++                process::exit(1);
++            });
++            eprintln!("wrote {}", args[3]);
++        }
++        _ => {
++            eprintln!("usage: cargo run -p xtask -- gen-capability <schema.json> <out.rs>");
++            process::exit(2);
++        }
++    }
++}
+diff --git a/crates/xtask/tests/codegen.rs b/crates/xtask/tests/codegen.rs
+new file mode 100644
+index 0000000..17f11b0
+--- /dev/null
++++ b/crates/xtask/tests/codegen.rs
+@@ -0,0 +1,22 @@
++use xtask::codegen::generate;
++
++#[test]
++fn generates_matchable_table_from_schema() {
++    let schema = include_str!("fixtures/mini-schema.json");
++    let out = generate(schema).unwrap();
++    // Track-level fields injected by the generator:
++    assert!(out.contains(r#"("type", PropType::String)"#));
++    assert!(out.contains(r#"("codec", PropType::String)"#));
++    assert!(out.contains(r#"("id", PropType::Integer)"#));
++    // Properties from the schema:
++    assert!(out.contains(r#"("audio_channels", PropType::Integer)"#));
++    assert!(out.contains(r#"("default_track", PropType::Boolean)"#));
++    assert!(out.contains(r#"("language", PropType::String)"#));
++    // Header marker so humans know not to edit:
++    assert!(out.contains("GENERATED FILE"));
++}
++
++#[test]
++fn rejects_schema_without_track_properties() {
++    assert!(generate("{}").is_err());
++}
+diff --git a/crates/xtask/tests/fixtures/mini-schema.json b/crates/xtask/tests/fixtures/mini-schema.json
+new file mode 100644
+index 0000000..02d7706
+--- /dev/null
++++ b/crates/xtask/tests/fixtures/mini-schema.json
+@@ -0,0 +1,28 @@
++{
++  "title": "synthetic mini schema for generator tests",
++  "type": "object",
++  "properties": {
++    "tracks": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "properties": {
++          "codec": { "type": "string" },
++          "id": { "type": "integer" },
++          "type": { "type": "string" },
++          "properties": {
++            "type": "object",
++            "properties": {
++              "audio_channels": { "type": "integer" },
++              "default_track": { "type": "boolean" },
++              "display_dimensions": { "type": "string" },
++              "forced_track": { "type": "boolean" },
++              "language": { "type": "string" },
++              "track_name": { "type": "string" }
++            }
++          }
++        }
++      }
++    }
++  }
++}

@@ -1,0 +1,562 @@
+# Review package: c6a2df2..HEAD
+
+## Commits
+3ab1cdc feat(core): full profile model with loader and reference fixture
+
+## Files changed
+ Cargo.lock                                         |  12 ++
+ crates/muxsmith-core/Cargo.toml                    |   4 +-
+ crates/muxsmith-core/src/profile/load.rs           |  45 ++++
+ crates/muxsmith-core/src/profile/mod.rs            |   4 +
+ crates/muxsmith-core/src/profile/model.rs          | 230 +++++++++++++++++++++
+ crates/muxsmith-core/tests/fixtures/reference.yaml |  78 +++++++
+ crates/muxsmith-core/tests/profile_load.rs         |  80 +++++++
+ 7 files changed, 452 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index 53787c8..e0d6598 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -55,20 +55,21 @@ dependencies = [
+  "muxsmith-core",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-core"
+ version = "0.1.0"
+ dependencies = [
+  "schemars",
+  "serde",
+  "serde_json",
++ "serde_path_to_error",
+  "yaml_serde",
+ ]
+ 
+ [[package]]
+ name = "proc-macro2"
+ version = "1.0.106"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+ dependencies = [
+  "unicode-ident",
+@@ -181,20 +182,31 @@ version = "1.0.150"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
+ dependencies = [
+  "itoa",
+  "memchr",
+  "serde",
+  "serde_core",
+  "zmij",
+ ]
+ 
++[[package]]
++name = "serde_path_to_error"
++version = "0.1.20"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
++dependencies = [
++ "itoa",
++ "serde",
++ "serde_core",
++]
++
+ [[package]]
+ name = "syn"
+ version = "2.0.118"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+  "unicode-ident",
+ ]
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 65349d3..418ad2e 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -1,13 +1,15 @@
+ [package]
+ name = "muxsmith-core"
+ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ 
+ [dependencies]
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
++serde_json = "1.0.150"
++serde_path_to_error = "0.1.20"
++yaml_serde = "0.10.4"
+ 
+ [dev-dependencies]
+ serde_json = "1.0.150"
+-yaml_serde = "0.10.4"
+diff --git a/crates/muxsmith-core/src/profile/load.rs b/crates/muxsmith-core/src/profile/load.rs
+new file mode 100644
+index 0000000..147203d
+--- /dev/null
++++ b/crates/muxsmith-core/src/profile/load.rs
+@@ -0,0 +1,45 @@
++use std::fs;
++use std::path::Path;
++
++use crate::report::{DiagCode, Diagnostic};
++
++use super::model::Profile;
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum Format {
++    Yaml,
++    Json,
++}
++
++pub fn from_str(text: &str, format: Format) -> Result<Profile, Diagnostic> {
++    match format {
++        Format::Yaml => {
++            let de = yaml_serde::Deserializer::from_str(text);
++            serde_path_to_error::deserialize(de).map_err(|e| parse_error(&e))
++        }
++        Format::Json => {
++            let mut de = serde_json::Deserializer::from_str(text);
++            serde_path_to_error::deserialize(&mut de).map_err(|e| parse_error(&e))
++        }
++    }
++}
++
++pub fn from_file(path: &Path) -> Result<Profile, Diagnostic> {
++    let format = match path.extension().and_then(|e| e.to_str()) {
++        Some("json") => Format::Json,
++        _ => Format::Yaml, // .yaml, .yml, and anything else tries YAML
++    };
++    let text = fs::read_to_string(path).map_err(|e| {
++        Diagnostic::error(DiagCode::ParseError, "")
++            .for_file(path)
++            .with("detail", e.to_string())
++            .with("at", "")
++    })?;
++    from_str(&text, format).map_err(|d| d.for_file(path))
++}
++
++fn parse_error<E: std::fmt::Display>(err: &serde_path_to_error::Error<E>) -> Diagnostic {
++    Diagnostic::error(DiagCode::ParseError, err.path().to_string())
++        .with("detail", err.inner().to_string())
++        .with("at", err.path().to_string())
++}
+diff --git a/crates/muxsmith-core/src/profile/mod.rs b/crates/muxsmith-core/src/profile/mod.rs
+index c5b2e3d..3ddb3d4 100644
+--- a/crates/muxsmith-core/src/profile/mod.rs
++++ b/crates/muxsmith-core/src/profile/mod.rs
+@@ -1 +1,5 @@
++pub mod load;
+ pub mod match_expr;
++pub mod model;
++
++pub use model::Profile;
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+new file mode 100644
+index 0000000..d931491
+--- /dev/null
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -0,0 +1,230 @@
++//! Profile data model (spec 4). Serde-only: semantic validation lives in
++//! validate.rs, so this file stays a faithful mirror of the file format.
++
++use std::collections::BTreeMap;
++use std::path::PathBuf;
++
++use schemars::JsonSchema;
++use serde::{Deserialize, Serialize};
++
++use super::match_expr::{MatchExpr, Scalar};
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct Profile {
++    pub profile_version: u32,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub meta: Option<Meta>,
++    pub input: Input,
++    #[serde(default)]
++    pub output: OutputCfg,
++    pub tracks: Vec<TrackRule>,
++    #[serde(default)]
++    pub attachments: AttachmentsCfg,
++    #[serde(default)]
++    pub chapters: ChaptersCfg,
++    #[serde(default)]
++    pub tags: TagsCfg,
++    #[serde(default)]
++    pub title: TitleCfg,
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct Meta {
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub name: Option<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub description: Option<String>,
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct Input {
++    pub pattern: String,
++    pub extensions: Vec<String>,
++    #[serde(default = "default_true")]
++    pub recursive: bool,
++}
++
++fn default_true() -> bool {
++    true
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct OutputCfg {
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub directory: Option<PathBuf>,
++    #[serde(default = "FilenameCfg::keep")]
++    pub filename: FilenameCfg,
++    #[serde(default)]
++    pub on_collision: CollisionPolicy,
++}
++
++impl Default for OutputCfg {
++    fn default() -> Self {
++        OutputCfg {
++            directory: None,
++            filename: FilenameCfg::keep(),
++            on_collision: CollisionPolicy::default(),
++        }
++    }
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(untagged)]
++pub enum FilenameCfg {
++    Template {
++        template: String,
++    },
++    Keyword(String),
++}
++
++impl FilenameCfg {
++    pub fn keep() -> Self {
++        FilenameCfg::Keyword("keep".into())
++    }
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
++#[serde(rename_all = "lowercase")]
++pub enum CollisionPolicy {
++    #[default]
++    Error,
++    Skip,
++    Overwrite,
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
++#[serde(rename_all = "lowercase")]
++pub enum KeepDrop {
++    Keep,
++    Drop,
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct TrackRule {
++    #[serde(default = "SourceCfg::primary")]
++    pub source: SourceCfg,
++    #[serde(rename = "match")]
++    pub match_expr: MatchExpr,
++    #[serde(default)]
++    pub optional: bool,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub changes: Option<BTreeMap<String, Scalar>>,
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(untagged)]
++pub enum SourceCfg {
++    External {
++        external: Locator,
++    },
++    Keyword(String),
++}
++
++impl SourceCfg {
++    pub fn primary() -> Self {
++        SourceCfg::Keyword("primary".into())
++    }
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct Locator {
++    pub path: String,
++    #[serde(default)]
++    pub recursive: bool,
++    pub extensions: Vec<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub match_to_source: Option<bool>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub match_pattern: Option<String>,
++    #[serde(default)]
++    pub case_sensitive: bool,
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct AttachmentsCfg {
++    #[serde(default = "keep")]
++    pub unmatched: KeepDrop,
++    #[serde(default)]
++    pub rules: Vec<AttachmentRule>,
++}
++
++fn keep() -> KeepDrop {
++    KeepDrop::Keep
++}
++
++impl Default for AttachmentsCfg {
++    fn default() -> Self {
++        AttachmentsCfg {
++            unmatched: KeepDrop::Keep,
++            rules: Vec::new(),
++        }
++    }
++}
++
++/// Exactly one of `select` / `drop` / `add` must be set; enforced in
++/// validate.rs (AttachmentRuleShape) so the parse error stays readable.
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct AttachmentRule {
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub select: Option<MatchExpr>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub drop: Option<MatchExpr>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub add: Option<Locator>,
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(untagged)]
++pub enum ChaptersCfg {
++    External {
++        external: Locator,
++    },
++    Keyword(String),
++}
++
++impl Default for ChaptersCfg {
++    fn default() -> Self {
++        ChaptersCfg::Keyword("keep".into())
++    }
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct TagsCfg {
++    #[serde(default = "keep")]
++    pub global: KeepDrop,
++    #[serde(default = "keep")]
++    pub track: KeepDrop,
++}
++
++impl Default for TagsCfg {
++    fn default() -> Self {
++        TagsCfg {
++            global: KeepDrop::Keep,
++            track: KeepDrop::Keep,
++        }
++    }
++}
++
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(untagged)]
++pub enum TitleCfg {
++    Template {
++        template: String,
++    },
++    Keyword(String),
++}
++
++impl Default for TitleCfg {
++    fn default() -> Self {
++        TitleCfg::Keyword("keep".into())
++    }
++}
+diff --git a/crates/muxsmith-core/tests/fixtures/reference.yaml b/crates/muxsmith-core/tests/fixtures/reference.yaml
+new file mode 100644
+index 0000000..907e4bf
+--- /dev/null
++++ b/crates/muxsmith-core/tests/fixtures/reference.yaml
+@@ -0,0 +1,78 @@
++profile_version: 1
++
++meta:
++  name: Series EN/DE with forced and SDH subs
++
++input:
++  pattern: 'S(?<season>\d{2})E(?<episode>\d{2})'
++  extensions: [mkv, mp4]
++  recursive: true
++
++output:
++  directory: null          # usually supplied as run input
++  filename: keep           # keep | template: "Show - S{season}E{episode}.mkv"
++  on_collision: error      # error | skip | overwrite
++
++tracks:                    # list order = output track order
++  - match: { exact: { type: video } }
++
++  - match: { exact: { type: audio, language: en } }
++    changes: { default_track: true }
++
++  - match: { exact: { type: audio, language: de } }
++
++  - match:
++      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
++    optional: true
++    changes: { track_name: English forced, default_track: true }
++
++  - match:
++      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
++      not:
++        - substring: { track_name: SDH }
++        - exact: { flag_hearing_impaired: true }
++    changes: { track_name: English }
++
++  - match:
++      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
++      any:
++        - substring: { track_name: SDH }
++        - exact: { flag_hearing_impaired: true }
++    changes: { track_name: English SDH, flag_hearing_impaired: true }
++
++  - match:
++      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: true }
++    optional: true
++    changes: { track_name: German forced, default_track: true }
++
++  - match:
++      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
++      not:
++        - substring: { track_name: SDH }
++        - exact: { flag_hearing_impaired: true }
++    changes: { track_name: German }
++
++  - match:
++      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
++      any:
++        - substring: { track_name: SDH }
++        - exact: { flag_hearing_impaired: true }
++    changes: { track_name: German SDH, flag_hearing_impaired: true }
++
++  - source:
++      external:
++        path: .              # relative to the primary file's directory
++        extensions: [srt]
++        match_to_source: true
++    match: { exact: { type: subtitles } }
++    changes: { language: tr, track_name: "Türkçe" }
++
++attachments:
++  unmatched: keep            # keep | drop; default keep (dropping fonts silently breaks ASS subs)
++  rules: []                  # select/drop/add rules, same match algebra (4.3)
++
++chapters: keep               # keep | drop | external locator (same mechanism as external tracks)
++tags:
++  global: drop               # keep | drop
++  track: keep                # keep | drop
++title: clear                 # keep | clear | template: "..."
+diff --git a/crates/muxsmith-core/tests/profile_load.rs b/crates/muxsmith-core/tests/profile_load.rs
+new file mode 100644
+index 0000000..f0b811d
+--- /dev/null
++++ b/crates/muxsmith-core/tests/profile_load.rs
+@@ -0,0 +1,80 @@
++use muxsmith_core::profile::model::{ChaptersCfg, FilenameCfg, KeepDrop, SourceCfg, TitleCfg};
++use muxsmith_core::profile::load::{from_str, Format};
++use muxsmith_core::report::DiagCode;
++
++const REFERENCE: &str = include_str!("fixtures/reference.yaml");
++
++#[test]
++fn reference_profile_parses() {
++    let p = from_str(REFERENCE, Format::Yaml).unwrap();
++    assert_eq!(p.profile_version, 1);
++    assert_eq!(p.input.pattern, r"S(?<season>\d{2})E(?<episode>\d{2})");
++    assert!(p.input.recursive);
++    assert_eq!(p.tracks.len(), 10); // 1 video + 2 audio + 6 subs + 1 external
++    assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
++    assert!(matches!(p.chapters, ChaptersCfg::Keyword(ref k) if k == "keep"));
++    assert!(matches!(p.title, TitleCfg::Keyword(ref k) if k == "clear"));
++    assert_eq!(p.tags.global, KeepDrop::Drop);
++    assert_eq!(p.tags.track, KeepDrop::Keep);
++    assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
++
++    let last = p.tracks.last().unwrap();
++    match &last.source {
++        SourceCfg::External { external } => {
++            assert_eq!(external.path, ".");
++            assert_eq!(external.extensions, vec!["srt"]);
++            assert_eq!(external.match_to_source, Some(true));
++            assert!(external.match_pattern.is_none());
++        }
++        other => panic!("expected external source, got {other:?}"),
++    }
++    let changes = last.changes.as_ref().unwrap();
++    assert!(changes.contains_key("language") && changes.contains_key("track_name"));
++}
++
++#[test]
++fn json_profile_parses_identically_to_yaml() {
++    let yaml = r#"
++profile_version: 1
++input: { pattern: 'S(\d+)', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let json = r#"{
++  "profile_version": 1,
++  "input": { "pattern": "S(\\d+)", "extensions": ["mkv"] },
++  "tracks": [ { "match": { "exact": { "type": "video" } } } ]
++}"#;
++    let a = from_str(yaml, Format::Yaml).unwrap();
++    let b = from_str(json, Format::Json).unwrap();
++    assert_eq!(a, b);
++}
++
++#[test]
++fn defaults_apply_when_sections_absent() {
++    let y = r#"
++profile_version: 1
++input: { pattern: 'E(\d+)', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let p = from_str(y, Format::Yaml).unwrap();
++    assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
++    assert_eq!(p.tags.global, KeepDrop::Keep);
++    assert!(matches!(p.tracks[0].source, SourceCfg::Keyword(ref k) if k == "primary"));
++    assert!(!p.tracks[0].optional);
++}
++
++#[test]
++fn unknown_key_is_parse_error_with_path() {
++    let y = r#"
++profile_version: 1
++input: { pattern: 'E(\d+)', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++    optionall: true
++"#;
++    let err = from_str(y, Format::Yaml).unwrap_err();
++    assert_eq!(err.code, DiagCode::ParseError);
++    assert!(err.params["detail"].contains("optionall"));
++}

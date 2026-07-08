@@ -1,0 +1,556 @@
+# Review package: ad841b0..HEAD
+
+## Commits
+c7a70f7 ci: test matrix, lint gates, and diagnostic catalog completeness guard
+
+## Files changed
+ .github/workflows/ci.yml                          | 22 +++++++++++++++++
+ crates/muxsmith-cli/src/lib.rs                    |  3 +++
+ crates/muxsmith-cli/src/main.rs                   |  5 +---
+ crates/muxsmith-cli/tests/catalog_completeness.rs | 16 +++++++++++++
+ crates/muxsmith-core/src/capability/mod.rs        | 26 +++++++++++++++-----
+ crates/muxsmith-core/src/profile/lint.rs          | 16 ++++++-------
+ crates/muxsmith-core/src/profile/match_expr.rs    |  5 +++-
+ crates/muxsmith-core/src/profile/validate.rs      | 14 +++++------
+ crates/muxsmith-core/src/report.rs                |  5 +++-
+ crates/muxsmith-core/src/template.rs              | 14 ++++++++---
+ crates/muxsmith-core/tests/profile_load.rs        |  2 +-
+ crates/muxsmith-core/tests/validate_semantics.rs  | 29 +++++++++++++----------
+ crates/xtask/src/codegen.rs                       |  4 +++-
+ 13 files changed, 116 insertions(+), 45 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..2bc330a
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,22 @@
++name: ci
++on:
++  push:
++    branches: [master]
++  pull_request:
++
++jobs:
++  test:
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest, windows-latest, macos-latest]
++    runs-on: ${{ matrix.os }}
++    steps:
++      - uses: actions/checkout@v4
++      - uses: dtolnay/rust-toolchain@stable
++        with:
++          components: rustfmt, clippy
++      - uses: Swatinem/rust-cache@v2
++      - run: cargo fmt --all --check
++      - run: cargo clippy --workspace --all-targets -- -D warnings
++      - run: cargo test --workspace
+diff --git a/crates/muxsmith-cli/src/lib.rs b/crates/muxsmith-cli/src/lib.rs
+new file mode 100644
+index 0000000..d733bb8
+--- /dev/null
++++ b/crates/muxsmith-cli/src/lib.rs
+@@ -0,0 +1,3 @@
++pub mod cli;
++pub mod commands;
++pub mod i18n;
+diff --git a/crates/muxsmith-cli/src/main.rs b/crates/muxsmith-cli/src/main.rs
+index 7aa8b89..368f5dc 100644
+--- a/crates/muxsmith-cli/src/main.rs
++++ b/crates/muxsmith-cli/src/main.rs
+@@ -1,15 +1,12 @@
+-mod cli;
+-mod commands;
+-mod i18n;
+-
+ use clap::Parser;
++use muxsmith_cli::{cli, commands, i18n};
+ 
+ fn main() {
+     let args = cli::Cli::parse();
+     let code = match args.command {
+         cli::Cmd::Schema => {
+             let schema = schemars::schema_for!(muxsmith_core::profile::Profile);
+             println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+             0
+         }
+         cli::Cmd::Validate {
+diff --git a/crates/muxsmith-cli/tests/catalog_completeness.rs b/crates/muxsmith-cli/tests/catalog_completeness.rs
+new file mode 100644
+index 0000000..68b76e1
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/catalog_completeness.rs
+@@ -0,0 +1,16 @@
++//! Spec 10: every DiagCode must have a message template in the English
++//! catalog. Renderer::msg falls back to the raw id when a message is
++//! missing, so key != rendered output proves the entry exists.
++
++use muxsmith_core::report::DiagCode;
++
++#[test]
++fn every_diag_code_has_a_catalog_message() {
++    let renderer = muxsmith_cli::i18n::Renderer::new(Some("en"));
++    let missing: Vec<&str> = DiagCode::ALL
++        .iter()
++        .filter(|code| renderer.msg(code.key(), &[]) == code.key())
++        .map(|code| code.key())
++        .collect();
++    assert_eq!(missing, Vec::<&str>::new(), "missing catalog entries");
++}
+diff --git a/crates/muxsmith-core/src/capability/mod.rs b/crates/muxsmith-core/src/capability/mod.rs
+index 56a73f2..1a32156 100644
+--- a/crates/muxsmith-core/src/capability/mod.rs
++++ b/crates/muxsmith-core/src/capability/mod.rs
+@@ -23,22 +23,30 @@ pub fn matchable_type(name: &str) -> Option<PropType> {
+         .find(|(n, _)| *n == name)
+         .map(|(_, t)| *t)
+ }
+ 
+ /// (profile name, value type, mkvmerge option) - spec 4.4 table.
+ pub static SETTABLE: &[(&str, PropType, &str)] = &[
+     ("language", PropType::String, "--language"),
+     ("track_name", PropType::String, "--track-name"),
+     ("default_track", PropType::Boolean, "--default-track-flag"),
+     ("forced_track", PropType::Boolean, "--forced-display-flag"),
+-    ("flag_hearing_impaired", PropType::Boolean, "--hearing-impaired-flag"),
+-    ("flag_visual_impaired", PropType::Boolean, "--visual-impaired-flag"),
++    (
++        "flag_hearing_impaired",
++        PropType::Boolean,
++        "--hearing-impaired-flag",
++    ),
++    (
++        "flag_visual_impaired",
++        PropType::Boolean,
++        "--visual-impaired-flag",
++    ),
+     ("flag_commentary", PropType::Boolean, "--commentary-flag"),
+     ("flag_original", PropType::Boolean, "--original-flag"),
+     ("enabled_track", PropType::Boolean, "--track-enabled-flag"),
+     ("sub_charset", PropType::String, "--sub-charset"),
+ ];
+ 
+ pub fn settable(name: &str) -> Option<(PropType, &'static str)> {
+     SETTABLE
+         .iter()
+         .find(|(n, _, _)| *n == name)
+@@ -93,21 +101,25 @@ mod tests {
+         assert_eq!(matchable_type("audio_channels"), Some(PropType::Integer));
+         assert_eq!(matchable_type("type"), Some(PropType::String));
+         assert_eq!(matchable_type("no_such_property"), None);
+     }
+ 
+     #[test]
+     fn codec_kind_is_virtual_matchable() {
+         assert_eq!(matchable_type("codec_kind"), Some(PropType::String));
+         assert!(codec_kind_prefixes("srt").unwrap().contains(&"S_TEXT/UTF8"));
+         assert!(codec_kind_prefixes("pgs").unwrap().contains(&"S_HDMV/PGS"));
+-        assert!(codec_kind_prefixes("h264").unwrap().contains(&"V_MPEG4/ISO/AVC"));
++        assert!(
++            codec_kind_prefixes("h264")
++                .unwrap()
++                .contains(&"V_MPEG4/ISO/AVC")
++        );
+         assert!(codec_kind_prefixes("nope").is_none());
+     }
+ 
+     #[test]
+     fn settable_maps_to_mkvmerge_options() {
+         assert_eq!(
+             settable("track_name"),
+             Some((PropType::String, "--track-name"))
+         );
+         assert_eq!(
+@@ -116,15 +128,17 @@ mod tests {
+         );
+         assert_eq!(
+             settable("forced_track"),
+             Some((PropType::Boolean, "--forced-display-flag"))
+         );
+         assert_eq!(settable("codec_kind"), None); // matchable only, never settable
+     }
+ 
+     #[test]
+     fn attachment_properties_are_defined() {
+-        assert!(ATTACHMENT_PROPERTIES
+-            .iter()
+-            .any(|(n, t)| *n == "content_type" && *t == PropType::String));
++        assert!(
++            ATTACHMENT_PROPERTIES
++                .iter()
++                .any(|(n, t)| *n == "content_type" && *t == PropType::String)
++        );
+     }
+ }
+diff --git a/crates/muxsmith-core/src/profile/lint.rs b/crates/muxsmith-core/src/profile/lint.rs
+index 3f07d24..6927a7e 100644
+--- a/crates/muxsmith-core/src/profile/lint.rs
++++ b/crates/muxsmith-core/src/profile/lint.rs
+@@ -17,51 +17,51 @@ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
+         .enumerate()
+         .filter(|(_, r)| matches!(&r.source, SourceCfg::Keyword(k) if k == "primary"))
+         .filter(|(_, r)| is_exact_only(&r.match_expr))
+         .map(|(i, r)| (i, &r.match_expr))
+         .collect();
+ 
+     for (ai, (a_idx, a)) in exact_only.iter().enumerate() {
+         for (b_idx, b) in exact_only.iter().skip(ai + 1) {
+             if subset_of(a, b) || subset_of(b, a) {
+                 diags.push(
+-                    Diagnostic::warning(
+-                        DiagCode::ProvableOverlap,
+-                        format!("tracks[{b_idx}]"),
+-                    )
+-                    .with("rule_a", a_idx.to_string())
+-                    .with("rule_b", b_idx.to_string()),
++                    Diagnostic::warning(DiagCode::ProvableOverlap, format!("tracks[{b_idx}]"))
++                        .with("rule_a", a_idx.to_string())
++                        .with("rule_b", b_idx.to_string()),
+                 );
+             }
+         }
+     }
+     diags
+ }
+ 
+ fn is_exact_only(e: &MatchExpr) -> bool {
+-    e.substring.is_none() && e.regex.is_none() && e.any.is_none() && e.not.is_none()
++    e.substring.is_none()
++        && e.regex.is_none()
++        && e.any.is_none()
++        && e.not.is_none()
+         && e.exact.as_ref().is_some_and(|m| !m.is_empty())
+ }
+ 
+ /// True if every condition in `a` also exists identically in `b`:
+ /// then any track matching `b` also matches `a`.
+ fn subset_of(a: &MatchExpr, b: &MatchExpr) -> bool {
+     let (Some(a), Some(b)) = (&a.exact, &b.exact) else {
+         return false;
+     };
+     a.iter().all(|(k, v)| b.get(k) == Some(v))
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use crate::profile::load::{from_str, Format};
++    use crate::profile::load::{Format, from_str};
+     use crate::report::DiagCode;
+ 
+     fn lint(y: &str) -> Vec<crate::report::Diagnostic> {
+         provable_overlaps(&from_str(y, Format::Yaml).unwrap())
+     }
+ 
+     #[test]
+     fn subset_conditions_are_provable_overlap() {
+         let y = r#"
+ profile_version: 1
+diff --git a/crates/muxsmith-core/src/profile/match_expr.rs b/crates/muxsmith-core/src/profile/match_expr.rs
+index 2cf96fd..948e14b 100644
+--- a/crates/muxsmith-core/src/profile/match_expr.rs
++++ b/crates/muxsmith-core/src/profile/match_expr.rs
+@@ -59,21 +59,24 @@ mod tests {
+     fn parses_flat_expression() {
+         let y = r#"
+ exact: { type: subtitles, forced_track: true }
+ substring: { track_name: SDH }
+ "#;
+         let e: MatchExpr = yaml_serde::from_str(y).unwrap();
+         assert_eq!(
+             e.exact.as_ref().unwrap()["type"],
+             Scalar::Str("subtitles".into())
+         );
+-        assert_eq!(e.exact.as_ref().unwrap()["forced_track"], Scalar::Bool(true));
++        assert_eq!(
++            e.exact.as_ref().unwrap()["forced_track"],
++            Scalar::Bool(true)
++        );
+         assert_eq!(e.substring.as_ref().unwrap()["track_name"], "SDH");
+         assert!(e.any.is_none() && e.not.is_none());
+         assert!(!e.is_empty());
+     }
+ 
+     #[test]
+     fn parses_nested_any_and_not() {
+         let y = r#"
+ exact: { type: subtitles }
+ not:
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index e11cf40..a1f19db 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -236,27 +236,27 @@ fn validate_expr(
+                 match prop_type(prop) {
+                     None => diags.push(unknown_property(&p, prop)),
+                     Some(PropType::String) => {}
+                     Some(t) => diags.push(
+                         Diagnostic::error(DiagCode::NotStringProperty, p.clone())
+                             .with("property", prop.clone())
+                             .with("actual_type", type_label(t))
+                             .with("condition", kind.to_string()),
+                     ),
+                 }
+-                if kind == "regex" {
+-                    if let Err(e) = regex::Regex::new(value) {
+-                        diags.push(
+-                            Diagnostic::error(DiagCode::InvalidRegex, p)
+-                                .with("detail", flatten_regex_error(&e)),
+-                        );
+-                    }
++                if kind == "regex"
++                    && let Err(e) = regex::Regex::new(value)
++                {
++                    diags.push(
++                        Diagnostic::error(DiagCode::InvalidRegex, p)
++                            .with("detail", flatten_regex_error(&e)),
++                    );
+                 }
+             }
+         }
+     }
+     if let Some(any) = &expr.any {
+         for (i, sub) in any.iter().enumerate() {
+             validate_expr(sub, &format!("{path}.any[{i}]"), prop_type, diags);
+         }
+     }
+     if let Some(not) = &expr.not {
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index 7a93e1a..5d78846 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -127,21 +127,24 @@ mod tests {
+     #[test]
+     fn severity_orders_info_warning_error() {
+         assert!(Severity::Info < Severity::Warning);
+         assert!(Severity::Warning < Severity::Error);
+     }
+ 
+     #[test]
+     fn diag_code_keys_are_kebab_case() {
+         assert_eq!(DiagCode::InvalidRegex.key(), "invalid-regex");
+         assert_eq!(DiagCode::AmbiguousRule.key(), "ambiguous-rule");
+-        assert_eq!(DiagCode::UnknownSettableProperty.key(), "unknown-settable-property");
++        assert_eq!(
++            DiagCode::UnknownSettableProperty.key(),
++            "unknown-settable-property"
++        );
+     }
+ 
+     #[test]
+     fn diagnostic_builder_sets_fields() {
+         let d = Diagnostic::error(DiagCode::InvalidRegex, "input.pattern")
+             .with("detail", "unclosed group");
+         assert_eq!(d.severity, Severity::Error);
+         assert_eq!(d.config_path, "input.pattern");
+         assert_eq!(d.params["detail"], "unclosed group");
+         assert!(d.file.is_none());
+diff --git a/crates/muxsmith-core/src/template.rs b/crates/muxsmith-core/src/template.rs
+index 84d8060..95acb1f 100644
+--- a/crates/muxsmith-core/src/template.rs
++++ b/crates/muxsmith-core/src/template.rs
+@@ -85,21 +85,23 @@ impl Template {
+                     };
+                     if name.is_empty() {
+                         return Err(TemplateError::EmptyField { pos: i });
+                     }
+                     let filter = match maybe_filter {
+                         None => Filter::Raw,
+                         Some("int") => Filter::Int,
+                         Some("pad2") => Filter::Pad2,
+                         Some("pad3") => Filter::Pad3,
+                         Some(f) => {
+-                            return Err(TemplateError::UnknownFilter { name: f.to_string() })
++                            return Err(TemplateError::UnknownFilter {
++                                name: f.to_string(),
++                            });
+                         }
+                     };
+                     if !literal.is_empty() {
+                         segments.push(Segment::Literal(std::mem::take(&mut literal)));
+                     }
+                     segments.push(Segment::Field {
+                         name: name.to_string(),
+                         filter,
+                     });
+                     i += close + 2;
+@@ -275,14 +277,20 @@ mod tests {
+         let c = ctx(&[("m", "a.b(c)")]);
+         let pattern = t.render_regex_pattern(&c, true);
+         let re = regex::Regex::new(&pattern).unwrap();
+         assert!(re.is_match("xa.b(c)y"));
+         assert!(!re.is_match("aXb(c)"));
+     }
+ 
+     #[test]
+     fn case_sensitive_flag_controls_inline_i() {
+         let t = Template::parse("abc").unwrap();
+-        assert!(t.render_regex_pattern(&Ctx::new(), false).starts_with("(?i)"));
+-        assert!(!t.render_regex_pattern(&Ctx::new(), true).starts_with("(?i)"));
++        assert!(
++            t.render_regex_pattern(&Ctx::new(), false)
++                .starts_with("(?i)")
++        );
++        assert!(
++            !t.render_regex_pattern(&Ctx::new(), true)
++                .starts_with("(?i)")
++        );
+     }
+ }
+diff --git a/crates/muxsmith-core/tests/profile_load.rs b/crates/muxsmith-core/tests/profile_load.rs
+index 45b0d9f..26b0a38 100644
+--- a/crates/muxsmith-core/tests/profile_load.rs
++++ b/crates/muxsmith-core/tests/profile_load.rs
+@@ -1,14 +1,14 @@
++use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::model::{
+     ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, SourceCfg, TitleCfg,
+ };
+-use muxsmith_core::profile::load::{from_str, Format};
+ use muxsmith_core::report::DiagCode;
+ 
+ const REFERENCE: &str = include_str!("fixtures/reference.yaml");
+ 
+ #[test]
+ fn reference_profile_parses() {
+     let p = from_str(REFERENCE, Format::Yaml).unwrap();
+     assert_eq!(p.profile_version, 1);
+     assert_eq!(p.input.pattern, r"S(?<season>\d{2})E(?<episode>\d{2})");
+     assert!(p.input.recursive);
+diff --git a/crates/muxsmith-core/tests/validate_semantics.rs b/crates/muxsmith-core/tests/validate_semantics.rs
+index b9f3112..fa5c8fa 100644
+--- a/crates/muxsmith-core/tests/validate_semantics.rs
++++ b/crates/muxsmith-core/tests/validate_semantics.rs
+@@ -1,11 +1,11 @@
+-use muxsmith_core::profile::load::{from_str, Format};
++use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::validate::validate;
+ use muxsmith_core::report::{DiagCode, Severity};
+ 
+ fn profile(tracks_yaml: &str) -> muxsmith_core::profile::Profile {
+     let y = format!(
+         r#"
+ profile_version: 1
+ input: {{ pattern: 'S(?<season>\d{{2}})E(?<episode>\d{{2}})', extensions: [mkv] }}
+ tracks:
+ {tracks_yaml}
+@@ -44,21 +44,24 @@ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks: []
+ "#;
+     let p = from_str(y, Format::Yaml).unwrap();
+     assert!(codes(&p).contains(&DiagCode::NoTrackRules));
+ }
+ 
+ #[test]
+ fn unknown_match_property_is_flagged_with_path() {
+     let p = profile("  - match: { exact: { colour_depth: 10 } }");
+     let diags = validate(&p);
+-    let d = diags.iter().find(|d| d.code == DiagCode::UnknownProperty).unwrap();
++    let d = diags
++        .iter()
++        .find(|d| d.code == DiagCode::UnknownProperty)
++        .unwrap();
+     assert_eq!(d.config_path, "tracks[0].match.exact.colour_depth");
+     assert_eq!(d.params["property"], "colour_depth");
+ }
+ 
+ #[test]
+ fn substring_on_boolean_property_is_flagged() {
+     let p = profile("  - match: { substring: { forced_track: 'yes' } }");
+     assert!(codes(&p).contains(&DiagCode::NotStringProperty));
+ }
+ 
+@@ -78,52 +81,52 @@ fn integer_accepted_for_float_property_but_not_reverse() {
+ }
+ 
+ #[test]
+ fn invalid_condition_regex_is_flagged() {
+     let p = profile("  - match: { regex: { track_name: '([' } }");
+     assert!(codes(&p).contains(&DiagCode::InvalidRegex));
+ }
+ 
+ #[test]
+ fn nested_any_and_not_are_validated_recursively() {
+-    let p = profile(
+-        "  - match:\n      any:\n        - exact: { nonexistent_prop: 1 }",
+-    );
++    let p = profile("  - match:\n      any:\n        - exact: { nonexistent_prop: 1 }");
+     let diags = validate(&p);
+-    let d = diags.iter().find(|d| d.code == DiagCode::UnknownProperty).unwrap();
+-    assert_eq!(d.config_path, "tracks[0].match.any[0].exact.nonexistent_prop");
++    let d = diags
++        .iter()
++        .find(|d| d.code == DiagCode::UnknownProperty)
++        .unwrap();
++    assert_eq!(
++        d.config_path,
++        "tracks[0].match.any[0].exact.nonexistent_prop"
++    );
+ }
+ 
+ #[test]
+ fn empty_match_expression_is_warning() {
+     let p = profile("  - match: {}");
+     let diags = validate(&p);
+     let d = diags
+         .iter()
+         .find(|d| d.code == DiagCode::EmptyMatchExpression)
+         .unwrap();
+     assert_eq!(d.severity, Severity::Warning);
+ }
+ 
+ #[test]
+ fn unknown_change_property_is_flagged() {
+-    let p = profile(
+-        "  - match: { exact: { type: video } }\n    changes: { bitrate: 5000 }",
+-    );
++    let p = profile("  - match: { exact: { type: video } }\n    changes: { bitrate: 5000 }");
+     assert!(codes(&p).contains(&DiagCode::UnknownSettableProperty));
+ }
+ 
+ #[test]
+ fn change_value_type_mismatch_is_flagged() {
+-    let p = profile(
+-        "  - match: { exact: { type: video } }\n    changes: { default_track: 'yes' }",
+-    );
++    let p = profile("  - match: { exact: { type: video } }\n    changes: { default_track: 'yes' }");
+     assert!(codes(&p).contains(&DiagCode::ValueTypeMismatch));
+ }
+ 
+ #[test]
+ fn attachment_rule_must_have_exactly_one_action() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: video } }
+diff --git a/crates/xtask/src/codegen.rs b/crates/xtask/src/codegen.rs
+index 1d075d4..c497d43 100644
+--- a/crates/xtask/src/codegen.rs
++++ b/crates/xtask/src/codegen.rs
+@@ -29,19 +29,21 @@ pub fn generate(schema_json: &str) -> Result<String, String> {
+             _ => "String",
+         };
+         entries.push((name.clone(), prop_type));
+     }
+     entries.sort();
+     entries.dedup_by(|a, b| a.0 == b.0);
+ 
+     let mut out = String::new();
+     out.push_str("// GENERATED FILE - do not edit.\n");
+     out.push_str("// Regenerate: cargo run -p xtask -- gen-capability <schema.json> <this file>\n");
+-    out.push_str("// Source: mkvmerge identification output schema (facts only, not the schema).\n\n");
++    out.push_str(
++        "// Source: mkvmerge identification output schema (facts only, not the schema).\n\n",
++    );
+     out.push_str("use super::PropType;\n\n");
+     out.push_str("pub static MATCHABLE_PROPERTIES: &[(&str, PropType)] = &[\n");
+     for (name, ty) in &entries {
+         out.push_str(&format!("    (\"{name}\", PropType::{ty}),\n"));
+     }
+     out.push_str("];\n");
+     Ok(out)
+ }

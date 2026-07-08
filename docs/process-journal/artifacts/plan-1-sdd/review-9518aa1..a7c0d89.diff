@@ -1,0 +1,67 @@
+# Review package: 9518aa1..HEAD
+
+## Commits
+a7c0d89 test(core): enforce DiagCode key/serde consistency and uniqueness
+
+## Files changed
+ crates/muxsmith-core/src/report.rs | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index b006420..7a93e1a 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -16,20 +16,22 @@ pub enum Severity {
+ 
+ macro_rules! diag_codes {
+     ($($variant:ident => $key:literal),+ $(,)?) => {
+         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+         #[serde(rename_all = "kebab-case")]
+         pub enum DiagCode {
+             $($variant),+
+         }
+ 
+         impl DiagCode {
++            pub const ALL: &'static [DiagCode] = &[$(DiagCode::$variant),+];
++
+             pub fn key(self) -> &'static str {
+                 match self {
+                     $(DiagCode::$variant => $key),+
+                 }
+             }
+         }
+     };
+ }
+ 
+ diag_codes! {
+@@ -157,11 +159,29 @@ mod tests {
+ 
+     #[test]
+     fn diagnostic_serializes_with_snake_case_severity_and_kebab_code() {
+         let d = Diagnostic::error(DiagCode::UnknownProperty, "tracks[1].match.exact.foo")
+             .with("property", "foo");
+         let json = serde_json::to_value(&d).unwrap();
+         assert_eq!(json["severity"], "error");
+         assert_eq!(json["code"], "unknown-property");
+         assert_eq!(json["params"]["property"], "foo");
+     }
++
++    #[test]
++    fn all_keys_match_serde_encoding() {
++        for &code in DiagCode::ALL {
++            assert_eq!(
++                serde_json::to_value(code).unwrap(),
++                serde_json::Value::String(code.key().to_string()),
++                "key()/serde mismatch for {code:?}"
++            );
++        }
++    }
++
++    #[test]
++    fn all_keys_are_unique() {
++        let keys: std::collections::BTreeSet<&'static str> =
++            DiagCode::ALL.iter().map(|c| c.key()).collect();
++        assert_eq!(keys.len(), DiagCode::ALL.len());
++    }
+ }

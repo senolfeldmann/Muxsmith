@@ -1,0 +1,933 @@
+# Review package: bcf078b..HEAD
+
+## Commits
+51540e1 feat(cli): validate subcommand with Fluent-rendered diagnostics and exit codes
+
+## Files changed
+ Cargo.lock                                   | 253 +++++++++++++++++++++++++++
+ crates/muxsmith-cli/Cargo.toml               |   4 +
+ crates/muxsmith-cli/src/commands/mod.rs      |   1 +
+ crates/muxsmith-cli/src/commands/validate.rs |  65 +++++++
+ crates/muxsmith-cli/src/i18n.rs              |  80 +++++++++
+ crates/muxsmith-cli/src/main.rs              |  13 +-
+ crates/muxsmith-cli/tests/cli_validate.rs    |  78 +++++++++
+ crates/muxsmith-cli/tests/fixtures/bad.yaml  |   6 +
+ crates/muxsmith-cli/tests/fixtures/good.yaml |   5 +
+ locales/en/cli.ftl                           |   3 +
+ locales/en/diagnostics.ftl                   |  34 ++++
+ 11 files changed, 538 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index 766078a..ce1602d 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -75,31 +75,43 @@ dependencies = [
+  "predicates-tree",
+  "wait-timeout",
+ ]
+ 
+ [[package]]
+ name = "autocfg"
+ version = "1.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+ 
++[[package]]
++name = "bitflags"
++version = "2.13.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
++
+ [[package]]
+ name = "bstr"
+ version = "1.12.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "5cee35f73844aa3014bb606320a6c1f010249dbdf43342fe54b5a4f6a8ed4b79"
+ dependencies = [
+  "memchr",
+  "regex-automata",
+  "serde_core",
+ ]
+ 
++[[package]]
++name = "cfg-if"
++version = "1.0.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
++
+ [[package]]
+ name = "clap"
+ version = "4.6.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1ddb117e43bbf7dacf0a4190fef4d345b9bad68dfc649cb349e7d17d28428e51"
+ dependencies = [
+  "clap_builder",
+  "clap_derive",
+ ]
+ 
+@@ -138,41 +150,114 @@ name = "colorchoice"
+ version = "1.0.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
+ 
+ [[package]]
+ name = "difflib"
+ version = "0.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+ 
++[[package]]
++name = "displaydoc"
++version = "0.2.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1ac70aa55017e108007fbaf5aa0f54b021c98f92ff8af59d42eda9da96e3dd4f"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn",
++]
++
+ [[package]]
+ name = "dyn-clone"
+ version = "1.0.20"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+ 
+ [[package]]
+ name = "equivalent"
+ version = "1.0.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+ 
++[[package]]
++name = "errno"
++version = "0.3.14"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
++dependencies = [
++ "libc",
++ "windows-sys",
++]
++
++[[package]]
++name = "fastrand"
++version = "2.4.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
++
+ [[package]]
+ name = "float-cmp"
+ version = "0.10.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
+ dependencies = [
+  "num-traits",
+ ]
+ 
++[[package]]
++name = "fluent-bundle"
++version = "0.16.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "01203cb8918f5711e73891b347816d932046f95f54207710bda99beaeb423bf4"
++dependencies = [
++ "fluent-langneg",
++ "fluent-syntax",
++ "intl-memoizer",
++ "intl_pluralrules",
++ "rustc-hash",
++ "self_cell",
++ "smallvec",
++ "unic-langid",
++]
++
++[[package]]
++name = "fluent-langneg"
++version = "0.13.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7eebbe59450baee8282d71676f3bfed5689aeab00b27545e83e5f14b1195e8b0"
++dependencies = [
++ "unic-langid",
++]
++
++[[package]]
++name = "fluent-syntax"
++version = "0.12.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "54f0d287c53ffd184d04d8677f590f4ac5379785529e5e08b1c8083acdd5c198"
++dependencies = [
++ "memchr",
++ "thiserror",
++]
++
++[[package]]
++name = "getrandom"
++version = "0.4.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
++dependencies = [
++ "cfg-if",
++ "libc",
++ "r-efi",
++]
++
+ [[package]]
+ name = "hashbrown"
+ version = "0.17.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+ 
+ [[package]]
+ name = "heck"
+ version = "0.5.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -181,20 +266,39 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+ [[package]]
+ name = "indexmap"
+ version = "2.14.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
+ dependencies = [
+  "equivalent",
+  "hashbrown",
+ ]
+ 
++[[package]]
++name = "intl-memoizer"
++version = "0.5.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "310da2e345f5eb861e7a07ee182262e94975051db9e4223e909ba90f392f163f"
++dependencies = [
++ "type-map",
++ "unic-langid",
++]
++
++[[package]]
++name = "intl_pluralrules"
++version = "7.0.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "078ea7b7c29a2b4df841a7f6ac8775ff6074020c6776d48491ce2268e068f972"
++dependencies = [
++ "unic-langid",
++]
++
+ [[package]]
+ name = "is_terminal_polyfill"
+ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+ 
+ [[package]]
+ name = "itoa"
+ version = "1.0.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -205,36 +309,46 @@ name = "libc"
+ version = "0.2.186"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+ 
+ [[package]]
+ name = "libyaml-rs"
+ version = "0.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2e126dda6f34391ab7b444f9922055facc83c07a910da3eb16f1e4d9c45dc777"
+ 
++[[package]]
++name = "linux-raw-sys"
++version = "0.12.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
++
+ [[package]]
+ name = "memchr"
+ version = "2.8.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
+ 
+ [[package]]
+ name = "muxsmith-cli"
+ version = "0.1.0"
+ dependencies = [
+  "assert_cmd",
+  "clap",
++ "fluent-bundle",
+  "muxsmith-core",
+  "predicates",
+  "schemars",
+  "serde_json",
++ "sys-locale",
++ "tempfile",
++ "unic-langid",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-core"
+ version = "0.1.0"
+ dependencies = [
+  "regex",
+  "schemars",
+  "serde",
+  "serde_json",
+@@ -250,20 +364,26 @@ checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+ 
+ [[package]]
+ name = "num-traits"
+ version = "0.2.19"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+ dependencies = [
+  "autocfg",
+ ]
+ 
++[[package]]
++name = "once_cell"
++version = "1.21.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
++
+ [[package]]
+ name = "once_cell_polyfill"
+ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+ 
+ [[package]]
+ name = "predicates"
+ version = "3.1.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -304,20 +424,26 @@ dependencies = [
+ 
+ [[package]]
+ name = "quote"
+ version = "1.0.46"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
+ dependencies = [
+  "proc-macro2",
+ ]
+ 
++[[package]]
++name = "r-efi"
++version = "6.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
++
+ [[package]]
+ name = "ref-cast"
+ version = "1.0.25"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f354300ae66f76f1c85c5f84693f0ce81d747e2c3f21a45fef496d89c960bf7d"
+ dependencies = [
+  "ref-cast-impl",
+ ]
+ 
+ [[package]]
+@@ -353,20 +479,39 @@ dependencies = [
+  "memchr",
+  "regex-syntax",
+ ]
+ 
+ [[package]]
+ name = "regex-syntax"
+ version = "0.8.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+ 
++[[package]]
++name = "rustc-hash"
++version = "2.1.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
++
++[[package]]
++name = "rustix"
++version = "1.1.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
++dependencies = [
++ "bitflags",
++ "errno",
++ "libc",
++ "linux-raw-sys",
++ "windows-sys",
++]
++
+ [[package]]
+ name = "ryu"
+ version = "1.0.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+ 
+ [[package]]
+ name = "schemars"
+ version = "1.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -384,20 +529,26 @@ name = "schemars_derive"
+ version = "1.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7d115b50f4aaeea07e79c1912f645c7513d81715d0420f8bc77a18c6260b307f"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+  "serde_derive_internals",
+  "syn",
+ ]
+ 
++[[package]]
++name = "self_cell"
++version = "1.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b12e76d157a900eb52e81bc6e9f3069344290341720e9178cde2407113ac8d89"
++
+ [[package]]
+ name = "serde"
+ version = "1.0.228"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
+ dependencies = [
+  "serde_core",
+  "serde_derive",
+ ]
+ 
+@@ -449,43 +600,129 @@ dependencies = [
+ name = "serde_path_to_error"
+ version = "0.1.20"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+ dependencies = [
+  "itoa",
+  "serde",
+  "serde_core",
+ ]
+ 
++[[package]]
++name = "smallvec"
++version = "1.15.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
++
+ [[package]]
+ name = "strsim"
+ version = "0.11.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+ 
+ [[package]]
+ name = "syn"
+ version = "2.0.118"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+  "unicode-ident",
+ ]
+ 
++[[package]]
++name = "sys-locale"
++version = "0.3.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
++dependencies = [
++ "libc",
++]
++
++[[package]]
++name = "tempfile"
++version = "3.27.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
++dependencies = [
++ "fastrand",
++ "getrandom",
++ "once_cell",
++ "rustix",
++ "windows-sys",
++]
++
+ [[package]]
+ name = "termtree"
+ version = "0.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
+ 
++[[package]]
++name = "thiserror"
++version = "2.0.18"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
++dependencies = [
++ "thiserror-impl",
++]
++
++[[package]]
++name = "thiserror-impl"
++version = "2.0.18"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn",
++]
++
++[[package]]
++name = "tinystr"
++version = "0.8.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
++dependencies = [
++ "displaydoc",
++ "serde_core",
++ "zerovec",
++]
++
++[[package]]
++name = "type-map"
++version = "0.5.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
++dependencies = [
++ "rustc-hash",
++]
++
++[[package]]
++name = "unic-langid"
++version = "0.9.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a28ba52c9b05311f4f6e62d5d9d46f094bd6e84cb8df7b3ef952748d752a7d05"
++dependencies = [
++ "unic-langid-impl",
++]
++
++[[package]]
++name = "unic-langid-impl"
++version = "0.9.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "dce1bf08044d4b7a94028c93786f8566047edc11110595914de93362559bc658"
++dependencies = [
++ "tinystr",
++]
++
+ [[package]]
+ name = "unicode-ident"
+ version = "1.0.24"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+ 
+ [[package]]
+ name = "utf8parse"
+ version = "0.2.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -528,15 +765,31 @@ version = "0.10.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "08c7c1b1a6a7c8a6b2741a6c21a4f8918e51899b111cfa08d1288202656e3975"
+ dependencies = [
+  "indexmap",
+  "itoa",
+  "libyaml-rs",
+  "ryu",
+  "serde",
+ ]
+ 
++[[package]]
++name = "zerofrom"
++version = "0.1.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272"
++
++[[package]]
++name = "zerovec"
++version = "0.11.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "90f911cbc359ab6af17377d242225f4d75119aec87ea711a880987b18cd7b239"
++dependencies = [
++ "serde",
++ "zerofrom",
++]
++
+ [[package]]
+ name = "zmij"
+ version = "1.0.21"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+diff --git a/crates/muxsmith-cli/Cargo.toml b/crates/muxsmith-cli/Cargo.toml
+index 87b74a8..4beda4b 100644
+--- a/crates/muxsmith-cli/Cargo.toml
++++ b/crates/muxsmith-cli/Cargo.toml
+@@ -3,17 +3,21 @@ name = "muxsmith-cli"
+ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ 
+ [[bin]]
+ name = "muxsmith"
+ path = "src/main.rs"
+ 
+ [dependencies]
+ clap = { version = "4.6.1", features = ["derive"] }
++fluent-bundle = "0.16.0"
+ muxsmith-core = { path = "../muxsmith-core" }
+ schemars = "1.2.1"
+ serde_json = "1.0.150"
++sys-locale = "0.3.2"
++unic-langid = "0.9.6"
+ 
+ [dev-dependencies]
+ assert_cmd = "2.2.2"
+ predicates = "3.1.4"
++tempfile = "3.27.0"
+diff --git a/crates/muxsmith-cli/src/commands/mod.rs b/crates/muxsmith-cli/src/commands/mod.rs
+new file mode 100644
+index 0000000..ae14524
+--- /dev/null
++++ b/crates/muxsmith-cli/src/commands/mod.rs
+@@ -0,0 +1 @@
++pub mod validate;
+diff --git a/crates/muxsmith-cli/src/commands/validate.rs b/crates/muxsmith-cli/src/commands/validate.rs
+new file mode 100644
+index 0000000..1e9e83a
+--- /dev/null
++++ b/crates/muxsmith-cli/src/commands/validate.rs
+@@ -0,0 +1,65 @@
++use std::path::Path;
++
++use muxsmith_core::profile::{lint, load, validate};
++use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
++
++use crate::i18n::Renderer;
++
++pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
++    let diagnostics = collect(profile_path);
++    let exit = match worst_severity(&diagnostics) {
++        Some(Severity::Error) => 2,
++        Some(Severity::Warning) => 1,
++        _ => 0,
++    };
++
++    if json {
++        let entries: Vec<serde_json::Value> = diagnostics
++            .iter()
++            .map(|d| {
++                let mut v = serde_json::to_value(d).unwrap();
++                v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
++                v
++            })
++            .collect();
++        println!("{}", serde_json::json!({ "diagnostics": entries }));
++    } else if diagnostics.is_empty() {
++        println!("{}", renderer.msg("validate-ok", &[]));
++    } else {
++        let mut sorted = diagnostics.clone();
++        sorted.sort_by_key(|d| std::cmp::Reverse(d.severity));
++        for d in &sorted {
++            println!("{}", renderer.diagnostic(d));
++        }
++        let count = |s| {
++            diagnostics
++                .iter()
++                .filter(|d| d.severity == s)
++                .count()
++                .to_string()
++        };
++        println!(
++            "{}",
++            renderer.msg(
++                "validate-summary",
++                &[
++                    ("errors", &count(Severity::Error)),
++                    ("warnings", &count(Severity::Warning)),
++                    ("infos", &count(Severity::Info)),
++                ],
++            )
++        );
++    }
++    exit
++}
++
++fn collect(profile_path: &Path) -> Vec<Diagnostic> {
++    match load::from_file(profile_path) {
++        Err(d) => vec![d],
++        Ok(profile) => {
++            let mut diags = validate::validate(&profile);
++            diags.extend(lint::provable_overlaps(&profile));
++            diags
++        }
++    }
++}
+diff --git a/crates/muxsmith-cli/src/i18n.rs b/crates/muxsmith-cli/src/i18n.rs
+new file mode 100644
+index 0000000..80e869a
+--- /dev/null
++++ b/crates/muxsmith-cli/src/i18n.rs
+@@ -0,0 +1,80 @@
++//! Fluent-based rendering. The ONLY place where diagnostic codes and
++//! params become human text on the CLI side (spec 8.4).
++
++use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
++use unic_langid::LanguageIdentifier;
++
++const EN_DIAGNOSTICS: &str = include_str!("../../../locales/en/diagnostics.ftl");
++const EN_CLI: &str = include_str!("../../../locales/en/cli.ftl");
++
++pub struct Renderer {
++    bundle: FluentBundle<FluentResource>,
++}
++
++impl Renderer {
++    /// v1 ships English only; `locale` is accepted for interface stability
++    /// and falls back to en for any unknown tag (spec 8.4).
++    pub fn new(locale: Option<&str>) -> Renderer {
++        let requested = locale
++            .map(str::to_owned)
++            .or_else(sys_locale::get_locale)
++            .unwrap_or_else(|| "en".into());
++        let langid: LanguageIdentifier =
++            requested.parse().unwrap_or_else(|_| "en".parse().unwrap());
++        let mut bundle = FluentBundle::new(vec![langid]);
++        // No Unicode isolation marks around placeables: CLI output must be
++        // plain grep-able text.
++        bundle.set_use_isolating(false);
++        for source in [EN_DIAGNOSTICS, EN_CLI] {
++            let res =
++                FluentResource::try_new(source.to_owned()).expect("embedded catalog must parse");
++            bundle.add_resource_overriding(res);
++        }
++        Renderer { bundle }
++    }
++
++    pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
++        let Some(message) = self.bundle.get_message(id) else {
++            // Missing catalog entry: fall back to the raw id so the
++            // problem is visible instead of hidden. CI guards this case.
++            return id.to_string();
++        };
++        let Some(pattern) = message.value() else {
++            return id.to_string();
++        };
++        let mut fargs = FluentArgs::new();
++        for (k, v) in args {
++            fargs.set(*k, *v);
++        }
++        let mut errors = Vec::new();
++        self.bundle
++            .format_pattern(pattern, Some(&fargs), &mut errors)
++            .into_owned()
++    }
++
++    pub fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
++        let params: Vec<(&str, &str)> = d
++            .params
++            .iter()
++            .map(|(k, v)| (k.as_str(), v.as_str()))
++            .collect();
++        let message = self.msg(d.code.key(), &params);
++        let severity = self.msg(severity_key(d.severity), &[]);
++        self.msg(
++            "diagnostic-line",
++            &[
++                ("severity", &severity),
++                ("config_path", &d.config_path),
++                ("message", &message),
++            ],
++        )
++    }
++}
++
++fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
++    match s {
++        muxsmith_core::report::Severity::Error => "severity-error",
++        muxsmith_core::report::Severity::Warning => "severity-warning",
++        muxsmith_core::report::Severity::Info => "severity-info",
++    }
++}
+diff --git a/crates/muxsmith-cli/src/main.rs b/crates/muxsmith-cli/src/main.rs
+index 7479257..7aa8b89 100644
+--- a/crates/muxsmith-cli/src/main.rs
++++ b/crates/muxsmith-cli/src/main.rs
+@@ -1,20 +1,25 @@
+ mod cli;
++mod commands;
++mod i18n;
+ 
+ use clap::Parser;
+ 
+ fn main() {
+     let args = cli::Cli::parse();
+     let code = match args.command {
+         cli::Cmd::Schema => {
+             let schema = schemars::schema_for!(muxsmith_core::profile::Profile);
+             println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+             0
+         }
+-        cli::Cmd::Validate { .. } => {
+-            // Implemented in the next task (i18n renderer required first;
+-            // no hardcoded strings allowed here).
+-            2
++        cli::Cmd::Validate {
++            profile,
++            json,
++            locale,
++        } => {
++            let renderer = i18n::Renderer::new(locale.as_deref());
++            commands::validate::run(&profile, json, &renderer)
+         }
+     };
+     std::process::exit(code);
+ }
+diff --git a/crates/muxsmith-cli/tests/cli_validate.rs b/crates/muxsmith-cli/tests/cli_validate.rs
+new file mode 100644
+index 0000000..e1e0a92
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/cli_validate.rs
+@@ -0,0 +1,78 @@
++use assert_cmd::Command;
++use predicates::prelude::*;
++
++fn muxsmith() -> Command {
++    Command::cargo_bin("muxsmith").unwrap()
++}
++
++fn fixture(name: &str) -> String {
++    format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
++}
++
++#[test]
++fn valid_profile_exits_zero_with_ok_message() {
++    muxsmith()
++        .args(["validate", &fixture("good.yaml")])
++        .assert()
++        .success()
++        .stdout(predicate::str::contains("Profile is valid."));
++}
++
++#[test]
++fn invalid_profile_exits_two_and_renders_messages() {
++    muxsmith()
++        .args(["validate", &fixture("bad.yaml")])
++        .assert()
++        .code(2)
++        .stdout(
++            predicate::str::contains("Invalid regular expression")
++                .and(predicate::str::contains("input.pattern"))
++                .and(predicate::str::contains("forced_track")),
++        );
++}
++
++#[test]
++fn warnings_only_exits_one() {
++    // good.yaml plus an overlap warning: audio subset rule.
++    let y = r#"
++profile_version: 1
++input: { pattern: 'E(\d+)', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: audio } }
++  - match: { exact: { type: audio, language: en } }
++"#;
++    let dir = tempfile::tempdir().unwrap();
++    let path = dir.path().join("warn.yaml");
++    std::fs::write(&path, y).unwrap();
++    muxsmith()
++        .args(["validate", path.to_str().unwrap()])
++        .assert()
++        .code(1)
++        .stdout(predicate::str::contains("provably overlap"));
++}
++
++#[test]
++fn json_output_is_machine_readable() {
++    let out = muxsmith()
++        .args(["validate", &fixture("bad.yaml"), "--json"])
++        .assert()
++        .code(2)
++        .get_output()
++        .stdout
++        .clone();
++    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
++    let diags = v["diagnostics"].as_array().unwrap();
++    assert!(!diags.is_empty());
++    let first = &diags[0];
++    assert!(first["code"].is_string());
++    assert!(first["severity"].is_string());
++    assert!(first["rendered"].is_string());
++}
++
++#[test]
++fn missing_file_is_parse_error_exit_two() {
++    muxsmith()
++        .args(["validate", "/nonexistent/profile.yaml"])
++        .assert()
++        .code(2);
++}
+diff --git a/crates/muxsmith-cli/tests/fixtures/bad.yaml b/crates/muxsmith-cli/tests/fixtures/bad.yaml
+new file mode 100644
+index 0000000..8e4aaae
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/fixtures/bad.yaml
+@@ -0,0 +1,6 @@
++profile_version: 1
++input: { pattern: '([', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: audio } }
++  - match: { exact: { type: audio, language: en } }
++  - match: { substring: { forced_track: 'x' } }
+diff --git a/crates/muxsmith-cli/tests/fixtures/good.yaml b/crates/muxsmith-cli/tests/fixtures/good.yaml
+new file mode 100644
+index 0000000..a13aeb0
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/fixtures/good.yaml
+@@ -0,0 +1,5 @@
++profile_version: 1
++input: { pattern: 'S(?<season>\d{2})E(?<episode>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++  - match: { exact: { type: audio, language: en } }
+diff --git a/locales/en/cli.ftl b/locales/en/cli.ftl
+new file mode 100644
+index 0000000..df511b2
+--- /dev/null
++++ b/locales/en/cli.ftl
+@@ -0,0 +1,3 @@
++validate-ok = Profile is valid.
++validate-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info(s).
++diagnostic-line = [{ $severity }] { $config_path }: { $message }
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+new file mode 100644
+index 0000000..9880643
+--- /dev/null
++++ b/locales/en/diagnostics.ftl
+@@ -0,0 +1,34 @@
++severity-error = error
++severity-warning = warning
++severity-info = info
++
++unsupported-profile-version = Unsupported profile_version { $found } (supported: { $supported }).
++parse-error = The profile could not be parsed at "{ $at }": { $detail }
++no-track-rules = The profile defines no track rules; at least one is required.
++empty-match-expression = This match expression is empty and would match every track.
++empty-extensions = The extensions list must not be empty.
++invalid-regex = Invalid regular expression: { $detail }
++unknown-property = Unknown property "{ $property }". It is not part of the mkvmerge identification model.
++not-string-property = Property "{ $property }" has type { $actual_type }; { $condition } conditions require a string property.
++value-type-mismatch = Value for "{ $property }" has type { $found }, expected { $expected }.
++unknown-settable-property = "{ $property }" is not a settable track property.
++invalid-keyword = Invalid keyword "{ $found }". Allowed: { $allowed }.
++locator-conflict = match_to_source and match_pattern are mutually exclusive; set only one.
++invalid-template = Invalid template: { $detail }
++unknown-template-field = Unknown template field "{ $field }". Available fields: { $allowed }.
++unknown-template-filter = Unknown template filter: { $detail }
++path-separator-in-template = Filename templates must not contain path separators.
++attachment-rule-shape = Each attachment rule needs exactly one of select, drop, add (found { $found }).
++provable-overlap = Rules { $rule_a } and { $rule_b } provably overlap: every track matching one also matches the other. Add a distinguishing condition to one of them.
++ambiguous-rule = Rule matches { $count } tracks; it must match exactly one.
++overlapping-rules = Rules { $rule_a } and { $rule_b } both claim track { $track }.
++missing-track = No track matches this non-optional rule.
++missing-external = No file matches this external locator.
++ambiguous-external = { $count } files match this external locator; exactly one is required.
++output-collision = Output path { $path } collides with an existing file or another planned output.
++source-overwrite = Output path { $path } would overwrite a source file. This is never allowed.
++duplicate-identifier = Files { $file_a } and { $file_b } share the identifier "{ $identifier }".
++donor-is-primary = External donor file { $donor } is itself a primary source.
++ignored-file = File matches the extension list but not the input pattern.
++multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
++unknown-property-skew = Property "{ $property }" is unknown to this Muxsmith build but reported by the local mkvmerge; it is matched untyped.
