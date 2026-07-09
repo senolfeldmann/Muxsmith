@@ -3,8 +3,9 @@ use std::path::Path;
 
 use muxsmith_core::capability::runtime::LanguageIndex;
 use muxsmith_core::identify::{Identification, Identify, IdentifyError};
-use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
+use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
+use muxsmith_core::profile::match_expr::Scalar;
 use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::report::{DiagCode, Severity};
 
@@ -26,6 +27,7 @@ fn lang() -> LanguageIndex {
     LanguageIndex::from_rows(&[
         ["English", "eng", "eng", "en"],
         ["German", "ger", "ger", "de"],
+        ["Turkish", "tur", "tur", "tr"],
     ])
 }
 
@@ -101,6 +103,64 @@ fn plan_and_assignment_carry_resolution_field_defaults() {
     assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
     assert_eq!(plan.assignments[0].track_kind.as_deref(), Some("video"));
     assert!(plan.assignments[0].changes.is_empty());
+}
+
+// Task 5: settable `changes` resolve onto a matched assignment, in
+// property-name order (the rule's `changes` map is a BTreeMap).
+#[test]
+fn changes_resolve_to_applied_changes_in_property_order() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: audio, language: en } }
+    changes:
+      language: tr
+      track_name: X
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.assignments[0].changes,
+        vec![
+            AppliedChange {
+                property: "language".into(),
+                value: Scalar::Str("tr".into()),
+            },
+            AppliedChange {
+                property: "track_name".into(),
+                value: Scalar::Str("X".into()),
+            },
+        ]
+    );
+}
+
+// Task 5: a settable `language` value validated at plan time (D2), at the
+// point of application, distinct from the batch-level `match.exact.language`
+// walk (`bad_language_value_is_batch_invalid_property_value`).
+#[test]
+fn invalid_changes_language_is_plan_time_invalid_property_value() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: audio, language: en } }
+    changes:
+      language: zzz
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none());
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::InvalidPropertyValue
+                && d.config_path == "tracks[0].changes.language"),
+        "diags: {:?}",
+        fr.diagnostics
+    );
 }
 
 #[test]

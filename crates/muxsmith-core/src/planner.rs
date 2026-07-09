@@ -15,7 +15,7 @@ use crate::discovery::{self, PrimaryFile};
 use crate::identify::{Identification, Identify};
 use crate::matcher;
 use crate::profile::match_expr::{MatchExpr, Scalar};
-use crate::profile::model::{CollisionPolicy, FilenameCfg, Profile, SourceCfg};
+use crate::profile::model::{CollisionPolicy, FilenameCfg, Profile, SourceCfg, TrackRule};
 use crate::report::{DiagCode, Diagnostic, Severity};
 use crate::template::Template;
 
@@ -471,12 +471,13 @@ fn resolve_file(
                     .entry((source_path.clone(), tid))
                     .or_default()
                     .push(ri);
+                let changes = resolve_changes(rule, &base, &primary.path, lang, &mut diagnostics);
                 assignments.push(Assignment {
                     rule_index: ri,
                     source: source_path,
                     track_id: Some(tid),
                     track_kind: Some(tkind),
-                    changes: vec![],
+                    changes,
                 });
             }
             n => {
@@ -532,6 +533,62 @@ fn resolve_file(
         identifier: primary.identifier.whole.clone(),
         plan,
         diagnostics,
+    }
+}
+
+// Builds the AppliedChange list for a track a rule resolved to, from the
+// rule's `changes` map (spec 4.4). Iterates the BTreeMap in key order, so the
+// result is already property-name ascending. Validates a `language` value
+// against the runtime LanguageIndex at the point of application (plan-time
+// InvalidPropertyValue, D2); other settables are carried through unchecked,
+// since validate.rs already checked their type and known-ness at config
+// time (deliberate scope choice, see task brief: batch-wide language
+// consistency with `walk_exact_languages` is not required for v1).
+fn resolve_changes(
+    rule: &TrackRule,
+    base: &str,
+    primary_path: &Path,
+    lang: &LanguageIndex,
+    diags: &mut Vec<Diagnostic>,
+) -> Vec<AppliedChange> {
+    let Some(changes) = &rule.changes else {
+        return Vec::new();
+    };
+    changes
+        .iter()
+        .map(|(property, value)| {
+            if property == "language" {
+                let valid = matches!(value, Scalar::Str(s) if lang.normalize(s).is_some());
+                if !valid {
+                    diags.push(
+                        Diagnostic::error(
+                            DiagCode::InvalidPropertyValue,
+                            format!("{base}.changes.language"),
+                        )
+                        .for_file(primary_path)
+                        .with("property", "language")
+                        .with("value", scalar_display(value)),
+                    );
+                }
+            }
+            AppliedChange {
+                property: property.clone(),
+                value: value.clone(),
+            }
+        })
+        .collect()
+}
+
+// Renders a Scalar as the plain string a diagnostic's `value` param wants:
+// no quoting, no type tag, just the value a user typed (or its literal
+// rendering for non-string types, which only reach here via a mistyped
+// `changes.language`, since the settable `language` is always a string).
+fn scalar_display(value: &Scalar) -> String {
+    match value {
+        Scalar::Bool(b) => b.to_string(),
+        Scalar::Int(i) => i.to_string(),
+        Scalar::Float(f) => f.to_string(),
+        Scalar::Str(s) => s.clone(),
     }
 }
 
