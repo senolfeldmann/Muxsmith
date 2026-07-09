@@ -166,6 +166,32 @@ tracks:
     );
 }
 
+// Task 5: a non-string `changes.language` value (e.g. a bool) is also
+// InvalidPropertyValue at plan time, same as a recognized-but-invalid
+// string ("zzz" above): `resolve_changes` only accepts `Scalar::Str`.
+#[test]
+fn changes_language_non_string_value_is_invalid_property_value() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: audio, language: en } }
+    changes:
+      language: true
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none());
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::InvalidPropertyValue
+                && d.config_path == "tracks[0].changes.language"),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
 #[test]
 fn ambiguous_rule_when_two_tracks_match() {
     let p = r#"
