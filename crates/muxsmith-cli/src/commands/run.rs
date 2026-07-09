@@ -113,13 +113,14 @@ pub fn run(
             // mkvmerge was located but querying it failed (a broken
             // installation): planning never runs here either, so json mode
             // gets the same config-only, empty-jobs/zeroed-summary document
-            // the locate()-failure branch above builds; human mode is
-            // unchanged (stderr only).
+            // shape the locate()-failure branch above builds, but with
+            // `mkvmerge_found: true` - the binary WAS found, only the query
+            // failed; human mode is unchanged (stderr only).
             if json {
                 println!(
                     "{}",
                     run_json_document(
-                        dry_run::config_only_json(&config_diags, Some(false), renderer),
+                        dry_run::config_only_json(&config_diags, Some(true), renderer),
                         &[],
                         &[],
                     )

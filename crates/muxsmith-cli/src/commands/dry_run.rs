@@ -82,10 +82,12 @@ pub fn run(
         Err(_) => {
             // mkvmerge was located but querying it failed (a broken
             // installation): planning never runs here either, so json mode
-            // gets the same config-only document the locate()-failure
-            // branch above builds; human mode is unchanged (stderr only).
+            // gets the same config-only document shape the locate()-failure
+            // branch above builds, but with `mkvmerge_found: true` - the
+            // binary WAS found, only the query failed; human mode is
+            // unchanged (stderr only).
             if json {
-                println!("{}", config_only_json(&config_diags, Some(false), renderer));
+                println!("{}", config_only_json(&config_diags, Some(true), renderer));
             } else {
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
             }
@@ -154,12 +156,13 @@ pub(crate) fn batch_json(
 /// superset of `validate` even on these paths.
 ///
 /// `mkvmerge_found` flags, for JSON consumers, whether mkvmerge's presence
-/// was actually established: `Some(false)` on the mkvmerge-not-found and
-/// mkvmerge-query-failed paths, where the lookup ran and the JSON consumer
-/// cannot otherwise distinguish this from any other error-severity report;
-/// `None` (the key is absent from the document) on a profile-load failure,
-/// where the lookup never ran at all and asserting `false` would claim a
-/// fact never established.
+/// was actually established: `Some(false)` on the mkvmerge-not-found path
+/// (the lookup ran and failed, and the JSON consumer cannot otherwise
+/// distinguish this from any other error-severity report); `Some(true)` on
+/// the mkvmerge-query-failed path (the binary was found, only the
+/// subsequent query failed); `None` (the key is absent from the document)
+/// on a profile-load failure, where the lookup never ran at all and
+/// asserting either value would claim a fact never established.
 ///
 /// `pub(crate)`: `run --json` (D15) reuses this for its own equivalent
 /// paths, which need the identical superset-of-validate guarantee.

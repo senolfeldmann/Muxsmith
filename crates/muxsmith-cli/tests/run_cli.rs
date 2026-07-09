@@ -520,6 +520,11 @@ fn run_json_emits_a_document_when_the_language_query_fails() {
         report["summary"],
         serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
     );
+    assert_eq!(
+        report["mkvmerge_found"], true,
+        "locate() succeeded on this path (only the language query failed), \
+         so mkvmerge_found must be true, got: {report}"
+    );
 }
 
 /// Same forced-broken-mkvmerge condition, human mode: pins down that

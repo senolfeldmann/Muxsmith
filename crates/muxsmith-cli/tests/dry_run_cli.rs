@@ -551,6 +551,11 @@ fn dry_run_json_emits_a_document_when_the_language_query_fails() {
     assert_eq!(report["files"].as_array().unwrap().len(), 0);
     assert_eq!(report["batch_diagnostics"].as_array().unwrap().len(), 0);
     assert_eq!(report["suggestions"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["mkvmerge_found"], true,
+        "locate() succeeded on this path (only the language query failed), \
+         so mkvmerge_found must be true, got: {report}"
+    );
 }
 
 /// Same forced-broken-mkvmerge condition, human mode: pins down that
