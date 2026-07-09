@@ -178,11 +178,19 @@ one), appended in resolution order. An `add` matching **zero** files emits a
 **warning** (`MissingExternal` at `attachments.rules[i].add`), not an error: it
 does not suppress the plan.
 
-- Rationale: attachments are auxiliary payload and come in sets (the same
-  "fonts come in sets" reasoning that makes `select`/`drop` non-unique in 4.9);
-  a one-file-per-add rule would be artificially restrictive. Zero matches is
-  worth surfacing (likely a mistake) but must not kill an otherwise-valid mux,
-  unlike a missing track donor.
+- Rationale: the invariant across the whole model is slot-vs-collection, not
+  tracks-vs-attachments. Everything that fills a unique output slot is
+  uniqueness-constrained (track `match`, track `source.external`, chapters
+  external: exactly one, error on 0/>=2); everything that populates the
+  attachment collection is multi (`select`, `drop`, and therefore `add`). A
+  `Locator` is a query (folder + extensions + optional pattern), which naturally
+  returns a set; track/chapters clamp it to one only because a slot demands it.
+  So `add`-attaches-all is the consistent application of the existing rule, not a
+  font special case; exactly-one would instead make `add` the lone unique
+  attachment rule kind. Zero matches is worth surfacing (likely a mistake) but
+  must not kill an otherwise-valid mux, unlike a missing track donor.
+- Dedup: `add_files` is deduplicated by path, so two `add` rules matching the
+  same file attach it once (`--attach-file X` twice would embed two copies).
 - Tradeoff: reuses `MissingExternal` at a non-default (warning) severity, so its
   message wording is track/chapters-flavored; acceptable for v1, a wording
   refinement is a locale-only follow-up, not a code change. Contrast with track
