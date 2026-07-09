@@ -43,6 +43,10 @@ pub enum Cmd {
         /// Output directory (overrides the profile default).
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Collision policy override (spec 4.2 run input); falls back to the
+        /// profile's `output.on_collision` when unset.
+        #[arg(long, value_enum)]
+        on_collision: Option<CollisionArg>,
         /// Emit the structured batch report as JSON.
         #[arg(long)]
         json: bool,
@@ -61,4 +65,27 @@ pub enum Cmd {
         #[arg(long)]
         locale: Option<String>,
     },
+}
+
+/// CLI value for the collision-policy override (spec 4.2 run input). Maps
+/// to core's CollisionPolicy; a CLI-local type so core stays clap-free.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum CollisionArg {
+    /// Refuse the colliding output (default policy).
+    Error,
+    /// Skip the colliding output with a warning.
+    Skip,
+    /// Replace the pre-existing file.
+    Overwrite,
+}
+
+impl CollisionArg {
+    /// The core policy this argument selects.
+    pub fn policy(self) -> muxsmith_core::profile::model::CollisionPolicy {
+        match self {
+            CollisionArg::Error => muxsmith_core::profile::model::CollisionPolicy::Error,
+            CollisionArg::Skip => muxsmith_core::profile::model::CollisionPolicy::Skip,
+            CollisionArg::Overwrite => muxsmith_core::profile::model::CollisionPolicy::Overwrite,
+        }
+    }
 }

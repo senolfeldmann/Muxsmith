@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
 use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
+use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::{Diagnostic, Severity};
 
@@ -29,6 +30,7 @@ pub fn run(
     profile_path: &Path,
     source: Option<PathBuf>,
     output: Option<PathBuf>,
+    on_collision: Option<CollisionPolicy>,
     json: bool,
     renderer: &Renderer,
 ) -> i32 {
@@ -75,7 +77,7 @@ pub fn run(
     let run = RunInputs {
         source: source_dir,
         output,
-        on_collision: None,
+        on_collision,
     };
 
     let mut ident = LiveIdentifier {

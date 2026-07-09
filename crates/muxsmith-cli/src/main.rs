@@ -25,11 +25,19 @@ fn main() {
             profile,
             source,
             output,
+            on_collision,
             json,
             locale,
         } => {
             let renderer = i18n::Renderer::new(locale.as_deref());
-            commands::dry_run::run(&profile, source, output, json, &renderer)
+            commands::dry_run::run(
+                &profile,
+                source,
+                output,
+                on_collision.map(cli::CollisionArg::policy),
+                json,
+                &renderer,
+            )
         }
         cli::Cmd::Identify { file, json, locale } => {
             let renderer = i18n::Renderer::new(locale.as_deref());
