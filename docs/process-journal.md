@@ -174,3 +174,25 @@ no-single-fix partition report (D6 remainder); Plan 3 (attachments/chapters/
 tags/title, command generation, executor); `--list-types` extension validation
 (no diag code yet); CI does not install mkvtoolnix so the gated tests self-skip
 there. See HANDOFF.md.
+
+## 2026-07-09 | Plan 2 fix pass (SDD, corrective) | session (Peter, Opus 4.8)
+
+**Scope.** Corrective pass after Plan 2 was executed inline (no independent review) and then given a retrofit review that found ~11 bugs + 3 design questions. Commits `847b476..59d24c8`. Executed via subagent-driven-development this time: fresh implementer subagent per task, independent reviewer subagent for the substantive tasks, fix waves, final whole-branch review on opus. Artifacts archived at docs/process-journal/artifacts/plan-2-fixes-sdd/ (the per-task trail inline Plan 2 never produced).
+
+**Decisions (Şenol) folded into the spec.** #1 absent boolean matchable property compares false for exact (mirror mkvmerge, 4.4); #2 empty any/not is a config error EmptyMatchList (4.3); #3 two-planned output collision always errors, on_collision governs on-disk only (4.8). Plus 5.5 made explicit dry-run is a strict superset of validate.
+
+**What the process caught (the evidence).** Independent review found real defects at 5 of the review gates, none caught by the implementer's own tests:
+- F1 (dry-run/validate): reviewer FAILED spec on the mkvmerge-not-found path silently dropping config diagnostics - the implementer had explicitly waved it off as a judgment call. Fixed; the fixer then found the branch WAS testable (PATH override).
+- F5 (SourceOverwrite): reviewer found Critical - donor paths scoped per-primary, not batch-wide (my own dispatch said batch-wide; implementer narrowed it). One primary's output could overwrite another's donor. Fixed via a batch-wide post-pass.
+- F6 (output/collision): reviewer found the keep-name .mkv handling regressed when the two arms were unified, plus the valid-append path was untested. Fixed.
+- F8 (symlinks): reviewer found the broken-symlink skip path untested (code correct, coverage gap). Tests added.
+- FINAL whole-branch review (opus) caught what EVERY per-task review missed: a template rendering to literal `.mkv` yields a hidden empty-stem `.mkv` output at exit 0 (F6 checked the pre-append value, not the final stem). This is the whole-branch stage earning its place. Fixed (59d24c8).
+- F4, F7 passed per-task review clean. F2, F3, F9 controller-verified (mechanical), covered by the final review. 6 Minor items from the final review recorded in the archived FINAL-review.md for a follow-up.
+
+**Process mechanics.** 9 planned tasks (F1-F9) + 1 final-review fix. ~13 implementer/fixer dispatches, 6 reviewer dispatches (F4/F5/F6/F7/F8 per-task + 1 final). Models: sonnet for implementers and per-task reviewers, opus for the final whole-branch review. Fix waves on F1, F5, F6, F8, and the final catch. Controller verified every task's suite itself (never trusted report arithmetic). 164 tests green at close, fmt/clippy/deny clean, CI green (test + deny) at 59d24c8. One transient: the F2 implementer died on a 500 mid-commit; its edits were complete, controller finished the commit.
+
+**Contrast with inline Plan 2.** Same author-quality implementers, but the independent reviewer/controller separation turned "125 tests green, shipped ~11 bugs" into caught-before-merge. This is the concrete before/after for the multi-stage-review claim.
+
+**Deltas.** F2 (new codes) done inline-by-controller-commit after the subagent's 500. F4/F7 needed no fix wave. F7 added a third diag code (SuggestionsCapped) to log the cap non-silently - a small scope growth the task invited.
+
+**Open threads.** 6 Minor final-review items (see archived FINAL-review.md); the mkvmerge-query-failed path still drops config diags (same class as the F1 fix, logged in the ledger); nits from the original review (OverlappingRules >=3 claimants, lint-vs-planner rule-ref formatting, regex recompiled per call, proptest coverage). Plan 3 (attachments/chapters/tags/title, command generation, executor, run) is next - execute via SDD per the HANDOFF standing instruction.
