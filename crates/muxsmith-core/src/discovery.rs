@@ -192,7 +192,10 @@ fn extension_matches(path: &Path, exts_lower: &[String]) -> bool {
 }
 
 /// Regular files under `dir`, recursing into subdirectories only if
-/// `recursive`. Symlinks are not followed (avoids cycles). Sorted for
+/// `recursive`. A symlink is resolved via its target's metadata: a symlink to
+/// a regular file is included, under its own (link) path; a symlink to a
+/// directory is never recursed into, even when `recursive` (cycle guard); a
+/// broken symlink (unreadable target) is skipped silently. Sorted for
 /// deterministic output; unreadable directories are skipped silently.
 fn walk_files(dir: &Path, recursive: bool) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -214,6 +217,14 @@ fn walk_files(dir: &Path, recursive: bool) -> Vec<PathBuf> {
                 }
             } else if meta.is_file() {
                 out.push(path);
+            } else if meta.file_type().is_symlink() {
+                let Ok(target_meta) = std::fs::metadata(&path) else {
+                    continue; // broken symlink; skip silently
+                };
+                if target_meta.is_file() {
+                    out.push(path);
+                }
+                // A directory target is never recursed into (cycle guard).
             }
         }
     }
@@ -302,6 +313,48 @@ mod tests {
         let (primaries, _) = scan_primaries(dir.path(), &input(r"E(\d{2})", &["mkv"], false));
         assert_eq!(primaries.len(), 1);
         assert_eq!(primaries[0].identifier.whole, "E02");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovers_symlinked_primary_file() {
+        use std::os::unix::fs::symlink;
+
+        // Real target lives outside the scanned tree entirely.
+        let target_dir = tempfile::tempdir().unwrap();
+        let target = target_dir.path().join("Show.S01E05.mkv");
+        fs::write(&target, b"x").unwrap();
+
+        let source_dir = tempfile::tempdir().unwrap();
+        let link = source_dir.path().join("Show.S01E05.mkv");
+        symlink(&target, &link).unwrap();
+
+        let (primaries, diags) = scan_primaries(
+            source_dir.path(),
+            &input(r"S(?<season>\d{2})E(?<episode>\d{2})", &["mkv"], true),
+        );
+        assert_eq!(primaries.len(), 1, "diags: {diags:?}");
+        assert_eq!(primaries[0].path, link);
+        assert_eq!(primaries[0].identifier.whole, "S01E05");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_directory_is_not_recursed_into() {
+        use std::os::unix::fs::symlink;
+
+        // A directory outside the scanned tree, containing a file that would
+        // match if (and only if) the symlink below were followed.
+        let real_dir = tempfile::tempdir().unwrap();
+        fs::write(real_dir.path().join("E09.mkv"), b"x").unwrap();
+
+        let source_dir = tempfile::tempdir().unwrap();
+        symlink(real_dir.path(), source_dir.path().join("linked_sub")).unwrap();
+        fs::write(source_dir.path().join("E01.mkv"), b"x").unwrap();
+
+        let (primaries, _) = scan_primaries(source_dir.path(), &input(r"E(\d{2})", &["mkv"], true));
+        assert_eq!(primaries.len(), 1);
+        assert_eq!(primaries[0].identifier.whole, "E01");
     }
 
     #[test]
