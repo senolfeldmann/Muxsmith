@@ -162,6 +162,151 @@ fn keep_filename_renders_mkv_output() {
 }
 
 #[test]
+fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    let profile = from_str(P_VIDEO_AUDIO, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    // Empty fixture map: FakeIdent::identify errors for every path.
+    let mut ident = FakeIdent {
+        by_name: HashMap::new(),
+    };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::UnidentifiableSource)
+        .unwrap_or_else(|| panic!("expected UnidentifiableSource, got: {:?}", fr.diagnostics));
+    assert!(
+        !d.params.get("detail").unwrap_or(&String::new()).is_empty(),
+        "expected a non-empty detail param, got: {d:?}"
+    );
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingTrack),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
+fn unidentifiable_donor_yields_unidentifiable_source_not_missing_external() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Donor.S01E01.srt"), b"y").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+  - source:
+      external: { path: '.', extensions: [srt], match_to_source: true }
+    match: { exact: { type: subtitles } }
+    optional: true
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    // Only the primary identifies; the donor has no fixture, so it fails.
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    // A present-but-unidentifiable donor is a hard error even though the
+    // rule is optional: optional only covers zero matches, not a broken file.
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnidentifiableSource),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingExternal),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
+fn source_overwrite_when_output_equals_donor_path() {
+    let root = tempfile::tempdir().unwrap();
+    let src_dir = root.path().join("src");
+    let donors_dir = root.path().join("donors");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::create_dir_all(&donors_dir).unwrap();
+    std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(donors_dir.join("Donor.S01E01.mkv"), b"y").unwrap();
+
+    // The rendered output ("Donor.S01E01.mkv" in the donor directory) is made
+    // to collide exactly with the external rule's resolved donor path.
+    let donors_dir_str = donors_dir.to_str().unwrap();
+    let profile_yaml = format!(
+        r#"
+profile_version: 1
+input: {{ pattern: 'S(?<s>\d{{2}})E(?<e>\d{{2}})', extensions: [mkv] }}
+output:
+  filename: {{ template: 'Donor.{{match}}.mkv' }}
+tracks:
+  - match: {{ exact: {{ type: video }} }}
+  - source:
+      external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
+    match: {{ exact: {{ type: audio }} }}
+"#,
+        donors_dir = donors_dir_str
+    );
+    let profile = from_str(&profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: src_dir.clone(),
+        output: Some(donors_dir.clone()),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Donor.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(root);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
 fn bad_language_value_is_batch_invalid_property_value() {
     let p = r#"
 profile_version: 1

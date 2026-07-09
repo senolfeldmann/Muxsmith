@@ -243,11 +243,11 @@ fn resolve_file(
 
     let ident = match id.identify(&primary.path) {
         Ok(i) => i,
-        Err(_) => {
+        Err(e) => {
             diagnostics.push(
-                Diagnostic::error(DiagCode::MissingTrack, "input")
+                Diagnostic::error(DiagCode::UnidentifiableSource, "input")
                     .for_file(&primary.path)
-                    .with("detail", "file could not be identified"),
+                    .with("detail", format!("{e:?}")),
             );
             return FileReport {
                 source: primary.path.clone(),
@@ -268,6 +268,10 @@ fn resolve_file(
     let mut assignments = Vec::new();
     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();
+    // Every external-source rule's resolved donor path, so the
+    // SourceOverwrite check below can never let a rendered output clobber a
+    // file we read from (spec 4.8, 5.2).
+    let mut donor_paths: Vec<PathBuf> = Vec::new();
 
     for (ri, rule) in profile.tracks.iter().enumerate() {
         let base = format!("tracks[{ri}]");
@@ -296,6 +300,7 @@ fn resolve_file(
                     }
                     1 => {
                         let donor = hits.into_iter().next().unwrap();
+                        donor_paths.push(donor.clone());
                         if primary_paths.contains(&donor) {
                             diagnostics.push(
                                 Diagnostic::warning(
@@ -308,14 +313,14 @@ fn resolve_file(
                         }
                         match id.identify(&donor) {
                             Ok(di) => (donor, di),
-                            Err(_) => {
+                            Err(e) => {
                                 diagnostics.push(
                                     Diagnostic::error(
-                                        DiagCode::MissingExternal,
+                                        DiagCode::UnidentifiableSource,
                                         format!("{base}.source.external"),
                                     )
                                     .for_file(&primary.path)
-                                    .with("detail", "donor could not be identified"),
+                                    .with("detail", format!("{e:?}")),
                                 );
                                 assignments.push(Assignment {
                                     rule_index: ri,
@@ -410,7 +415,7 @@ fn resolve_file(
     let output = render_output(profile, primary, output_dir, &mut diagnostics);
 
     if let Some(out) = &output
-        && (primary_paths.contains(out) || out == &primary.path)
+        && (primary_paths.contains(out) || donor_paths.contains(out))
     {
         diagnostics.push(
             Diagnostic::error(DiagCode::SourceOverwrite, "output")
