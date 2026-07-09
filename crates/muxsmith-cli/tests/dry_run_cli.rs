@@ -273,6 +273,111 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
     assert_eq!(report["mkvmerge_found"], false);
 }
 
+/// D15 (spec 8.1): `--on-collision` overrides the profile's output-collision
+/// policy for a single dry-run invocation. Default policy is `error`, so a
+/// pre-existing file at the planned output path exits 2; passing
+/// `--on-collision skip` downgrades the same collision to a warning and
+/// exits 1, with the JSON report carrying an `output-collision` diagnostic
+/// at `warning` severity.
+#[test]
+fn dry_run_on_collision_flag_overrides_default_error_policy() {
+    if !have_mkvmerge() {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    }
+    // Separate source and output tempdirs: nesting the output dir inside
+    // the source dir would let discovery (which scans recursively) pick up
+    // the pre-existing collision file as a second primary, muddying the
+    // fixture with an unrelated `duplicate-identifier`/`source-overwrite`.
+    let src_dir = tempfile::tempdir().unwrap();
+    let out_dir = tempfile::tempdir().unwrap();
+    let wav = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+    );
+    let srt = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+    );
+    let media = src_dir.path().join("Show.S01E01.mkv");
+    let ok = Command::new("mkvmerge")
+        .args(["-q", "-o"])
+        .arg(&media)
+        .args(["--language", "0:eng"])
+        .arg(wav)
+        .args(["--language", "0:eng"])
+        .arg(srt)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+
+    let profile = src_dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    // Pre-existing file at the planned output path ("keep" filename: source
+    // basename, ".mkv" enforced) triggers OutputCollision (spec 4.8).
+    std::fs::write(out_dir.path().join("Show.S01E01.mkv"), b"pre-existing").unwrap();
+
+    // Default policy (error): exits 2.
+    let default_out = Command::cargo_bin("muxsmith")
+        .unwrap()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(src_dir.path())
+        .args(["--output"])
+        .arg(out_dir.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert_eq!(
+        default_out.status.code(),
+        Some(2),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&default_out.stdout),
+        String::from_utf8_lossy(&default_out.stderr)
+    );
+
+    // --on-collision skip: downgrades to a warning, exits 1.
+    let skip_out = Command::cargo_bin("muxsmith")
+        .unwrap()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(src_dir.path())
+        .args(["--output"])
+        .arg(out_dir.path())
+        .args(["--on-collision", "skip"])
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert_eq!(
+        skip_out.status.code(),
+        Some(1),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&skip_out.stdout),
+        String::from_utf8_lossy(&skip_out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&skip_out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&skip_out.stderr)
+        )
+    });
+    let diag = report["files"][0]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "output-collision")
+        .unwrap_or_else(|| panic!("expected an output-collision diagnostic, got: {report}"));
+    assert_eq!(diag["severity"], "warning");
+}
+
 /// Same forced-missing-mkvmerge condition as above, human (non-`--json`)
 /// mode: the config diagnostic must still be printed (superset of
 /// `validate`), and the mkvmerge-not-found message must still appear, exit
