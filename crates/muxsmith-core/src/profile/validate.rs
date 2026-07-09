@@ -296,11 +296,23 @@ fn validate_expr(
         }
     }
     if let Some(any) = &expr.any {
+        if any.is_empty() {
+            diags.push(Diagnostic::error(
+                DiagCode::EmptyMatchList,
+                format!("{path}.any"),
+            ));
+        }
         for (i, sub) in any.iter().enumerate() {
             validate_expr(sub, &format!("{path}.any[{i}]"), prop_type, diags);
         }
     }
     if let Some(not) = &expr.not {
+        if not.is_empty() {
+            diags.push(Diagnostic::error(
+                DiagCode::EmptyMatchList,
+                format!("{path}.not"),
+            ));
+        }
         for (i, sub) in not.iter().enumerate() {
             validate_expr(sub, &format!("{path}.not[{i}]"), prop_type, diags);
         }

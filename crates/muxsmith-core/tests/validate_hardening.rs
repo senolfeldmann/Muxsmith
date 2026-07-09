@@ -47,3 +47,23 @@ fn good_type_value_passes() {
     let y = format!("{HEAD}  - match: {{ exact: {{ type: subtitles }} }}\n");
     assert!(!codes(&y).contains(&DiagCode::InvalidPropertyValue));
 }
+
+#[test]
+fn empty_any_list_is_empty_match_list() {
+    let y = format!("{HEAD}  - match: {{ any: [] }}\n");
+    assert!(codes(&y).contains(&DiagCode::EmptyMatchList));
+}
+
+#[test]
+fn empty_not_list_is_empty_match_list() {
+    let y = format!("{HEAD}  - match: {{ not: [] }}\n");
+    assert!(codes(&y).contains(&DiagCode::EmptyMatchList));
+}
+
+#[test]
+fn populated_any_and_not_are_not_empty_match_list() {
+    let y = format!(
+        "{HEAD}  - match: {{ any: [{{ exact: {{ type: subtitles }} }}], not: [{{ exact: {{ type: audio }} }}] }}\n"
+    );
+    assert!(!codes(&y).contains(&DiagCode::EmptyMatchList));
+}
