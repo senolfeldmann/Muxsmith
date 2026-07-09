@@ -1,0 +1,122 @@
+diff --git a/crates/muxsmith-core/src/discovery.rs b/crates/muxsmith-core/src/discovery.rs
+index 617ec92..af1d496 100644
+--- a/crates/muxsmith-core/src/discovery.rs
++++ b/crates/muxsmith-core/src/discovery.rs
+@@ -185,21 +185,24 @@ pub fn resolve_locator(
+ }
+ 
+ fn extension_matches(path: &Path, exts_lower: &[String]) -> bool {
+     match path.extension().and_then(|e| e.to_str()) {
+         Some(e) => exts_lower.iter().any(|x| x == &e.to_ascii_lowercase()),
+         None => false,
+     }
+ }
+ 
+ /// Regular files under `dir`, recursing into subdirectories only if
+-/// `recursive`. Symlinks are not followed (avoids cycles). Sorted for
++/// `recursive`. A symlink is resolved via its target's metadata: a symlink to
++/// a regular file is included, under its own (link) path; a symlink to a
++/// directory is never recursed into, even when `recursive` (cycle guard); a
++/// broken symlink (unreadable target) is skipped silently. Sorted for
+ /// deterministic output; unreadable directories are skipped silently.
+ fn walk_files(dir: &Path, recursive: bool) -> Vec<PathBuf> {
+     let mut out = Vec::new();
+     let mut stack = vec![dir.to_path_buf()];
+     while let Some(d) = stack.pop() {
+         let Ok(entries) = std::fs::read_dir(&d) else {
+             continue;
+         };
+         let mut dir_entries: Vec<PathBuf> =
+             entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+@@ -207,20 +210,28 @@ fn walk_files(dir: &Path, recursive: bool) -> Vec<PathBuf> {
+         for path in dir_entries {
+             let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                 continue;
+             };
+             if meta.is_dir() {
+                 if recursive {
+                     stack.push(path);
+                 }
+             } else if meta.is_file() {
+                 out.push(path);
++            } else if meta.file_type().is_symlink() {
++                let Ok(target_meta) = std::fs::metadata(&path) else {
++                    continue; // broken symlink; skip silently
++                };
++                if target_meta.is_file() {
++                    out.push(path);
++                }
++                // A directory target is never recursed into (cycle guard).
+             }
+         }
+     }
+     out.sort();
+     out
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -297,20 +308,62 @@ mod tests {
+     fn non_recursive_scan_skips_subdirs() {
+         let dir = tempfile::tempdir().unwrap();
+         fs::create_dir(dir.path().join("sub")).unwrap();
+         fs::write(dir.path().join("sub").join("E01.mkv"), b"x").unwrap();
+         fs::write(dir.path().join("E02.mkv"), b"x").unwrap();
+         let (primaries, _) = scan_primaries(dir.path(), &input(r"E(\d{2})", &["mkv"], false));
+         assert_eq!(primaries.len(), 1);
+         assert_eq!(primaries[0].identifier.whole, "E02");
+     }
+ 
++    #[cfg(unix)]
++    #[test]
++    fn discovers_symlinked_primary_file() {
++        use std::os::unix::fs::symlink;
++
++        // Real target lives outside the scanned tree entirely.
++        let target_dir = tempfile::tempdir().unwrap();
++        let target = target_dir.path().join("Show.S01E05.mkv");
++        fs::write(&target, b"x").unwrap();
++
++        let source_dir = tempfile::tempdir().unwrap();
++        let link = source_dir.path().join("Show.S01E05.mkv");
++        symlink(&target, &link).unwrap();
++
++        let (primaries, diags) = scan_primaries(
++            source_dir.path(),
++            &input(r"S(?<season>\d{2})E(?<episode>\d{2})", &["mkv"], true),
++        );
++        assert_eq!(primaries.len(), 1, "diags: {diags:?}");
++        assert_eq!(primaries[0].path, link);
++        assert_eq!(primaries[0].identifier.whole, "S01E05");
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn symlinked_directory_is_not_recursed_into() {
++        use std::os::unix::fs::symlink;
++
++        // A directory outside the scanned tree, containing a file that would
++        // match if (and only if) the symlink below were followed.
++        let real_dir = tempfile::tempdir().unwrap();
++        fs::write(real_dir.path().join("E09.mkv"), b"x").unwrap();
++
++        let source_dir = tempfile::tempdir().unwrap();
++        symlink(real_dir.path(), source_dir.path().join("linked_sub")).unwrap();
++        fs::write(source_dir.path().join("E01.mkv"), b"x").unwrap();
++
++        let (primaries, _) = scan_primaries(source_dir.path(), &input(r"E(\d{2})", &["mkv"], true));
++        assert_eq!(primaries.len(), 1);
++        assert_eq!(primaries[0].identifier.whole, "E01");
++    }
++
+     #[test]
+     fn resolve_locator_matches_by_identifier() {
+         let dir = tempfile::tempdir().unwrap();
+         fs::write(dir.path().join("Show.S01E01.srt"), b"x").unwrap();
+         fs::write(dir.path().join("Show.S01E02.srt"), b"x").unwrap();
+         let ident = Identifier {
+             whole: "S01E01".to_string(),
+             groups: Default::default(),
+         };
+         let locator = Locator {

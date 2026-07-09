@@ -1,0 +1,595 @@
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 5618369..d889858 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -183,21 +183,23 @@ pub fn plan_core(
+ /// Plans the whole batch and attaches batch-validated suggestions (spec 5).
+ pub fn plan_batch(
+     profile: &Profile,
+     run: &RunInputs,
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+ ) -> Batch {
+     let (primaries, discovery_diags) = discovery::scan_primaries(&run.source, &profile.input);
+     let mut batch = plan_core(profile, run, &primaries, id, lang);
+     batch.batch_diagnostics.extend(discovery_diags);
+-    batch.suggestions = suggest(profile, run, &primaries, id, lang, &batch);
++    let (suggestions, cap_diagnostics) = suggest(profile, run, &primaries, id, lang, &batch);
++    batch.suggestions = suggestions;
++    batch.batch_diagnostics.extend(cap_diagnostics);
+     batch
+ }
+ 
+ fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
+     for (i, rule) in profile.tracks.iter().enumerate() {
+         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
+     }
+ }
+ 
+ // Recurses match expressions collecting exact `language` values, checking each
+@@ -585,74 +587,85 @@ struct Candidate {
+     edit: StructuredEdit,
+     apply: MatchExpr,
+     rank: (u8, String, String),
+ }
+ 
+ /// Generates and validates suggestions for every `AmbiguousRule` conflict
+ /// (spec 5.3, D6). For each conflicted primary-source rule: gather the matched
+ /// (conflicting) tracks across all affected files, derive discriminator
+ /// candidates, simulate each against the whole batch via [`plan_core`], and
+ /// keep only those that resolve the ambiguity everywhere with no new
+-/// diagnostic. Deterministic; capped at 3 per rule. OverlappingRules
+-/// suggestions and the no-single-fix partition report are deferred (Plan 2
+-/// scope note).
++/// diagnostic. Deterministic; capped at 3 per rule, with a `SuggestionsCapped`
++/// diagnostic recording how many were dropped when more were accepted, so the
++/// cap is never silent. OverlappingRules suggestions and the no-single-fix
++/// partition report are deferred (Plan 2 scope note).
+ #[allow(clippy::too_many_arguments)]
+ fn suggest(
+     profile: &Profile,
+     run: &RunInputs,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+     baseline: &Batch,
+-) -> Vec<Suggestion> {
++) -> (Vec<Suggestion>, Vec<Diagnostic>) {
+     let base_sig = diag_signature(baseline);
+ 
+     let mut conflicted: Vec<usize> = baseline
+         .files
+         .iter()
+         .flat_map(|f| f.diagnostics.iter())
+         .filter(|d| d.code == DiagCode::AmbiguousRule)
+         .filter_map(|d| rule_index_of(&d.config_path))
+         .collect();
+     conflicted.sort_unstable();
+     conflicted.dedup();
+ 
+     let mut out = Vec::new();
++    let mut cap_diagnostics = Vec::new();
+     for ri in conflicted {
+         let Some(rule) = profile.tracks.get(ri) else {
+             continue;
+         };
+         // Only primary-source rules get suggestions in v1 (external deferred).
+         if matches!(rule.source, SourceCfg::External(_)) {
+             continue;
+         }
+         let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
+         let mut accepted: Vec<Candidate> = Vec::new();
+         for cand in candidates {
+             let edited = with_rule_match(profile, ri, &cand.apply);
+             let sim = plan_core(&edited, run, primaries, id, lang);
+             if resolves_without_regression(&sim, ri, &base_sig) {
+                 accepted.push(cand);
+             }
+         }
+         accepted.sort_by(|a, b| a.rank.cmp(&b.rank));
++        let total_accepted = accepted.len();
+         accepted.truncate(3);
++        let dropped = total_accepted - accepted.len();
++        if dropped > 0 {
++            cap_diagnostics.push(
++                Diagnostic::info(DiagCode::SuggestionsCapped, format!("tracks[{ri}].match"))
++                    .with("dropped", dropped.to_string()),
++            );
++        }
+         for cand in accepted {
++            let fragment = yaml_fragment(ri, &cand.apply);
+             out.push(Suggestion {
+                 resolves: DiagCode::AmbiguousRule,
+                 config_path: format!("tracks[{ri}].match"),
+-                yaml_fragment: yaml_fragment(ri, &cand.edit),
++                yaml_fragment: fragment,
+                 edit: cand.edit,
+             });
+         }
+     }
+-    out
++    (out, cap_diagnostics)
+ }
+ 
+ // Discriminator candidates for a rule, drawn from the property vectors of the
+ // tracks it ambiguously matches, across every affected file.
+ fn candidates_for_rule(
+     profile: &Profile,
+     ri: usize,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+@@ -778,33 +791,42 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
+             let mut inner = MatchExpr::default();
+             let mut map = BTreeMap::new();
+             map.insert("track_name".to_string(), value.clone());
+             inner.substring = Some(map);
+             m.not = Some(vec![inner]);
+         }
+     }
+     m
+ }
+ 
+-// Merges a delta into rule `ri`'s match expression, returning an edited profile.
++// Merges a delta into rule `ri`'s match expression, returning an edited
++// profile. `exact`/`substring` use insert-only-if-absent semantics (bug C):
++// a candidate whose key already exists on the rule must never overwrite the
++// existing constraint, since a suggestion may only narrow a match, never
++// relax it (D6). A key collision then makes the delta a no-op for that key,
++// which `resolves_without_regression` correctly rejects for not resolving
++// the ambiguity. `not` entries are always additive (appending a not-clause
++// always narrows, never relaxes), so plain `extend` stays correct there.
+ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+     let mut p = profile.clone();
+     let expr = &mut p.tracks[ri].match_expr;
+     if let Some(add) = &delta.exact {
+-        expr.exact
+-            .get_or_insert_with(BTreeMap::new)
+-            .extend(add.clone());
++        let map = expr.exact.get_or_insert_with(BTreeMap::new);
++        for (k, v) in add {
++            map.entry(k.clone()).or_insert_with(|| v.clone());
++        }
+     }
+     if let Some(add) = &delta.substring {
+-        expr.substring
+-            .get_or_insert_with(BTreeMap::new)
+-            .extend(add.clone());
++        let map = expr.substring.get_or_insert_with(BTreeMap::new);
++        for (k, v) in add {
++            map.entry(k.clone()).or_insert_with(|| v.clone());
++        }
+     }
+     if let Some(add) = &delta.not {
+         expr.not.get_or_insert_with(Vec::new).extend(add.clone());
+     }
+     p
+ }
+ 
+ // Accept iff rule `ri` has no AmbiguousRule anywhere in the simulation and no
+ // diagnostic in the simulation is absent from the baseline (no regression).
+ fn resolves_without_regression(
+@@ -870,27 +892,31 @@ fn rank_substring(polarity: u8) -> u8 {
+ 
+ fn prop_value_as(v: &crate::identify::PropValue) -> Option<(String, Scalar)> {
+     match v {
+         crate::identify::PropValue::Bool(b) => Some((b.to_string(), Scalar::Bool(*b))),
+         crate::identify::PropValue::Int(i) => Some((i.to_string(), Scalar::Int(*i))),
+         crate::identify::PropValue::Str(s) => Some((s.clone(), Scalar::Str(s.clone()))),
+         crate::identify::PropValue::Float(_) => None,
+     }
+ }
+ 
+-fn yaml_fragment(ri: usize, edit: &StructuredEdit) -> String {
+-    let body = match edit {
+-        StructuredEdit::AddExact { property, value } => {
+-            format!("match:\n  exact: {{ {property}: {value} }}")
+-        }
+-        StructuredEdit::AddNotExact { property, value } => {
+-            format!("match:\n  not:\n    - exact: {{ {property}: {value} }}")
+-        }
+-        StructuredEdit::AddSubstring { value } => {
+-            format!("match:\n  substring: {{ track_name: {value} }}")
+-        }
+-        StructuredEdit::AddNotSubstring { value } => {
+-            format!("match:\n  not:\n    - substring: {{ track_name: {value} }}")
+-        }
+-    };
++// Wrapper so the fragment renders as `match: <expr>`, the shape the CLI/GUI
++// splice into a rule's `match:` key (spec 5.3, D6). The field cannot be
++// named `match` (reserved keyword), so the wire name is set via `rename`.
++#[derive(Serialize)]
++struct MatchFragment<'a> {
++    #[serde(rename = "match")]
++    expr: &'a MatchExpr,
++}
++
++// Renders a suggestion's delta as a YAML fragment (bug D). Hand-formatting a
++// value into a string template breaks for any value containing a
++// YAML-significant character (`:`, `,`, `{`, `}`; e.g. a track_name like
++// "Chapter 1: Intro"). Serializing the actual `MatchExpr` delta through
++// yaml_serde instead guarantees valid, round-trippable YAML for every
++// [`Scalar`] variant, since the serializer -- not this function -- decides
++// quoting.
++fn yaml_fragment(ri: usize, delta: &MatchExpr) -> String {
++    let body = yaml_serde::to_string(&MatchFragment { expr: delta })
++        .expect("a MatchExpr delta always serializes to YAML");
+     format!("# tracks[{ri}] - add:\n{body}")
+ }
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index 36f568d..c195cc0 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -129,20 +129,22 @@ diag_codes! {
+     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
+     DuplicateIdentifier => "duplicate-identifier",
+     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
+     DonorIsPrimary => "donor-is-primary",
+     /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
+     IgnoredFile => "ignored-file",
+     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
+     MultipleIdentifierMatches => "multiple-identifier-matches",
+     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
+     UnknownPropertySkew => "unknown-property-skew",
++    /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
++    SuggestionsCapped => "suggestions-capped",
+ }
+ 
+ /// One diagnostic (spec 5.2): a data record, never prose. `code` +
+ /// `params` select and fill a message/hint template at presentation time
+ /// (spec 8.4); core itself never renders text.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Diagnostic {
+     /// Which condition produced this diagnostic (spec 5.2 catalog).
+     pub code: DiagCode,
+     /// Error/warning/info; error means the affected file produces no plan
+diff --git a/crates/muxsmith-core/tests/suggestions.rs b/crates/muxsmith-core/tests/suggestions.rs
+index 921ea65..4ff3740 100644
+--- a/crates/muxsmith-core/tests/suggestions.rs
++++ b/crates/muxsmith-core/tests/suggestions.rs
+@@ -1,17 +1,20 @@
+ use std::collections::HashMap;
+ use std::path::Path;
+ 
++use serde::Deserialize;
++
+ use muxsmith_core::capability::runtime::LanguageIndex;
+ use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+-use muxsmith_core::planner::{RunInputs, StructuredEdit, plan_batch};
++use muxsmith_core::planner::{Batch, RunInputs, StructuredEdit, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
++use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
+ use muxsmith_core::report::DiagCode;
+ 
+ struct FakeIdent {
+     by_name: HashMap<String, Identification>,
+ }
+ impl Identify for FakeIdent {
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+         let name = path.file_name().unwrap().to_str().unwrap();
+         self.by_name
+             .get(name)
+@@ -117,10 +120,281 @@ fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
+             "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      substring: {{ track_name: {value} }}"
+         ),
+         StructuredEdit::AddNotSubstring { value } => format!(
+             "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      not:\n        - substring: {{ track_name: {value} }}"
+         ),
+     };
+     format!(
+         "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  - match:\n      {inner}\n"
+     )
+ }
++
++// Plans an arbitrary set of named fixture files (name -> -J JSON), unlike
++// `plan()` which is wired to the single-file SERIES fixture.
++fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> Batch {
++    let dir = tempfile::tempdir().unwrap();
++    let mut by_name = HashMap::new();
++    for (name, json) in files {
++        std::fs::write(dir.path().join(name), b"x").unwrap();
++        by_name.insert(
++            (*name).to_string(),
++            Identification::from_json(json).unwrap(),
++        );
++    }
++    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(dir);
++    batch
++}
++
++// --- (a) with_rule_match must not clobber an existing constraint (bug C) ---
++
++const P_NO_CLOBBER: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: subtitles }, substring: { track_name: Foo } }
++"#;
++
++// File 1: two subtitle tracks both containing "Foo" in track_name, both
++// otherwise identical -- ambiguous under the rule above, and the only source
++// of discriminator candidates (candidate generation only looks at files
++// whose current matched set has >= 2 tracks).
++const AMBIGUOUS_FOO: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en", "track_name": "Foo Director Commentary" } },
++    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en", "track_name": "Foo Forced" } }
++  ]
++}
++"#;
++
++// File 2: already unambiguous under the ORIGINAL rule (only the "Foo" track
++// matches). Its second track is a decoy that shares no "Foo" but does share
++// "Director" with file 1's track -- exactly the token candidate generation
++// draws from file 1's ambiguity. A clobbering with_rule_match silently drops
++// the "Foo" constraint, so the edited rule would resolve file 2 to the decoy
++// instead of the original track, without any new diagnostic anywhere.
++const GUARDED_FOO: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E02.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en", "track_name": "Foo Only" } },
++    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en", "track_name": "Director Extended" } }
++  ]
++}
++"#;
++
++fn no_clobber_batch() -> Batch {
++    plan_multi(
++        P_NO_CLOBBER,
++        &[
++            ("Show.S01E01.mkv", AMBIGUOUS_FOO),
++            ("Show.S01E02.mkv", GUARDED_FOO),
++        ],
++    )
++}
++
++// Rebuild the edited profile YAML the same way a literal/naive splice of the
++// structured edit would (what a buggy overwrite-based with_rule_match, or a
++// GUI/CLI apply mirroring it, would produce): AddExact/AddNotExact/
++// AddNotSubstring add alongside the existing `exact`/`substring` map or into
++// an independent `not` list; AddSubstring replaces the substring map's
++// `track_name` entry wholesale, since that is what overwriting a BTreeMap key
++// via `extend` actually does.
++fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
++    let inner = match edit {
++        StructuredEdit::AddExact { property, value } => format!(
++            "exact: {{ type: subtitles, {property}: {value} }}\n      substring: {{ track_name: Foo }}"
++        ),
++        StructuredEdit::AddNotExact { property, value } => format!(
++            "exact: {{ type: subtitles }}\n      substring: {{ track_name: Foo }}\n      not:\n        - exact: {{ {property}: {value} }}"
++        ),
++        StructuredEdit::AddSubstring { value } => {
++            format!("exact: {{ type: subtitles }}\n      substring: {{ track_name: {value} }}")
++        }
++        StructuredEdit::AddNotSubstring { value } => format!(
++            "exact: {{ type: subtitles }}\n      substring: {{ track_name: Foo }}\n      not:\n        - substring: {{ track_name: {value} }}"
++        ),
++    };
++    format!(
++        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  - match:\n      {inner}\n"
++    )
++}
++
++#[test]
++fn with_rule_match_never_widens_an_existing_substring_constraint() {
++    let batch = no_clobber_batch();
++    assert!(
++        batch.files[0]
++            .diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::AmbiguousRule),
++        "expected file 1 to be ambiguous under the baseline profile"
++    );
++    assert!(!batch.suggestions.is_empty(), "expected suggestions");
++
++    // The specific clobber vector (bug C): overwriting the existing
++    // `substring: { track_name: Foo }` with a new value is a no-op under
++    // insert-only semantics, so it can never resolve the ambiguity and must
++    // never be accepted/emitted.
++    assert!(
++        !batch.suggestions.iter().any(|s| matches!(
++            &s.edit,
++            StructuredEdit::AddSubstring { value } if value == "Director"
++        )),
++        "a candidate overwriting the existing track_name substring must \
++         never be accepted: found {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++
++    // Every suggestion that IS emitted must, once applied, still resolve
++    // file 2 to its original track (id 1, "Foo Only"), never the "Director"
++    // decoy (id 2) -- the behavioral form of "never widens."
++    for s in &batch.suggestions {
++        let edited = apply_edit_to_no_clobber_rule(&s.edit);
++        let re = plan_multi(
++            &edited,
++            &[
++                ("Show.S01E01.mkv", AMBIGUOUS_FOO),
++                ("Show.S01E02.mkv", GUARDED_FOO),
++            ],
++        );
++        assert!(
++            !re.files[0]
++                .diagnostics
++                .iter()
++                .any(|d| d.code == DiagCode::AmbiguousRule),
++            "suggestion {:?} did not resolve the ambiguity",
++            s.edit
++        );
++        let assignment = &re.files[1].plan.as_ref().unwrap().assignments[0];
++        assert_eq!(
++            assignment.track_id,
++            Some(1),
++            "suggestion {:?} redirected file 2's resolution to the decoy track",
++            s.edit
++        );
++    }
++}
++
++// --- (b) yaml_fragment must emit valid, round-trippable YAML (bug D) ---
++
++const P_COLON_AMBIGUOUS: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: subtitles } }
++"#;
++
++// Two subtitle tracks, ambiguous under a bare `type: subtitles` rule; one
++// track_name contains a colon, which breaks a hand-formatted YAML fragment.
++const COLON_TRACK_NAMES: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "track_name": "Chapter 1: Intro" } },
++    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "track_name": "Extras" } }
++  ]
++}
++"#;
++
++#[derive(Deserialize)]
++struct MatchFragmentDoc {
++    #[serde(rename = "match")]
++    match_expr: MatchExpr,
++}
++
++#[test]
++fn yaml_fragment_round_trips_a_value_containing_a_colon() {
++    let batch = plan_multi(P_COLON_AMBIGUOUS, &[("Show.S01E01.mkv", COLON_TRACK_NAMES)]);
++
++    let target = batch
++        .suggestions
++        .iter()
++        .find(|s| {
++            matches!(
++                &s.edit,
++                StructuredEdit::AddExact { property, value }
++                    if property == "track_name" && value == "Chapter 1: Intro"
++            )
++        })
++        .unwrap_or_else(|| {
++            panic!(
++                "expected an AddExact suggestion on the colon-bearing track_name, got {:?}",
++                batch
++                    .suggestions
++                    .iter()
++                    .map(|s| &s.edit)
++                    .collect::<Vec<_>>()
++            )
++        });
++
++    let parsed: MatchFragmentDoc = yaml_serde::from_str(&target.yaml_fragment)
++        .expect("yaml_fragment must be valid, parseable YAML");
++    assert_eq!(
++        parsed.match_expr.exact.unwrap().get("track_name"),
++        Some(&Scalar::Str("Chapter 1: Intro".to_string())),
++        "round-tripped fragment did not carry the intended edit"
++    );
++}
++
++// --- (c) the cap-3 truncation must be logged, not silent (D6) ---
++
++#[test]
++fn suggestion_cap_truncation_is_logged_not_silent() {
++    // P_AMBIGUOUS's two conflicting subtitle tracks (English forced /
++    // English SDH) differ across enough matchable properties and track_name
++    // tokens that well over 3 candidates are accepted for tracks[0]; the cap
++    // truncates the emitted list to 3 and must record the rest.
++    let batch = plan(P_AMBIGUOUS);
++
++    let cap_diag = batch
++        .batch_diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::SuggestionsCapped)
++        .expect("expected a logged suggestion cap for tracks[0]'s conflict");
++    assert_eq!(cap_diag.config_path, "tracks[0].match");
++    let dropped: usize = cap_diag
++        .params
++        .get("dropped")
++        .expect("cap diagnostic must carry a dropped count")
++        .parse()
++        .expect("dropped count must be a number");
++    assert!(
++        dropped > 0,
++        "dropped count must be non-zero, was silently 0"
++    );
++}
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index 7a7df92..a1f5394 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -261,20 +261,21 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `SourceOverwrite` | error (hard) | output path equals any input path |
+ | `DuplicateIdentifier` | warning | two primaries yield the same identifier match (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, templates may collide |
+ | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
+ | `IgnoredFile` | info | extension matches but `input.pattern` does not |
+ | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
+ | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`) |
+ | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+ | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+ | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
+ | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
++| `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
+ 
+ ### 5.3 Suggestion engine
+ 
+ Contract: for `AmbiguousRule` and `OverlappingRules`, generate candidate refinements by diffing the properties of the conflicting tracks across **all** affected files, then simulate each candidate against the cached identification data of the **entire batch**. Emit only refinements that (a) resolve every instance of the conflict batch-wide and (b) introduce no new diagnostic for any file. If no single refinement satisfies both, report that explicitly and list the files requiring different resolutions.
+ 
+ Suggestions are structured edits (`config_path` + proposed change), not prose; the GUI offers one-click apply, the CLI prints them as exact YAML fragments.
+ 
+ Algorithm (closed edit grammar, discriminator generation, batch simulation via the real planner, acceptance invariant, deterministic ranking, no-single-fix partition): `docs/superpowers/specs/2026-07-09-plan-2-design-decisions.md` D6.
+ 
+ ### 5.4 Static lint
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 00403db..8d97d68 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -34,10 +34,11 @@ duplicate-identifier = Files { $file_a } and { $file_b } share the identifier "{
+ donor-is-primary = External donor file { $donor } is itself a primary source.
+ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = Property "{ $property }" is unknown to this Muxsmith build but reported by the local mkvmerge; it is matched untyped.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
++suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.

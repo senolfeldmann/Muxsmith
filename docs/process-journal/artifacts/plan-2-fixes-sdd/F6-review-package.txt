@@ -1,0 +1,450 @@
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 407705f..11761b6 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -428,65 +428,64 @@ fn resolve_file(
+ }
+ 
+ // Renders the output path, enforcing the D4 rendered-name invariants. Returns
+ // None (and pushes a diagnostic) if the rendered name is invalid.
+ fn render_output(
+     profile: &Profile,
+     primary: &PrimaryFile,
+     output_dir: &Path,
+     diags: &mut Vec<Diagnostic>,
+ ) -> Option<PathBuf> {
+-    let name = match &profile.output.filename {
+-        FilenameCfg::Keyword(_) => {
+-            let stem = primary
+-                .path
+-                .file_stem()
+-                .and_then(|s| s.to_str())
+-                .unwrap_or("");
+-            format!("{stem}.mkv")
+-        }
++    // Rendered BEFORE ".mkv" is appended: both invariants below (D4, spec
++    // 4.8) must see the actual rendered stem, not a value already carrying
++    // the enforced extension, or a template rendering to "." would silently
++    // become the hidden/invalid "..mkv" instead of being rejected.
++    let rendered = match &profile.output.filename {
++        FilenameCfg::Keyword(_) => primary
++            .path
++            .file_stem()
++            .and_then(|s| s.to_str())
++            .unwrap_or("")
++            .to_string(),
+         FilenameCfg::Template(block) => {
+             let mut ctx = primary.identifier.to_ctx();
+             if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
+                 ctx.set("source_stem", stem);
+             }
+-            let mut rendered = Template::parse(&block.template)
++            Template::parse(&block.template)
+                 .map(|t| t.render_literal(&ctx))
+-                .unwrap_or_default();
+-            if !rendered.to_lowercase().ends_with(".mkv") {
+-                rendered.push_str(".mkv");
+-            }
+-            rendered
++                .unwrap_or_default()
+         }
+     };
+ 
+-    if name.contains('/') || name.contains('\\') {
++    if rendered.contains('/') || rendered.contains('\\') {
+         diags.push(
+             Diagnostic::error(DiagCode::PathSeparatorInRenderedName, "output.filename")
+                 .for_file(&primary.path)
+-                .with("name", name.clone()),
++                .with("name", rendered.clone()),
+         );
+         return None;
+     }
+-    let stem_only = name
+-        .strip_suffix(".mkv")
+-        .or_else(|| name.strip_suffix(".MKV"))
+-        .unwrap_or(&name);
+-    if stem_only.is_empty() || name == "." || name == ".." {
++    if rendered.is_empty() || rendered == "." || rendered == ".." {
+         diags.push(
+             Diagnostic::error(DiagCode::EmptyRenderedName, "output.filename")
+                 .for_file(&primary.path)
+-                .with("name", name.clone()),
++                .with("name", rendered.clone()),
+         );
+         return None;
+     }
+ 
++    let mut name = rendered;
++    if !name.to_lowercase().ends_with(".mkv") {
++        name.push_str(".mkv");
++    }
++
+     Some(output_dir.join(name))
+ }
+ 
+ // A rendered output must never equal an input path anywhere in the batch:
+ // every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
+ // Batch-wide because one primary's output can equal a donor a *different*
+ // primary reads from; `Assignment.source` already carries that donor path
+ // (or the primary path, for a primary-source rule), so the union of every
+ // file's assignment sources plus the primaries is the complete input set.
+ // Runs before `finalize_plans` drops anything, so every file's assignments
+@@ -505,55 +504,65 @@ fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf])
+             f.diagnostics.push(
+                 Diagnostic::error(DiagCode::SourceOverwrite, "output")
+                     .for_file(&f.source)
+                     .with("path", path),
+             );
+         }
+     }
+ }
+ 
+ // Two plans rendering to the same output path collide, as does an existing
+-// on-disk file (spec 4.8). Only surviving plans (post-finalize) are considered.
++// on-disk file (spec 4.8, decision #3). Only surviving plans (post the
++// SourceOverwrite finalize pass) are considered.
+ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
+     let mut counts: BTreeMap<PathBuf, usize> = BTreeMap::new();
+     for f in files.iter() {
+         if let Some(p) = &f.plan {
+             *counts.entry(p.output.clone()).or_default() += 1;
+         }
+     }
+     for f in files.iter_mut() {
+-        let Some(plan) = &f.plan else { continue };
+-        let out = plan.output.clone();
++        let Some(out) = f.plan.as_ref().map(|p| p.output.clone()) else {
++            continue;
++        };
+         let planned_twice = counts.get(&out).copied().unwrap_or(0) >= 2;
+         let exists_on_disk = out.exists();
+         if !planned_twice && !exists_on_disk {
+             continue;
+         }
+-        // Two planned outputs to one path: always an error unless Skip. An
+-        // existing on-disk file: severity follows the policy.
++        // Two planned outputs to one path: the batch is internally
++        // inconsistent, always an error, independent of `on_collision`
++        // (decision #3) -- neither skip nor overwrite can pick a winner. A
++        // pre-existing on-disk file that is not itself a batch input
++        // (SourceOverwrite covers that case) follows the policy.
+         let severity = if planned_twice {
+-            match policy {
+-                CollisionPolicy::Skip => Severity::Warning,
+-                _ => Severity::Error,
+-            }
++            Severity::Error
+         } else {
+             match policy {
+                 CollisionPolicy::Error => Severity::Error,
+                 CollisionPolicy::Skip => Severity::Warning,
+                 CollisionPolicy::Overwrite => Severity::Info,
+             }
+         };
+-        let mut d = Diagnostic::info(DiagCode::OutputCollision, "output")
+-            .for_file(&plan.source)
+-            .with("path", out.display().to_string());
+-        d.severity = severity;
+-        f.diagnostics.push(d);
++        f.diagnostics.push(
++            Diagnostic::info(DiagCode::OutputCollision, "output")
++                .for_file(&f.source)
++                .with("path", out.display().to_string())
++                .with_severity(severity),
++        );
++        // "skip" on an on-disk collision means the output is not produced
++        // (bug E), even though the diagnostic above is only a Warning;
++        // `finalize_plans` only drops Error-severity plans, so null it here
++        // explicitly rather than relying on that pass.
++        if !planned_twice && policy == CollisionPolicy::Skip {
++            f.plan = None;
++        }
+     }
+ }
+ 
+ // Drop the plan for any file that has an error-severity diagnostic (spec 5.1).
+ fn finalize_plans(files: &mut [FileReport]) {
+     for f in files.iter_mut() {
+         if f.diagnostics.iter().any(|d| d.severity == Severity::Error) {
+             f.plan = None;
+         }
+     }
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index 0eef447..36f568d 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -203,20 +203,31 @@ impl Diagnostic {
+         self.params.insert(key.into(), value.into());
+         self
+     }
+ 
+     /// Sets `file`, turning a config-time diagnostic into a per-file
+     /// (planning-time) one.
+     pub fn for_file(mut self, path: impl Into<PathBuf>) -> Self {
+         self.file = Some(path.into());
+         self
+     }
++
++    /// Overrides the severity set by the constructor (`error`/`warning`/
++    /// `info`), for a code whose severity is not fixed but depends on
++    /// runtime policy (e.g. `OutputCollision`'s severity follows
++    /// `on_collision`, spec 4.8). Builder-style, so callers set severity
++    /// through the same chain as `with`/`for_file` rather than mutating the
++    /// public `severity` field directly.
++    pub fn with_severity(mut self, severity: Severity) -> Self {
++        self.severity = severity;
++        self
++    }
+ }
+ 
+ /// The highest severity present, or `None` for an empty slice.
+ /// `Some(Severity::Error)` is what turns a validate/dry-run/run exit code
+ /// into 2 rather than 0/1 (spec 5.1, 8.1).
+ pub fn worst_severity(diags: &[Diagnostic]) -> Option<Severity> {
+     diags.iter().map(|d| d.severity).max()
+ }
+ 
+ #[cfg(test)]
+@@ -242,20 +253,27 @@ mod tests {
+     #[test]
+     fn diagnostic_builder_sets_fields() {
+         let d = Diagnostic::error(DiagCode::InvalidRegex, "input.pattern")
+             .with("detail", "unclosed group");
+         assert_eq!(d.severity, Severity::Error);
+         assert_eq!(d.config_path, "input.pattern");
+         assert_eq!(d.params["detail"], "unclosed group");
+         assert!(d.file.is_none());
+     }
+ 
++    #[test]
++    fn with_severity_overrides_constructor_severity() {
++        let d =
++            Diagnostic::info(DiagCode::OutputCollision, "output").with_severity(Severity::Warning);
++        assert_eq!(d.severity, Severity::Warning);
++    }
++
+     #[test]
+     fn worst_severity_picks_error_over_warning() {
+         let diags = vec![
+             Diagnostic::warning(DiagCode::ProvableOverlap, "tracks[0]"),
+             Diagnostic::error(DiagCode::InvalidRegex, "input.pattern"),
+         ];
+         assert_eq!(worst_severity(&diags), Some(Severity::Error));
+         assert_eq!(worst_severity(&[]), None);
+     }
+ 
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 30447a8..13c8bc2 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1,19 +1,19 @@
+ use std::collections::HashMap;
+ use std::path::Path;
+ 
+ use muxsmith_core::capability::runtime::LanguageIndex;
+ use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+-use muxsmith_core::planner::{RunInputs, plan_batch};
++use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::model::CollisionPolicy;
+-use muxsmith_core::report::DiagCode;
++use muxsmith_core::report::{DiagCode, Severity};
+ 
+ // A fake identifier backed by fixture JSON keyed on file name.
+ struct FakeIdent {
+     by_name: HashMap<String, Identification>,
+ }
+ impl Identify for FakeIdent {
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+         let name = path.file_name().unwrap().to_str().unwrap();
+         self.by_name
+             .get(name)
+@@ -376,20 +376,187 @@ tracks:
+     assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+     assert!(
+         a.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::SourceOverwrite),
+         "diags: {:?}",
+         a.diagnostics
+     );
+ }
+ 
++#[test]
++fn empty_rendered_name_when_template_renders_to_dot() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++output:
++  filename: { template: '.' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    assert!(
++        fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::EmptyRenderedName),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
++// Two primaries whose profile renders both to a fixed literal name (no
++// {match} field), in a sibling `out/` directory so pre-existing files in it
++// are never rediscovered as extra primaries (input.recursive defaults true,
++// scoped to `run.source` only). `policy` is threaded through as the run
++// override; `None` exercises the profile default (`error`).
++fn plan_two_same_output(policy: Option<CollisionPolicy>) -> Batch {
++    let root = tempfile::tempdir().unwrap();
++    let src_dir = root.path().join("src");
++    let out_dir = root.path().join("out");
++    std::fs::create_dir_all(&src_dir).unwrap();
++    std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(src_dir.join("Show.S01E02.mkv"), b"x").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++output:
++  filename: { template: 'Same.mkv' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: src_dir,
++        output: Some(out_dir),
++        on_collision: policy,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    by_name.insert(
++        "Show.S01E02.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(root);
++    batch
++}
++
++#[test]
++fn two_planned_outputs_to_same_path_are_always_output_collision_error() {
++    // Decision #3: an internally inconsistent batch is always an error,
++    // independent of on_collision -- neither skip nor overwrite can pick a
++    // winner between two plans claiming the same path.
++    for policy in [
++        None,
++        Some(CollisionPolicy::Error),
++        Some(CollisionPolicy::Overwrite),
++        Some(CollisionPolicy::Skip),
++    ] {
++        let batch = plan_two_same_output(policy);
++        assert_eq!(batch.files.len(), 2, "policy {policy:?}");
++        for fr in &batch.files {
++            assert!(
++                fr.plan.is_none(),
++                "policy {policy:?}: diags: {:?}",
++                fr.diagnostics
++            );
++            let d = fr
++                .diagnostics
++                .iter()
++                .find(|d| d.code == DiagCode::OutputCollision)
++                .unwrap_or_else(|| {
++                    panic!(
++                        "policy {policy:?}: expected OutputCollision, got: {:?}",
++                        fr.diagnostics
++                    )
++                });
++            assert_eq!(d.severity, Severity::Error, "policy {policy:?}: {d:?}");
++        }
++    }
++}
++
++// A single primary whose "keep" output name already exists on disk (a file
++// that is not itself a batch input; sibling out/ dir keeps it out of
++// discovery's recursive scan of src/).
++fn plan_one_with_existing_output(policy: CollisionPolicy) -> Batch {
++    let root = tempfile::tempdir().unwrap();
++    let src_dir = root.path().join("src");
++    let out_dir = root.path().join("out");
++    std::fs::create_dir_all(&src_dir).unwrap();
++    std::fs::create_dir_all(&out_dir).unwrap();
++    std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(out_dir.join("Show.S01E01.mkv"), b"pre-existing").unwrap();
++
++    let profile = from_str(P_VIDEO_AUDIO, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: src_dir,
++        output: Some(out_dir),
++        on_collision: Some(policy),
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(root);
++    batch
++}
++
++#[test]
++fn on_disk_collision_under_skip_is_warning_and_drops_plan() {
++    let batch = plan_one_with_existing_output(CollisionPolicy::Skip);
++    let fr = &batch.files[0];
++    // Bug E: "skip" means the output is not produced, even though the
++    // diagnostic itself is only a warning.
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::OutputCollision)
++        .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
++    assert_eq!(d.severity, Severity::Warning);
++}
++
++#[test]
++fn on_disk_collision_under_overwrite_is_info_and_keeps_plan() {
++    let batch = plan_one_with_existing_output(CollisionPolicy::Overwrite);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::OutputCollision)
++        .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
++    assert_eq!(d.severity, Severity::Info);
++}
++
++#[test]
++fn on_disk_collision_under_error_is_error_and_drops_plan() {
++    let batch = plan_one_with_existing_output(CollisionPolicy::Error);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::OutputCollision)
++        .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
++    assert_eq!(d.severity, Severity::Error);
++}
++
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: audio, language: zz } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     assert!(
