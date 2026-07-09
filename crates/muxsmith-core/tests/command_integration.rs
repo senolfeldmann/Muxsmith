@@ -456,3 +456,112 @@ fn live_keep_donor_trails_primary() {
         "donor must trail every primary track (D20)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Live acceptance: attachment + `changes` round trip (Plan 4 Task 7, D18).
+// Converts Plan 3's one-off manual mkvmerge-v100 attachment/changes
+// validation into a standing guard. Probed against real mkvmerge v100 before
+// writing this test (SI-3, not assumed): `--attach-file` with an explicit
+// `--attachment-mime-type text/plain` accepts a plain `.txt` file (exit 0,
+// re-`-J` reports `content_type: "text/plain"`) -- identical to a bare
+// `--attach-file` with no mime-type flag, since mkvmerge already guesses
+// `text/plain` from the `.txt` extension. The explicit flag is kept in the
+// fixture build because it is what the task specifies, not because it
+// changes observable behavior.
+// ---------------------------------------------------------------------------
+
+const ATTACHMENT_PROFILE: &str = r#"
+profile_version: 1
+input: { pattern: 'source', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles } }
+      changes: { track_name: Renamed, default_track: true }
+"#;
+
+#[test]
+fn live_attachment_and_changes_round_trip() {
+    let Some(m) = mkvmerge() else {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let srt = dir.path().join("seed.srt");
+    std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+    let note = dir.path().join("note.txt");
+    std::fs::write(&note, "attachment payload\n").unwrap();
+
+    // The primary: one subtitle track plus one attached text file, built
+    // directly with real mkvmerge (SI-3: probed first, see the block comment
+    // above).
+    let source = dir.path().join("source.mkv");
+    let status = Command::new(m.path())
+        .args(["-q", "-o"])
+        .arg(&source)
+        .args(["--attachment-mime-type", "text/plain", "--attach-file"])
+        .arg(&note)
+        .arg(&srt)
+        .status()
+        .expect("spawn mkvmerge to build the fixture source");
+    assert!(status.success(), "mkvmerge failed to build the source");
+
+    let out_dir = dir.path().join("out");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    let profile = from_str(ATTACHMENT_PROFILE, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(out_dir),
+        on_collision: None,
+    };
+    let lang = m.list_languages().expect("list-languages");
+    let mut identify = LiveIdentifier {
+        cache: IdentifyCache::new(),
+        mkv: &m,
+    };
+
+    let batch = plan_batch(&profile, &run, &mut identify, &lang);
+    assert_eq!(batch.files.len(), 1);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.assignments.len(), 1);
+    assert_eq!(plan.assignments[0].track_id, Some(0));
+
+    let argv = command(plan);
+    let status = Command::new(m.path())
+        .args(&argv)
+        .status()
+        .expect("spawn mkvmerge on the planned command");
+    assert!(
+        status.success(),
+        "mkvmerge rejected the planned argv: {argv:?}"
+    );
+    assert!(plan.output.exists(), "output file was not created");
+
+    let out_json = m
+        .identify_json(&plan.output)
+        .expect("re-identify the muxed output");
+    let out_id = Identification::from_json(&out_json).expect("parse re-identification JSON");
+    assert!(out_id.is_identifiable());
+
+    // The `changes` round trip: the subtitle track carries the renamed
+    // `track_name` and the newly-set `default_track` flag.
+    assert_eq!(out_id.tracks.len(), 1);
+    let track = &out_id.tracks[0];
+    assert_eq!(track.kind, "subtitles");
+    assert_eq!(track_name(track), "Renamed");
+    assert_eq!(track.get("default_track"), Some(PropValue::Bool(true)));
+
+    // The attachment round trip: `PrimaryAttachments::KeepAll` (default
+    // `attachments.unmatched: keep`, no rules) carries the original
+    // attachment through untouched.
+    assert_eq!(
+        out_id.attachments.len(),
+        1,
+        "expected the primary's attachment to survive: {:?}",
+        out_id.attachments
+    );
+    assert_eq!(out_id.attachments[0].file_name, "note.txt");
+}
