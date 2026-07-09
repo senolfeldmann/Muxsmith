@@ -271,3 +271,90 @@ there. See HANDOFF.md.
 **Friction.** The harness permission classifier blocked a commit early in the session despite the repo's standing grant (it reads settings, not repo docs); cleared by explicit in-session authorization. SI-4 documents the distinction (classifier block != revocation); durable fix would be a settings.json allow-rule, Şenol's call.
 
 **Open threads.** Next session: execute Plan 4 (plan c0c0ef7), wave 1 fan-out first; T1 must probe the real --gui-mode grammar before T2 writes the parser; verify T6's CI effect post-push in the Actions log.
+
+## 2026-07-10 | Plan 4 complete (executor + run + queue) | session 5
+
+**Scope.** Plan 4 end to end: 11 tasks, 2 mid-chain fixes, 5-commit final fix
+wave. Commits 7aec492..9009d34 (26 commits incl. 5 wave-1 merges) plus the SDD
+archive commit. Suite 215 -> 269 tests, gate green throughout.
+
+**Decisions and why.**
+- Wave 1 (T1/T4/T5/T6/T7) ran as five parallel worktree streams (SI-1, first
+  parallel run in this repo); merges T5->T7->T4->T6->T1 with the full gate per
+  merge. Zero real conflicts; the feared T5/T7 collision on
+  command_integration.rs auto-merged (disjoint regions). Şenol directive after
+  the serial Plan 3.5 run.
+- Şenol (2026-07-09): agent commits stay UNSIGNED as policy (a GPG signature is
+  his authorship claim), after the controller accidentally signed the five
+  wave-1 merge commits (unlocked gpg-agent). Left in history; rule now in
+  HANDOFF SI-4 and Peter memory.
+- Şenol (2026-07-10): Fluent plural selector over the plan's locked
+  "{ $count } warnings" ftl text (plan-mandated finding, escalated per SDD).
+- Controller: json-document-on-error-paths fastfollow treated as bugfix, not
+  scope change (a machine-readable mode emitting unparseable stdout defeats
+  --json); fix pattern taken from validate.rs.
+
+**What the process caught.**
+- T2 task review (opus): spawn-failure path routed through delete-partial,
+  silently deleting a pre-existing valid output. Origin: implementer design
+  call; implementer AND controller missed the deletion side effect. Real
+  data-loss bug (fixed f394f61).
+- T3 implementer TDD: the plan's pinned watcher shape (exit only on cancel)
+  deadlocks thread::scope on every natural completion; done flag added.
+  Origin: plan.
+- T8 review: plan's locked ftl renders "1 warnings". Origin: plan. -> amendment.
+- Plural fixer: $count reached Fluent as a string, so [one] could never match;
+  caught only because the dispatch mandated verifying the arg type (79f0447).
+- T9 review: json mode printed human diagnostics on profile-load failure in
+  run AND dry-run. Origin: upstream (pre-Plan-4 dry_run pattern). -> 3f66a4e.
+- Final review (fable): Windows kill -> Warning + partial kept
+  (ExitStatus::code() is never None there), breaking D17 exactly where D16
+  matters. Origin: plan-mandated LiveJob code. Fixed 75c075f (killed flag +
+  resolve_wait seam). Also: mkvmerge_found asserted false on paths that never
+  checked (db9f559, 9009d34), uncapped worker count (4b1ddbf).
+- Noise: low. One re-review cycle total (T2); everything else first-pass.
+
+**Mechanics/metrics.**
+- 11 implementer dispatches (sonnet x10, haiku x1), 11 task reviews (opus x4
+  for T1/T2/T3/T8, sonnet x7), 1 whole-branch review + 1 fix-wave verification
+  (fable), 3 fix dispatches + 1 five-commit final wave. Controller re-ran the
+  4-command gate itself ~9 times (every merge, every acceptance).
+- Wave-1 wall clock ~7 min for 5 tasks (longest stream T1); serial chain
+  dominated total time. ~16k lines of SDD artifacts archived.
+
+**Friction and failure.**
+- T3 implementer stalled twice waiting on background cargo + Monitor events;
+  needed an explicit foreground-only directive. All later dispatches carry
+  that instruction up front.
+- Controller ran merges without gpgsign=false -> the signed/unsigned mix Şenol
+  spotted on GitHub. Policy above.
+- rm alias interactivity ate a 2-minute timeout during the salvage commit.
+- Şenol mid-session challenged whether parallelism was underused; the answer
+  held (genuine dependency chain), but the challenge was earned by Plan 3.5.
+
+**Moments.**
+- The T11 fixer meta-tested its own "outputs untouched" assertion by injecting
+  a same-bytes silent rewrite and confirming the mtime check (not content)
+  caught it (run_live.rs, 93d1a6b).
+- The final reviewer re-ran the full gate before believing anything, then
+  found a Windows-only semantic break in a repo whose CI never runs Windows.
+- T3's cancel test needed a killer-gated condvar fake because a naive
+  wait-for-Started opened the exact empty-registry race it was meant to pin.
+
+**Deltas.**
+- Plan-as-verbatim-code cut both ways again: verbatim interfaces kept four
+  task seams drift-free; verbatim implementation text carried two real defects
+  (watcher deadlock, Windows kill mapping) into review scope.
+- env!("CARGO_BIN_EXE_muxsmith") in the plan vs assert_cmd cargo_bin used
+  (existing codebase convention won; letter-vs-spirit noted by reviewer).
+- The HANDOFF's fallback hedge for wave-1 merge friction was not needed.
+
+**Open threads.**
+- Post-push: verify in the Actions log that the gated tests RAN (T6).
+- v1.x backlog carried to HANDOFF: delete_partial error surfacing,
+  cancel-before-spawn narrowing, JobEvent serde golden test at Plan 5,
+  ConcurrencyTracker doc-hidden before go-public, jobs[].index doc note,
+  empty-batch human output (Şenol decision), read_until/lossy line reads,
+  ctrlc full pin, CLI test-helper consolidation, rustdoc private-link nit.
+- Windows kill fix must be re-verified when the 3-OS matrix activates.
+- Plan 5 (Tauri GUI) is next; parked deps unchanged in HANDOFF.
