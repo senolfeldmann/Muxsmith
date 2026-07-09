@@ -9,12 +9,12 @@
 use crate::capability::codec_kind_prefixes;
 use crate::capability::runtime::LanguageIndex;
 use crate::capability::{PropType, matchable_type};
-use crate::identify::{PropValue, Track};
+use crate::identify::{Attachment, PropValue, Track};
 use crate::profile::match_expr::{MatchExpr, Scalar};
 
 /// A property-bearing item the matcher can evaluate a [`MatchExpr`] against.
-/// [`Track`] is the only implementor today; a later item type (e.g.
-/// attachments) implements it to reuse the same match algebra.
+/// [`Track`] and [`Attachment`] implement it, each reusing the same match
+/// algebra over its own flat property namespace.
 pub trait Matchable {
     /// The value of a match property, or `None` if absent.
     fn get(&self, prop: &str) -> Option<PropValue>;
@@ -23,6 +23,12 @@ pub trait Matchable {
 impl Matchable for Track {
     fn get(&self, prop: &str) -> Option<PropValue> {
         Track::get(self, prop)
+    }
+}
+
+impl Matchable for Attachment {
+    fn get(&self, prop: &str) -> Option<PropValue> {
+        Attachment::get(self, prop)
     }
 }
 
@@ -351,5 +357,43 @@ mod tests {
         }
         let t = track("audio", &[]);
         assert!(check(&t));
+    }
+
+    #[test]
+    fn attachment_matching_uses_the_same_algebra() {
+        use crate::identify::Attachment;
+        let font = Attachment {
+            id: 1,
+            file_name: "Roboto.ttf".into(),
+            size: 100,
+            content_type: Some("font/ttf".into()),
+            description: None,
+            uid: None,
+        };
+        assert!(matches(
+            &expr("substring: { file_name: robot }"),
+            &font,
+            &lang()
+        ));
+        assert!(matches(
+            &expr("exact: { content_type: font/ttf }"),
+            &font,
+            &lang()
+        ));
+        assert!(matches(
+            &expr("any:\n  - substring: { file_name: .ttf }\n  - substring: { file_name: .otf }"),
+            &font,
+            &lang()
+        ));
+        assert!(!matches(
+            &expr("exact: { description: whatever }"),
+            &font,
+            &lang()
+        ));
+        assert!(!matches(
+            &expr("substring: { content_type: pdf }"),
+            &font,
+            &lang()
+        ));
     }
 }
