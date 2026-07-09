@@ -143,6 +143,11 @@ pub struct Plan {
     pub tags: TagFlags,
     /// Resolved output title (spec 4.9).
     pub title: TitleAction,
+    /// When true (`tracks.unmatched: keep`), the primary's unmatched tracks
+    /// pass through: `command` emits no track-selection flags for the primary
+    /// group. Donor groups are unaffected. Default construction is `false`
+    /// (drop).
+    pub keep_unmatched: bool,
 }
 
 /// Per-file result: the plan (if any) and every diagnostic about the file.
@@ -533,6 +538,10 @@ fn resolve_file(
         chapters,
         tags,
         title,
+        keep_unmatched: matches!(
+            profile.tracks.unmatched,
+            crate::profile::model::KeepDrop::Keep
+        ),
     });
 
     FileReport {

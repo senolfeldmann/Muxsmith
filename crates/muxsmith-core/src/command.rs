@@ -183,6 +183,12 @@ fn push_group_attachments(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
 // 2d): assigned ids of that category in this group, ascending, if any;
 // otherwise the category's `--no-*` flag.
 fn push_track_selection(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+    // tracks.unmatched: keep -> pass all PRIMARY tracks through (no selection
+    // flags); mkvmerge keeps every track by default. Donor groups still get
+    // their normal per-category selection.
+    if plan.keep_unmatched && source == plan.source.as_path() {
+        return;
+    }
     for cat in &CATEGORIES {
         let mut ids: Vec<u64> = plan
             .assignments

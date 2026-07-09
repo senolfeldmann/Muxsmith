@@ -25,6 +25,7 @@ fn global_and_single_video_group() {
     let plan = Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
+        keep_unmatched: false,
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/e.mkv"),
@@ -68,10 +69,50 @@ fn global_and_single_video_group() {
 }
 
 #[test]
+fn keep_unmatched_suppresses_primary_selection_flags() {
+    let plan = Plan {
+        source: p("/m/show.mkv"),
+        output: p("/out/show.mkv"),
+        keep_unmatched: true,
+        assignments: vec![Assignment {
+            rule_index: 0,
+            source: p("/m/show.mkv"),
+            track_id: Some(1),
+            track_kind: Some("audio".into()),
+            changes: vec![change("default_track", Scalar::Bool(true))],
+        }],
+        attachments: AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        },
+        chapters: ChapterSource::Keep,
+        tags: TagFlags {
+            global_keep: true,
+            track_keep: true,
+        },
+        title: TitleAction::Keep,
+    };
+    let argv = muxsmith_core::command::command(&plan);
+    assert!(
+        !argv.iter().any(|a| a == "--no-video"
+            || a == "--no-subtitles"
+            || a == "--no-buttons"
+            || a == "--audio-tracks"),
+        "keep must emit no primary selection flags, got {argv:?}"
+    );
+    assert!(
+        argv.windows(2)
+            .any(|w| w[0] == "--default-track-flag" && w[1] == "1:1")
+    );
+    assert!(argv.iter().any(|a| a == "--track-order"));
+}
+
+#[test]
 fn unmatched_donor_rule_opens_no_input_group() {
     let plan = Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
+        keep_unmatched: false,
         assignments: vec![
             Assignment {
                 rule_index: 0,
@@ -118,6 +159,7 @@ fn per_track_properties_and_multi_group() {
     let plan = Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
+        keep_unmatched: false,
         assignments: vec![
             Assignment {
                 rule_index: 0,
@@ -204,6 +246,7 @@ fn boolean_and_string_value_encoding() {
     let plan = Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
+        keep_unmatched: false,
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/e.mkv"),
@@ -259,6 +302,7 @@ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
     Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
+        keep_unmatched: false,
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/e.mkv"),
@@ -283,6 +327,7 @@ fn multi_group_plan(attachments: AttachmentPlan, chapters: ChapterSource, tags: 
     Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
+        keep_unmatched: false,
         assignments: vec![
             Assignment {
                 rule_index: 0,
