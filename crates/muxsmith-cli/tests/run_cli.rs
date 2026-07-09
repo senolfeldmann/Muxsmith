@@ -378,3 +378,172 @@ fn run_json_surfaces_the_mkvmerge_not_found_document() {
         serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
     );
 }
+
+/// Fastfollow bug 1: `load::from_file` failure (e.g. a nonexistent profile
+/// path) is the very first branch in `run::run`, ahead of even the
+/// config-time validate pass. Under `--json` it must still emit exactly one
+/// parseable document (dry-run's `config_only_json` shape extended with an
+/// empty `jobs`/zeroed `summary`, exactly like the mkvmerge-not-found and
+/// specs-empty paths above), not the bare human-formatted line the bug
+/// printed unconditionally.
+#[test]
+fn run_json_emits_a_document_on_profile_load_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing_profile = dir.path().join("nonexistent.yaml");
+
+    let out = muxsmith()
+        .args(["run"])
+        .arg(&missing_profile)
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    asserts_no_job_ran(&stdout);
+    // Exactly one line: the json document's own `println!`, not that plus a
+    // separate human-formatted diagnostic line (the diagnostic's rendered
+    // text legitimately appears *inside* that one json line, via the
+    // `rendered` field `config_only_json` attaches).
+    assert_eq!(
+        stdout.lines().count(),
+        1,
+        "expected exactly one stdout line (the json document) in --json mode, got: {stdout}"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "--json must still emit a single parseable document on \
+             profile-load failure, got parse error: {e}, stdout: {stdout}, \
+             stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let config_diags = report["config_diagnostics"]
+        .as_array()
+        .expect("config_diagnostics array");
+    assert!(
+        config_diags.iter().any(|d| d["code"] == "parse-error"),
+        "expected a parse-error diagnostic for the missing profile, got: {report}"
+    );
+    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["summary"],
+        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+    );
+}
+
+/// Points a child process's PATH at a fake `mkvmerge` script that succeeds
+/// on `--version` (so `Mkvmerge::locate()` succeeds) but fails on every
+/// other invocation, including `--list-languages`: a cheap, deterministic
+/// stand-in for an installed but broken mkvmerge, no real MKVToolNix
+/// needed. Unix-only, mirrors the identical helper in `dry_run_cli.rs`
+/// (kept local per this file's existing per-file-helper convention, e.g.
+/// `have_mkvmerge`).
+#[cfg(unix)]
+fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("mkvmerge");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo 'mkvmerge v99.0.0 (fake, for tests)'\n  exit 0\nfi\nexit 1\n",
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).unwrap();
+    dir
+}
+
+/// Fastfollow bug 2: `mkv.list_languages()` failure (mkvmerge located but
+/// broken) prints nothing to stdout at all under `--json` today. Must emit
+/// the same config-only document shape as the `locate()`-failure branch
+/// just above it in the source, wrapped with an empty `jobs`/zeroed
+/// `summary` exactly like `run`'s own mkvmerge-not-found path.
+#[test]
+#[cfg(unix)]
+fn run_json_emits_a_document_when_the_language_query_fails() {
+    let fake_path = fake_mkvmerge_that_fails_queries();
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    let out = muxsmith()
+        .env("PATH", fake_path.path())
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    asserts_no_job_ran(&stdout);
+    assert!(
+        !stdout.contains("Querying mkvmerge"),
+        "expected no human line on stdout in --json mode, got: {stdout}"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "--json must still emit a single parseable document when the \
+             language query fails, got parse error: {e}, stdout: {stdout}, \
+             stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["summary"],
+        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+    );
+}
+
+/// Same forced-broken-mkvmerge condition, human mode: pins down that
+/// today's behavior (bare stderr message, empty stdout, exit 2, no job
+/// ever runs) is untouched by the `--json` fix.
+#[test]
+#[cfg(unix)]
+fn run_human_mode_still_just_reports_the_language_query_failure_on_stderr() {
+    let fake_path = fake_mkvmerge_that_fails_queries();
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    let out = muxsmith()
+        .env("PATH", fake_path.path())
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    asserts_no_job_ran(&stdout);
+    assert!(stdout.is_empty(), "stdout: {stdout}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
+}

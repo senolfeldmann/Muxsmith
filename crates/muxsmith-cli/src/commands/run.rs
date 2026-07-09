@@ -57,7 +57,21 @@ pub fn run(
     let profile = match load::from_file(profile_path) {
         Ok(p) => p,
         Err(d) => {
-            println!("{}", renderer.diagnostic(&d));
+            // Load failure never reaches the config-time validate pass or
+            // the mkvmerge lookup, but the `--json` contract still holds:
+            // stdout carries exactly one JSON document. json mode folds
+            // this single diagnostic into the same config-only,
+            // empty-jobs/zeroed-summary shape the mkvmerge-not-found branch
+            // below builds (mirrors validate.rs's `Err(d) => vec![d]`
+            // fold); human mode is unchanged.
+            if json {
+                println!(
+                    "{}",
+                    run_json_document(dry_run::config_only_json(&[d], renderer), &[], &[])
+                );
+            } else {
+                println!("{}", renderer.diagnostic(&d));
+            }
             return 2;
         }
     };
@@ -89,7 +103,19 @@ pub fn run(
     let lang = match mkv.list_languages() {
         Ok(l) => l,
         Err(_) => {
-            eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
+            // mkvmerge was located but querying it failed (a broken
+            // installation): planning never runs here either, so json mode
+            // gets the same config-only, empty-jobs/zeroed-summary document
+            // the locate()-failure branch above builds; human mode is
+            // unchanged (stderr only).
+            if json {
+                println!(
+                    "{}",
+                    run_json_document(dry_run::config_only_json(&config_diags, renderer), &[], &[],)
+                );
+            } else {
+                eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
+            }
             return 2;
         }
     };
