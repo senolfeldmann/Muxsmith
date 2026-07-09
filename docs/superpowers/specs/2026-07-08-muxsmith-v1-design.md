@@ -136,6 +136,7 @@ expr := {
 
 - Multiple entries inside one condition map are AND.
 - `any` / `not` recurse; arbitrary depth is legal, typical profiles stay flat.
+- A present-but-empty `any` or `not` list is a config-time error (`EmptyMatchList`): an empty OR/NOR group is always a mistake (an unfinished edit or a generator artifact), never a meaningful "no constraint"; omit the key instead.
 - `substring` and `regex` on a non-string property are config-time type errors.
 - Case sensitivity: `exact` compares strings case-sensitively (language values are normalized per 4.4); `substring` is case-insensitive; `regex` is taken as written (use `(?i)` for case-insensitive matching).
 - Semantics carrier of the whole product; specified exhaustively by the property model (4.4) plus this evaluation rule, and covered by property-based tests.
@@ -167,6 +168,7 @@ Conveniences:
 - `codec_kind` (matching): friendly alias mapped to `codec_id` sets, e.g. `srt` -> `S_TEXT/UTF8`, `ass`, `pgs`, `vobsub`, plus common audio/video kinds. Curated in `capability`. Usable only under `exact`; `substring`/`regex` on `codec_kind` is a config-time error (`CodecKindExactOnly`), since a pattern over the curated alias token is ill-defined; pattern-match `codec_id` instead.
 - `sub_charset`: validated leniently (iconv names are open-ended); passed through to mkvmerge.
 - **Closed-domain values.** For properties whose value set is closed, an `exact` value outside the domain is `InvalidPropertyValue` (not a silent never-match): `type` and `codec_kind` at config time (against the pinned schema enum and the alias table respectively), `language` at plan time (against `mkvmerge --list-languages`). Open-ended values (`sub_charset`, free-text `track_name`) are exempt.
+- **Boolean flags, absent = false.** For `exact` matching, a boolean-typed matchable property that a track's `-J` output omits compares equal to `false`. mkvmerge emits the vanity flags (`flag_hearing_impaired`, `flag_visual_impaired`, `flag_commentary`, `flag_original`) only when set, and Matroska defines them false-when-absent; so `exact: { flag_hearing_impaired: false }` matches a track that never set the flag, mirroring mkvmerge's own semantics rather than requiring the `not: [ exact: { flag: true } ]` idiom.
 
 ### 4.5 Track rules
 
@@ -214,7 +216,8 @@ Example: `match_pattern: 'staffel0*{season:int}episode0*{episode:int}'` matches 
 
 - `directory`: profile default, usually overridden per run.
 - `filename`: `keep` (source basename, `.mkv` extension enforced) or `template` (literal mode; `.mkv` appended if missing; no subdirectory creation in v1). Two invariants are checked on the RENDERED name (not just the template text), identically on all platforms: a path separator (`/` or `\`) is `PathSeparatorInRenderedName`; an empty stem or `.`/`..` is `EmptyRenderedName`.
-- `on_collision`: `error | skip | overwrite`, default `error`. Applies to existing files and to two planned outputs rendering to the same path. An output path equal to any input path is a hard error regardless of policy.
+- `on_collision`: `error | skip | overwrite`, default `error`. Governs collisions with the FILESYSTEM only: a rendered output path that already exists as a pre-existing on-disk file (not one of this batch's inputs). `error` refuses (no plan), `skip` omits that output (no plan, warning), `overwrite` replaces it (plan kept, info). An output path equal to any input path (primary or donor) is always a hard `SourceOverwrite` error regardless of policy.
+- Two planned outputs rendering to the same path is ALWAYS an error (`OutputCollision`, error severity), independent of `on_collision`: the batch is internally inconsistent and neither `skip` nor `overwrite` can define which plan wins. Fix the naming (disambiguate the `filename` template or `input.pattern`).
 
 ### 4.9 Attachments, chapters, tags, title
 
@@ -251,7 +254,8 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `MissingTrack` | error | non-optional rule matches 0 tracks; hint lists near-misses (tracks of same type/language and which condition each failed) |
 | `MissingExternal` | error | locator (track rule or chapters) finds 0 files for a non-optional use |
 | `AmbiguousExternal` | error | locator (track rule or chapters) finds >= 2 files |
-| `OutputCollision` | per policy | rendered output path exists or is produced twice |
+| `UnidentifiableSource` | error | a discovered primary or resolved donor exists but mkvmerge could not identify it (`detail` carries the underlying error) |
+| `OutputCollision` | error (two planned) / per policy (on-disk) | two plans render to one path (always error), or the rendered path pre-exists on disk (severity per `on_collision`: error/warning-skip/info-overwrite; 4.8) |
 | `PathSeparatorInRenderedName` | error | rendered output filename contains `/` or `\` (checked on all platforms) |
 | `EmptyRenderedName` | error | rendered output stem is empty or is `.`/`..` |
 | `SourceOverwrite` | error (hard) | output path equals any input path |
@@ -262,6 +266,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`) |
 | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
 | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+| `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
 | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
 
 ### 5.3 Suggestion engine
@@ -281,7 +286,7 @@ Best-effort, file-independent checks at validate time: regex/template compilatio
 One code path, three entry points:
 
 1. **validate**: static checks only, no filesystem access beyond the profile.
-2. **dry-run**: full planning pass over the batch; produces the report (per-file resolution tables, all diagnostics, suggestions). No mkvmerge mux invocations, only `-J` identification.
+2. **dry-run**: the config-time static validate pass (level 1) FIRST, then a full planning pass over the batch; produces the report (config-time diagnostics + per-file resolution tables + all planning diagnostics + suggestions). dry-run is a strict superset of validate, never a subset. No mkvmerge mux invocations, only `-J` identification.
 3. **run**: re-plans immediately before execution (identification is cheap and cached; a dry run can never be stale), then executes plans. Any error-severity diagnostic for a file skips that file, reported identically to the dry run.
 
 Identification cache: in-memory per session, keyed on path + mtime + size, shared between dry-run and run. On-disk cache is a future candidate.
