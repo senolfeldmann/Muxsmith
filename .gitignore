@@ -1,3 +1,6 @@
 /target
 .superpowers/
 gh-log.md
+
+# parallel SDD worktree streams
+.worktrees/
