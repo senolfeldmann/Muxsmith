@@ -8,6 +8,7 @@
 
 use crate::capability::codec_kind_prefixes;
 use crate::capability::runtime::LanguageIndex;
+use crate::capability::{PropType, matchable_type};
 use crate::identify::{PropValue, Track};
 use crate::profile::match_expr::{MatchExpr, Scalar};
 
@@ -84,9 +85,17 @@ fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex)
                 None => false,
             }
         }
+        // A boolean-typed property mkvmerge omitted is Matroska
+        // false-when-absent (spec 4.4): the vanity flags (hearing-impaired,
+        // commentary, ...) are only emitted when set, so absence must
+        // compare equal to `false` for exact matching, same as a track that
+        // reported the flag as `false` explicitly.
         _ => match track.get(prop) {
             Some(have) => scalar_eq(want, &have),
-            None => false,
+            None => match matchable_type(prop) {
+                Some(PropType::Boolean) => scalar_eq(want, &PropValue::Bool(false)),
+                _ => false,
+            },
         },
     }
 }
@@ -266,5 +275,45 @@ mod tests {
         let t = track("audio", &[("audio_channels", PropValue::Int(6))]);
         assert!(matches(&expr("exact: { audio_channels: 6 }"), &t, &lang()));
         assert!(!matches(&expr("exact: { audio_channels: 2 }"), &t, &lang()));
+    }
+
+    #[test]
+    fn absent_boolean_property_compares_equal_to_false() {
+        // mkvmerge emits vanity flags only when set; Matroska defines them
+        // false-when-absent (spec 4.4), so a track that never set the flag
+        // must match `exact: { flag_hearing_impaired: false }` and must not
+        // match `exact: { flag_hearing_impaired: true }`.
+        let t = track("audio", &[]);
+        assert!(matches(
+            &expr("exact: { flag_hearing_impaired: false }"),
+            &t,
+            &lang()
+        ));
+        assert!(!matches(
+            &expr("exact: { flag_hearing_impaired: true }"),
+            &t,
+            &lang()
+        ));
+    }
+
+    #[test]
+    fn present_boolean_property_still_matches_its_real_value() {
+        let t = track("audio", &[("flag_hearing_impaired", PropValue::Bool(true))]);
+        assert!(matches(
+            &expr("exact: { flag_hearing_impaired: true }"),
+            &t,
+            &lang()
+        ));
+        assert!(!matches(
+            &expr("exact: { flag_hearing_impaired: false }"),
+            &t,
+            &lang()
+        ));
+    }
+
+    #[test]
+    fn absent_non_boolean_property_still_does_not_match() {
+        let t = track("subtitles", &[]);
+        assert!(!matches(&expr("exact: { track_name: X }"), &t, &lang()));
     }
 }
