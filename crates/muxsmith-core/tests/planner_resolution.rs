@@ -5,6 +5,7 @@ use muxsmith_core::capability::runtime::LanguageIndex;
 use muxsmith_core::identify::{Identification, Identify, IdentifyError};
 use muxsmith_core::planner::{RunInputs, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
+use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::report::DiagCode;
 
 // A fake identifier backed by fixture JSON keyed on file name.
@@ -303,6 +304,82 @@ tracks:
             .any(|d| d.code == DiagCode::SourceOverwrite),
         "diags: {:?}",
         fr.diagnostics
+    );
+}
+
+#[test]
+fn source_overwrite_is_batch_wide_not_per_primary() {
+    let root = tempfile::tempdir().unwrap();
+    let src_dir = root.path().join("src");
+    let donors_dir = root.path().join("donors");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::create_dir_all(&donors_dir).unwrap();
+    std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap(); // primary A
+    std::fs::write(src_dir.join("Show.S01E02.mkv"), b"x").unwrap(); // primary B
+    // B's external rule resolves this real donor via match_to_source (its
+    // basename contains B's own identifier, "S01E02"). A's own identifier
+    // ("S01E01") never matches it, so A's own rule evaluation never touches
+    // this donor and A's per-primary donor set stays empty.
+    std::fs::write(donors_dir.join("Donor.S01E02.mkv"), b"y").unwrap();
+
+    // output.filename is a fixed literal (no {match} field), so *every*
+    // primary in the batch renders to the identical name; with run.output
+    // pointed at donors_dir, that name is byte-for-byte B's donor path - for
+    // A as much as for B, even though A never resolved that donor itself.
+    let donors_dir_str = donors_dir.to_str().unwrap();
+    let profile_yaml = format!(
+        r#"
+profile_version: 1
+input: {{ pattern: 'S(?<s>\d{{2}})E(?<e>\d{{2}})', extensions: [mkv] }}
+output:
+  filename: {{ template: 'Donor.S01E02.mkv' }}
+tracks:
+  - match: {{ exact: {{ type: video }} }}
+  - source:
+      external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
+    match: {{ exact: {{ type: audio }} }}
+    optional: true
+"#,
+        donors_dir = donors_dir_str
+    );
+    let profile = from_str(&profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: src_dir.clone(),
+        output: Some(donors_dir.clone()),
+        on_collision: Some(CollisionPolicy::Overwrite),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Show.S01E02.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Donor.S01E02.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(root);
+
+    // A never resolves B's donor itself, but its rendered output equals it -
+    // a batch-wide SourceOverwrite, invisible to a check scoped to A's own
+    // resolved donors.
+    let a = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Show.S01E01.mkv"))
+        .unwrap();
+    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+    assert!(
+        a.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        a.diagnostics
     );
 }
 

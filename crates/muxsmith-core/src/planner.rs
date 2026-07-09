@@ -4,7 +4,7 @@
 //! filesystem mutation and no mux invocations (dry-run, spec 5.5); the only
 //! external work is identification, driven through the injected [`Identify`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -162,9 +162,13 @@ pub fn plan_core(
         ));
     }
 
-    // Drop plans with resolution errors first, so collision detection only
-    // considers files that will actually produce output; then re-drop any plan
-    // that a collision error just invalidated.
+    // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
+    // resolved donors, not just the current one's, so it runs as its own
+    // pass before anything drops a plan. Then drop plans with resolution
+    // errors, so collision detection only considers files that will actually
+    // produce output; then re-drop any plan that a collision error just
+    // invalidated.
+    detect_source_overwrites(&mut files, &primary_paths);
     finalize_plans(&mut files);
     detect_output_collisions(&mut files, policy);
     finalize_plans(&mut files);
@@ -247,7 +251,7 @@ fn resolve_file(
             diagnostics.push(
                 Diagnostic::error(DiagCode::UnidentifiableSource, "input")
                     .for_file(&primary.path)
-                    .with("detail", format!("{e:?}")),
+                    .with("detail", format!("{e}")),
             );
             return FileReport {
                 source: primary.path.clone(),
@@ -268,10 +272,6 @@ fn resolve_file(
     let mut assignments = Vec::new();
     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();
-    // Every external-source rule's resolved donor path, so the
-    // SourceOverwrite check below can never let a rendered output clobber a
-    // file we read from (spec 4.8, 5.2).
-    let mut donor_paths: Vec<PathBuf> = Vec::new();
 
     for (ri, rule) in profile.tracks.iter().enumerate() {
         let base = format!("tracks[{ri}]");
@@ -300,7 +300,6 @@ fn resolve_file(
                     }
                     1 => {
                         let donor = hits.into_iter().next().unwrap();
-                        donor_paths.push(donor.clone());
                         if primary_paths.contains(&donor) {
                             diagnostics.push(
                                 Diagnostic::warning(
@@ -320,7 +319,7 @@ fn resolve_file(
                                         format!("{base}.source.external"),
                                     )
                                     .for_file(&primary.path)
-                                    .with("detail", format!("{e:?}")),
+                                    .with("detail", format!("{e}")),
                                 );
                                 assignments.push(Assignment {
                                     rule_index: ri,
@@ -414,16 +413,6 @@ fn resolve_file(
 
     let output = render_output(profile, primary, output_dir, &mut diagnostics);
 
-    if let Some(out) = &output
-        && (primary_paths.contains(out) || donor_paths.contains(out))
-    {
-        diagnostics.push(
-            Diagnostic::error(DiagCode::SourceOverwrite, "output")
-                .for_file(&primary.path)
-                .with("path", out.display().to_string()),
-        );
-    }
-
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
         output,
@@ -492,6 +481,34 @@ fn render_output(
     }
 
     Some(output_dir.join(name))
+}
+
+// A rendered output must never equal an input path anywhere in the batch:
+// every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
+// Batch-wide because one primary's output can equal a donor a *different*
+// primary reads from; `Assignment.source` already carries that donor path
+// (or the primary path, for a primary-source rule), so the union of every
+// file's assignment sources plus the primaries is the complete input set.
+// Runs before `finalize_plans` drops anything, so every file's assignments
+// are still present to gather from.
+fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf]) {
+    let mut inputs: BTreeSet<PathBuf> = primary_paths.iter().cloned().collect();
+    for f in files.iter() {
+        if let Some(plan) = &f.plan {
+            inputs.extend(plan.assignments.iter().map(|a| a.source.clone()));
+        }
+    }
+    for f in files.iter_mut() {
+        let Some(plan) = &f.plan else { continue };
+        if inputs.contains(&plan.output) {
+            let path = plan.output.display().to_string();
+            f.diagnostics.push(
+                Diagnostic::error(DiagCode::SourceOverwrite, "output")
+                    .for_file(&f.source)
+                    .with("path", path),
+            );
+        }
+    }
 }
 
 // Two plans rendering to the same output path collide, as does an existing

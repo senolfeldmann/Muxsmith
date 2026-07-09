@@ -181,6 +181,26 @@ impl From<RuntimeError> for IdentifyError {
     }
 }
 
+impl std::fmt::Display for IdentifyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdentifyError::Runtime(RuntimeError::NotFound) => {
+                write!(f, "mkvmerge failed: executable not found")
+            }
+            IdentifyError::Runtime(RuntimeError::Spawn(e)) => write!(f, "mkvmerge failed: {e}"),
+            IdentifyError::Runtime(RuntimeError::NonZero { code, stderr }) => {
+                let code = code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "signal".into());
+                write!(f, "mkvmerge failed: exit {code}: {stderr}")
+            }
+            IdentifyError::Runtime(RuntimeError::Parse(e)) => write!(f, "mkvmerge failed: {e}"),
+            IdentifyError::Json(e) => write!(f, "invalid identification JSON: {e}"),
+            IdentifyError::Stat(e) => write!(f, "cannot read file: {e}"),
+        }
+    }
+}
+
 /// In-memory identification cache for one session (spec 5.5). Keyed on path
 /// plus (mtime, size); a changed file re-identifies, so a dry run is never
 /// stale. On-disk caching is a future candidate (spec non-goals).
@@ -290,6 +310,30 @@ mod tests {
         assert_eq!(sub.get("forced_track"), Some(PropValue::Bool(true)));
         assert_eq!(sub.get("language"), Some(PropValue::Str("eng".into())));
         assert_eq!(sub.get("no_such_prop"), None);
+    }
+
+    #[test]
+    fn display_is_a_terse_phrase_not_the_debug_dump() {
+        let e = IdentifyError::Runtime(RuntimeError::Spawn("No such file or directory".into()));
+        assert_eq!(e.to_string(), "mkvmerge failed: No such file or directory");
+
+        let e = IdentifyError::Runtime(RuntimeError::NonZero {
+            code: Some(2),
+            stderr: "unsupported container".into(),
+        });
+        assert_eq!(
+            e.to_string(),
+            "mkvmerge failed: exit 2: unsupported container"
+        );
+
+        let e = IdentifyError::Json("EOF while parsing a value".into());
+        assert_eq!(
+            e.to_string(),
+            "invalid identification JSON: EOF while parsing a value"
+        );
+
+        let e = IdentifyError::Stat("permission denied".into());
+        assert_eq!(e.to_string(), "cannot read file: permission denied");
     }
 
     #[test]
