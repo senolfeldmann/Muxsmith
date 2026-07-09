@@ -22,6 +22,11 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # Linux-only: branch pushes are Linux-only anyway (minute economy);
+      # gated integration tests self-skip on other platforms.
+      - name: Install mkvtoolnix (gated integration tests)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mkvtoolnix
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
