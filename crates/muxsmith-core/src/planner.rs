@@ -437,10 +437,10 @@ fn render_output(
     output_dir: &Path,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<PathBuf> {
-    // Rendered BEFORE ".mkv" is appended: both invariants below (D4, spec
-    // 4.8) must see the actual rendered stem, not a value already carrying
-    // the enforced extension, or a template rendering to "." would silently
-    // become the hidden/invalid "..mkv" instead of being rejected.
+    // Rendered BEFORE ".mkv" is appended: PathSeparatorInRenderedName must
+    // see the actual rendered value, not one already carrying the enforced
+    // extension (".mkv" never itself introduces a separator, but a
+    // template's own output could).
     let rendered = match &profile.output.filename {
         FilenameCfg::Keyword(_) => primary
             .path
@@ -467,14 +467,6 @@ fn render_output(
         );
         return None;
     }
-    if rendered.is_empty() || rendered == "." || rendered == ".." {
-        diags.push(
-            Diagnostic::error(DiagCode::EmptyRenderedName, "output.filename")
-                .for_file(&primary.path)
-                .with("name", rendered.clone()),
-        );
-        return None;
-    }
 
     // keep and template diverge here (spec 4.8): keep is file_stem +
     // ".mkv" unconditionally, since the source's own extension carries no
@@ -486,14 +478,44 @@ fn render_output(
         FilenameCfg::Keyword(_) => format!("{rendered}.mkv"),
         FilenameCfg::Template(_) => {
             if rendered.to_lowercase().ends_with(".mkv") {
-                rendered
+                rendered.clone()
             } else {
                 format!("{rendered}.mkv")
             }
         }
     };
 
+    // D4 / spec 4.8 empty-name invariant, enforced on the FINAL name's
+    // stem, not the pre-append `rendered` value above: a template that
+    // renders to exactly ".mkv" (or to an empty field followed by a
+    // literal ".mkv" segment) is non-empty and not "."/".." before ".mkv"
+    // is appended, since it already carries that extension, so a
+    // pre-append check never sees the problem. Stripping ".mkv" back off
+    // the final name catches this the same way as an explicit "." or "..".
+    let stem = strip_mkv_suffix(&name);
+    if stem.is_empty() || stem == "." || stem == ".." {
+        diags.push(
+            Diagnostic::error(DiagCode::EmptyRenderedName, "output.filename")
+                .for_file(&primary.path)
+                .with("name", rendered.clone()),
+        );
+        return None;
+    }
+
     Some(output_dir.join(name))
+}
+
+// Strips a trailing ".mkv" (case-insensitive) off `name`, or returns `name`
+// unchanged if it does not end in ".mkv". `is_char_boundary` guards the
+// slice: ".mkv" is ASCII, so a real match is always a safe boundary, but a
+// non-matching multi-byte tail must never be sliced into.
+fn strip_mkv_suffix(name: &str) -> &str {
+    let len = name.len();
+    if len >= 4 && name.is_char_boundary(len - 4) && name[len - 4..].eq_ignore_ascii_case(".mkv") {
+        &name[..len - 4]
+    } else {
+        name
+    }
 }
 
 // A rendered output must never equal an input path anywhere in the batch:

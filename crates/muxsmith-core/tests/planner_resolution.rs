@@ -493,6 +493,63 @@ tracks:
     );
 }
 
+// I1 regression: a template that renders to exactly ".mkv" is non-empty and
+// not "."/".." BEFORE ".mkv" is appended, so a check scoped to the
+// pre-append value never fires; the template arm then sees the rendered
+// value already ends in ".mkv" and appends nothing, producing the hidden,
+// empty-stem output file ".mkv" with exit 0. The invariant must be checked
+// on the FINAL name's stem (after ".mkv" is stripped back off), not on the
+// pre-append rendered value.
+#[test]
+fn empty_rendered_name_when_template_renders_to_literal_mkv() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+output:
+  filename: { template: '.mkv' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+// Same failure mode as above, reached a different way: the template field
+// itself renders empty (an optional capture group, "x" here, that exists in
+// input.pattern but does not participate in this file's match, so `Ctx`
+// never binds it and it interpolates as "") followed by a literal ".mkv"
+// segment. Confirms the fix catches "empty field + literal .mkv", not just
+// the bare ".mkv" literal.
+#[test]
+fn empty_rendered_name_when_template_field_renders_empty_before_literal_mkv() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+output:
+  filename: { template: '{x}.mkv' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
 // Two primaries whose profile renders both to a fixed literal name (no
 // {match} field), in a sibling `out/` directory so pre-existing files in it
 // are never rediscovered as extra primaries (input.recursive defaults true,
