@@ -1,0 +1,296 @@
+//! Per-job runner (spec 6, D13): spawns one mkvmerge invocation behind the
+//! [`Spawn`] seam, parses the observed `--gui-mode` line grammar into
+//! [`JobProgress`], and maps the process exit into a terminal [`JobState`].
+//! Delete-partial (D17) removes the output on `Failed`/`Cancelled` only,
+//! deliberately diverging from mkvtoolnix-gui's opt-in default-off behavior.
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
+
+use serde::Serialize;
+
+use super::spawn::{Spawn, SpawnError};
+
+/// What to execute: the pure argv plus the output path the argv writes
+/// (needed for parent-dir creation and delete-partial).
+#[derive(Debug, Clone, PartialEq)]
+pub struct JobSpec {
+    /// `command(&Plan)` vector (no program name, no `--gui-mode`).
+    pub argv: Vec<String>,
+    /// The plan's rendered output path.
+    pub output: PathBuf,
+}
+
+/// Terminal job state (spec 6; mirrors mkvtoolnix-gui DoneOk/DoneWarnings/
+/// Failed/Aborted, D13).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JobState {
+    /// mkvmerge exited 0: clean mux, output kept.
+    Ok,
+    /// mkvmerge exited 1: mux completed with warnings, output kept.
+    Warning,
+    /// mkvmerge exited 2, or any other non-zero or abnormal exit: mux
+    /// failed, partial output deleted (D17).
+    Failed,
+    /// Killed while the caller's cancellation flag was set; partial output
+    /// deleted (D17).
+    Cancelled,
+}
+
+/// One finished job.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JobOutcome {
+    /// Terminal state.
+    pub state: JobState,
+    /// mkvmerge's exit code; `None` when killed (or when the process never
+    /// started, see [`Spawn::spawn`] errors).
+    pub exit_code: Option<i32>,
+    /// Captured warning lines (tag stripped).
+    pub warnings: Vec<String>,
+    /// Captured error lines (tag stripped).
+    pub errors: Vec<String>,
+    /// Wall-clock duration of the run, in milliseconds.
+    pub duration_ms: u64,
+}
+
+/// Mid-job signal surfaced to the caller (the queue re-emits as JobEvent).
+#[derive(Debug, Clone, PartialEq)]
+pub enum JobProgress {
+    /// Parsed `#GUI#progress NN%` line.
+    Percent(u8),
+    /// A captured `#GUI#warning` line, tag stripped.
+    WarningLine(String),
+    /// A captured `#GUI#error` line, tag stripped.
+    ErrorLine(String),
+}
+
+/// Runs one job to completion: ensures the output's parent dir exists
+/// (D13), spawns, streams lines through the gui-mode parser, maps the exit
+/// code (0 ok / 1 warning, output kept / 2 or abnormal failed, partial
+/// deleted / killed while `cancel` is set = cancelled, partial deleted).
+///
+/// Drains `next_line` to EOF before calling `wait` (never the reverse): the
+/// live `RunningJob::wait` holds the child mutex across a blocking waitpid,
+/// so calling it while a concurrent `Killer` might still be needed to end a
+/// streaming process would stall until natural exit.
+pub fn run_job(
+    spawner: &dyn Spawn,
+    spec: &JobSpec,
+    cancel: &AtomicBool,
+    on_progress: &mut dyn FnMut(JobProgress),
+) -> JobOutcome {
+    let start = Instant::now();
+
+    if let Some(parent) = spec.output.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut running = match spawner.spawn(&spec.argv) {
+        Ok(running) => running,
+        Err(SpawnError(message)) => {
+            return finish(
+                JobState::Failed,
+                None,
+                Vec::new(),
+                vec![message],
+                &spec.output,
+                start,
+            );
+        }
+    };
+
+    let mut warnings = Vec::new();
+    let mut errors = Vec::new();
+
+    while let Some(line) = running.next_line() {
+        if let Some(pct) = parse_progress(&line) {
+            on_progress(JobProgress::Percent(pct));
+        } else if let Some(text) = line.strip_prefix("#GUI#warning ") {
+            let text = text.to_string();
+            warnings.push(text.clone());
+            on_progress(JobProgress::WarningLine(text));
+        } else if let Some(text) = line.strip_prefix("#GUI#error ") {
+            let text = text.to_string();
+            errors.push(text.clone());
+            on_progress(JobProgress::ErrorLine(text));
+        }
+    }
+
+    let exit_code = running.wait();
+    let state = match exit_code {
+        Some(0) => JobState::Ok,
+        Some(1) => JobState::Warning,
+        None if cancel.load(Ordering::SeqCst) => JobState::Cancelled,
+        _ => JobState::Failed,
+    };
+
+    finish(state, exit_code, warnings, errors, &spec.output, start)
+}
+
+/// Parses a `#GUI#progress NN%` line into `NN`; `None` for any other line.
+fn parse_progress(line: &str) -> Option<u8> {
+    line.strip_prefix("#GUI#progress ")
+        .and_then(|rest| rest.strip_suffix('%'))
+        .and_then(|digits| digits.parse().ok())
+}
+
+/// Assembles the terminal [`JobOutcome`], deleting the partial output
+/// (D17) when the state is `Failed` or `Cancelled`.
+fn finish(
+    state: JobState,
+    exit_code: Option<i32>,
+    warnings: Vec<String>,
+    errors: Vec<String>,
+    output: &Path,
+    start: Instant,
+) -> JobOutcome {
+    if matches!(state, JobState::Failed | JobState::Cancelled) {
+        delete_partial(output);
+    }
+    JobOutcome {
+        state,
+        exit_code,
+        warnings,
+        errors,
+        duration_ms: start.elapsed().as_millis() as u64,
+    }
+}
+
+/// Best-effort removal of a partial output; `NotFound` (nothing was ever
+/// written) and any other error are both ignored, since core has no channel
+/// to surface a delete failure back through `JobOutcome`.
+fn delete_partial(output: &Path) {
+    let _ = std::fs::remove_file(output);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::executor::spawn::FakeSpawner;
+
+    fn spec(output: PathBuf) -> JobSpec {
+        JobSpec {
+            argv: vec![
+                "--output".to_string(),
+                output.to_string_lossy().into_owned(),
+            ],
+            output,
+        }
+    }
+
+    #[test]
+    fn exit_zero_is_ok_and_output_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.mkv");
+        std::fs::write(&output, b"muxed").unwrap();
+        let spec = spec(output);
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+        let cancel = AtomicBool::new(false);
+
+        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Ok);
+        assert_eq!(outcome.exit_code, Some(0));
+        assert!(spec.output.exists());
+    }
+
+    #[test]
+    fn exit_one_is_warning_with_captured_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = spec(dir.path().join("out.mkv"));
+        let fake = FakeSpawner::script(
+            vec![
+                "#GUI#warning 'seed.srt': A track with the ID 9 was requested but not found."
+                    .to_string(),
+            ],
+            Some(1),
+        );
+        let cancel = AtomicBool::new(false);
+
+        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Warning);
+        assert_eq!(outcome.exit_code, Some(1));
+        assert_eq!(
+            outcome.warnings,
+            vec!["'seed.srt': A track with the ID 9 was requested but not found.".to_string()]
+        );
+    }
+
+    #[test]
+    fn exit_two_is_failed_and_partial_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.mkv");
+        std::fs::write(&output, b"partial").unwrap();
+        let spec = spec(output);
+        let fake = FakeSpawner::script(
+            vec!["#GUI#error The file 'missing.srt' could not be opened for reading.".to_string()],
+            Some(2),
+        );
+        let cancel = AtomicBool::new(false);
+
+        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Failed);
+        assert_eq!(outcome.exit_code, Some(2));
+        assert!(!spec.output.exists());
+    }
+
+    #[test]
+    fn killed_under_cancel_is_cancelled_and_partial_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.mkv");
+        std::fs::write(&output, b"partial").unwrap();
+        let spec = spec(output);
+        let fake = FakeSpawner::script(vec!["#GUI#progress 50%".to_string()], None);
+        let cancel = AtomicBool::new(true);
+
+        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Cancelled);
+        assert_eq!(outcome.exit_code, None);
+        assert!(!spec.output.exists());
+    }
+
+    #[test]
+    fn progress_lines_surface_as_percent() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = spec(dir.path().join("out.mkv"));
+        let fake = FakeSpawner::script(
+            vec![
+                "#GUI#progress 25%".to_string(),
+                "#GUI#progress 50%".to_string(),
+                "#GUI#progress 100%".to_string(),
+            ],
+            Some(0),
+        );
+        let cancel = AtomicBool::new(false);
+        let mut collected = Vec::new();
+
+        run_job(&fake, &spec, &cancel, &mut |p| collected.push(p));
+
+        assert_eq!(
+            collected,
+            vec![
+                JobProgress::Percent(25),
+                JobProgress::Percent(50),
+                JobProgress::Percent(100),
+            ]
+        );
+    }
+
+    #[test]
+    fn parent_dir_created_before_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("nested/sub/out.mkv");
+        let spec = spec(output);
+        let fake = FakeSpawner::script(Vec::new(), Some(0));
+        let cancel = AtomicBool::new(false);
+
+        run_job(&fake, &spec, &cancel, &mut |_| {});
+
+        assert!(spec.output.parent().unwrap().is_dir());
+    }
+}
