@@ -89,15 +89,19 @@ pub fn run_job(
 
     let mut running = match spawner.spawn(&spec.argv) {
         Ok(running) => running,
+        // The process never ran, so mkvmerge wrote nothing: no partial
+        // exists and nothing may be deleted (a file at `spec.output` is a
+        // valid output from a prior run, e.g. under `on_collision:
+        // overwrite`). Assembled directly, bypassing the deleting
+        // [`finish`] path (D17 covers partials only).
         Err(SpawnError(message)) => {
-            return finish(
-                JobState::Failed,
-                None,
-                Vec::new(),
-                vec![message],
-                &spec.output,
-                start,
-            );
+            return JobOutcome {
+                state: JobState::Failed,
+                exit_code: None,
+                warnings: Vec::new(),
+                errors: vec![message],
+                duration_ms: start.elapsed().as_millis() as u64,
+            };
         }
     };
 
@@ -136,8 +140,10 @@ fn parse_progress(line: &str) -> Option<u8> {
         .and_then(|digits| digits.parse().ok())
 }
 
-/// Assembles the terminal [`JobOutcome`], deleting the partial output
-/// (D17) when the state is `Failed` or `Cancelled`.
+/// Assembles the terminal [`JobOutcome`] for a job whose process actually
+/// ran, deleting the partial output (D17) when the state is `Failed` or
+/// `Cancelled`. Spawn failures do not come through here: no process means
+/// no partial, so nothing may be deleted.
 fn finish(
     state: JobState,
     exit_code: Option<i32>,
@@ -168,7 +174,17 @@ fn delete_partial(output: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::spawn::FakeSpawner;
+    use crate::executor::spawn::{FakeSpawner, RunningJob};
+
+    /// A [`Spawn`] whose `spawn` always fails, for the spawn-error path
+    /// ([`FakeSpawner`] has no error mode).
+    struct FailingSpawner;
+
+    impl Spawn for FailingSpawner {
+        fn spawn(&self, _argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
+            Err(SpawnError("boom".to_string()))
+        }
+    }
 
     fn spec(output: PathBuf) -> JobSpec {
         JobSpec {
@@ -278,6 +294,25 @@ mod tests {
                 JobProgress::Percent(50),
                 JobProgress::Percent(100),
             ]
+        );
+    }
+
+    #[test]
+    fn spawn_failure_is_failed_but_keeps_preexisting_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.mkv");
+        std::fs::write(&output, b"valid output from a prior run").unwrap();
+        let spec = spec(output);
+        let cancel = AtomicBool::new(false);
+
+        let outcome = run_job(&FailingSpawner, &spec, &cancel, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Failed);
+        assert_eq!(outcome.exit_code, None);
+        assert_eq!(outcome.errors, vec!["boom".to_string()]);
+        assert!(
+            spec.output.exists(),
+            "no process ran, so no partial exists; a pre-existing output must survive"
         );
     }
 
