@@ -371,15 +371,16 @@ impl MilestoneState {
                     ("seconds", seconds.as_str()),
                 ],
             ),
-            JobState::Warning => renderer.msg(
+            JobState::Warning => renderer.msg_with_count(
                 "run-job-warning",
                 &[
                     ("index", index_s.as_str()),
                     ("total", total_s.as_str()),
                     ("output", output),
-                    ("count", outcome.warnings.len().to_string().as_str()),
                     ("seconds", seconds.as_str()),
                 ],
+                "count",
+                outcome.warnings.len(),
             ),
             JobState::Failed => {
                 let code = outcome
@@ -618,6 +619,30 @@ mod tests {
         assert!(lines[0].contains("warning"), "{}", lines[0]);
         assert!(lines[0].contains("2 warnings"), "{}", lines[0]);
         assert!(lines[0].contains("2.0s"), "{}", lines[0]);
+    }
+
+    #[test]
+    fn finished_warning_with_exactly_one_warning_renders_singular() {
+        let r = renderer();
+        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
+        let lines = state.render(
+            &JobEvent::Finished {
+                index: 0,
+                outcome: outcome(JobState::Warning, Some(1), 1, 2000),
+            },
+            1,
+            &r,
+        );
+        assert!(
+            lines[0].contains("(1 warning,"),
+            "expected singular '1 warning' in: {}",
+            lines[0]
+        );
+        assert!(
+            !lines[0].contains("1 warnings"),
+            "did not expect plural '1 warnings' in: {}",
+            lines[0]
+        );
     }
 
     #[test]

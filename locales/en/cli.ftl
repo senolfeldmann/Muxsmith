@@ -15,7 +15,10 @@ run-job-start = [{ $index }/{ $total }] { $output } ... start
 run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
 run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }
 run-job-ok = [{ $index }/{ $total }] { $output } ... ok ({ $seconds }s)
-run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count } warnings, { $seconds }s)
+run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count ->
+    [one] 1 warning
+   *[other] { $count } warnings
+}, { $seconds }s)
 run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
 run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
 run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled

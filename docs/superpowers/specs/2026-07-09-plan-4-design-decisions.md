@@ -100,6 +100,8 @@ sequentially there is nothing else in flight.
   override as a run input with CLI flags overriding profile defaults;
   `RunInputs.on_collision` has existed since Plan 2 but no flag exposes it,
   and `run` is where the rerun workflow (D14, D17) needs it.
+- Amendment 2026-07-10 (Şenol): run-job-warning pluralizes the warning count
+  via a Fluent plural selector (plan's locked text rendered "1 warnings").
 
 ## D16: SIGINT handling via the `ctrlc` crate, single-level
 

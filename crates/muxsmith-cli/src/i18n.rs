@@ -43,6 +43,36 @@ impl Renderer {
     /// output instead of silently disappearing (CI's catalog-completeness
     /// guard, spec 10, is the other half of this contract).
     pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
+        let mut fargs = FluentArgs::new();
+        for (k, v) in args {
+            fargs.set(*k, *v);
+        }
+        self.render(id, fargs)
+    }
+
+    /// Renders one Fluent message like [`msg`], but sets `count_key` as a
+    /// numeric `FluentValue::Number` rather than a string. Fluent's plural
+    /// selector (`[one]`/`*[other]`) resolves CLDR plural categories only
+    /// against `FluentValue::Number`; a `FluentValue::String` selector
+    /// always falls through to `*[other]`, so a message with a `{ $count ->
+    /// [one] ... *[other] ... }` selector needs its count passed through
+    /// this method instead of [`msg`].
+    pub fn msg_with_count(
+        &self,
+        id: &str,
+        args: &[(&str, &str)],
+        count_key: &str,
+        count: usize,
+    ) -> String {
+        let mut fargs = FluentArgs::new();
+        for (k, v) in args {
+            fargs.set(*k, *v);
+        }
+        fargs.set(count_key, count);
+        self.render(id, fargs)
+    }
+
+    fn render(&self, id: &str, fargs: FluentArgs) -> String {
         let Some(message) = self.bundle.get_message(id) else {
             // Missing catalog entry: fall back to the raw id so the
             // problem is visible instead of hidden. CI guards this case.
@@ -51,10 +81,6 @@ impl Renderer {
         let Some(pattern) = message.value() else {
             return id.to_string();
         };
-        let mut fargs = FluentArgs::new();
-        for (k, v) in args {
-            fargs.set(*k, *v);
-        }
         let mut errors = Vec::new();
         self.bundle
             .format_pattern(pattern, Some(&fargs), &mut errors)
