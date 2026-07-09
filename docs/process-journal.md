@@ -261,3 +261,13 @@ there. See HANDOFF.md.
 **Deltas.** Plan 3.5 itself is a delta (did not exist until the audit inserted it). Keep track-order was specced (assumption #3), built (Tasks 2-3), reviewed green, THEN reversed (D20-B, Task 7) - the plan's own assumption changed, not its implementation.
 
 **Open threads (Plan 4 inherits).** Plan 4 memo (D13-D18) written, parked, UNREVIEWED by Şenol - review first. Standing Plan 1-3 minors still open (FakeIdent/lang() 3x dup, mem::forget tempdir leaks, mkvtoolnix in CI). docs/IDEAS.md holds 4 shelved parity features. Parallelize Plan 4's independent tasks per new SI-1.
+
+## 2026-07-09 | Session close: Plan 4 designed and planned, execution deferred | session 4 (cont.)
+
+**Scope.** Post-Plan-3.5 tail of session 4: commits 7ba90ee (Plan 4 memo, Şenol-approved "lgtm") and c0c0ef7 (Plan 4 implementation plan). No implementation.
+
+**Decisions and why.** Plan 4 plan is WAVED: wave 1 = five independent streams (executor seam T1, --on-collision T4, tests/support+tempdir T5, CI mkvtoolnix T6, richer gated test T7) to run as parallel worktrees - direct consequence of the Plan 3.5 serial-execution criticism, first parallel run for this repo. SI-4 added to HANDOFF: commit/push authorization is standing, never re-request per session (Şenol: "persist indefinitely"; he had to re-grant each session).
+
+**Friction.** The harness permission classifier blocked a commit early in the session despite the repo's standing grant (it reads settings, not repo docs); cleared by explicit in-session authorization. SI-4 documents the distinction (classifier block != revocation); durable fix would be a settings.json allow-rule, Şenol's call.
+
+**Open threads.** Next session: execute Plan 4 (plan c0c0ef7), wave 1 fan-out first; T1 must probe the real --gui-mode grammar before T2 writes the parser; verify T6's CI effect post-push in the Actions log.
