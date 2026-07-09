@@ -8,6 +8,7 @@
 pub mod capability;
 pub mod command;
 pub mod discovery;
+pub mod executor;
 pub mod identify;
 pub mod matcher;
 pub mod planner;
