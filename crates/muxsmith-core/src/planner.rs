@@ -190,7 +190,9 @@ pub fn plan_batch(
     let (primaries, discovery_diags) = discovery::scan_primaries(&run.source, &profile.input);
     let mut batch = plan_core(profile, run, &primaries, id, lang);
     batch.batch_diagnostics.extend(discovery_diags);
-    batch.suggestions = suggest(profile, run, &primaries, id, lang, &batch);
+    let (suggestions, cap_diagnostics) = suggest(profile, run, &primaries, id, lang, &batch);
+    batch.suggestions = suggestions;
+    batch.batch_diagnostics.extend(cap_diagnostics);
     batch
 }
 
@@ -592,9 +594,10 @@ struct Candidate {
 /// (conflicting) tracks across all affected files, derive discriminator
 /// candidates, simulate each against the whole batch via [`plan_core`], and
 /// keep only those that resolve the ambiguity everywhere with no new
-/// diagnostic. Deterministic; capped at 3 per rule. OverlappingRules
-/// suggestions and the no-single-fix partition report are deferred (Plan 2
-/// scope note).
+/// diagnostic. Deterministic; capped at 3 per rule, with a `SuggestionsCapped`
+/// diagnostic recording how many were dropped when more were accepted, so the
+/// cap is never silent. OverlappingRules suggestions and the no-single-fix
+/// partition report are deferred (Plan 2 scope note).
 #[allow(clippy::too_many_arguments)]
 fn suggest(
     profile: &Profile,
@@ -603,7 +606,7 @@ fn suggest(
     id: &mut dyn Identify,
     lang: &LanguageIndex,
     baseline: &Batch,
-) -> Vec<Suggestion> {
+) -> (Vec<Suggestion>, Vec<Diagnostic>) {
     let base_sig = diag_signature(baseline);
 
     let mut conflicted: Vec<usize> = baseline
@@ -617,6 +620,7 @@ fn suggest(
     conflicted.dedup();
 
     let mut out = Vec::new();
+    let mut cap_diagnostics = Vec::new();
     for ri in conflicted {
         let Some(rule) = profile.tracks.get(ri) else {
             continue;
@@ -635,17 +639,26 @@ fn suggest(
             }
         }
         accepted.sort_by(|a, b| a.rank.cmp(&b.rank));
+        let total_accepted = accepted.len();
         accepted.truncate(3);
+        let dropped = total_accepted - accepted.len();
+        if dropped > 0 {
+            cap_diagnostics.push(
+                Diagnostic::info(DiagCode::SuggestionsCapped, format!("tracks[{ri}].match"))
+                    .with("dropped", dropped.to_string()),
+            );
+        }
         for cand in accepted {
+            let fragment = yaml_fragment(ri, &cand.apply);
             out.push(Suggestion {
                 resolves: DiagCode::AmbiguousRule,
                 config_path: format!("tracks[{ri}].match"),
-                yaml_fragment: yaml_fragment(ri, &cand.edit),
+                yaml_fragment: fragment,
                 edit: cand.edit,
             });
         }
     }
-    out
+    (out, cap_diagnostics)
 }
 
 // Discriminator candidates for a rule, drawn from the property vectors of the
@@ -785,19 +798,28 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
     m
 }
 
-// Merges a delta into rule `ri`'s match expression, returning an edited profile.
+// Merges a delta into rule `ri`'s match expression, returning an edited
+// profile. `exact`/`substring` use insert-only-if-absent semantics (bug C):
+// a candidate whose key already exists on the rule must never overwrite the
+// existing constraint, since a suggestion may only narrow a match, never
+// relax it (D6). A key collision then makes the delta a no-op for that key,
+// which `resolves_without_regression` correctly rejects for not resolving
+// the ambiguity. `not` entries are always additive (appending a not-clause
+// always narrows, never relaxes), so plain `extend` stays correct there.
 fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
     let mut p = profile.clone();
     let expr = &mut p.tracks[ri].match_expr;
     if let Some(add) = &delta.exact {
-        expr.exact
-            .get_or_insert_with(BTreeMap::new)
-            .extend(add.clone());
+        let map = expr.exact.get_or_insert_with(BTreeMap::new);
+        for (k, v) in add {
+            map.entry(k.clone()).or_insert_with(|| v.clone());
+        }
     }
     if let Some(add) = &delta.substring {
-        expr.substring
-            .get_or_insert_with(BTreeMap::new)
-            .extend(add.clone());
+        let map = expr.substring.get_or_insert_with(BTreeMap::new);
+        for (k, v) in add {
+            map.entry(k.clone()).or_insert_with(|| v.clone());
+        }
     }
     if let Some(add) = &delta.not {
         expr.not.get_or_insert_with(Vec::new).extend(add.clone());
@@ -877,20 +899,24 @@ fn prop_value_as(v: &crate::identify::PropValue) -> Option<(String, Scalar)> {
     }
 }
 
-fn yaml_fragment(ri: usize, edit: &StructuredEdit) -> String {
-    let body = match edit {
-        StructuredEdit::AddExact { property, value } => {
-            format!("match:\n  exact: {{ {property}: {value} }}")
-        }
-        StructuredEdit::AddNotExact { property, value } => {
-            format!("match:\n  not:\n    - exact: {{ {property}: {value} }}")
-        }
-        StructuredEdit::AddSubstring { value } => {
-            format!("match:\n  substring: {{ track_name: {value} }}")
-        }
-        StructuredEdit::AddNotSubstring { value } => {
-            format!("match:\n  not:\n    - substring: {{ track_name: {value} }}")
-        }
-    };
+// Wrapper so the fragment renders as `match: <expr>`, the shape the CLI/GUI
+// splice into a rule's `match:` key (spec 5.3, D6). The field cannot be
+// named `match` (reserved keyword), so the wire name is set via `rename`.
+#[derive(Serialize)]
+struct MatchFragment<'a> {
+    #[serde(rename = "match")]
+    expr: &'a MatchExpr,
+}
+
+// Renders a suggestion's delta as a YAML fragment (bug D). Hand-formatting a
+// value into a string template breaks for any value containing a
+// YAML-significant character (`:`, `,`, `{`, `}`; e.g. a track_name like
+// "Chapter 1: Intro"). Serializing the actual `MatchExpr` delta through
+// yaml_serde instead guarantees valid, round-trippable YAML for every
+// [`Scalar`] variant, since the serializer -- not this function -- decides
+// quoting.
+fn yaml_fragment(ri: usize, delta: &MatchExpr) -> String {
+    let body = yaml_serde::to_string(&MatchFragment { expr: delta })
+        .expect("a MatchExpr delta always serializes to YAML");
     format!("# tracks[{ri}] - add:\n{body}")
 }

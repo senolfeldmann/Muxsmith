@@ -268,6 +268,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
 | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
 | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
+| `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
 
 ### 5.3 Suggestion engine
 

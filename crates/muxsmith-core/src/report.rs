@@ -136,6 +136,8 @@ diag_codes! {
     MultipleIdentifierMatches => "multiple-identifier-matches",
     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
     UnknownPropertySkew => "unknown-property-skew",
+    /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
+    SuggestionsCapped => "suggestions-capped",
 }
 
 /// One diagnostic (spec 5.2): a data record, never prose. `code` +
