@@ -3,14 +3,15 @@
 //! access beyond the paths already carried in the `Plan`. The canonical
 //! ordering (global section, then one input group per distinct source, then
 //! `--track-order`) is locked by the Task 9-11 golden tests; this module
-//! currently implements the global section and the input-group scaffolding
-//! with track selection (Task 9). Per-track property options (Task 10) and
-//! the attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11) slot
-//! into [`push_group`] without reordering what is already here.
+//! currently implements the global section, multi-group input handling with
+//! track selection, and per-track property options (Tasks 9-10). The
+//! attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11) slot into
+//! [`push_group`] without reordering what is already here.
 
 use std::path::{Path, PathBuf};
 
-use crate::planner::{ChapterSource, Plan, TitleAction};
+use crate::planner::{AppliedChange, ChapterSource, Plan, TitleAction};
+use crate::profile::match_expr::Scalar;
 
 /// One track-selection category: the `-J` `type` string it matches, and the
 /// pair of mkvmerge flags that select it or exclude it entirely. The
@@ -124,11 +125,11 @@ fn push_global(argv: &mut Vec<String>, plan: &Plan) {
 
 // One input group's argv (spec 4.9 item 2). Task 11 adds the
 // `--no-chapters`, `--no-global-tags`/`--no-track-tags`, and
-// attachment-filter flags before track selection; Task 10 adds per-track
-// property options after it; both slot in here without moving the
-// selection call or the closing bracket.
+// attachment-filter flags before track selection; both slot in here without
+// moving the selection/property calls or the closing bracket.
 fn push_group(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
     push_track_selection(argv, plan, source);
+    push_track_properties(argv, plan, source);
 
     argv.push("(".to_string());
     argv.push(source.display().to_string());
@@ -154,6 +155,46 @@ fn push_track_selection(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
             argv.push(cat.select_flag.to_string());
             argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
         }
+    }
+}
+
+// Per-track property options for one group (spec 4.9 item 2e): for each
+// assigned track in this group (track_id ascending), for each
+// `AppliedChange` on that assignment (property name ascending; the
+// `changes` vec is already property-ascending from the planner, sorted
+// again here defensively), the mkvmerge option for the property followed
+// by `<tid>:<value>`.
+fn push_track_properties(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+    let mut tracks: Vec<(u64, &[AppliedChange])> = plan
+        .assignments
+        .iter()
+        .filter(|a| a.source.as_path() == source)
+        .filter_map(|a| a.track_id.map(|tid| (tid, a.changes.as_slice())))
+        .collect();
+    tracks.sort_by_key(|(tid, _)| *tid);
+
+    for (tid, changes) in tracks {
+        let mut changes: Vec<&AppliedChange> = changes.iter().collect();
+        changes.sort_by(|a, b| a.property.cmp(&b.property));
+
+        for c in changes {
+            let (_, option) = crate::capability::settable(&c.property)
+                .expect("changes carry only validated settable properties");
+            argv.push(option.to_string());
+            argv.push(format!("{tid}:{}", value_str(&c.value)));
+        }
+    }
+}
+
+// Renders a Scalar as the plain value string a per-track property option
+// takes: `1`/`0` for booleans (mkvmerge's flag encoding), the raw string
+// for `Str` (no quoting), `to_string()` otherwise.
+fn value_str(value: &Scalar) -> String {
+    match value {
+        Scalar::Bool(b) => if *b { "1" } else { "0" }.to_string(),
+        Scalar::Str(s) => s.clone(),
+        Scalar::Int(i) => i.to_string(),
+        Scalar::Float(f) => f.to_string(),
     }
 }
 
