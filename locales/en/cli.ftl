@@ -1,6 +1,7 @@
 validate-ok = Profile is valid.
 validate-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info(s).
 diagnostic-line = [{ $severity }] { $config_path }: { $message }
+diagnostic-line-file = [{ $severity }] { $file } { $config_path }: { $message }
 mkvmerge-not-found = mkvmerge was not found on PATH. Install MKVToolNix or set the mkvmerge path.
 mkvmerge-query-failed = Querying mkvmerge failed.
 identify-failed = Could not identify { $file }.

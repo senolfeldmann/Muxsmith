@@ -73,14 +73,28 @@ impl Renderer {
             .collect();
         let message = self.msg(d.code.key(), &params);
         let severity = self.msg(severity_key(d.severity), &[]);
-        self.msg(
-            "diagnostic-line",
-            &[
-                ("severity", &severity),
-                ("config_path", &d.config_path),
-                ("message", &message),
-            ],
-        )
+        match &d.file {
+            Some(file) => {
+                let file = file.to_string_lossy();
+                self.msg(
+                    "diagnostic-line-file",
+                    &[
+                        ("severity", &severity),
+                        ("file", &file),
+                        ("config_path", &d.config_path),
+                        ("message", &message),
+                    ],
+                )
+            }
+            None => self.msg(
+                "diagnostic-line",
+                &[
+                    ("severity", &severity),
+                    ("config_path", &d.config_path),
+                    ("message", &message),
+                ],
+            ),
+        }
     }
 }
 
@@ -106,5 +120,46 @@ mod tests {
     fn invalid_locale_falls_back_to_en_and_renders() {
         let renderer = Renderer::new(Some("zz-ZZ-invalid!"));
         assert_eq!(renderer.msg("validate-ok", &[]), "Profile is valid.");
+    }
+
+    #[test]
+    fn diagnostic_with_file_includes_the_file_path() {
+        use muxsmith_core::report::{DiagCode, Diagnostic};
+
+        let renderer = Renderer::new(Some("en"));
+        let diag = Diagnostic::info(DiagCode::IgnoredFile, "input").for_file("some/path.mkv");
+        let rendered = renderer.diagnostic(&diag);
+        assert!(
+            rendered.contains("some/path.mkv"),
+            "expected file path in: {rendered}"
+        );
+    }
+
+    #[test]
+    fn diagnostic_without_file_omits_it_and_still_renders() {
+        use muxsmith_core::report::{DiagCode, Diagnostic};
+
+        let renderer = Renderer::new(Some("en"));
+        let diag = Diagnostic::info(DiagCode::IgnoredFile, "input");
+        let rendered = renderer.diagnostic(&diag);
+        assert!(
+            !rendered.contains("some/path.mkv"),
+            "unexpected file path in: {rendered}"
+        );
+        assert!(
+            rendered.contains("[info]") && rendered.contains("input"),
+            "expected severity and config_path in: {rendered}"
+        );
+    }
+
+    #[test]
+    fn unknown_property_skew_uses_only_the_supplied_version_param() {
+        let renderer = Renderer::new(Some("en"));
+        let rendered = renderer.msg("unknown-property-skew", &[("version", "42")]);
+        assert!(rendered.contains("42"), "expected version in: {rendered}");
+        assert!(
+            !rendered.contains("{$property}") && !rendered.contains("$property"),
+            "unresolved property placeholder leaked into: {rendered}"
+        );
     }
 }
