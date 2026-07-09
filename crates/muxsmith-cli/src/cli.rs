@@ -15,8 +15,8 @@ pub struct Cli {
     pub command: Cmd,
 }
 
-/// A `muxsmith` subcommand (spec 8.1): `validate`, `schema`, `dry-run`, and
-/// `identify`. `run` (actual muxing) arrives with the executor (Plan 3).
+/// A `muxsmith` subcommand (spec 8.1): `validate`, `schema`, `dry-run`,
+/// `identify`, and `run` (plans and actually executes the mux batch).
 #[derive(Subcommand)]
 pub enum Cmd {
     /// Statically validate a profile (YAML or JSON).
@@ -59,6 +59,33 @@ pub enum Cmd {
         /// Path to the media file to identify.
         file: PathBuf,
         /// Emit the structured identification as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Locale for rendered messages (default: system, fallback en).
+        #[arg(long)]
+        locale: Option<String>,
+    },
+    /// Plan and execute the batch (spec 5.5 level 3).
+    Run {
+        /// Path to the profile file.
+        profile: PathBuf,
+        /// Source directory to scan (overrides the profile default).
+        #[arg(long)]
+        source: Option<PathBuf>,
+        /// Output directory (overrides the profile default).
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Collision policy override (spec 4.2 run input); falls back to the
+        /// profile's `output.on_collision` when unset.
+        #[arg(long, value_enum)]
+        on_collision: Option<CollisionArg>,
+        /// Parallel mux jobs (default 1 = sequential).
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
+        /// Stop dequeuing after the first failed job (in-flight finish).
+        #[arg(long)]
+        fail_fast: bool,
+        /// Emit the structured run report as JSON.
         #[arg(long)]
         json: bool,
         /// Locale for rendered messages (default: system, fallback en).

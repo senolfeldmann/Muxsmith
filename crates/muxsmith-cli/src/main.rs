@@ -43,6 +43,28 @@ fn main() {
             let renderer = i18n::Renderer::new(locale.as_deref());
             commands::identify::run(&file, json, &renderer)
         }
+        cli::Cmd::Run {
+            profile,
+            source,
+            output,
+            on_collision,
+            jobs,
+            fail_fast,
+            json,
+            locale,
+        } => {
+            let renderer = i18n::Renderer::new(locale.as_deref());
+            commands::run::run(
+                &profile,
+                source,
+                output,
+                on_collision.map(cli::CollisionArg::policy),
+                jobs,
+                fail_fast,
+                json,
+                &renderer,
+            )
+        }
     };
     std::process::exit(code);
 }

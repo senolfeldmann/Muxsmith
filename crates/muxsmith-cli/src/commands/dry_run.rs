@@ -9,8 +9,9 @@ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
 use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
 use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::profile::{lint, load, validate};
-use muxsmith_core::report::{Diagnostic, Severity};
+use muxsmith_core::report::Diagnostic;
 
+use crate::commands::{diag_exit_code, print_batch_human};
 use crate::i18n::Renderer;
 
 /// Runs `muxsmith dry-run`. Returns the mkvmerge-style exit code.
@@ -94,25 +95,7 @@ pub fn run(
         }
         print_batch_human(&batch, renderer);
     }
-    exit_code(&config_diags, &batch)
-}
-
-fn all_diags<'a>(
-    config_diags: &'a [Diagnostic],
-    batch: &'a Batch,
-) -> impl Iterator<Item = &'a Diagnostic> {
-    config_diags
-        .iter()
-        .chain(batch.batch_diagnostics.iter())
-        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()))
-}
-
-fn exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 {
-    match all_diags(config_diags, batch).map(|d| d.severity).max() {
-        Some(Severity::Error) => 2,
-        Some(Severity::Warning) => 1,
-        _ => 0,
-    }
+    diag_exit_code(&config_diags, &batch)
 }
 
 /// Builds the `--json` report (spec 5.2): the raw `Batch` plus the
@@ -172,54 +155,4 @@ fn rendered_diags(diags: &[Diagnostic], renderer: &Renderer) -> Vec<serde_json::
             v
         })
         .collect()
-}
-
-fn print_batch_human(batch: &Batch, renderer: &Renderer) {
-    for f in &batch.files {
-        println!(
-            "{}",
-            renderer.msg(
-                "dry-run-file",
-                &[
-                    ("file", &f.source.display().to_string()),
-                    ("id", &f.identifier),
-                ],
-            )
-        );
-        if let Some(plan) = &f.plan {
-            for a in &plan.assignments {
-                let track = a
-                    .track_id
-                    .map(|t| t.to_string())
-                    .unwrap_or_else(|| "-".into());
-                println!(
-                    "{}",
-                    renderer.msg(
-                        "dry-run-assignment",
-                        &[("rule", &a.rule_index.to_string()), ("track", &track)],
-                    )
-                );
-            }
-            println!(
-                "{}",
-                renderer.msg(
-                    "dry-run-output",
-                    &[("path", &plan.output.display().to_string())]
-                )
-            );
-        }
-        for d in &f.diagnostics {
-            println!("{}", renderer.diagnostic(d));
-        }
-    }
-    for d in &batch.batch_diagnostics {
-        println!("{}", renderer.diagnostic(d));
-    }
-    for s in &batch.suggestions {
-        println!(
-            "{}",
-            renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)])
-        );
-        println!("{}", s.yaml_fragment);
-    }
 }
