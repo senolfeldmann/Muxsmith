@@ -101,7 +101,10 @@ pub fn run(
 /// Builds the `--json` report (spec 5.2): the raw `Batch` plus the
 /// config-time diagnostics, with a `rendered` message string attached to
 /// every diagnostic (config-time, batch-level, and per-file alike).
-fn batch_json(
+///
+/// `pub(crate)`: `run --json` (D15) reuses this verbatim as the base of its
+/// own document, extending it with `jobs`/`summary`.
+pub(crate) fn batch_json(
     config_diags: &[Diagnostic],
     batch: &Batch,
     renderer: &Renderer,
@@ -134,7 +137,14 @@ fn batch_json(
 /// mkvmerge is missing. `mkvmerge_found: false` flags the condition itself
 /// for JSON consumers, since the exit code alone (2) does not distinguish
 /// this from any other error-severity report.
-fn config_only_json(config_diags: &[Diagnostic], renderer: &Renderer) -> serde_json::Value {
+///
+/// `pub(crate)`: `run --json` (D15) reuses this for its own
+/// mkvmerge-not-found path, which needs the identical superset-of-validate
+/// guarantee.
+pub(crate) fn config_only_json(
+    config_diags: &[Diagnostic],
+    renderer: &Renderer,
+) -> serde_json::Value {
     serde_json::json!({
         "config_diagnostics": rendered_diags(config_diags, renderer),
         "files": [],

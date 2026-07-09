@@ -1,8 +1,10 @@
-//! CLI-level tests for `muxsmith run`'s planning-failure paths (Task 8): any
-//! bad-profile or missing-mkvmerge condition must exit with the usual
-//! diagnostic-fold code and never touch the job queue. The full execute
-//! path (a real mux, exit 0/1/2 driven by actual job outcomes) is Task 11's
-//! gated end-to-end test, not this file's job.
+//! CLI-level tests for `muxsmith run`'s planning-failure paths (Task 8) and
+//! its `--json` final document (Task 9, D15): every path that can produce a
+//! document (a real mux, the specs-empty path, and the mkvmerge-not-found
+//! path) must emit exactly one, with `jobs`/`summary` matching the actual
+//! outcomes. Beyond the single-fixture case here, a real end-to-end mux
+//! under concurrency and failure/warning job states is Task 11's gated
+//! end-to-end test, not this file's job.
 
 use std::process::Command;
 
@@ -10,6 +12,14 @@ use assert_cmd::cargo::CommandCargoExt;
 
 fn muxsmith() -> Command {
     Command::cargo_bin("muxsmith").unwrap()
+}
+
+fn have_mkvmerge() -> bool {
+    Command::new("mkvmerge")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// No job ever started: neither a milestone `start` line (`run-job-start`'s
@@ -111,4 +121,260 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
     );
     assert!(stderr.contains("mkvmerge"), "got stderr: {stderr}");
     asserts_no_job_ran(&stdout);
+}
+
+/// Task 9 (D15): a real single-file mux under `--json` produces exactly one
+/// stdout document (all human lines suppressed, per the module doc), whose
+/// `jobs` array has one index-0 entry with the real output path, `state:
+/// "ok"`, `exit_code: 0`, no captured warnings/errors, and a numeric
+/// `duration_ms`; `summary` counts that same job as `ok`; and the
+/// dry-run-shaped base fields (`files`, `batch_diagnostics`, `suggestions`)
+/// still carry the plan, exactly like `dry-run --json` would.
+#[test]
+fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
+    if !have_mkvmerge() {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let wav = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+    );
+    let srt = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+    );
+    let media = dir.path().join("Show.S01E01.mkv");
+    let ok = Command::new("mkvmerge")
+        .args(["-q", "-o"])
+        .arg(&media)
+        .args(["--language", "0:eng"])
+        .arg(wav)
+        .args(["--language", "0:eng"])
+        .arg(srt)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+    let output_dir = dir.path().join("out");
+
+    let out = muxsmith()
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .args(["--output"])
+        .arg(&output_dir)
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "exit: {:?}, stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("... start") && !stdout.contains(" ok, "),
+        "--json must suppress every human line, got stdout: {stdout}"
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    assert_eq!(report["files"].as_array().unwrap().len(), 1);
+    let jobs = report["jobs"].as_array().expect("jobs array");
+    assert_eq!(jobs.len(), 1);
+    let job = &jobs[0];
+    assert_eq!(job["index"], 0);
+    assert_eq!(job["state"], "ok");
+    assert_eq!(job["exit_code"], 0);
+    assert_eq!(job["warnings"].as_array().unwrap().len(), 0);
+    assert_eq!(job["errors"].as_array().unwrap().len(), 0);
+    assert!(
+        job["duration_ms"].as_u64().is_some(),
+        "duration_ms must be a number, got: {job}"
+    );
+    // `output.filename` defaults to `keep` (spec 4.8): file_stem + ".mkv",
+    // i.e. the full source stem, not the identifier.
+    let expected_output = output_dir.join("Show.S01E01.mkv");
+    assert_eq!(job["output"], expected_output.display().to_string());
+    assert!(expected_output.exists());
+    assert_eq!(
+        report["summary"],
+        serde_json::json!({ "ok": 1, "warning": 0, "failed": 0, "cancelled": 0 })
+    );
+}
+
+/// Task 9 (D15): the specs-empty path (nothing plans cleanly enough to mux,
+/// here because `input.pattern` fails to compile, an error-severity
+/// config-time diagnostic) must still emit a valid `--json` document: the
+/// queue never ran, so `jobs` stays empty and `summary` stays zeroed, but
+/// the offending `config_diagnostics` entry is still there and the exit
+/// code is still the diagnostic-fold 2, exactly like plain `run` (see
+/// `bad_regex_profile_exits_two_without_executing_a_job` above).
+#[test]
+fn run_json_on_specs_empty_from_a_bad_regex_still_emits_a_document_with_empty_jobs() {
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("bad.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    let out = muxsmith()
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    asserts_no_job_ran(&stdout);
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let config_diags = report["config_diagnostics"]
+        .as_array()
+        .expect("config_diagnostics array");
+    assert!(
+        config_diags.iter().any(|d| d["code"] == "invalid-regex"),
+        "expected an invalid-regex diagnostic, got: {report}"
+    );
+    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["summary"],
+        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+    );
+}
+
+/// Same specs-empty path as above, reached via a clean profile over a
+/// source directory with no matching files instead of a bad regex: nothing
+/// errors, so the exit code is 0 (not 2) with an empty `jobs` array and a
+/// zeroed `summary`, distinguishing "queue never ran because there was
+/// nothing to run" from "queue never ran because planning failed".
+#[test]
+fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_summary() {
+    if !have_mkvmerge() {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    let out = muxsmith()
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "exit: {:?}, stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    assert_eq!(report["files"].as_array().unwrap().len(), 0);
+    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["summary"],
+        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+    );
+}
+
+/// Task 9 (D15): the mkvmerge-not-found path must surface the same document
+/// dry-run's `config_only_json` builds for the same condition (spec 5.5
+/// superset-of-validate guarantee), extended with an empty `jobs` array and
+/// a zeroed `summary`. Forces the condition via an empty `PATH`, so this
+/// does not depend on whether the test machine actually has mkvmerge
+/// installed (compare `dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing`
+/// in dry_run_cli.rs).
+#[test]
+fn run_json_surfaces_the_mkvmerge_not_found_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("bad.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+    let no_mkvmerge_path = tempfile::tempdir().unwrap();
+
+    let out = muxsmith()
+        .env("PATH", no_mkvmerge_path.path())
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    asserts_no_job_ran(&stdout);
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let config_diags = report["config_diagnostics"]
+        .as_array()
+        .expect("config_diagnostics array");
+    assert!(
+        config_diags.iter().any(|d| d["code"] == "invalid-regex"),
+        "expected an invalid-regex diagnostic, got: {report}"
+    );
+    assert_eq!(report["mkvmerge_found"], false);
+    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        report["summary"],
+        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+    );
 }
