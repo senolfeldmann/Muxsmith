@@ -169,6 +169,25 @@ JSON -> expected argv, spec 10) and by running the binary, not from memory.
   acceptable because the flags used are long-stable and the pinned version is
   explicit.
 
+## D12: attachment `add` cardinality and zero-match severity
+
+**Decision.** Surfaced while planning attachment resolution; the spec (4.9) says
+only "adds an external file as attachment via a locator" without pinning
+cardinality. An `add` locator attaches **all** files it matches (not exactly
+one), appended in resolution order. An `add` matching **zero** files emits a
+**warning** (`MissingExternal` at `attachments.rules[i].add`), not an error: it
+does not suppress the plan.
+
+- Rationale: attachments are auxiliary payload and come in sets (the same
+  "fonts come in sets" reasoning that makes `select`/`drop` non-unique in 4.9);
+  a one-file-per-add rule would be artificially restrictive. Zero matches is
+  worth surfacing (likely a mistake) but must not kill an otherwise-valid mux,
+  unlike a missing track donor.
+- Tradeoff: reuses `MissingExternal` at a non-default (warning) severity, so its
+  message wording is track/chapters-flavored; acceptable for v1, a wording
+  refinement is a locale-only follow-up, not a code change. Contrast with track
+  and chapters donors, which require exactly one file (error on 0 or >=2).
+
 ## Testing (feeds Plan 3 tasks)
 
 - `identify`: unit tests for attachment/chapter parsing off fixture `-J` JSON,
