@@ -57,7 +57,7 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     }
 
     if profile.tracks.rules.is_empty() {
-        diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks"));
+        diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks.rules"));
     }
 
     for (i, rule) in profile.tracks.rules.iter().enumerate() {

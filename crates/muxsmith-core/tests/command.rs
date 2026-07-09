@@ -26,6 +26,7 @@ fn global_and_single_video_group() {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
         keep_unmatched: false,
+        primary_track_ids: vec![0],
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/e.mkv"),
@@ -74,6 +75,9 @@ fn keep_unmatched_suppresses_primary_selection_flags() {
         source: p("/m/show.mkv"),
         output: p("/out/show.mkv"),
         keep_unmatched: true,
+        // video(0), audio(1, matched below), subtitle(2, kept-unmatched):
+        // the full primary track-id list `-J` would report, source order.
+        primary_track_ids: vec![0, 1, 2],
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/show.mkv"),
@@ -104,7 +108,13 @@ fn keep_unmatched_suppresses_primary_selection_flags() {
         argv.windows(2)
             .any(|w| w[0] == "--default-track-flag" && w[1] == "1:1")
     );
-    assert!(argv.iter().any(|a| a == "--track-order"));
+    // D20: --track-order lists every primary track (0,1,2), source order,
+    // group 0 -- not just the matched (audio, id 1) assignment.
+    let track_order = argv
+        .iter()
+        .position(|a| a == "--track-order")
+        .map(|i| argv[i + 1].as_str());
+    assert_eq!(track_order, Some("0:0,0:1,0:2"));
 }
 
 #[test]
@@ -113,6 +123,7 @@ fn unmatched_donor_rule_opens_no_input_group() {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
         keep_unmatched: false,
+        primary_track_ids: vec![0],
         assignments: vec![
             Assignment {
                 rule_index: 0,
@@ -160,6 +171,7 @@ fn per_track_properties_and_multi_group() {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
         keep_unmatched: false,
+        primary_track_ids: vec![0, 1],
         assignments: vec![
             Assignment {
                 rule_index: 0,
@@ -247,6 +259,7 @@ fn boolean_and_string_value_encoding() {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
         keep_unmatched: false,
+        primary_track_ids: vec![0],
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/e.mkv"),
@@ -303,6 +316,7 @@ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
         keep_unmatched: false,
+        primary_track_ids: vec![0],
         assignments: vec![Assignment {
             rule_index: 0,
             source: p("/m/e.mkv"),
@@ -328,6 +342,7 @@ fn multi_group_plan(attachments: AttachmentPlan, chapters: ChapterSource, tags: 
         source: p("/m/e.mkv"),
         output: p("/out/e.mkv"),
         keep_unmatched: false,
+        primary_track_ids: vec![0],
         assignments: vec![
             Assignment {
                 rule_index: 0,

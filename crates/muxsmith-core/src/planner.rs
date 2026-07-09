@@ -148,6 +148,13 @@ pub struct Plan {
     /// group. Donor groups are unaffected. Default construction is `false`
     /// (drop).
     pub keep_unmatched: bool,
+    /// The primary file's full track-id list, in source order (as `-J`
+    /// reports them). Under `keep_unmatched`, `command` lists these first in
+    /// `--track-order` (group 0), ahead of any donor track (D20): a
+    /// kept-but-unmatched primary track counts as matched ("keep = match to
+    /// what is already there"), and the primary leads, donors trail.
+    /// Unused when `keep_unmatched` is `false`.
+    pub primary_track_ids: Vec<u64>,
 }
 
 /// Per-file result: the plan (if any) and every diagnostic about the file.
@@ -553,6 +560,7 @@ fn resolve_file(
             profile.tracks.unmatched,
             crate::profile::model::KeepDrop::Keep
         ),
+        primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
     });
 
     FileReport {

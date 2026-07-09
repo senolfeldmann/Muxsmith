@@ -10,10 +10,13 @@
 //! - `live_mkvmerge_accepts_planned_command`: spawns real mkvmerge on the
 //!   argv a tiny real plan produces, gated on `Mkvmerge::locate()` (mirrors
 //!   `identify_live.rs` / `mkvmerge_runtime.rs`'s self-skip pattern).
-//! - `live_keep_unmatched_orders_only_listed_track` (Plan 3.5 Task 3):
-//!   confirms the D20 assumption against real mkvmerge rather than from
-//!   memory (SI-3): under `keep_unmatched`, a primary track kept but absent
-//!   from `--track-order` lands after the listed ones, in source order.
+//! - `live_keep_donor_trails_primary` (Plan 3.5 Task 7): confirms the
+//!   resolved D20 track order against real mkvmerge rather than from memory
+//!   (SI-3): under `keep_unmatched`, `--track-order` lists every primary
+//!   track first, in source order, before any donor track -- a primary +
+//!   external-donor cross-file case, the whole-branch-review-flagged
+//!   scenario D20 exists to fix (this test replaces the Task 3 version,
+//!   which locked the superseded matched-first/unmatched-appended order).
 //!
 //! The parenthesized `( file )` input-group syntax `command.rs` emits for
 //! every input source (spec 4.9 item 2f) was confirmed by hand against the
@@ -285,12 +288,14 @@ fn live_mkvmerge_accepts_planned_command() {
 }
 
 // ---------------------------------------------------------------------------
-// Live acceptance: the D20 assumption (Plan 3.5 Task 3, SI-3). Confirmed
-// against real mkvmerge v100 (see this test's construction), not taken from
-// memory: under `keep_unmatched`, a primary track that mkvmerge keeps but
-// that has no `--track-order` entry lands, in the output, after every
-// explicitly-ordered track, in its original source-relative position among
-// the other unlisted tracks.
+// Live acceptance: the resolved D20 track order (Plan 3.5 Task 7, SI-3).
+// Confirmed against real mkvmerge v100 (see this test's construction), not
+// taken from memory: under `keep_unmatched`, `--track-order` lists every
+// primary track first, in source order, before any donor track. This
+// replaces the Task 3 version of this test, which locked the superseded
+// matched-first/unmatched-appended order the whole-branch review flagged as
+// producing a donor-FIRST result on exactly the additive use case `keep`
+// exists for.
 // ---------------------------------------------------------------------------
 
 /// Looks up a track's `track_name`, panicking if absent (every track in this
@@ -304,83 +309,104 @@ fn track_name(t: &Track) -> String {
 }
 
 #[test]
-fn live_keep_unmatched_orders_only_listed_track() {
+fn live_keep_donor_trails_primary() {
     let Some(m) = mkvmerge() else {
         eprintln!("mkvmerge not found; skipping");
         return;
     };
 
     let dir = tempfile::tempdir().unwrap();
-    let alpha = dir.path().join("alpha.srt");
-    let bravo = dir.path().join("bravo.srt");
-    let charlie = dir.path().join("charlie.srt");
-    std::fs::write(&alpha, "1\n00:00:00,000 --> 00:00:01,000\nALPHA\n").unwrap();
-    std::fs::write(&bravo, "1\n00:00:00,000 --> 00:00:01,000\nBRAVO\n").unwrap();
-    std::fs::write(&charlie, "1\n00:00:00,000 --> 00:00:01,000\nCHARLIE\n").unwrap();
+    let pa_srt = dir.path().join("pa.srt");
+    let pb_srt = dir.path().join("pb.srt");
+    let donor_srt = dir.path().join("donor.srt");
+    std::fs::write(&pa_srt, "1\n00:00:00,000 --> 00:00:01,000\nPA\n").unwrap();
+    std::fs::write(&pb_srt, "1\n00:00:00,000 --> 00:00:01,000\nPB\n").unwrap();
+    std::fs::write(&donor_srt, "1\n00:00:00,000 --> 00:00:01,000\nDONOR\n").unwrap();
 
-    // A 3-track source: three single-track SRTs merged as separate
-    // (non-grouped) input files, each carrying a distinguishing
-    // `--track-name` so the output can be matched back to its origin.
-    // mkvmerge assigns sequential track ids in argument order for
-    // single-track sources like these (confirmed below, not assumed).
-    let source = dir.path().join("source.mkv");
+    // Primary: a real 2-track source (task brief: >= 2 tracks), built the
+    // same way as the sibling golden fixture -- two single-track SRTs
+    // merged as separate input files, sequential track ids in argument
+    // order (confirmed below, not assumed).
+    let primary = dir.path().join("primary.mkv");
     let status = Command::new(m.path())
         .args(["-q", "-o"])
-        .arg(&source)
-        .args(["--track-name", "0:ALPHA"])
-        .arg(&alpha)
-        .args(["--track-name", "0:BRAVO"])
-        .arg(&bravo)
-        .args(["--track-name", "0:CHARLIE"])
-        .arg(&charlie)
+        .arg(&primary)
+        .args(["--track-name", "0:PA"])
+        .arg(&pa_srt)
+        .args(["--track-name", "0:PB"])
+        .arg(&pb_srt)
         .status()
-        .expect("spawn mkvmerge to build the 3-track fixture source");
-    assert!(status.success(), "mkvmerge failed to build the source");
+        .expect("spawn mkvmerge to build the primary fixture");
+    assert!(status.success(), "mkvmerge failed to build the primary");
 
-    let src_json = m
-        .identify_json(&source)
-        .expect("identify the fixture source");
-    let src_id = Identification::from_json(&src_json).expect("parse source identification JSON");
-    let mut src_tracks = src_id.tracks;
-    src_tracks.sort_by_key(|t| t.id);
+    // Donor: a real, separate external file with one subtitle track -- the
+    // additive case D20 exists for ("add a German sub, keep the rest").
+    let donor = dir.path().join("donor.mkv");
+    let status = Command::new(m.path())
+        .args(["-q", "-o"])
+        .arg(&donor)
+        .args(["--track-name", "0:DONOR"])
+        .arg(&donor_srt)
+        .status()
+        .expect("spawn mkvmerge to build the donor fixture");
+    assert!(status.success(), "mkvmerge failed to build the donor");
+
+    let primary_json = m
+        .identify_json(&primary)
+        .expect("identify the primary fixture");
+    let primary_id =
+        Identification::from_json(&primary_json).expect("parse primary identification JSON");
+    let mut primary_tracks = primary_id.tracks;
+    primary_tracks.sort_by_key(|t| t.id);
     assert_eq!(
-        src_tracks.len(),
-        3,
-        "fixture must carry exactly 3 tracks, got {src_tracks:?}"
+        primary_tracks.len(),
+        2,
+        "primary fixture must carry exactly 2 tracks, got {primary_tracks:?}"
+    );
+    assert_eq!(
+        track_name(&primary_tracks[0]),
+        "PA",
+        "fixture sanity: primary id 0 is PA"
+    );
+    assert_eq!(
+        track_name(&primary_tracks[1]),
+        "PB",
+        "fixture sanity: primary id 1 is PB"
     );
 
-    // "The second track" (task brief), in source order (ascending id): BRAVO.
-    // The unlisted remainder, in source order: ALPHA, then CHARLIE.
-    let ordered = &src_tracks[1];
-    let unlisted = [&src_tracks[0], &src_tracks[2]];
+    let donor_json = m.identify_json(&donor).expect("identify the donor fixture");
+    let donor_id = Identification::from_json(&donor_json).expect("parse donor identification JSON");
     assert_eq!(
-        track_name(ordered),
-        "BRAVO",
-        "fixture sanity: id 1 is BRAVO"
+        donor_id.tracks.len(),
+        1,
+        "donor fixture must carry exactly 1 track, got {:?}",
+        donor_id.tracks
     );
+    let donor_track = &donor_id.tracks[0];
     assert_eq!(
-        unlisted.map(track_name),
-        ["ALPHA".to_string(), "CHARLIE".to_string()],
-        "fixture sanity: ids 0 and 2 are ALPHA and CHARLIE"
+        track_name(donor_track),
+        "DONOR",
+        "fixture sanity: donor id 0 is DONOR"
     );
 
     let out_dir = dir.path().join("out");
     std::fs::create_dir_all(&out_dir).unwrap();
     let output = out_dir.join("out.mkv");
 
-    // `keep_unmatched: true`, one assignment ordering only the second track
-    // (BRAVO). ALPHA and CHARLIE are kept -- `keep` emits no primary
-    // selection flags -- but never appear in any assignment, hence never in
-    // `--track-order`.
+    // `keep_unmatched: true`, a single donor rule adding the external
+    // subtitle; neither primary track has an assignment (both pass through
+    // as kept-unmatched). D20 says the primary still leads `--track-order`
+    // (both PA and PB, source order) and the donor trails.
     let plan = Plan {
-        source: source.clone(),
+        source: primary.clone(),
         output: output.clone(),
         keep_unmatched: true,
+        primary_track_ids: primary_tracks.iter().map(|t| t.id).collect(),
         assignments: vec![Assignment {
             rule_index: 0,
-            source: source.clone(),
-            track_id: Some(ordered.id),
-            track_kind: Some(ordered.kind.clone()),
+            source: donor.clone(),
+            track_id: Some(donor_track.id),
+            track_kind: Some(donor_track.kind.clone()),
             changes: vec![],
         }],
         attachments: AttachmentPlan {
@@ -413,25 +439,20 @@ fn live_keep_unmatched_orders_only_listed_track() {
     let mut out_tracks = out_id.tracks;
     out_tracks.sort_by_key(|t| t.id);
 
-    // (a) all source tracks are present (kept), even though only one was in
-    // `--track-order`.
+    // (a) all three tracks survive: both kept-unmatched primary tracks plus
+    // the donor's.
     assert_eq!(
         out_tracks.len(),
         3,
-        "keep_unmatched must keep every source track, got {out_tracks:?}"
+        "expected primary(2) + donor(1) tracks, got {out_tracks:?}"
     );
 
-    // (b) the D20 assumption: the explicitly-ordered track (BRAVO) precedes
-    // the unlisted ones, which retain their source-relative order (ALPHA
-    // before CHARLIE).
+    // (b) D20, observed against real mkvmerge (not assumed, SI-3): the
+    // primary's tracks lead in source order, the donor trails.
     let out_names: Vec<String> = out_tracks.iter().map(track_name).collect();
     assert_eq!(
         out_names,
-        vec![
-            "BRAVO".to_string(),
-            "ALPHA".to_string(),
-            "CHARLIE".to_string()
-        ],
-        "unmatched-kept tracks must follow the ordered track, in source order"
+        vec!["PA".to_string(), "PB".to_string(), "DONOR".to_string()],
+        "donor must trail every primary track (D20)"
     );
 }

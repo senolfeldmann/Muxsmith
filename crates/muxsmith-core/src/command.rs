@@ -247,23 +247,51 @@ fn value_str(value: &Scalar) -> String {
     }
 }
 
-// `--track-order g:tid,...`: one entry per assignment with a resolved
-// track_id, in profile (assignment) order, `g` the input group index of
-// that assignment's source (spec 4.9 item 3). Omitted entirely if no
-// assignment has a track.
+// `--track-order g:tid,...` (spec 4.9 item 3). `drop` (default): one entry
+// per assignment with a resolved track_id, in profile (assignment) order,
+// `g` the input group index of that assignment's source. `keep`
+// (`plan.keep_unmatched`, D20): every primary track first (group 0, source
+// order, from `plan.primary_track_ids`), then donor assignments in profile
+// order -- the primary leads, donors trail, and matched-primary assignments
+// are already covered by `primary_track_ids` so are not repeated. Omitted
+// entirely if there is nothing to order.
 fn push_track_order(argv: &mut Vec<String>, plan: &Plan, groups: &[PathBuf]) {
-    let entries: Vec<String> = plan
-        .assignments
-        .iter()
-        .filter_map(|a| {
-            a.track_id
-                .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
-        })
-        .collect();
+    let entries: Vec<String> = if plan.keep_unmatched {
+        push_track_order_keep(plan, groups)
+    } else {
+        plan.assignments
+            .iter()
+            .filter_map(|a| {
+                a.track_id
+                    .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
+            })
+            .collect()
+    };
 
     if entries.is_empty() {
         return;
     }
     argv.push("--track-order".to_string());
     argv.push(entries.join(","));
+}
+
+// keep-mode --track-order entries (D20): the primary's full track-id list
+// (always group 0; `input_groups` puts the primary there unconditionally),
+// then every DONOR assignment's track (source != plan.source, track_id
+// Some), in assignment order. Matched-primary assignments are covered by
+// `primary_track_ids` already and must not be listed twice.
+fn push_track_order_keep(plan: &Plan, groups: &[PathBuf]) -> Vec<String> {
+    let mut entries: Vec<String> = plan
+        .primary_track_ids
+        .iter()
+        .map(|tid| format!("0:{tid}"))
+        .collect();
+    entries.extend(plan.assignments.iter().filter_map(|a| {
+        if a.source.as_path() == plan.source.as_path() {
+            return None;
+        }
+        a.track_id
+            .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
+    }));
+    entries
 }

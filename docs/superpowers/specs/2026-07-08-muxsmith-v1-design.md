@@ -187,7 +187,7 @@ rule := {
 }
 ```
 
-List order in `tracks.rules` defines the output track order (`--track-order`).
+List order in `tracks.rules` defines the output track order (`--track-order`). Under `unmatched: keep`, that order applies only within the primary: `--track-order` lists every primary track first, in the primary's own source order, then donor tracks in `tracks.rules` order (D20) - kept-but-unmatched primary tracks count as matched, so the primary leads and donors trail. An explicit primary rule under `keep` still applies its `changes` but does not reposition the track; reordering the primary is a `drop`-mode operation.
 
 ### 4.6 External locator
 
