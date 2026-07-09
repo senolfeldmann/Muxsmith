@@ -470,6 +470,12 @@ fn dry_run_json_emits_a_document_on_profile_load_failure() {
     assert_eq!(report["files"].as_array().unwrap().len(), 0);
     assert_eq!(report["batch_diagnostics"].as_array().unwrap().len(), 0);
     assert_eq!(report["suggestions"].as_array().unwrap().len(), 0);
+    assert!(
+        report.get("mkvmerge_found").is_none(),
+        "the mkvmerge lookup never ran on a profile-load failure, so \
+         `mkvmerge_found` must be absent rather than asserting a fact never \
+         established, got: {report}"
+    );
 }
 
 /// Points a child process's PATH at a fake `mkvmerge` script that succeeds

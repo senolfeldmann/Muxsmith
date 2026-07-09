@@ -436,6 +436,12 @@ fn run_json_emits_a_document_on_profile_load_failure() {
         report["summary"],
         serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
     );
+    assert!(
+        report.get("mkvmerge_found").is_none(),
+        "the mkvmerge lookup never ran on a profile-load failure, so \
+         `mkvmerge_found` must be absent rather than asserting a fact never \
+         established, got: {report}"
+    );
 }
 
 /// Points a child process's PATH at a fake `mkvmerge` script that succeeds

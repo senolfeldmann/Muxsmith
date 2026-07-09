@@ -64,11 +64,13 @@ pub fn run(
             // this single diagnostic into the same config-only,
             // empty-jobs/zeroed-summary shape the mkvmerge-not-found branch
             // below builds (mirrors validate.rs's `Err(d) => vec![d]`
-            // fold); human mode is unchanged.
+            // fold), minus `mkvmerge_found` itself: the lookup never ran on
+            // this path, so the field is absent rather than asserting a
+            // fact never established; human mode is unchanged.
             if json {
                 println!(
                     "{}",
-                    run_json_document(dry_run::config_only_json(&[d], renderer), &[], &[])
+                    run_json_document(dry_run::config_only_json(&[d], None, renderer), &[], &[])
                 );
             } else {
                 println!("{}", renderer.diagnostic(&d));
@@ -90,7 +92,11 @@ pub fn run(
             if json {
                 println!(
                     "{}",
-                    run_json_document(dry_run::config_only_json(&config_diags, renderer), &[], &[],)
+                    run_json_document(
+                        dry_run::config_only_json(&config_diags, Some(false), renderer),
+                        &[],
+                        &[],
+                    )
                 );
             } else {
                 for d in &config_diags {
@@ -112,7 +118,11 @@ pub fn run(
             if json {
                 println!(
                     "{}",
-                    run_json_document(dry_run::config_only_json(&config_diags, renderer), &[], &[],)
+                    run_json_document(
+                        dry_run::config_only_json(&config_diags, Some(false), renderer),
+                        &[],
+                        &[],
+                    )
                 );
             } else {
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));

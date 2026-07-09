@@ -45,7 +45,7 @@ pub fn run(
             // mkvmerge-not-found branch below builds (mirrors validate.rs's
             // `Err(d) => vec![d]` fold); human mode is unchanged.
             if json {
-                println!("{}", config_only_json(&[d], renderer));
+                println!("{}", config_only_json(&[d], None, renderer));
             } else {
                 println!("{}", renderer.diagnostic(&d));
             }
@@ -67,7 +67,7 @@ pub fn run(
             // to stay a strict superset of `validate` even on this path, so
             // those diagnostics are surfaced here rather than dropped.
             if json {
-                println!("{}", config_only_json(&config_diags, renderer));
+                println!("{}", config_only_json(&config_diags, Some(false), renderer));
             } else {
                 for d in &config_diags {
                     println!("{}", renderer.diagnostic(d));
@@ -85,7 +85,7 @@ pub fn run(
             // gets the same config-only document the locate()-failure
             // branch above builds; human mode is unchanged (stderr only).
             if json {
-                println!("{}", config_only_json(&config_diags, renderer));
+                println!("{}", config_only_json(&config_diags, Some(false), renderer));
             } else {
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
             }
@@ -147,29 +147,37 @@ pub(crate) fn batch_json(
     })
 }
 
-/// Builds the `--json` report for the mkvmerge-not-found path (spec 5.5):
-/// planning never ran, so `files`/`batch_diagnostics`/`suggestions` stay
-/// empty, but the config-time diagnostics collected before the mkvmerge
-/// lookup are still rendered here, keeping this a valid JSON document (not
-/// plain text on stderr) and dry-run a superset of `validate` even when
-/// mkvmerge is missing. `mkvmerge_found: false` flags the condition itself
-/// for JSON consumers, since the exit code alone (2) does not distinguish
-/// this from any other error-severity report.
+/// Builds the `--json` report for a path where planning never ran (spec
+/// 5.5): `files`/`batch_diagnostics`/`suggestions` stay empty, but whatever
+/// config-time diagnostics were collected are still rendered here, keeping
+/// this a valid JSON document (not plain text on stderr) and dry-run a
+/// superset of `validate` even on these paths.
 ///
-/// `pub(crate)`: `run --json` (D15) reuses this for its own
-/// mkvmerge-not-found path, which needs the identical superset-of-validate
-/// guarantee.
+/// `mkvmerge_found` flags, for JSON consumers, whether mkvmerge's presence
+/// was actually established: `Some(false)` on the mkvmerge-not-found and
+/// mkvmerge-query-failed paths, where the lookup ran and the JSON consumer
+/// cannot otherwise distinguish this from any other error-severity report;
+/// `None` (the key is absent from the document) on a profile-load failure,
+/// where the lookup never ran at all and asserting `false` would claim a
+/// fact never established.
+///
+/// `pub(crate)`: `run --json` (D15) reuses this for its own equivalent
+/// paths, which need the identical superset-of-validate guarantee.
 pub(crate) fn config_only_json(
     config_diags: &[Diagnostic],
+    mkvmerge_found: Option<bool>,
     renderer: &Renderer,
 ) -> serde_json::Value {
-    serde_json::json!({
+    let mut doc = serde_json::json!({
         "config_diagnostics": rendered_diags(config_diags, renderer),
         "files": [],
         "batch_diagnostics": [],
         "suggestions": [],
-        "mkvmerge_found": false,
-    })
+    });
+    if let Some(found) = mkvmerge_found {
+        doc["mkvmerge_found"] = serde_json::json!(found);
+    }
+    doc
 }
 
 /// Maps each diagnostic to its JSON value with a `rendered` field injected
