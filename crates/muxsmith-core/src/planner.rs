@@ -40,7 +40,7 @@ pub struct RunInputs {
 /// `optional` rule that matched nothing (spec 5.1).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Assignment {
-    /// Index into `profile.tracks`.
+    /// Index into `profile.tracks.rules`.
     pub rule_index: usize,
     /// The source file the track comes from (the primary, or a donor).
     pub source: PathBuf,
@@ -283,7 +283,7 @@ pub fn plan_batch(
 }
 
 fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
-    for (i, rule) in profile.tracks.iter().enumerate() {
+    for (i, rule) in profile.tracks.rules.iter().enumerate() {
         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
     }
 }
@@ -361,7 +361,7 @@ fn resolve_file(
     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();
 
-    for (ri, rule) in profile.tracks.iter().enumerate() {
+    for (ri, rule) in profile.tracks.rules.iter().enumerate() {
         let base = format!("tracks[{ri}]");
         let (source_path, source_ident): (PathBuf, Identification) = match &rule.source {
             SourceCfg::Keyword(_) => (primary.path.clone(), ident.clone()),
@@ -980,7 +980,7 @@ fn suggest(
     let mut out = Vec::new();
     let mut cap_diagnostics = Vec::new();
     for ri in conflicted {
-        let Some(rule) = profile.tracks.get(ri) else {
+        let Some(rule) = profile.tracks.rules.get(ri) else {
             continue;
         };
         // Only primary-source rules get suggestions in v1 (external deferred).
@@ -1028,7 +1028,7 @@ fn candidates_for_rule(
     id: &mut dyn Identify,
     lang: &LanguageIndex,
 ) -> Vec<Candidate> {
-    let rule = &profile.tracks[ri];
+    let rule = &profile.tracks.rules[ri];
     let mut raw: Vec<Candidate> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String, u8)> =
         std::collections::BTreeSet::new();
@@ -1166,7 +1166,7 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
 // always narrows, never relaxes), so plain `extend` stays correct there.
 fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
     let mut p = profile.clone();
-    let expr = &mut p.tracks[ri].match_expr;
+    let expr = &mut p.tracks.rules[ri].match_expr;
     if let Some(add) = &delta.exact {
         let map = expr.exact.get_or_insert_with(BTreeMap::new);
         for (k, v) in add {

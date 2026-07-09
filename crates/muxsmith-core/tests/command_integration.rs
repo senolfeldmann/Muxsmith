@@ -208,7 +208,8 @@ const LIVE_PROFILE: &str = r#"
 profile_version: 1
 input: { pattern: 'source', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles } }
+  rules:
+    - match: { exact: { type: subtitles } }
 "#;
 
 #[test]

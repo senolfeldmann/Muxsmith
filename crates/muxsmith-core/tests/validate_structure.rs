@@ -14,7 +14,8 @@ const BASE: &str = r#"
 profile_version: 1
 input: { pattern: 'S(?<season>\d{2})E(?<episode>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
 
 #[test]
@@ -32,7 +33,7 @@ fn empty_extensions_flagged_for_input_and_locator() {
 #[test]
 fn locator_with_both_match_options_is_conflict() {
     let y = format!(
-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: true, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_to_source: true, match_pattern: '{{match}}' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
     );
     assert!(codes(&y).contains(&DiagCode::LocatorConflict));
 }
@@ -40,7 +41,7 @@ fn locator_with_both_match_options_is_conflict() {
 #[test]
 fn match_to_source_false_is_rejected() {
     let y = format!(
-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_to_source: false }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
     );
     let c = codes(&y);
     assert!(c.contains(&DiagCode::InvalidKeyword));
@@ -50,7 +51,7 @@ fn match_to_source_false_is_rejected() {
 #[test]
 fn match_to_source_false_with_pattern_is_not_conflict() {
     let y = format!(
-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_to_source: false, match_pattern: '{{match}}' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
     );
     let c = codes(&y);
     assert!(c.contains(&DiagCode::InvalidKeyword));
@@ -60,7 +61,7 @@ fn match_to_source_false_with_pattern_is_not_conflict() {
 #[test]
 fn match_pattern_with_unknown_field_is_flagged() {
     let y = format!(
-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_pattern: 'x{{volume}}y' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_pattern: 'x{{volume}}y' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
     );
     let c = codes(&y);
     assert!(c.contains(&DiagCode::UnknownTemplateField));
@@ -70,7 +71,7 @@ fn match_pattern_with_unknown_field_is_flagged() {
 fn match_pattern_may_not_use_source_stem() {
     // source_stem is literal-mode only (spec 4.7).
     let y = format!(
-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_pattern: '{{source_stem}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_pattern: '{{source_stem}}' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
     );
     assert!(codes(&y).contains(&DiagCode::UnknownTemplateField));
 }
@@ -131,7 +132,7 @@ fn unknown_keywords_are_flagged() {
     }
     let y = BASE.replace(
         "- match: { exact: { type: video } }",
-        "- source: secondary\n    match: { exact: { type: video } }",
+        "- source: secondary\n      match: { exact: { type: video } }",
     );
     assert!(codes(&y).contains(&DiagCode::InvalidKeyword));
 }
@@ -144,7 +145,8 @@ input: { pattern: 'S(\d{2})E(\d{2})', extensions: [mkv] }
 output:
   filename: { template: 'S{g1}E{g2}.mkv' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     assert!(!codes(y).contains(&DiagCode::UnknownTemplateField));
 }
@@ -152,7 +154,7 @@ tracks:
 #[test]
 fn empty_locator_extensions_flagged() {
     let y = format!(
-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [] }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
+        "{BASE}    - source:\n        external: {{ path: '.', extensions: [] }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
     );
     let ds = validate(&parse(&y));
     let d = ds

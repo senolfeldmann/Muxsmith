@@ -3,12 +3,18 @@ use muxsmith_core::profile::validate::validate;
 use muxsmith_core::report::{DiagCode, Severity};
 
 fn profile(tracks_yaml: &str) -> muxsmith_core::profile::Profile {
+    let indented: String = tracks_yaml
+        .lines()
+        .map(|l| format!("  {l}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let y = format!(
         r#"
 profile_version: 1
 input: {{ pattern: 'S(?<season>\d{{2}})E(?<episode>\d{{2}})', extensions: [mkv] }}
 tracks:
-{tracks_yaml}
+  rules:
+{indented}
 "#
     );
     from_str(&y, Format::Yaml).unwrap()
@@ -41,7 +47,8 @@ fn empty_tracks_list_is_rejected() {
     let y = r#"
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
-tracks: []
+tracks:
+  rules: []
 "#;
     let p = from_str(y, Format::Yaml).unwrap();
     assert!(codes(&p).contains(&DiagCode::NoTrackRules));
@@ -129,7 +136,8 @@ fn attachment_rule_must_have_exactly_one_action() {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   rules:
     - select: { substring: { content_type: font } }
@@ -145,7 +153,8 @@ fn attachment_match_uses_attachment_property_set() {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   rules:
     - select: { exact: { language: en } }

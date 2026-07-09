@@ -29,9 +29,10 @@ pub struct Profile {
     /// Output naming and collision policy (spec 4.8).
     #[serde(default)]
     pub output: OutputCfg,
-    /// Track selection/change rules; list order defines the output
-    /// `--track-order` (spec 4.5).
-    pub tracks: Vec<TrackRule>,
+    /// Track selection/change rules plus the unmatched-track policy
+    /// (spec 4.5). Restructured into a block so the policy lives with its
+    /// rules, matching `attachments` and `output`/`tags`.
+    pub tracks: TracksCfg,
     /// Attachment keep/drop/add rules (spec 4.9).
     #[serde(default)]
     pub attachments: AttachmentsCfg,
@@ -289,6 +290,29 @@ pub struct AttachmentsCfg {
 
 fn keep() -> KeepDrop {
     KeepDrop::Keep
+}
+
+/// Track handling: the unmatched-track policy plus the ordered rules
+/// (spec 4.5). Parallel in shape to [`AttachmentsCfg`], but `unmatched`
+/// defaults to `drop`: only rule-matched tracks survive unless the profile
+/// opts into `keep` (spec 4.9 asymmetry note).
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TracksCfg {
+    /// Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
+    /// `drop` (the declarative default). `keep` passes them through
+    /// untouched; consumed by `command` (Task 2). Donor tracks are
+    /// unaffected: a donor contributes only its rule-selected track.
+    #[serde(default = "drop_policy")]
+    pub unmatched: KeepDrop,
+    /// Ordered track rules; list order defines the output `--track-order`
+    /// (spec 4.5). Uniqueness-constrained (spec 2): each rule resolves to
+    /// exactly one track.
+    pub rules: Vec<TrackRule>,
+}
+
+fn drop_policy() -> KeepDrop {
+    KeepDrop::Drop
 }
 
 impl Default for AttachmentsCfg {

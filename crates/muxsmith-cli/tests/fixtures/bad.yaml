@@ -1,6 +1,7 @@
 profile_version: 1
 input: { pattern: '([', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio } }
-  - match: { exact: { type: audio, language: en } }
-  - match: { substring: { forced_track: 'x' } }
+  rules:
+    - match: { exact: { type: audio } }
+    - match: { exact: { type: audio, language: en } }
+    - match: { substring: { forced_track: 'x' } }

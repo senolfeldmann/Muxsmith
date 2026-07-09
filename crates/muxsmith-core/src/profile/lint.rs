@@ -19,6 +19,7 @@ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let exact_only: Vec<(usize, &MatchExpr)> = profile
         .tracks
+        .rules
         .iter()
         .enumerate()
         .filter(|(_, r)| matches!(&r.source, SourceCfg::Keyword(k) if k == "primary"))
@@ -73,8 +74,9 @@ mod tests {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio } }
-  - match: { exact: { type: audio, language: en } }
+  rules:
+    - match: { exact: { type: audio } }
+    - match: { exact: { type: audio, language: en } }
 "#;
         let diags = lint(y);
         assert_eq!(diags.len(), 1);
@@ -89,8 +91,9 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: en } }
-  - match: { exact: { type: audio, language: en } }
+  rules:
+    - match: { exact: { type: audio, language: en } }
+    - match: { exact: { type: audio, language: en } }
 "#;
         assert_eq!(lint(y).len(), 1);
     }
@@ -101,8 +104,9 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: en } }
-  - match: { exact: { type: audio, language: de } }
+  rules:
+    - match: { exact: { type: audio, language: en } }
+    - match: { exact: { type: audio, language: de } }
 "#;
         assert!(lint(y).is_empty());
     }
@@ -114,11 +118,12 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles } }
-  - match:
-      exact: { type: subtitles }
-      not:
-        - substring: { track_name: SDH }
+  rules:
+    - match: { exact: { type: subtitles } }
+    - match:
+        exact: { type: subtitles }
+        not:
+          - substring: { track_name: SDH }
 "#;
         assert!(lint(y).is_empty());
     }
@@ -130,8 +135,9 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: en } }
-  - match: { exact: { type: audio } }
+  rules:
+    - match: { exact: { type: audio, language: en } }
+    - match: { exact: { type: audio } }
 "#;
         let diags = lint(y);
         assert_eq!(diags.len(), 1);
@@ -145,11 +151,12 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles } }
-  - match:
-      exact: { type: subtitles }
-      any:
-        - substring: { track_name: SDH }
+  rules:
+    - match: { exact: { type: subtitles } }
+    - match:
+        exact: { type: subtitles }
+        any:
+          - substring: { track_name: SDH }
 "#;
         assert!(lint(y).is_empty());
     }
@@ -160,10 +167,11 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles } }
-  - match:
-      exact: { type: subtitles }
-      substring: { track_name: SDH }
+  rules:
+    - match: { exact: { type: subtitles } }
+    - match:
+        exact: { type: subtitles }
+        substring: { track_name: SDH }
 "#;
         assert!(lint(y).is_empty());
     }
@@ -174,10 +182,11 @@ tracks:
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles } }
-  - source:
-      external: { path: '.', extensions: [srt], match_to_source: true }
-    match: { exact: { type: subtitles } }
+  rules:
+    - match: { exact: { type: subtitles } }
+    - source:
+        external: { path: '.', extensions: [srt], match_to_source: true }
+      match: { exact: { type: subtitles } }
 "#;
         assert!(lint(y).is_empty());
     }

@@ -64,8 +64,9 @@ const P_VIDEO_AUDIO: &str = r#"
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
-  - match: { exact: { type: audio, language: en } }
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { type: audio, language: en } }
 "#;
 
 #[test]
@@ -116,10 +117,11 @@ fn changes_resolve_to_applied_changes_in_property_order() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: en } }
-    changes:
-      language: tr
-      track_name: X
+  rules:
+    - match: { exact: { type: audio, language: en } }
+      changes:
+        language: tr
+        track_name: X
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -149,9 +151,10 @@ fn invalid_changes_language_is_plan_time_invalid_property_value() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: en } }
-    changes:
-      language: zzz
+  rules:
+    - match: { exact: { type: audio, language: en } }
+      changes:
+        language: zzz
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -175,9 +178,10 @@ fn changes_language_non_string_value_is_invalid_property_value() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: en } }
-    changes:
-      language: true
+  rules:
+    - match: { exact: { type: audio, language: en } }
+      changes:
+        language: true
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -198,7 +202,8 @@ fn ambiguous_rule_when_two_tracks_match() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+  rules:
+    - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -216,7 +221,8 @@ fn missing_track_when_no_match_and_not_optional() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: de } }
+  rules:
+    - match: { exact: { type: audio, language: de } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -234,9 +240,10 @@ fn optional_absent_track_is_no_error() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
-  - match: { exact: { type: audio, language: de } }
-    optional: true
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { type: audio, language: de } }
+      optional: true
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -251,8 +258,9 @@ fn overlapping_rules_when_two_rules_claim_one_track() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
-  - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -285,8 +293,9 @@ fn keep_filename_on_mp4_source_replaces_extension_with_mkv() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mp4] }
 tracks:
-  - match: { exact: { type: video } }
-  - match: { exact: { type: audio, language: en } }
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { type: audio, language: en } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mp4", SERIES);
     let fr = &batch.files[0];
@@ -319,7 +328,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: 'Custom' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -336,7 +346,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: 'Custom.mkv' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -391,11 +402,12 @@ fn unidentifiable_donor_yields_unidentifiable_source_not_missing_external() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
-  - source:
-      external: { path: '.', extensions: [srt], match_to_source: true }
-    match: { exact: { type: subtitles } }
-    optional: true
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: '.', extensions: [srt], match_to_source: true }
+      match: { exact: { type: subtitles } }
+      optional: true
 "#;
     let profile = from_str(p, Format::Yaml).unwrap();
     let run = RunInputs {
@@ -453,10 +465,11 @@ input: {{ pattern: 'S(?<s>\d{{2}})E(?<e>\d{{2}})', extensions: [mkv] }}
 output:
   filename: {{ template: 'Donor.{{match}}.mkv' }}
 tracks:
-  - match: {{ exact: {{ type: video }} }}
-  - source:
-      external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
-    match: {{ exact: {{ type: audio }} }}
+  rules:
+    - match: {{ exact: {{ type: video }} }}
+    - source:
+        external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
+      match: {{ exact: {{ type: audio }} }}
 "#,
         donors_dir = donors_dir_str
     );
@@ -517,11 +530,12 @@ input: {{ pattern: 'S(?<s>\d{{2}})E(?<e>\d{{2}})', extensions: [mkv] }}
 output:
   filename: {{ template: 'Donor.S01E02.mkv' }}
 tracks:
-  - match: {{ exact: {{ type: video }} }}
-  - source:
-      external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
-    match: {{ exact: {{ type: audio }} }}
-    optional: true
+  rules:
+    - match: {{ exact: {{ type: video }} }}
+    - source:
+        external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
+      match: {{ exact: {{ type: audio }} }}
+      optional: true
 "#,
         donors_dir = donors_dir_str
     );
@@ -574,7 +588,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: '.' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -596,7 +611,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: '' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -625,7 +641,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: '.mkv' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -653,7 +670,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
 output:
   filename: { template: '{x}.mkv' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -685,7 +703,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: 'Same.mkv' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let profile = from_str(p, Format::Yaml).unwrap();
     let run = RunInputs {
@@ -820,7 +839,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 title: clear
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -838,7 +858,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 title: keep
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -856,7 +877,8 @@ profile_version: 1
 input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 title: { template: 'Show S{season}' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -878,7 +900,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
 title: { template: '{x}' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -900,7 +923,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 title: { template: '{source_stem}' }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -921,7 +945,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tags: { global: drop, track: keep }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -942,7 +967,8 @@ fn bad_language_value_is_batch_invalid_property_value() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio, language: zz } }
+  rules:
+    - match: { exact: { type: audio, language: zz } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     assert!(
@@ -963,7 +989,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 chapters: drop
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -982,7 +1009,8 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 chapters: keep
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -1006,7 +1034,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 chapters:
   external: { path: '.', extensions: [xml], match_to_source: true }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let profile = from_str(p, Format::Yaml).unwrap();
     let run = RunInputs {
@@ -1046,7 +1075,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 chapters:
   external: { path: '.', extensions: [xml], match_to_source: true }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let profile = from_str(p, Format::Yaml).unwrap();
     let run = RunInputs {
@@ -1087,7 +1117,8 @@ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 chapters:
   external: { path: '.', extensions: [xml], match_to_source: true }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let profile = from_str(p, Format::Yaml).unwrap();
     let run = RunInputs {
@@ -1123,7 +1154,8 @@ fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   unmatched: drop
   rules:
@@ -1147,7 +1179,8 @@ fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   unmatched: keep
 "#;
@@ -1169,7 +1202,8 @@ fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   unmatched: drop
 "#;
@@ -1191,7 +1225,8 @@ fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   unmatched: keep
   rules:
@@ -1219,7 +1254,8 @@ fn attachment_add_locator_attaches_all_matching_files() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   rules:
     - add: { path: '.', extensions: [ttf] }
@@ -1257,7 +1293,8 @@ fn attachment_add_two_rules_matching_same_file_is_deduped() {
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   rules:
     - add: { path: '.', extensions: [ttf] }
@@ -1297,7 +1334,8 @@ fn attachment_add_locator_zero_matches_yields_missing_external_warning_and_plan_
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 attachments:
   rules:
     - add: { path: '.', extensions: [ttf] }

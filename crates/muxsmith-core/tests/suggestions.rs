@@ -33,7 +33,8 @@ const P_AMBIGUOUS: &str = r#"
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+  rules:
+    - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
 "#;
 
 fn plan(profile_yaml: &str) -> muxsmith_core::planner::Batch {
@@ -114,17 +115,17 @@ fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
             "exact: {{ type: subtitles, codec_kind: srt, language: en, {property}: {value} }}"
         ),
         StructuredEdit::AddNotExact { property, value } => format!(
-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      not:\n        - exact: {{ {property}: {value} }}"
+            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - exact: {{ {property}: {value} }}"
         ),
         StructuredEdit::AddSubstring { value } => format!(
-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      substring: {{ track_name: {value} }}"
+            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        substring: {{ track_name: {value} }}"
         ),
         StructuredEdit::AddNotSubstring { value } => format!(
-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      not:\n        - substring: {{ track_name: {value} }}"
+            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - substring: {{ track_name: {value} }}"
         ),
     };
     format!(
-        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  - match:\n      {inner}\n"
+        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
     )
 }
 
@@ -158,7 +159,8 @@ const P_NO_CLOBBER: &str = r#"
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles }, substring: { track_name: Foo } }
+  rules:
+    - match: { exact: { type: subtitles }, substring: { track_name: Foo } }
 "#;
 
 // File 1: two subtitle tracks both containing "Foo" in track_name, both
@@ -227,20 +229,20 @@ fn no_clobber_batch() -> Batch {
 fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
     let inner = match edit {
         StructuredEdit::AddExact { property, value } => format!(
-            "exact: {{ type: subtitles, {property}: {value} }}\n      substring: {{ track_name: Foo }}"
+            "exact: {{ type: subtitles, {property}: {value} }}\n        substring: {{ track_name: Foo }}"
         ),
         StructuredEdit::AddNotExact { property, value } => format!(
-            "exact: {{ type: subtitles }}\n      substring: {{ track_name: Foo }}\n      not:\n        - exact: {{ {property}: {value} }}"
+            "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - exact: {{ {property}: {value} }}"
         ),
         StructuredEdit::AddSubstring { value } => {
-            format!("exact: {{ type: subtitles }}\n      substring: {{ track_name: {value} }}")
+            format!("exact: {{ type: subtitles }}\n        substring: {{ track_name: {value} }}")
         }
         StructuredEdit::AddNotSubstring { value } => format!(
-            "exact: {{ type: subtitles }}\n      substring: {{ track_name: Foo }}\n      not:\n        - substring: {{ track_name: {value} }}"
+            "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - substring: {{ track_name: {value} }}"
         ),
     };
     format!(
-        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  - match:\n      {inner}\n"
+        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
     )
 }
 
@@ -310,7 +312,8 @@ const P_COLON_AMBIGUOUS: &str = r#"
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: subtitles } }
+  rules:
+    - match: { exact: { type: subtitles } }
 "#;
 
 // Two subtitle tracks, ambiguous under a bare `type: subtitles` rule; one

@@ -1,5 +1,6 @@
 profile_version: 1
 input: { pattern: 'S(?<season>\d{2})E(?<episode>\d{2})', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
-  - match: { exact: { type: audio, language: en } }
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { type: audio, language: en } }

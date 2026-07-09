@@ -45,7 +45,7 @@ fn dry_run_plans_a_single_file() {
     let profile = dir.path().join("p.yaml");
     std::fs::write(
         &profile,
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
     )
     .unwrap();
 
@@ -87,7 +87,7 @@ fn dry_run_surfaces_config_time_invalid_regex() {
     let profile = dir.path().join("bad.yaml");
     std::fs::write(
         &profile,
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
     )
     .unwrap();
 
@@ -156,7 +156,7 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
         // rule 0 matches the audio track; rule 1 matches nothing (no video
         // track in the fixture) -> per-file MissingTrack; rule 2 references
         // an unknown property -> config-time UnknownProperty.
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n  - match: { exact: { type: video } }\n  - match: { exact: { bogus_property: 1 } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n    - match: { exact: { type: video } }\n    - match: { exact: { bogus_property: 1 } }\n",
     )
     .unwrap();
 
@@ -225,7 +225,7 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
     let profile = dir.path().join("bad.yaml");
     std::fs::write(
         &profile,
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
     )
     .unwrap();
 
@@ -283,7 +283,7 @@ fn dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing() {
     let profile = dir.path().join("bad.yaml");
     std::fs::write(
         &profile,
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
     )
     .unwrap();
 

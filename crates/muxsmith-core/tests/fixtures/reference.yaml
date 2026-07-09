@@ -14,58 +14,60 @@ output:
   on_collision: error      # error | skip | overwrite
 
 tracks:                    # list order = output track order
-  - match: { exact: { type: video } }
+  unmatched: drop           # keep | drop; default drop
+  rules:
+    - match: { exact: { type: video } }
 
-  - match: { exact: { type: audio, language: en } }
-    changes: { default_track: true }
+    - match: { exact: { type: audio, language: en } }
+      changes: { default_track: true }
 
-  - match: { exact: { type: audio, language: de } }
+    - match: { exact: { type: audio, language: de } }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
-    optional: true
-    changes: { track_name: English forced, default_track: true }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
+      optional: true
+      changes: { track_name: English forced, default_track: true }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
-      not:
-        - substring: { track_name: SDH }
-        - exact: { flag_hearing_impaired: true }
-    changes: { track_name: English }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+        not:
+          - substring: { track_name: SDH }
+          - exact: { flag_hearing_impaired: true }
+      changes: { track_name: English }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
-      any:
-        - substring: { track_name: SDH }
-        - exact: { flag_hearing_impaired: true }
-    changes: { track_name: English SDH, flag_hearing_impaired: true }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+        any:
+          - substring: { track_name: SDH }
+          - exact: { flag_hearing_impaired: true }
+      changes: { track_name: English SDH, flag_hearing_impaired: true }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: true }
-    optional: true
-    changes: { track_name: German forced, default_track: true }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: de, forced_track: true }
+      optional: true
+      changes: { track_name: German forced, default_track: true }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
-      not:
-        - substring: { track_name: SDH }
-        - exact: { flag_hearing_impaired: true }
-    changes: { track_name: German }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
+        not:
+          - substring: { track_name: SDH }
+          - exact: { flag_hearing_impaired: true }
+      changes: { track_name: German }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
-      any:
-        - substring: { track_name: SDH }
-        - exact: { flag_hearing_impaired: true }
-    changes: { track_name: German SDH, flag_hearing_impaired: true }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
+        any:
+          - substring: { track_name: SDH }
+          - exact: { flag_hearing_impaired: true }
+      changes: { track_name: German SDH, flag_hearing_impaired: true }
 
-  - source:
-      external:
-        path: .              # relative to the primary file's directory
-        extensions: [srt]
-        match_to_source: true
-    match: { exact: { type: subtitles } }
-    changes: { language: tr, track_name: "Türkçe" }
+    - source:
+        external:
+          path: .              # relative to the primary file's directory
+          extensions: [srt]
+          match_to_source: true
+      match: { exact: { type: subtitles } }
+      changes: { language: tr, track_name: "Türkçe" }
 
 attachments:
   unmatched: keep            # keep | drop; default keep (dropping fonts silently breaks ASS subs)

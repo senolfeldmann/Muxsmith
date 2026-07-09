@@ -67,41 +67,43 @@ output:
   on_collision: error      # error | skip | overwrite
 
 tracks:                    # list order = output track order
-  - match: { exact: { type: video } }
+  unmatched: drop           # keep | drop; default drop
+  rules:
+    - match: { exact: { type: video } }
 
-  - match: { exact: { type: audio, language: en } }
-    changes: { default_track: true }
+    - match: { exact: { type: audio, language: en } }
+      changes: { default_track: true }
 
-  - match: { exact: { type: audio, language: de } }
+    - match: { exact: { type: audio, language: de } }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
-    optional: true
-    changes: { track_name: English forced, default_track: true }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
+      optional: true
+      changes: { track_name: English forced, default_track: true }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
-      not:
-        - substring: { track_name: SDH }
-        - exact: { flag_hearing_impaired: true }
-    changes: { track_name: English }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+        not:
+          - substring: { track_name: SDH }
+          - exact: { flag_hearing_impaired: true }
+      changes: { track_name: English }
 
-  - match:
-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
-      any:
-        - substring: { track_name: SDH }
-        - exact: { flag_hearing_impaired: true }
-    changes: { track_name: English SDH, flag_hearing_impaired: true }
+    - match:
+        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+        any:
+          - substring: { track_name: SDH }
+          - exact: { flag_hearing_impaired: true }
+      changes: { track_name: English SDH, flag_hearing_impaired: true }
 
-  # analogous forced / plain / SDH rules for language: de omitted for brevity
+    # analogous forced / plain / SDH rules for language: de omitted for brevity
 
-  - source:
-      external:
-        path: .              # relative to the primary file's directory
-        extensions: [srt]
-        match_to_source: true
-    match: { exact: { type: subtitles } }
-    changes: { language: tr, track_name: "Türkçe" }
+    - source:
+        external:
+          path: .              # relative to the primary file's directory
+          extensions: [srt]
+          match_to_source: true
+      match: { exact: { type: subtitles } }
+      changes: { language: tr, track_name: "Türkçe" }
 
 attachments:
   unmatched: keep            # keep | drop; default keep (dropping fonts silently breaks ASS subs)
@@ -172,6 +174,8 @@ Conveniences:
 
 ### 4.5 Track rules
 
+`tracks` is a `{ unmatched, rules }` block, not a bare rule list: `unmatched` (`keep | drop`, default `drop`) is the policy for PRIMARY-file tracks no rule matches; `rules` carries the ordered list below.
+
 ```
 rule := {
   source?:   primary (default) | { external: locator }
@@ -181,7 +185,7 @@ rule := {
 }
 ```
 
-List order in `tracks` defines the output track order (`--track-order`).
+List order in `tracks.rules` defines the output track order (`--track-order`).
 
 ### 4.6 External locator
 

@@ -12,7 +12,7 @@ fn reference_profile_parses() {
     assert_eq!(p.profile_version, 1);
     assert_eq!(p.input.pattern, r"S(?<season>\d{2})E(?<episode>\d{2})");
     assert!(p.input.recursive);
-    assert_eq!(p.tracks.len(), 10); // 1 video + 2 audio + 6 subs + 1 external
+    assert_eq!(p.tracks.rules.len(), 10); // 1 video + 2 audio + 6 subs + 1 external
     assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
     assert!(matches!(p.chapters, ChaptersCfg::Keyword(ref k) if k == "keep"));
     assert!(matches!(p.title, TitleCfg::Keyword(ref k) if k == "clear"));
@@ -20,7 +20,7 @@ fn reference_profile_parses() {
     assert_eq!(p.tags.track, KeepDrop::Keep);
     assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
 
-    let last = p.tracks.last().unwrap();
+    let last = p.tracks.rules.last().unwrap();
     match &last.source {
         SourceCfg::External(block) => {
             assert_eq!(block.external.path, std::path::Path::new("."));
@@ -42,12 +42,13 @@ fn json_profile_parses_identically_to_yaml() {
 profile_version: 1
 input: { pattern: 'S(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let json = r#"{
   "profile_version": 1,
   "input": { "pattern": "S(\\d+)", "extensions": ["mkv"] },
-  "tracks": [ { "match": { "exact": { "type": "video" } } } ]
+  "tracks": { "rules": [ { "match": { "exact": { "type": "video" } } } ] }
 }"#;
     let a = from_str(yaml, Format::Yaml).unwrap();
     let b = from_str(json, Format::Json).unwrap();
@@ -60,7 +61,8 @@ fn defaults_apply_when_sections_absent() {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     let p = from_str(y, Format::Yaml).unwrap();
     assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
@@ -70,8 +72,8 @@ tracks:
     assert_eq!(p.tags.global, KeepDrop::Keep);
     assert_eq!(p.tags.track, KeepDrop::Keep);
     assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
-    assert!(matches!(p.tracks[0].source, SourceCfg::Keyword(ref k) if k == "primary"));
-    assert!(!p.tracks[0].optional);
+    assert!(matches!(p.tracks.rules[0].source, SourceCfg::Keyword(ref k) if k == "primary"));
+    assert!(!p.tracks.rules[0].optional);
 }
 
 #[test]
@@ -80,8 +82,9 @@ fn unknown_key_is_parse_error_with_path() {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: video } }
-    optionall: true
+  rules:
+    - match: { exact: { type: video } }
+      optionall: true
 "#;
     let err = from_str(y, Format::Yaml).unwrap_err();
     assert_eq!(err.code, DiagCode::ParseError);
@@ -97,7 +100,8 @@ input: { pattern: 'E(\d+)', extensions: [mkv] }
 output:
   filename: { template: 'x{g1}', extra: 1 }
 tracks:
-  - match: { exact: { type: video } }
+  rules:
+    - match: { exact: { type: video } }
 "#;
     assert!(from_str(y, Format::Yaml).is_err());
 }
@@ -108,8 +112,47 @@ fn unknown_key_inside_source_external_is_rejected() {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - source: { external: { path: '.', extensions: [srt] }, bogus: true }
-    match: { exact: { type: subtitles } }
+  rules:
+    - source: { external: { path: '.', extensions: [srt] }, bogus: true }
+      match: { exact: { type: subtitles } }
 "#;
     assert!(from_str(y, Format::Yaml).is_err());
+}
+
+#[test]
+fn tracks_block_parses_and_unmatched_defaults_to_drop() {
+    let yaml = r#"
+profile_version: 1
+input: { pattern: 'x', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let p =
+        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
+            .expect("block-form tracks must parse");
+    assert_eq!(
+        p.tracks.unmatched,
+        muxsmith_core::profile::model::KeepDrop::Drop
+    );
+    assert_eq!(p.tracks.rules.len(), 1);
+}
+
+#[test]
+fn tracks_unmatched_keep_parses() {
+    let yaml = r#"
+profile_version: 1
+input: { pattern: 'x', extensions: [mkv] }
+tracks:
+  unmatched: keep
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let p =
+        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
+            .expect("keep must parse");
+    assert_eq!(
+        p.tracks.unmatched,
+        muxsmith_core::profile::model::KeepDrop::Keep
+    );
 }

@@ -38,8 +38,9 @@ fn warnings_only_exits_one() {
 profile_version: 1
 input: { pattern: 'E(\d+)', extensions: [mkv] }
 tracks:
-  - match: { exact: { type: audio } }
-  - match: { exact: { type: audio, language: en } }
+  rules:
+    - match: { exact: { type: audio } }
+    - match: { exact: { type: audio, language: en } }
 "#;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("warn.yaml");
