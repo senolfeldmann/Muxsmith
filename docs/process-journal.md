@@ -227,3 +227,37 @@ there. See HANDOFF.md.
 **Deltas.** Task 9 (single-group) vs Task 10 (multi-group) split blurred: Task 9 already built general group iteration, so Task 10 was mostly per-track props + multi-group golden coverage. The plan's incremental-golden design worked: each command task extended the argv and updated the prior task's golden (Task 11 added donor `--no-attachments` to Task 10's golden), verified not a regression.
 
 **Open threads (Plan 4 inherits).** Deferred minors: richer gated live test (attachment + changes) - highest value; zero-track-plan renders an empty MKV with no diagnostic (planner empty-plan warning?); FakeIdent+lang() duplicated 3x -> tests/support.rs; tests `std::mem::forget(tempdir)` leaks; with-attachments.json uses 0-based ids (mkvmerge is 1-based; code id-agnostic); optional batch-level settable-language check. Next: Plan 4 = executor + run subcommand + FIFO queue + SIGINT cleanup; job-log persistence deferred to Plan 5 (GUI). mkvtoolnix still not installed in CI (gated integration tests self-skip there).
+
+## 2026-07-09 | Plan 3.5 complete (mkvtoolnix parity fixes) | session 4 (Peter; Fable 5 -> Opus 4.8 1M mid-session)
+
+**Scope.** Plan 3.5 (D19-D21), commits 91b19eb..aa75025 (8). Inserted BEFORE Plan 4: three parity fixes to the pure layer, surfaced by a from-scratch mkvtoolnix parity audit. 7 SDD tasks + 1 review-fix.
+
+**Decisions and why.**
+- Plan 3.5 exists because Şenol asked for a full mkvtoolnix parity audit before Plan 4 (2 parallel recon subagents: Muxsmith decision inventory + mkvtoolnix-gui source). Framing rule, now SI-3: mkvtoolnix is INTERACTIVE (pre-fills guesses the user reviews), Muxsmith DECLARATIVE BATCH (no per-file review) -> only muxing semantics/output are parity targets; input-time convenience guesses (filename-derived lang/flags, auto-title, unique-name suffix, sequence append) are not, shelved to docs/IDEAS.md.
+- D20 tracks bare-list -> `{ unmatched, rules }` block. Şenol drove placement: nested block (not a top-level `unmatched_tracks` key) because the profile already keeps policies in their section (output.on_collision, tags.global). I'd recommended top-level for the bare-list ergonomic; conceded on whole-profile consistency.
+- D20 `keep` kept despite Şenol questioning the need. One real case: additive bulk ops ("add a sub to a library, keep the rest") are inexpressible under drop (one-track-per-rule forbids a catch-all).
+- D19 matcher (canonicalize) was nearly cut as a no-op - the raw fallback already matched equal tags case-insensitively. Trace showed the cited fragility (pt-Latn-BR vs pt-BR) needs canonicalize(), which language-tags bundles (cheap). Şenol chose to do it now (option B). Surfaced "exact = typed value-equality, not string equality" -> spec 4.3, README-flagged.
+- D20 keep TRACK ORDER reversed at close-out. Memo assumption #3 (matched-first, unmatched-appended) made a donor-only keep profile put the added sub FIRST. Whole-branch review flagged it; Şenol called B (donors trail): "keep = match what's already there" makes kept-unmatched primary tracks count as matched, so --track-order lists them (invariant holds), primary first. Task 7 built it.
+
+**What the process caught.**
+- Whole-branch (opus) flagged donor+keep ordering as a usability trap on the marquee use case (verified vs mkvmerge v100). Correct-per-assumption, not a code bug, but drove the D20-B reversal + Task 7. Origin: the design assumption.
+- Task 4: implementer found `zz`/`zzz` invalid-language fixtures are WELL-FORMED BCP-47, so the widened predicate would silently accept them -> those tests stop testing. Changed to `notalanguage` (len>8 fails well-formedness). Reviewer re-probed the crate to confirm. Origin: plan.
+- Task 5: implementer corrected a brief doc-comment (`xx-YY` canonicalizes to itself, not None; crate errors only on MultipleExtendedLanguageSubtags). Reviewer cross-checked crate source (Suppress-Script table). Origin: my brief.
+- Task 7 review (Important): keep+donor track-order had only the gated live test (skips w/o mkvmerge -> unguarded in CI). Fix aa75025 = deterministic unit test; implementer verified it as a real guard by scratch-reverting the branch two ways. Origin: implementer.
+- D21 gate = `!container_recognized || !container_supported`, NOT is_identifiable() (recognized zero-track stays MissingTrack); confirmatory test asserts both directions.
+
+**Mechanics.** 7 tasks + 1 fix. ~3 recon + 7 implementer + 1 fixer dispatches; 7 task reviews + 1 whole-branch. Models: sonnet implementers/task-reviewers, opus whole-branch. 1 fix wave. Tests 204 -> ~214, 0 failed each gate; controller re-ran full gate (test/fmt/clippy -D warnings/deny) after every task. New dep language-tags 0.3.2 (MIT/Apache-2.0, no transitive deps, deny.toml untouched). Single push at completion.
+
+**Friction/failure.**
+- STRICTLY SERIAL execution. After Task 1 the D19/D20/D21 streams were independent (disjoint planner.rs regions), parallelizable in worktrees. Şenol: "I am waiting for something that could have been faster." SI-1 rewritten (Superpowers-throughout + parallelize-independent) + cross-project memory feedback_superpowers_throughout. The clearest miss of the session.
+- Permission classifier BLOCKED the first planning-docs commit (global never-commit rule, blind to the repo authorization); cleared by an explicit in-session commit + later a session-wide override.
+- Same stale-report trap as Plan 3: task-6-report.md held an earlier plan's content; overwritten and noted.
+
+**Moments.**
+- "exact already means value-equality" - Şenol asked why exact matches non-identical strings; the typed-value-equality answer (6==6.0, de==ger already) he called README-worthy. -> spec 4.3.
+- D20-B "keep = match what's already there" collapsed a two-zone ordering model to one rule and dissolved the invariant-break objection.
+- Tasks 3 and 7 implementers both hand-ran mkvmerge before encoding the order assertion, unprompted (SI-3 holding).
+
+**Deltas.** Plan 3.5 itself is a delta (did not exist until the audit inserted it). Keep track-order was specced (assumption #3), built (Tasks 2-3), reviewed green, THEN reversed (D20-B, Task 7) - the plan's own assumption changed, not its implementation.
+
+**Open threads (Plan 4 inherits).** Plan 4 memo (D13-D18) written, parked, UNREVIEWED by Şenol - review first. Standing Plan 1-3 minors still open (FakeIdent/lang() 3x dup, mem::forget tempdir leaks, mkvtoolnix in CI). docs/IDEAS.md holds 4 shelved parity features. Parallelize Plan 4's independent tasks per new SI-1.
