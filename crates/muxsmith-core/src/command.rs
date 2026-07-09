@@ -66,12 +66,16 @@ pub fn command(plan: &Plan) -> Vec<String> {
 }
 
 // Computes the input groups: the primary is always group 0, then every
-// distinct `Assignment::source` not already present, in first-appearance
-// order (spec 4.9 item 2).
+// distinct `Assignment::source` with a resolved `track_id` not already
+// present, in first-appearance order (spec 4.9 item 2). A source whose only
+// assignment(s) have `track_id: None` (an external rule that matched no
+// track) contributes no group: opening it would render an empty group
+// (`--no-video --no-audio --no-subtitles --no-buttons ( <source> )`) that
+// mkvmerge may reject.
 fn input_groups(plan: &Plan) -> Vec<PathBuf> {
     let mut groups = vec![plan.source.clone()];
     for a in &plan.assignments {
-        if !groups.iter().any(|g| g.as_path() == a.source.as_path()) {
+        if a.track_id.is_some() && !groups.iter().any(|g| g.as_path() == a.source.as_path()) {
             groups.push(a.source.clone());
         }
     }
