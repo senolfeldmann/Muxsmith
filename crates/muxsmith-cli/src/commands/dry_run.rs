@@ -7,12 +7,18 @@ use std::path::{Path, PathBuf};
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
 use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
-use muxsmith_core::profile::load;
+use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::{Diagnostic, Severity};
 
 use crate::i18n::Renderer;
 
 /// Runs `muxsmith dry-run`. Returns the mkvmerge-style exit code.
+///
+/// Spec 5.5: dry-run is a strict superset of `validate`, never a subset. It
+/// runs the config-time static validate pass FIRST (the same
+/// `validate::validate` + `lint::provable_overlaps` collection `validate`
+/// runs), then a full planning pass, and folds both diagnostic sets into one
+/// report; the exit code reflects the worst severity across all of them.
 pub fn run(
     profile_path: &Path,
     source: Option<PathBuf>,
@@ -27,6 +33,13 @@ pub fn run(
             return 2;
         }
     };
+
+    // Config-time validate pass (spec 5.5, level 1); needs no filesystem
+    // access beyond the profile itself, so it runs before the mkvmerge
+    // lookup below.
+    let mut config_diags = validate::validate(&profile);
+    config_diags.extend(lint::provable_overlaps(&profile));
+
     let mkv = match Mkvmerge::locate() {
         Ok(m) => m,
         Err(_) => {
@@ -55,26 +68,73 @@ pub fn run(
     let batch = plan_batch(&profile, &run, &mut ident, &lang);
 
     if json {
-        println!("{}", serde_json::to_string(&batch).unwrap());
+        println!("{}", batch_json(&config_diags, &batch, renderer));
     } else {
+        for d in &config_diags {
+            println!("{}", renderer.diagnostic(d));
+        }
         print_batch_human(&batch, renderer);
     }
-    exit_code(&batch)
+    exit_code(&config_diags, &batch)
 }
 
-fn all_diags(batch: &Batch) -> impl Iterator<Item = &Diagnostic> {
-    batch
-        .batch_diagnostics
+fn all_diags<'a>(
+    config_diags: &'a [Diagnostic],
+    batch: &'a Batch,
+) -> impl Iterator<Item = &'a Diagnostic> {
+    config_diags
         .iter()
+        .chain(batch.batch_diagnostics.iter())
         .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()))
 }
 
-fn exit_code(batch: &Batch) -> i32 {
-    match all_diags(batch).map(|d| d.severity).max() {
+fn exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 {
+    match all_diags(config_diags, batch).map(|d| d.severity).max() {
         Some(Severity::Error) => 2,
         Some(Severity::Warning) => 1,
         _ => 0,
     }
+}
+
+/// Builds the `--json` report (spec 5.2): the raw `Batch` plus the
+/// config-time diagnostics, with a `rendered` message string attached to
+/// every diagnostic (config-time, batch-level, and per-file alike).
+fn batch_json(
+    config_diags: &[Diagnostic],
+    batch: &Batch,
+    renderer: &Renderer,
+) -> serde_json::Value {
+    let files: Vec<serde_json::Value> = batch
+        .files
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "source": f.source,
+                "identifier": f.identifier,
+                "plan": f.plan,
+                "diagnostics": rendered_diags(&f.diagnostics, renderer),
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "config_diagnostics": rendered_diags(config_diags, renderer),
+        "files": files,
+        "batch_diagnostics": rendered_diags(&batch.batch_diagnostics, renderer),
+        "suggestions": batch.suggestions,
+    })
+}
+
+/// Maps each diagnostic to its JSON value with a `rendered` field injected
+/// (mirrors `validate.rs`'s `--json` rendering).
+fn rendered_diags(diags: &[Diagnostic], renderer: &Renderer) -> Vec<serde_json::Value> {
+    diags
+        .iter()
+        .map(|d| {
+            let mut v = serde_json::to_value(d).unwrap();
+            v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
+            v
+        })
+        .collect()
 }
 
 fn print_batch_human(batch: &Batch, renderer: &Renderer) {
