@@ -925,3 +925,163 @@ tracks:
         batch.batch_diagnostics
     );
 }
+
+// Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
+#[test]
+fn chapters_drop_keyword_resolves_to_drop() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters: drop
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Drop);
+}
+
+// Task 7: `chapters: keep` resolves to `ChapterSource::Keep` (also the
+// default already covered by Task 4's tests, but exercised explicitly here
+// since Task 7 is what makes the keyword branch real).
+#[test]
+fn chapters_keep_keyword_resolves_to_keep() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters: keep
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
+}
+
+// Task 7: an external chapters locator with exactly one matching donor
+// resolves to `ChapterSource::External(<that path>)`. A chapters file is
+// never run through Identify (it is XML/simple, not an mkvmerge source), so
+// the fixture map only needs the primary.
+#[test]
+fn chapters_external_one_match_resolves_to_external_path() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters:
+  external: { path: '.', extensions: [xml], match_to_source: true }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    let expected = dir.path().join("Show.S01E01.xml");
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.chapters,
+        muxsmith_core::planner::ChapterSource::External(expected)
+    );
+}
+
+// Task 7: zero matches for an external chapters locator is a hard error
+// (`MissingExternal` at `chapters.external`); the file gets no plan. Unlike
+// a track rule's external source, chapters has no `optional` escape.
+#[test]
+fn chapters_external_zero_matches_yields_missing_external_and_no_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters:
+  external: { path: '.', extensions: [xml], match_to_source: true }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::MissingExternal)
+        .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
+    assert_eq!(d.config_path, "chapters.external");
+}
+
+// Task 7: two matches for an external chapters locator is `AmbiguousExternal`
+// at `chapters.external`, with `count` = 2, and no plan.
+#[test]
+fn chapters_external_two_matches_yields_ambiguous_external() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.alt.xml"), b"<Chapters/>").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters:
+  external: { path: '.', extensions: [xml], match_to_source: true }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::AmbiguousExternal)
+        .unwrap_or_else(|| panic!("expected AmbiguousExternal, got: {:?}", fr.diagnostics));
+    assert_eq!(d.config_path, "chapters.external");
+    assert_eq!(d.params.get("count").map(String::as_str), Some("2"));
+}

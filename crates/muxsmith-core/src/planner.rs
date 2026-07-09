@@ -16,7 +16,7 @@ use crate::identify::{Identification, Identify};
 use crate::matcher;
 use crate::profile::match_expr::{MatchExpr, Scalar};
 use crate::profile::model::{
-    CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
+    ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
 };
 use crate::report::{DiagCode, Diagnostic, Severity};
 use crate::template::Template;
@@ -515,6 +515,7 @@ fn resolve_file(
     let output = render_output(profile, primary, output_dir, &mut diagnostics);
     let title = resolve_title(profile, primary);
     let tags = resolve_tags(profile);
+    let chapters = resolve_chapters(profile, primary, primary_dir, &mut diagnostics);
 
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
@@ -524,7 +525,7 @@ fn resolve_file(
             primary: PrimaryAttachments::KeepAll,
             add_files: vec![],
         },
-        chapters: ChapterSource::Keep,
+        chapters,
         tags,
         title,
     });
@@ -715,6 +716,51 @@ fn resolve_tags(profile: &Profile) -> TagFlags {
     TagFlags {
         global_keep: profile.tags.global == KeepDrop::Keep,
         track_keep: profile.tags.track == KeepDrop::Keep,
+    }
+}
+
+// Resolves `profile.chapters` to a `ChapterSource` (spec 4.9). The external
+// case reuses the same locator machinery as a track rule's external source
+// (`resolve_locator` plus the 0/1/n uniqueness split), but a chapters file is
+// never run through `Identify`: it is XML/simple-format text consumed
+// directly by `--chapters`, not an mkvmerge source with tracks of its own.
+// `config_path` is the literal top-level `"chapters.external"`, never
+// `tracks[i]`-scoped, since chapters is a singular profile-wide setting.
+// Unlike a track rule's external source, there is no `optional` escape: zero
+// matches is always `MissingExternal`. Both error branches return `Keep` as
+// a placeholder; it never surfaces because the pushed error diagnostic
+// already forces `plan: None` in the caller's later finalize step.
+fn resolve_chapters(
+    profile: &Profile,
+    primary: &PrimaryFile,
+    primary_dir: &Path,
+    diags: &mut Vec<Diagnostic>,
+) -> ChapterSource {
+    match &profile.chapters {
+        ChaptersCfg::Keyword(k) if k == "drop" => ChapterSource::Drop,
+        ChaptersCfg::Keyword(_) => ChapterSource::Keep,
+        ChaptersCfg::External(block) => {
+            let hits =
+                discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
+            match hits.len() {
+                1 => ChapterSource::External(hits.into_iter().next().unwrap()),
+                0 => {
+                    diags.push(
+                        Diagnostic::error(DiagCode::MissingExternal, "chapters.external")
+                            .for_file(&primary.path),
+                    );
+                    ChapterSource::Keep
+                }
+                n => {
+                    diags.push(
+                        Diagnostic::error(DiagCode::AmbiguousExternal, "chapters.external")
+                            .for_file(&primary.path)
+                            .with("count", n.to_string()),
+                    );
+                    ChapterSource::Keep
+                }
+            }
+        }
     }
 }
 
