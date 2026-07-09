@@ -44,6 +44,82 @@ pub struct Assignment {
     pub source: PathBuf,
     /// The resolved `-J` track id, or `None` for an unmatched optional rule.
     pub track_id: Option<u64>,
+    /// The matched track's `-J` type (`video`/`audio`/`subtitles`/`buttons`),
+    /// needed by `command` to pick `--audio-tracks` vs `--video-tracks` etc.
+    /// `None` exactly when `track_id` is `None`.
+    pub track_kind: Option<String>,
+    /// Settable changes to apply to the resolved track; empty when the rule has
+    /// no `changes` or matched nothing.
+    pub changes: Vec<AppliedChange>,
+}
+
+/// A resolved settable change on an assignment (spec 4.4). Format-neutral: the
+/// property name and value, not an mkvmerge flag; `command` maps the property
+/// to its option via `capability::settable`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AppliedChange {
+    /// Settable property name (spec 4.4 table key), e.g. `language`,
+    /// `track_name`.
+    pub property: String,
+    /// The value to set.
+    pub value: Scalar,
+}
+
+/// What happens to the output's chapters (spec 4.9).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ChapterSource {
+    /// mkvmerge default (no `--no-chapters`).
+    Keep,
+    /// `--no-chapters` on every input group.
+    Drop,
+    /// `--chapters <path>` globally, `--no-chapters` on every input group.
+    External(PathBuf),
+}
+
+/// Output tag handling (spec 4.9).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct TagFlags {
+    /// Keep global (container) tags; `false` -> `--no-global-tags`.
+    pub global_keep: bool,
+    /// Keep per-track tags; `false` -> `--no-track-tags`.
+    pub track_keep: bool,
+}
+
+/// Output title handling (spec 4.9).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TitleAction {
+    /// mkvmerge default (no `--title`).
+    Keep,
+    /// `--title ""` (force empty).
+    Clear,
+    /// `--title <s>` (rendered template).
+    Set(String),
+}
+
+/// How the primary file's existing attachments are treated (spec 4.9). Donor
+/// files always get `--no-attachments` (D10), so this concerns the primary
+/// only.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PrimaryAttachments {
+    /// Keep all (no attachment filter on the primary group).
+    KeepAll,
+    /// Keep exactly these attachment ids (`--attachments id,id`); non-empty.
+    Subset(Vec<u64>),
+    /// Keep none (`--no-attachments`).
+    DropAll,
+}
+
+/// Resolved attachment disposition for one plan (spec 4.9, D10).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentPlan {
+    /// Disposition of the primary's own attachments.
+    pub primary: PrimaryAttachments,
+    /// External files to attach via `--attach-file`, from `add` locators, in
+    /// resolution order.
+    pub add_files: Vec<PathBuf>,
 }
 
 /// The fully resolved plan for one primary (spec 3). Present only when the file
@@ -57,6 +133,14 @@ pub struct Plan {
     /// One entry per track rule, in profile order (also the output track order,
     /// spec 4.5).
     pub assignments: Vec<Assignment>,
+    /// Resolved attachment disposition (spec 4.9).
+    pub attachments: AttachmentPlan,
+    /// Resolved chapters disposition (spec 4.9).
+    pub chapters: ChapterSource,
+    /// Resolved tag flags (spec 4.9).
+    pub tags: TagFlags,
+    /// Resolved output title (spec 4.9).
+    pub title: TitleAction,
 }
 
 /// Per-file result: the plan (if any) and every diagnostic about the file.
@@ -297,6 +381,8 @@ fn resolve_file(
                             rule_index: ri,
                             source: primary.path.clone(),
                             track_id: None,
+                            track_kind: None,
+                            changes: vec![],
                         });
                         continue;
                     }
@@ -327,6 +413,8 @@ fn resolve_file(
                                     rule_index: ri,
                                     source: primary.path.clone(),
                                     track_id: None,
+                                    track_kind: None,
+                                    changes: vec![],
                                 });
                                 continue;
                             }
@@ -345,6 +433,8 @@ fn resolve_file(
                             rule_index: ri,
                             source: primary.path.clone(),
                             track_id: None,
+                            track_kind: None,
+                            changes: vec![],
                         });
                         continue;
                     }
@@ -352,11 +442,11 @@ fn resolve_file(
             }
         };
 
-        let matched: Vec<u64> = source_ident
+        let matched: Vec<(u64, String)> = source_ident
             .tracks
             .iter()
             .filter(|t| matcher::matches(&rule.match_expr, t, lang))
-            .map(|t| t.id)
+            .map(|t| (t.id, t.kind.clone()))
             .collect();
 
         match matched.len() {
@@ -371,10 +461,12 @@ fn resolve_file(
                     rule_index: ri,
                     source: source_path,
                     track_id: None,
+                    track_kind: None,
+                    changes: vec![],
                 });
             }
             1 => {
-                let tid = matched[0];
+                let (tid, tkind) = matched[0].clone();
                 claims
                     .entry((source_path.clone(), tid))
                     .or_default()
@@ -383,6 +475,8 @@ fn resolve_file(
                     rule_index: ri,
                     source: source_path,
                     track_id: Some(tid),
+                    track_kind: Some(tkind),
+                    changes: vec![],
                 });
             }
             n => {
@@ -395,6 +489,8 @@ fn resolve_file(
                     rule_index: ri,
                     source: source_path,
                     track_id: None,
+                    track_kind: None,
+                    changes: vec![],
                 });
             }
         }
@@ -419,6 +515,16 @@ fn resolve_file(
         source: primary.path.clone(),
         output,
         assignments,
+        attachments: AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        },
+        chapters: ChapterSource::Keep,
+        tags: TagFlags {
+            global_keep: true,
+            track_keep: true,
+        },
+        title: TitleAction::Keep,
     });
 
     FileReport {

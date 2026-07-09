@@ -75,6 +75,34 @@ fn resolves_each_rule_to_one_track() {
     assert_eq!(plan.assignments[1].track_id, Some(1));
 }
 
+// Task 4: Plan/Assignment resolution-field defaults (Tasks 5-8 fill real
+// resolution; this only asserts the wiring is defaulted correctly).
+#[test]
+fn plan_and_assignment_carry_resolution_field_defaults() {
+    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.attachments,
+        muxsmith_core::planner::AttachmentPlan {
+            primary: muxsmith_core::planner::PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        }
+    );
+    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
+    assert_eq!(
+        plan.tags,
+        muxsmith_core::planner::TagFlags {
+            global_keep: true,
+            track_keep: true,
+        }
+    );
+    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
+    assert_eq!(plan.assignments[0].track_kind.as_deref(), Some("video"));
+    assert!(plan.assignments[0].changes.is_empty());
+}
+
 #[test]
 fn ambiguous_rule_when_two_tracks_match() {
     let p = r#"
