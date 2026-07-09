@@ -1,0 +1,21 @@
+{
+  "attachments": [],
+  "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "SubRip/SRT" },
+  "errors": [],
+  "file_name": "Show.S01E01.srt",
+  "global_tags": [],
+  "identification_format_version": 20,
+  "track_tags": [],
+  "tracks": [
+    {
+      "codec": "SubRip/SRT",
+      "id": 0,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "language": "und"
+      }
+    }
+  ]
+}

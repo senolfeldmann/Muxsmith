@@ -1,0 +1,124 @@
+{
+  "attachments": [],
+  "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [],
+  "file_name": "Show.S01E01.mkv",
+  "global_tags": [],
+  "identification_format_version": 20,
+  "track_tags": [],
+  "tracks": [
+    {
+      "codec": "AVC/H.264/MPEG-4p10",
+      "id": 0,
+      "type": "video",
+      "properties": {
+        "codec_id": "V_MPEG4/ISO/AVC",
+        "default_track": true,
+        "forced_track": false,
+        "language": "und",
+        "pixel_dimensions": "1920x1080"
+      }
+    },
+    {
+      "codec": "AC-3",
+      "id": 1,
+      "type": "audio",
+      "properties": {
+        "audio_channels": 2,
+        "codec_id": "A_AC3",
+        "default_track": false,
+        "forced_track": false,
+        "language": "eng",
+        "track_name": "English"
+      }
+    },
+    {
+      "codec": "AC-3",
+      "id": 2,
+      "type": "audio",
+      "properties": {
+        "audio_channels": 2,
+        "codec_id": "A_AC3",
+        "default_track": false,
+        "forced_track": false,
+        "language": "ger",
+        "track_name": "German"
+      }
+    },
+    {
+      "codec": "SubRip/SRT",
+      "id": 3,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "default_track": false,
+        "forced_track": true,
+        "language": "eng",
+        "track_name": "Forced"
+      }
+    },
+    {
+      "codec": "SubRip/SRT",
+      "id": 4,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "default_track": false,
+        "forced_track": false,
+        "language": "eng",
+        "track_name": "Untitled"
+      }
+    },
+    {
+      "codec": "SubRip/SRT",
+      "id": 5,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "default_track": false,
+        "flag_hearing_impaired": true,
+        "forced_track": false,
+        "language": "eng",
+        "track_name": "Untitled HI"
+      }
+    },
+    {
+      "codec": "SubRip/SRT",
+      "id": 6,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "default_track": false,
+        "forced_track": true,
+        "language": "ger",
+        "track_name": "Erzwungen"
+      }
+    },
+    {
+      "codec": "SubRip/SRT",
+      "id": 7,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "default_track": false,
+        "forced_track": false,
+        "language": "ger",
+        "track_name": "Unbenannt"
+      }
+    },
+    {
+      "codec": "SubRip/SRT",
+      "id": 8,
+      "type": "subtitles",
+      "properties": {
+        "codec_id": "S_TEXT/UTF8",
+        "default_track": false,
+        "flag_hearing_impaired": true,
+        "forced_track": false,
+        "language": "ger",
+        "track_name": "Unbenannt HI"
+      }
+    }
+  ]
+}

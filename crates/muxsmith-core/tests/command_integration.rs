@@ -1,0 +1,277 @@
+//! Task 12: the whole pure layer end to end, plus real-mkvmerge acceptance
+//! (spec 4.1, 6, 10).
+//!
+//! Two tests:
+//! - `reference_example_end_to_end`: the spec 4.1 reference example (the
+//!   full, German-completed profile checked in at `fixtures/reference.yaml`,
+//!   see `docs/superpowers/plans/2026-07-08-plan-1-core-foundations-validate-cli.md`
+//!   task 4) driven through `plan_batch` with a fake `Identify`, asserting
+//!   the FULL `command::command` argv. Pure: no mkvmerge needed, always runs.
+//! - `live_mkvmerge_accepts_planned_command`: spawns real mkvmerge on the
+//!   argv a tiny real plan produces, gated on `Mkvmerge::locate()` (mirrors
+//!   `identify_live.rs` / `mkvmerge_runtime.rs`'s self-skip pattern).
+//!
+//! The parenthesized `( file )` input-group syntax `command.rs` emits for
+//! every input source (spec 4.9 item 2f) was confirmed by hand against the
+//! installed mkvmerge v100 before writing these tests: per `man mkvmerge`,
+//! `( file1 file2 )` concatenates multiple files into one logical segment
+//! and is documented as unusable for stand-alone self-contained containers
+//! (it explicitly cannot be used for formats "which contains its own set of
+//! headers", e.g. AVI/MP4 -- MKV likewise). A single-file group is the
+//! degenerate n=1 case, which the same manual page states is equivalent to
+//! prefixing the file with `=` (disables VOB-sibling auto-detection): a
+//! harmless no-op for a non-VOB source. Manually running
+//! `mkvmerge -o out.mkv --audio-tracks 0 ... ( a.mkv ) --subtitle-tracks 0 ... ( b.mkv ) --track-order 0:0,1:0`
+//! against two real single-track MKVs produced exit 0 and the correctly
+//! combined two-track output, confirming the existing `command.rs` argv
+//! shape needs no change for Task 12.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+
+use muxsmith_core::capability::runtime::{LanguageIndex, Mkvmerge};
+use muxsmith_core::command::command;
+use muxsmith_core::identify::{
+    Identification, Identify, IdentifyCache, IdentifyError, LiveIdentifier,
+};
+use muxsmith_core::planner::{RunInputs, plan_batch};
+use muxsmith_core::profile::load::{Format, from_str};
+
+// ---------------------------------------------------------------------------
+// Pure golden: the spec 4.1 reference example, end to end.
+// ---------------------------------------------------------------------------
+
+// The full reference profile (spec 4.1, completed with the German subtitle
+// trio the spec elides "for brevity"; see fixtures/reference.yaml's own
+// history). Ten rules in profile order: video, audio en, audio de, subtitle
+// en forced/plain/SDH, subtitle de forced/plain/SDH, external Turkish
+// subtitle donor.
+const REFERENCE_PROFILE: &str = include_str!("fixtures/reference.yaml");
+
+// Nine primary tracks, one per non-external rule (ids 0-8, in rule order),
+// each carrying exactly the properties that rule's match expression needs to
+// resolve unambiguously: e.g. track 4 (subtitle, en, not forced, no SDH
+// marker) matches only the "English" plain rule, never the forced or SDH
+// rules, and track 5 (subtitle, en, not forced, flag_hearing_impaired) is
+// excluded from the plain rule's `not` clause and falls to the SDH rule.
+const REFERENCE_PRIMARY: &str = include_str!("fixtures/identify/reference-primary.json");
+
+// The external Turkish-subtitle donor: one subtitle track, matched by the
+// reference profile's final rule (`exact: { type: subtitles }`, no further
+// constraint) regardless of its own language/name, since that rule's
+// `changes` overwrite both anyway.
+const REFERENCE_DONOR: &str = include_str!("fixtures/identify/reference-donor.json");
+
+// A fake identifier backed by fixture JSON keyed on file name (mirrors
+// `planner_resolution.rs`'s `FakeIdent`).
+struct FakeIdent {
+    by_name: HashMap<String, Identification>,
+}
+
+impl Identify for FakeIdent {
+    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        self.by_name
+            .get(name)
+            .cloned()
+            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
+    }
+}
+
+fn lang() -> LanguageIndex {
+    LanguageIndex::from_rows(&[
+        ["English", "eng", "eng", "en"],
+        ["German", "ger", "ger", "de"],
+        ["Turkish", "tur", "tur", "tr"],
+    ])
+}
+
+#[test]
+fn reference_example_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    // The primary must match `input.pattern` (`S(?<season>\d{2})E(?<episode>\d{2})`)
+    // and the external locator's `match_to_source` donor must share its
+    // `{match}` identifier ("S01E01") as a basename substring (spec 4.6).
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.srt"), b"x").unwrap();
+
+    let profile = from_str(REFERENCE_PROFILE, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(REFERENCE_PRIMARY).unwrap(),
+    );
+    by_name.insert(
+        "Show.S01E01.srt".to_string(),
+        Identification::from_json(REFERENCE_DONOR).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    assert_eq!(batch.files.len(), 1);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+
+    // Sanity on the resolution itself before locking the argv: ten
+    // assignments (nine primary tracks plus the external donor), all
+    // resolved (no MissingTrack/AmbiguousRule -- the fixture tracks were
+    // built to be unambiguous under the profile's match expressions).
+    assert_eq!(plan.assignments.len(), 10);
+    assert!(plan.assignments.iter().all(|a| a.track_id.is_some()));
+
+    let primary_disp = plan.source.display().to_string();
+    let output_disp = plan.output.display().to_string();
+    let donor_disp = plan.assignments[9].source.display().to_string();
+    assert_ne!(donor_disp, primary_disp);
+    assert!(donor_disp.ends_with("Show.S01E01.srt"));
+
+    let expected: Vec<String> = [
+        "--output",
+        &output_disp,
+        "--title",
+        "",
+        // --- primary group (spec 4.9 item 2, D10) ---
+        "--no-global-tags", // tags.global: drop
+        "--video-tracks",
+        "0",
+        "--audio-tracks",
+        "1,2",
+        "--subtitle-tracks",
+        "3,4,5,6,7,8",
+        "--no-buttons",
+        "--default-track-flag",
+        "1:1", // audio en: changes.default_track
+        "--default-track-flag",
+        "3:1", // subtitle en forced: changes (default_track < track_name)
+        "--track-name",
+        "3:English forced",
+        "--track-name",
+        "4:English", // subtitle en plain
+        "--hearing-impaired-flag",
+        "5:1", // subtitle en SDH (flag_hearing_impaired < track_name)
+        "--track-name",
+        "5:English SDH",
+        "--default-track-flag",
+        "6:1", // subtitle de forced
+        "--track-name",
+        "6:German forced",
+        "--track-name",
+        "7:German", // subtitle de plain
+        "--hearing-impaired-flag",
+        "8:1", // subtitle de SDH
+        "--track-name",
+        "8:German SDH",
+        "(",
+        &primary_disp,
+        ")",
+        // --- donor group: external Turkish subtitle ---
+        "--no-global-tags",
+        "--no-attachments", // donor attachments always dropped (D10)
+        "--no-video",
+        "--no-audio",
+        "--subtitle-tracks",
+        "0",
+        "--no-buttons",
+        "--language",
+        "0:tr", // changes (language < track_name)
+        "--track-name",
+        "0:Türkçe",
+        "(",
+        &donor_disp,
+        ")",
+        "--track-order",
+        "0:0,0:1,0:2,0:3,0:4,0:5,0:6,0:7,0:8,1:0",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    assert_eq!(command(plan), expected);
+}
+
+// ---------------------------------------------------------------------------
+// Live acceptance: real mkvmerge, gated + self-skipping (spec 10).
+// ---------------------------------------------------------------------------
+
+fn mkvmerge() -> Option<Mkvmerge> {
+    Mkvmerge::locate().ok()
+}
+
+const LIVE_PROFILE: &str = r#"
+profile_version: 1
+input: { pattern: 'source', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: subtitles } }
+"#;
+
+#[test]
+fn live_mkvmerge_accepts_planned_command() {
+    let Some(m) = mkvmerge() else {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let srt = dir.path().join("seed.srt");
+    std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+
+    // A minimal one-track MKV: an SRT needs no media libs to mux (task
+    // brief), unlike audio/video which would need a real codec.
+    let source = dir.path().join("source.mkv");
+    let status = Command::new(m.path())
+        .args(["-q", "-o"])
+        .arg(&source)
+        .arg(&srt)
+        .status()
+        .expect("spawn mkvmerge to build the fixture source");
+    assert!(status.success(), "mkvmerge failed to build the source");
+
+    let out_dir = dir.path().join("out");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    let profile = from_str(LIVE_PROFILE, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(out_dir),
+        on_collision: None,
+    };
+    let lang = m.list_languages().expect("list-languages");
+    let mut identify = LiveIdentifier {
+        cache: IdentifyCache::new(),
+        mkv: &m,
+    };
+
+    let batch = plan_batch(&profile, &run, &mut identify, &lang);
+    assert_eq!(batch.files.len(), 1);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.assignments.len(), 1);
+    assert_eq!(plan.assignments[0].track_id, Some(0));
+
+    let argv = command(plan);
+    let status = Command::new(m.path())
+        .args(&argv)
+        .status()
+        .expect("spawn mkvmerge on the planned command");
+    assert!(
+        status.success(),
+        "mkvmerge rejected the planned argv: {argv:?}"
+    );
+    assert!(plan.output.exists(), "output file was not created");
+
+    let out_json = m
+        .identify_json(&plan.output)
+        .expect("re-identify the muxed output");
+    let out_id = Identification::from_json(&out_json).expect("parse re-identification JSON");
+    assert!(out_id.is_identifiable());
+    assert_eq!(out_id.tracks.len(), 1);
+    assert_eq!(out_id.tracks[0].kind, "subtitles");
+}
