@@ -117,6 +117,50 @@ fn keep_unmatched_suppresses_primary_selection_flags() {
     assert_eq!(track_order, Some("0:0,0:1,0:2"));
 }
 
+// Fast, unconditional counterpart to `command_integration.rs`'s
+// `live_keep_donor_trails_primary` (Task 7 review: that test is gated on
+// `Mkvmerge::locate()` and silently skips when mkvmerge is absent, e.g. in
+// CI, leaving the keep-mode primary+donor `--track-order` branch with no
+// deterministic regression guard). Two primary tracks plus one donor
+// assignment on a different source: D20 says the primary leads in source
+// order (group 0, ids 0 and 1), the donor trails (group 1, id 0).
+#[test]
+fn keep_unmatched_donor_trails_primary_track_order() {
+    let plan = Plan {
+        source: p("/m/show.mkv"),
+        output: p("/out/show.mkv"),
+        keep_unmatched: true,
+        primary_track_ids: vec![0, 1],
+        assignments: vec![Assignment {
+            rule_index: 0,
+            source: p("/m/donor.srt"),
+            track_id: Some(0),
+            track_kind: Some("subtitles".into()),
+            changes: vec![],
+        }],
+        attachments: AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        },
+        chapters: ChapterSource::Keep,
+        tags: TagFlags {
+            global_keep: true,
+            track_keep: true,
+        },
+        title: TitleAction::Keep,
+    };
+    let argv = muxsmith_core::command::command(&plan);
+    let track_order = argv
+        .iter()
+        .position(|a| a == "--track-order")
+        .map(|i| argv[i + 1].as_str());
+    assert_eq!(
+        track_order,
+        Some("0:0,0:1,1:0"),
+        "keep-mode donor must trail every primary track (D20), got {argv:?}"
+    );
+}
+
 #[test]
 fn unmatched_donor_rule_opens_no_input_group() {
     let plan = Plan {
