@@ -196,3 +196,34 @@ there. See HANDOFF.md.
 **Deltas.** F2 (new codes) done inline-by-controller-commit after the subagent's 500. F4/F7 needed no fix wave. F7 added a third diag code (SuggestionsCapped) to log the cap non-silently - a small scope growth the task invited.
 
 **Open threads.** 6 Minor final-review items (see archived FINAL-review.md); the mkvmerge-query-failed path still drops config diags (same class as the F1 fix, logged in the ledger); nits from the original review (OverlappingRules >=3 claimants, lint-vs-planner rule-ref formatting, regex recompiled per call, proptest coverage). Plan 3 (attachments/chapters/tags/title, command generation, executor, run) is next - execute via SDD per the HANDOFF standing instruction.
+
+## 2026-07-09 | Plan 3 complete (pure layer: resolution + command) | session 3
+
+**Scope.** Plan 3 impl `62d4956..7d46547` (14 commits); design docs `497502e` (D7-D11), `d039e24` (plan), `62d4956` (D12). First Muxsmith plan executed fully via superpowers subagent-driven-development (SI-1), in contrast to Plan 2's inline execution.
+
+**Decisions and why.**
+- Plan 3/4/5 split (D7): pure layer (resolution + command, golden-testable) banked and reviewed before the process layer (executor/run, Plan 4). Şenol chose split over one combined plan; the executor is the riskiest, least-testable part and earns a clean review boundary. GUI slid to Plan 5.
+- `add` cardinality (D12): decided via a two-round debate. Şenol pushed back on the font special-case ("everything the same, no special cases"). Resolved by reframing the real invariant as slot-vs-collection, not tracks-vs-attachments: track/chapters donors fill a unique slot (uniqueness-constrained); attachment select/drop/add populate a collection (already multi in the shipped model). So all-matched makes `add` consistent with its siblings; exactly-one would have been the special case. Şenol ratified collection-populator (all matched + zero-match warning + dedup).
+- Settable-language validated per-file at the application point, not folded into the batch-level `validate_language_values` walk (Task 5). Deliberate: simpler, catches it where applied; leaves an invalid language on an unmatched optional rule uncaught but inert. Recorded for review, accepted for v1.
+- `command` kept a pure `Plan -> Vec<String>` (D8): the enriched `Plan` carries resolved changes/attachments/chapters/tags/title so command never sees the Profile; mkvmerge CLI knowledge stays in one module.
+
+**What the process caught.**
+- Task 9 `input_groups` included track-less donor sources as empty input groups (Important). Caught by task review (named-check dispatched after the implementer flagged the ambiguity in DONE report); would have put an empty `( donor )` group into real mkvmerge commands and broken Task 12's round trip. Origin: plan ambiguity (canonical reference did not spell out the primary-only carve-out). Fixed d55f19d + regression test.
+- Task 2 `&&Track` unification (implementer-caught during impl): planner's `.iter().filter(|t| ...)` hands `&&Track`, so `M` unified to `&Track`; solved with a blanket `impl<M: Matchable> Matchable for &M`, no planner change. The brief's stated regression-guard ("resolves via type inference") was factually wrong.
+- Whole-branch review (opus) drove real mkvmerge v100 beyond the goldens: confirmed the `-J` attachment `id` equals the `--attachments` selector id (the one silent-wrong-file risk), all 26 flag spellings, rich argv exit 0. Also found a comment stating a FALSE reason (mkvmerge rejects empty groups - it does not; the exclusion is still right). Real bug: none survived. Noise separated: several "minors" were pre-existing test conventions.
+- Task 3 reviewer flagged a trait DOC-COMMENT edit under "no trait changes"; controller adjudicated accept (a truthfulness fix, not a contract change).
+
+**Mechanics/metrics.** 12 tasks. Dispatches: 12 implementers + 1 fix (T9) + 1 final-minor-fix = 14 build; 12 task reviews + 1 T9 re-review + 1 whole-branch = 14 reviews. Models: sonnet for all implementers and task reviewers, opus for the whole-branch review. Fix waves: 1 (T9 Important) + 1 (3 final-review minors). Tests 164 -> 204. Controller re-ran the gate after every task (SI-1: never trust the report's arithmetic); all green each time. No CI runs during the loop (commits local; single push at completion).
+
+**Friction/failure.**
+- `.superpowers/sdd/` still held Plan-1/2 reports at the same task-N-report.md paths; every implementer overwrote a stale same-named report and noted it. The salvage pass had to select Plan 3 files by name and drop a 2-byte `.gitignore` (the same ignore-file trap that nearly lost Plan 1's artifacts).
+- `scripts/task-brief` extracts only the per-task section; Plan 3's shared reference blocks (enriched-Plan types, canonical argv contract) live above Task 1, so briefs for Tasks 4 and 9-12 had to have the reference blocks manually appended before dispatch. A per-task brief is not self-contained when the plan front-loads shared references.
+
+**Moments.**
+- The D12 slot-vs-collection reframe (chat, pre-impl): "you convinced me and I convinced you back."
+- Task 9 empty-donor-group: implementer flagged it as a DONE concern rather than shipping silently; the reviewer then confirmed it Important with the primary-carve-out argument. The SI-1 process working as designed.
+- opus final reviewer re-running mkvmerge to check attachment-id identity rather than trusting the golden string.
+
+**Deltas.** Task 9 (single-group) vs Task 10 (multi-group) split blurred: Task 9 already built general group iteration, so Task 10 was mostly per-track props + multi-group golden coverage. The plan's incremental-golden design worked: each command task extended the argv and updated the prior task's golden (Task 11 added donor `--no-attachments` to Task 10's golden), verified not a regression.
+
+**Open threads (Plan 4 inherits).** Deferred minors: richer gated live test (attachment + changes) - highest value; zero-track-plan renders an empty MKV with no diagnostic (planner empty-plan warning?); FakeIdent+lang() duplicated 3x -> tests/support.rs; tests `std::mem::forget(tempdir)` leaks; with-attachments.json uses 0-based ids (mkvmerge is 1-based; code id-agnostic); optional batch-level settable-language check. Next: Plan 4 = executor + run subcommand + FIFO queue + SIGINT cleanup; job-log persistence deferred to Plan 5 (GUI). mkvtoolnix still not installed in CI (gated integration tests self-skip there).
