@@ -1,0 +1,1152 @@
+# Review package: b9960c5..2478520
+
+## Commits
+2478520 feat(cli): muxsmith run - re-plan, execute queue, milestone lines, exit fold (D15)
+
+## Files changed
+ crates/muxsmith-cli/src/cli.rs              |  31 +-
+ crates/muxsmith-cli/src/commands/dry_run.rs |  73 +---
+ crates/muxsmith-cli/src/commands/mod.rs     |  88 ++++
+ crates/muxsmith-cli/src/commands/run.rs     | 640 ++++++++++++++++++++++++++++
+ crates/muxsmith-cli/src/main.rs             |  22 +
+ crates/muxsmith-cli/tests/run_cli.rs        | 114 +++++
+ locales/en/cli.ftl                          |   8 +
+ 7 files changed, 904 insertions(+), 72 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/cli.rs b/crates/muxsmith-cli/src/cli.rs
+index ce84881..8292375 100644
+--- a/crates/muxsmith-cli/src/cli.rs
++++ b/crates/muxsmith-cli/src/cli.rs
+@@ -8,22 +8,22 @@ use clap::{Parser, Subcommand};
+ /// Top-level CLI arg parser (spec 8.1): `muxsmith <subcommand> ...`.
+ #[derive(Parser)]
+ #[command(name = "muxsmith", version, about)]
+ pub struct Cli {
+     /// Selected operation; every command shares the exit-code contract
+     /// 0 clean / 1 warnings / 2 errors (spec 8.1).
+     #[command(subcommand)]
+     pub command: Cmd,
+ }
+ 
+-/// A `muxsmith` subcommand (spec 8.1): `validate`, `schema`, `dry-run`, and
+-/// `identify`. `run` (actual muxing) arrives with the executor (Plan 3).
++/// A `muxsmith` subcommand (spec 8.1): `validate`, `schema`, `dry-run`,
++/// `identify`, and `run` (plans and actually executes the mux batch).
+ #[derive(Subcommand)]
+ pub enum Cmd {
+     /// Statically validate a profile (YAML or JSON).
+     Validate {
+         /// Path to the profile file to validate.
+         profile: PathBuf,
+         /// Emit the structured report as JSON.
+         #[arg(long)]
+         json: bool,
+         /// Locale for rendered messages (default: system, fallback en).
+@@ -58,20 +58,47 @@ pub enum Cmd {
+     Identify {
+         /// Path to the media file to identify.
+         file: PathBuf,
+         /// Emit the structured identification as JSON.
+         #[arg(long)]
+         json: bool,
+         /// Locale for rendered messages (default: system, fallback en).
+         #[arg(long)]
+         locale: Option<String>,
+     },
++    /// Plan and execute the batch (spec 5.5 level 3).
++    Run {
++        /// Path to the profile file.
++        profile: PathBuf,
++        /// Source directory to scan (overrides the profile default).
++        #[arg(long)]
++        source: Option<PathBuf>,
++        /// Output directory (overrides the profile default).
++        #[arg(long)]
++        output: Option<PathBuf>,
++        /// Collision policy override (spec 4.2 run input); falls back to the
++        /// profile's `output.on_collision` when unset.
++        #[arg(long, value_enum)]
++        on_collision: Option<CollisionArg>,
++        /// Parallel mux jobs (default 1 = sequential).
++        #[arg(long, default_value_t = 1)]
++        jobs: usize,
++        /// Stop dequeuing after the first failed job (in-flight finish).
++        #[arg(long)]
++        fail_fast: bool,
++        /// Emit the structured run report as JSON.
++        #[arg(long)]
++        json: bool,
++        /// Locale for rendered messages (default: system, fallback en).
++        #[arg(long)]
++        locale: Option<String>,
++    },
+ }
+ 
+ /// CLI value for the collision-policy override (spec 4.2 run input). Maps
+ /// to core's CollisionPolicy; a CLI-local type so core stays clap-free.
+ #[derive(Debug, Clone, Copy, clap::ValueEnum)]
+ pub enum CollisionArg {
+     /// Refuse the colliding output (default policy).
+     Error,
+     /// Skip the colliding output with a warning.
+     Skip,
+diff --git a/crates/muxsmith-cli/src/commands/dry_run.rs b/crates/muxsmith-cli/src/commands/dry_run.rs
+index 556e11d..6930d7f 100644
+--- a/crates/muxsmith-cli/src/commands/dry_run.rs
++++ b/crates/muxsmith-cli/src/commands/dry_run.rs
+@@ -2,22 +2,23 @@
+ //! the per-file resolution, diagnostics, and suggestions. Exit code mirrors
+ //! mkvmerge: 0 clean, 1 worst diagnostic is a warning, 2 an error.
+ 
+ use std::path::{Path, PathBuf};
+ 
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::profile::{lint, load, validate};
+-use muxsmith_core::report::{Diagnostic, Severity};
++use muxsmith_core::report::Diagnostic;
+ 
++use crate::commands::{diag_exit_code, print_batch_human};
+ use crate::i18n::Renderer;
+ 
+ /// Runs `muxsmith dry-run`. Returns the mkvmerge-style exit code.
+ ///
+ /// Spec 5.5: dry-run is a strict superset of `validate`, never a subset. It
+ /// runs the config-time static validate pass FIRST (the same
+ /// `validate::validate` + `lint::provable_overlaps` collection `validate`
+ /// runs), then a full planning pass, and folds both diagnostic sets into one
+ /// report; the exit code reflects the worst severity across all of them.
+ /// Exception: if mkvmerge cannot be located, planning never runs (it needs
+@@ -87,39 +88,21 @@ pub fn run(
+     let batch = plan_batch(&profile, &run, &mut ident, &lang);
+ 
+     if json {
+         println!("{}", batch_json(&config_diags, &batch, renderer));
+     } else {
+         for d in &config_diags {
+             println!("{}", renderer.diagnostic(d));
+         }
+         print_batch_human(&batch, renderer);
+     }
+-    exit_code(&config_diags, &batch)
+-}
+-
+-fn all_diags<'a>(
+-    config_diags: &'a [Diagnostic],
+-    batch: &'a Batch,
+-) -> impl Iterator<Item = &'a Diagnostic> {
+-    config_diags
+-        .iter()
+-        .chain(batch.batch_diagnostics.iter())
+-        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()))
+-}
+-
+-fn exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 {
+-    match all_diags(config_diags, batch).map(|d| d.severity).max() {
+-        Some(Severity::Error) => 2,
+-        Some(Severity::Warning) => 1,
+-        _ => 0,
+-    }
++    diag_exit_code(&config_diags, &batch)
+ }
+ 
+ /// Builds the `--json` report (spec 5.2): the raw `Batch` plus the
+ /// config-time diagnostics, with a `rendered` message string attached to
+ /// every diagnostic (config-time, batch-level, and per-file alike).
+ fn batch_json(
+     config_diags: &[Diagnostic],
+     batch: &Batch,
+     renderer: &Renderer,
+ ) -> serde_json::Value {
+@@ -166,60 +149,10 @@ fn config_only_json(config_diags: &[Diagnostic], renderer: &Renderer) -> serde_j
+ fn rendered_diags(diags: &[Diagnostic], renderer: &Renderer) -> Vec<serde_json::Value> {
+     diags
+         .iter()
+         .map(|d| {
+             let mut v = serde_json::to_value(d).unwrap();
+             v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
+             v
+         })
+         .collect()
+ }
+-
+-fn print_batch_human(batch: &Batch, renderer: &Renderer) {
+-    for f in &batch.files {
+-        println!(
+-            "{}",
+-            renderer.msg(
+-                "dry-run-file",
+-                &[
+-                    ("file", &f.source.display().to_string()),
+-                    ("id", &f.identifier),
+-                ],
+-            )
+-        );
+-        if let Some(plan) = &f.plan {
+-            for a in &plan.assignments {
+-                let track = a
+-                    .track_id
+-                    .map(|t| t.to_string())
+-                    .unwrap_or_else(|| "-".into());
+-                println!(
+-                    "{}",
+-                    renderer.msg(
+-                        "dry-run-assignment",
+-                        &[("rule", &a.rule_index.to_string()), ("track", &track)],
+-                    )
+-                );
+-            }
+-            println!(
+-                "{}",
+-                renderer.msg(
+-                    "dry-run-output",
+-                    &[("path", &plan.output.display().to_string())]
+-                )
+-            );
+-        }
+-        for d in &f.diagnostics {
+-            println!("{}", renderer.diagnostic(d));
+-        }
+-    }
+-    for d in &batch.batch_diagnostics {
+-        println!("{}", renderer.diagnostic(d));
+-    }
+-    for s in &batch.suggestions {
+-        println!(
+-            "{}",
+-            renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)])
+-        );
+-        println!("{}", s.yaml_fragment);
+-    }
+-}
+diff --git a/crates/muxsmith-cli/src/commands/mod.rs b/crates/muxsmith-cli/src/commands/mod.rs
+index 78b3e8f..03ffee6 100644
+--- a/crates/muxsmith-cli/src/commands/mod.rs
++++ b/crates/muxsmith-cli/src/commands/mod.rs
+@@ -1,6 +1,94 @@
+ //! One module per CLI subcommand (spec 8.1); each wraps a core operation
+ //! and renders its diagnostics via [`crate::i18n::Renderer`].
+ 
+ pub mod dry_run;
+ pub mod identify;
++pub mod run;
+ pub mod validate;
++
++use muxsmith_core::planner::Batch;
++use muxsmith_core::report::{Diagnostic, Severity};
++
++use crate::i18n::Renderer;
++
++/// Every diagnostic belonging to a planned [`Batch`] plus the config-time
++/// set collected before it ran: config-time, then batch-level, then
++/// per-file, in that order. Shared by `dry-run` and `run` (spec 5.5): both
++/// re-plan via `plan_batch` and fold the same diagnostic set into their
++/// exit code.
++pub(crate) fn all_diags<'a>(
++    config_diags: &'a [Diagnostic],
++    batch: &'a Batch,
++) -> impl Iterator<Item = &'a Diagnostic> {
++    config_diags
++        .iter()
++        .chain(batch.batch_diagnostics.iter())
++        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()))
++}
++
++/// The worst-of diagnostic fold (spec 8.1): 2 if any diagnostic in
++/// `config_diags`/`batch` is error-severity, 1 if the worst present is
++/// warning-severity, else 0. `dry-run` uses this as its exit code directly;
++/// `run` combines it with its own job-outcome fold via `max` (D15).
++pub(crate) fn diag_exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 {
++    match all_diags(config_diags, batch).map(|d| d.severity).max() {
++        Some(Severity::Error) => 2,
++        Some(Severity::Warning) => 1,
++        _ => 0,
++    }
++}
++
++/// Prints a planned [`Batch`] in dry-run's human format (spec 5.5): per file
++/// its identifier, its assignments and output path when it has a plan, then
++/// its diagnostics; then batch-level diagnostics and suggestions. Shared
++/// verbatim by `dry-run` and `run`: spec 5.5 requires `run` to re-plan and
++/// print exactly this report before executing.
++pub(crate) fn print_batch_human(batch: &Batch, renderer: &Renderer) {
++    for f in &batch.files {
++        println!(
++            "{}",
++            renderer.msg(
++                "dry-run-file",
++                &[
++                    ("file", &f.source.display().to_string()),
++                    ("id", &f.identifier),
++                ],
++            )
++        );
++        if let Some(plan) = &f.plan {
++            for a in &plan.assignments {
++                let track = a
++                    .track_id
++                    .map(|t| t.to_string())
++                    .unwrap_or_else(|| "-".into());
++                println!(
++                    "{}",
++                    renderer.msg(
++                        "dry-run-assignment",
++                        &[("rule", &a.rule_index.to_string()), ("track", &track)],
++                    )
++                );
++            }
++            println!(
++                "{}",
++                renderer.msg(
++                    "dry-run-output",
++                    &[("path", &plan.output.display().to_string())]
++                )
++            );
++        }
++        for d in &f.diagnostics {
++            println!("{}", renderer.diagnostic(d));
++        }
++    }
++    for d in &batch.batch_diagnostics {
++        println!("{}", renderer.diagnostic(d));
++    }
++    for s in &batch.suggestions {
++        println!(
++            "{}",
++            renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)])
++        );
++        println!("{}", s.yaml_fragment);
++    }
++}
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+new file mode 100644
+index 0000000..328123a
+--- /dev/null
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -0,0 +1,640 @@
++//! `muxsmith run` (spec 5.5, 8.1): re-plans the batch immediately before
++//! executing it (never reuses a stale dry-run), then runs the queue over the
++//! real mkvmerge, rendering per-job milestone lines and folding the worst-of
++//! diagnostic and job severities into the process exit code (D15).
++
++use std::path::{Path, PathBuf};
++use std::sync::Arc;
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::mpsc;
++
++use muxsmith_core::capability::runtime::Mkvmerge;
++use muxsmith_core::command::command;
++use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
++use muxsmith_core::executor::queue::{JobEvent, QueueOpts, run_queue};
++use muxsmith_core::executor::spawn::LiveSpawner;
++use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
++use muxsmith_core::planner::{RunInputs, plan_batch};
++use muxsmith_core::profile::model::CollisionPolicy;
++use muxsmith_core::profile::{lint, load, validate};
++
++use crate::commands::{diag_exit_code, print_batch_human};
++use crate::i18n::Renderer;
++
++/// Progress thresholds a job's cumulative percent is checked against, in
++/// ascending order. Each threshold prints at most one milestone line per
++/// job, the first time progress reaches or passes it; the printed
++/// `$percent` is the threshold itself (not the raw reported value), so a
++/// single `Progress` event that jumps past several thresholds at once (a
++/// coarse-grained mkvmerge report) still renders one line per threshold
++/// crossed, in ascending order.
++const MILESTONES: [u8; 3] = [25, 50, 75];
++
++/// Runs `muxsmith run`. Returns the mkvmerge-style exit code: worst-of fold
++/// of every planning diagnostic and every job outcome (0 clean / 1 worst is
++/// a warning / 2 worst is an error), overridden to 130 if the cancellation
++/// flag ended the batch. That flag is a plain, never-flipped
++/// `Arc<AtomicBool>` in this task's scope (SIGINT wiring lands separately),
++/// so the 130 branch is structurally present but currently unreachable.
++///
++/// Spec 5.5 level 3: identical to `dry-run` through `plan_batch` (re-plans
++/// from scratch immediately before executing, never reuses a stale
++/// dry-run), printing that planning report in exactly dry-run's human
++/// format first. If nothing plans cleanly enough to mux, the batch is
++/// folded and the function returns exactly like `dry-run` would, without
++/// ever touching the queue.
++#[allow(clippy::too_many_arguments)]
++pub fn run(
++    profile_path: &Path,
++    source: Option<PathBuf>,
++    output: Option<PathBuf>,
++    on_collision: Option<CollisionPolicy>,
++    jobs: usize,
++    fail_fast: bool,
++    json: bool,
++    renderer: &Renderer,
++) -> i32 {
++    let profile = match load::from_file(profile_path) {
++        Ok(p) => p,
++        Err(d) => {
++            println!("{}", renderer.diagnostic(&d));
++            return 2;
++        }
++    };
++
++    let mut config_diags = validate::validate(&profile);
++    config_diags.extend(lint::provable_overlaps(&profile));
++
++    let mkv = match Mkvmerge::locate() {
++        Ok(m) => m,
++        Err(_) => {
++            // TODO(Task 9): the --json final document must surface this
++            // path too (mirroring dry-run's `config_only_json` shape);
++            // until then, json mode here just suppresses the human lines
++            // dry-run would print and returns the same exit code.
++            if !json {
++                for d in &config_diags {
++                    println!("{}", renderer.diagnostic(d));
++                }
++                eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
++            }
++            return 2;
++        }
++    };
++    let lang = match mkv.list_languages() {
++        Ok(l) => l,
++        Err(_) => {
++            eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
++            return 2;
++        }
++    };
++    let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
++    let run_inputs = RunInputs {
++        source: source_dir,
++        output,
++        on_collision,
++    };
++
++    let mut ident = LiveIdentifier {
++        cache: IdentifyCache::new(),
++        mkv: &mkv,
++    };
++    let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
++
++    if !json {
++        for d in &config_diags {
++            println!("{}", renderer.diagnostic(d));
++        }
++        print_batch_human(&batch, renderer);
++    }
++
++    // error-severity files already carry `plan: None` (spec 5.1), so this
++    // filter_map is also the "does this file get muxed" gate.
++    let specs: Vec<JobSpec> = batch
++        .files
++        .iter()
++        .filter_map(|f| f.plan.as_ref())
++        .map(|p| JobSpec {
++            argv: command(p),
++            output: p.output.clone(),
++        })
++        .collect();
++
++    if specs.is_empty() {
++        // Nothing plans cleanly enough to mux: fold and exit exactly like
++        // dry-run, never touching the queue.
++        // TODO(Task 9): the --json final document for this path.
++        return diag_exit_code(&config_diags, &batch);
++    }
++
++    let total = specs.len();
++    let outputs: Vec<String> = specs
++        .iter()
++        .map(|s| s.output.display().to_string())
++        .collect();
++    let spawner = LiveSpawner {
++        mkvmerge: mkv.path().into(),
++    };
++    let opts = QueueOpts { jobs, fail_fast };
++    // Plain flag (Task 10 wires SIGINT onto this); it never flips in this
++    // task's scope.
++    let cancel = Arc::new(AtomicBool::new(false));
++    let (tx, rx) = mpsc::channel();
++
++    // `run_queue` blocks until the whole batch finishes, so it runs on its
++    // own scoped thread; this (the calling) thread drains `rx` concurrently,
++    // rendering milestone lines as jobs progress rather than only after the
++    // batch completes. The queue thread owns the only `Sender`, so it drops
++    // when that thread's closure returns, ending the `for event in rx` loop
++    // below deterministically (no explicit `drop` needed on this side).
++    let outcomes = std::thread::scope(|scope| {
++        let queue_cancel = Arc::clone(&cancel);
++        let handle = scope.spawn(move || run_queue(&specs, &spawner, opts, &queue_cancel, &tx));
++
++        let mut milestones = MilestoneState::new(outputs);
++        for event in rx {
++            if json {
++                // --json suppresses human progress lines; Task 9 builds the
++                // final document from the returned outcomes instead.
++                continue;
++            }
++            for line in milestones.render(&event, total, renderer) {
++                println!("{}", line);
++            }
++        }
++
++        handle.join().expect("queue worker thread panicked")
++    });
++
++    if !json {
++        println!("{}", render_summary(&outcomes, renderer));
++    }
++
++    if cancel.load(Ordering::SeqCst) {
++        return 130;
++    }
++
++    std::cmp::max(
++        diag_exit_code(&config_diags, &batch),
++        job_exit_code(&outcomes),
++    )
++}
++
++/// The queue's own worst-of fold (spec 8.1, D15): 2 if any job `Failed`, 1
++/// if the worst outcome is `Warning`, else 0. Combined with
++/// [`diag_exit_code`] via `max` for the process's final exit code.
++fn job_exit_code(outcomes: &[JobOutcome]) -> i32 {
++    if outcomes.iter().any(|o| o.state == JobState::Failed) {
++        2
++    } else if outcomes.iter().any(|o| o.state == JobState::Warning) {
++        1
++    } else {
++        0
++    }
++}
++
++/// The final `run-summary` line: counts of each terminal [`JobState`]
++/// across `outcomes`.
++fn render_summary(outcomes: &[JobOutcome], renderer: &Renderer) -> String {
++    let count = |state: JobState| outcomes.iter().filter(|o| o.state == state).count();
++    renderer.msg(
++        "run-summary",
++        &[
++            ("ok", &count(JobState::Ok).to_string()),
++            ("warning", &count(JobState::Warning).to_string()),
++            ("failed", &count(JobState::Failed).to_string()),
++            ("cancelled", &count(JobState::Cancelled).to_string()),
++        ],
++    )
++}
++
++/// Human-mode progress rendering for one `run` invocation: tracks, per job
++/// index, the highest [`MILESTONES`] threshold already printed (so
++/// `Progress` events between crossings render nothing), plus every job's
++/// output path (only `Started` carries it on the event itself; every other
++/// variant needs it looked up by index, precomputed here from the same
++/// `specs` the queue was given so it never drifts).
++struct MilestoneState {
++    outputs: Vec<String>,
++    last_milestone: Vec<u8>,
++}
++
++impl MilestoneState {
++    /// A fresh tracker for a batch whose job `index`es are `0..outputs.len()`.
++    fn new(outputs: Vec<String>) -> MilestoneState {
++        let last_milestone = vec![0; outputs.len()];
++        MilestoneState {
++            outputs,
++            last_milestone,
++        }
++    }
++
++    /// Renders zero or more human-mode lines for one [`JobEvent`]. `Started`,
++    /// `Warning`/`Error` (both -> `run-job-notice`), and `Finished` each
++    /// render exactly one line; `Progress` renders one line per newly
++    /// crossed [`MILESTONES`] threshold (often zero, when still strictly
++    /// between two of them).
++    fn render(&mut self, event: &JobEvent, total: usize, renderer: &Renderer) -> Vec<String> {
++        match event {
++            JobEvent::Started { index, .. } => vec![renderer.msg(
++                "run-job-start",
++                &[
++                    ("index", &(index + 1).to_string()),
++                    ("total", &total.to_string()),
++                    ("output", &self.outputs[*index]),
++                ],
++            )],
++            JobEvent::Progress { index, percent } => {
++                let mut lines = Vec::new();
++                for &threshold in &MILESTONES {
++                    if *percent >= threshold && self.last_milestone[*index] < threshold {
++                        self.last_milestone[*index] = threshold;
++                        lines.push(renderer.msg(
++                            "run-job-progress",
++                            &[
++                                ("index", &(index + 1).to_string()),
++                                ("total", &total.to_string()),
++                                ("output", &self.outputs[*index]),
++                                ("percent", &threshold.to_string()),
++                            ],
++                        ));
++                    }
++                }
++                lines
++            }
++            JobEvent::Warning { index, text } | JobEvent::Error { index, text } => {
++                vec![renderer.msg(
++                    "run-job-notice",
++                    &[
++                        ("index", &(index + 1).to_string()),
++                        ("total", &total.to_string()),
++                        ("output", &self.outputs[*index]),
++                        ("text", text),
++                    ],
++                )]
++            }
++            JobEvent::Finished { index, outcome } => {
++                vec![self.render_finished(*index, outcome, total, renderer)]
++            }
++        }
++    }
++
++    /// One `run-job-{ok,warning,failed,cancelled}` line for a job's terminal
++    /// outcome.
++    fn render_finished(
++        &self,
++        index: usize,
++        outcome: &JobOutcome,
++        total: usize,
++        renderer: &Renderer,
++    ) -> String {
++        let index_s = (index + 1).to_string();
++        let total_s = total.to_string();
++        let output = &self.outputs[index];
++        let seconds = format!("{:.1}", outcome.duration_ms as f64 / 1000.0);
++        match outcome.state {
++            JobState::Ok => renderer.msg(
++                "run-job-ok",
++                &[
++                    ("index", index_s.as_str()),
++                    ("total", total_s.as_str()),
++                    ("output", output),
++                    ("seconds", seconds.as_str()),
++                ],
++            ),
++            JobState::Warning => renderer.msg(
++                "run-job-warning",
++                &[
++                    ("index", index_s.as_str()),
++                    ("total", total_s.as_str()),
++                    ("output", output),
++                    ("count", outcome.warnings.len().to_string().as_str()),
++                    ("seconds", seconds.as_str()),
++                ],
++            ),
++            JobState::Failed => {
++                let code = outcome
++                    .exit_code
++                    .map(|c| c.to_string())
++                    .unwrap_or_else(|| "n/a".to_string());
++                renderer.msg(
++                    "run-job-failed",
++                    &[
++                        ("index", index_s.as_str()),
++                        ("total", total_s.as_str()),
++                        ("output", output),
++                        ("code", code.as_str()),
++                    ],
++                )
++            }
++            JobState::Cancelled => renderer.msg(
++                "run-job-cancelled",
++                &[
++                    ("index", index_s.as_str()),
++                    ("total", total_s.as_str()),
++                    ("output", output),
++                ],
++            ),
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn renderer() -> Renderer {
++        Renderer::new(Some("en"))
++    }
++
++    fn outputs(names: &[&str]) -> Vec<String> {
++        names.iter().map(|s| s.to_string()).collect()
++    }
++
++    fn outcome(state: JobState, exit_code: Option<i32>, warnings: usize, ms: u64) -> JobOutcome {
++        JobOutcome {
++            state,
++            exit_code,
++            warnings: (0..warnings).map(|i| format!("w{i}")).collect(),
++            errors: Vec::new(),
++            duration_ms: ms,
++        }
++    }
++
++    #[test]
++    fn progress_prints_only_at_25_50_75_crossings() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let percents = [10, 25, 26, 40, 50, 51, 74, 75, 80, 100];
++        let mut lines = Vec::new();
++        for p in percents {
++            lines.extend(state.render(
++                &JobEvent::Progress {
++                    index: 0,
++                    percent: p,
++                },
++                1,
++                &r,
++            ));
++        }
++        assert_eq!(
++            lines.len(),
++            3,
++            "expected exactly the 3 milestone lines, got: {lines:?}"
++        );
++        assert!(lines[0].contains("25%"), "{}", lines[0]);
++        assert!(lines[1].contains("50%"), "{}", lines[1]);
++        assert!(lines[2].contains("75%"), "{}", lines[2]);
++    }
++
++    #[test]
++    fn a_jump_past_several_thresholds_renders_each_one_in_order() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Progress {
++                index: 0,
++                percent: 90,
++            },
++            1,
++            &r,
++        );
++        assert_eq!(lines.len(), 3, "{lines:?}");
++        assert!(lines[0].contains("25%"));
++        assert!(lines[1].contains("50%"));
++        assert!(lines[2].contains("75%"));
++
++        // Nothing left below 100 to newly cross.
++        let more = state.render(
++            &JobEvent::Progress {
++                index: 0,
++                percent: 100,
++            },
++            1,
++            &r,
++        );
++        assert!(more.is_empty(), "{more:?}");
++    }
++
++    #[test]
++    fn thresholds_track_independently_per_job_index() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv", "b.mkv"]));
++        let lines0 = state.render(
++            &JobEvent::Progress {
++                index: 0,
++                percent: 30,
++            },
++            2,
++            &r,
++        );
++        let lines1 = state.render(
++            &JobEvent::Progress {
++                index: 1,
++                percent: 10,
++            },
++            2,
++            &r,
++        );
++        assert_eq!(lines0.len(), 1, "job 0 crossed 25%: {lines0:?}");
++        assert!(
++            lines1.is_empty(),
++            "job 1 has not reached 25% yet: {lines1:?}"
++        );
++    }
++
++    #[test]
++    fn repeated_or_regressing_percent_does_not_reprint() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let first = state.render(
++            &JobEvent::Progress {
++                index: 0,
++                percent: 25,
++            },
++            1,
++            &r,
++        );
++        let second = state.render(
++            &JobEvent::Progress {
++                index: 0,
++                percent: 25,
++            },
++            1,
++            &r,
++        );
++        let third = state.render(
++            &JobEvent::Progress {
++                index: 0,
++                percent: 20,
++            },
++            1,
++            &r,
++        );
++        assert_eq!(first.len(), 1);
++        assert!(second.is_empty());
++        assert!(third.is_empty());
++    }
++
++    #[test]
++    fn started_line_renders_1_based_index_total_and_output() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["out/a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Started {
++                index: 0,
++                output: "out/a.mkv".into(),
++            },
++            3,
++            &r,
++        );
++        assert_eq!(lines.len(), 1);
++        assert!(lines[0].contains("[1/3]"), "{}", lines[0]);
++        assert!(lines[0].contains("out/a.mkv"), "{}", lines[0]);
++        assert!(lines[0].contains("start"), "{}", lines[0]);
++    }
++
++    #[test]
++    fn warning_and_error_events_render_a_notice_line_with_the_text() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let w = state.render(
++            &JobEvent::Warning {
++                index: 0,
++                text: "careful".to_string(),
++            },
++            1,
++            &r,
++        );
++        let e = state.render(
++            &JobEvent::Error {
++                index: 0,
++                text: "boom".to_string(),
++            },
++            1,
++            &r,
++        );
++        assert!(w[0].contains("careful"), "{}", w[0]);
++        assert!(e[0].contains("boom"), "{}", e[0]);
++    }
++
++    #[test]
++    fn finished_ok_renders_duration() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Finished {
++                index: 0,
++                outcome: outcome(JobState::Ok, Some(0), 0, 1500),
++            },
++            1,
++            &r,
++        );
++        assert!(lines[0].contains("ok"), "{}", lines[0]);
++        assert!(lines[0].contains("1.5s"), "{}", lines[0]);
++    }
++
++    #[test]
++    fn finished_warning_renders_count_and_duration() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Finished {
++                index: 0,
++                outcome: outcome(JobState::Warning, Some(1), 2, 2000),
++            },
++            1,
++            &r,
++        );
++        assert!(lines[0].contains("warning"), "{}", lines[0]);
++        assert!(lines[0].contains("2 warnings"), "{}", lines[0]);
++        assert!(lines[0].contains("2.0s"), "{}", lines[0]);
++    }
++
++    #[test]
++    fn finished_failed_renders_exit_code() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Finished {
++                index: 0,
++                outcome: outcome(JobState::Failed, Some(2), 0, 500),
++            },
++            1,
++            &r,
++        );
++        assert!(lines[0].contains("failed"), "{}", lines[0]);
++        assert!(lines[0].contains("exit 2"), "{}", lines[0]);
++    }
++
++    #[test]
++    fn finished_failed_without_an_exit_code_falls_back_to_n_a() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Finished {
++                index: 0,
++                outcome: outcome(JobState::Failed, None, 0, 10),
++            },
++            1,
++            &r,
++        );
++        assert!(lines[0].contains("exit n/a"), "{}", lines[0]);
++    }
++
++    #[test]
++    fn finished_cancelled_renders_without_duration_or_code() {
++        let r = renderer();
++        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
++        let lines = state.render(
++            &JobEvent::Finished {
++                index: 0,
++                outcome: outcome(JobState::Cancelled, None, 0, 300),
++            },
++            1,
++            &r,
++        );
++        assert!(lines[0].contains("cancelled"), "{}", lines[0]);
++    }
++
++    #[test]
++    fn job_exit_code_folds_worst_state() {
++        assert_eq!(job_exit_code(&[outcome(JobState::Ok, Some(0), 0, 0)]), 0);
++        assert_eq!(
++            job_exit_code(&[
++                outcome(JobState::Ok, Some(0), 0, 0),
++                outcome(JobState::Warning, Some(1), 1, 0),
++            ]),
++            1
++        );
++        assert_eq!(
++            job_exit_code(&[
++                outcome(JobState::Warning, Some(1), 1, 0),
++                outcome(JobState::Failed, Some(2), 0, 0),
++            ]),
++            2
++        );
++        assert_eq!(
++            job_exit_code(&[outcome(JobState::Cancelled, None, 0, 0)]),
++            0,
++            "a lone Cancelled outcome folds to 0 on its own; the 130 override \
++             comes from the cancel flag, not from job_exit_code"
++        );
++    }
++
++    #[test]
++    fn summary_line_counts_every_state() {
++        let r = renderer();
++        let outcomes = vec![
++            outcome(JobState::Ok, Some(0), 0, 0),
++            outcome(JobState::Ok, Some(0), 0, 0),
++            outcome(JobState::Warning, Some(1), 1, 0),
++            outcome(JobState::Failed, Some(2), 0, 0),
++            outcome(JobState::Cancelled, None, 0, 0),
++        ];
++        assert_eq!(
++            render_summary(&outcomes, &r),
++            "2 ok, 1 warning, 1 failed, 1 cancelled"
++        );
++    }
++}
+diff --git a/crates/muxsmith-cli/src/main.rs b/crates/muxsmith-cli/src/main.rs
+index 9eff0d3..d6158bf 100644
+--- a/crates/muxsmith-cli/src/main.rs
++++ b/crates/muxsmith-cli/src/main.rs
+@@ -36,13 +36,35 @@ fn main() {
+                 output,
+                 on_collision.map(cli::CollisionArg::policy),
+                 json,
+                 &renderer,
+             )
+         }
+         cli::Cmd::Identify { file, json, locale } => {
+             let renderer = i18n::Renderer::new(locale.as_deref());
+             commands::identify::run(&file, json, &renderer)
+         }
++        cli::Cmd::Run {
++            profile,
++            source,
++            output,
++            on_collision,
++            jobs,
++            fail_fast,
++            json,
++            locale,
++        } => {
++            let renderer = i18n::Renderer::new(locale.as_deref());
++            commands::run::run(
++                &profile,
++                source,
++                output,
++                on_collision.map(cli::CollisionArg::policy),
++                jobs,
++                fail_fast,
++                json,
++                &renderer,
++            )
++        }
+     };
+     std::process::exit(code);
+ }
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+new file mode 100644
+index 0000000..0f3bf3b
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -0,0 +1,114 @@
++//! CLI-level tests for `muxsmith run`'s planning-failure paths (Task 8): any
++//! bad-profile or missing-mkvmerge condition must exit with the usual
++//! diagnostic-fold code and never touch the job queue. The full execute
++//! path (a real mux, exit 0/1/2 driven by actual job outcomes) is Task 11's
++//! gated end-to-end test, not this file's job.
++
++use std::process::Command;
++
++use assert_cmd::cargo::CommandCargoExt;
++
++fn muxsmith() -> Command {
++    Command::cargo_bin("muxsmith").unwrap()
++}
++
++/// No job ever started: neither a milestone `start` line (`run-job-start`'s
++/// fixed `"... start"` fragment) nor the final `run-summary` line (always
++/// containing `" ok, "`) appears.
++fn asserts_no_job_ran(stdout: &str) {
++    assert!(
++        !stdout.contains("... start") && !stdout.contains(" ok, "),
++        "planning-error path must never start or summarize a job, got stdout: {stdout}"
++    );
++}
++
++/// `load::from_file` failure (missing/unparsable profile) is the very first
++/// branch in `run::run`, ahead of even the config-time validate pass: exits
++/// 2 without touching mkvmerge or the queue at all, regardless of whether
++/// mkvmerge is installed on the machine running the test.
++#[test]
++fn missing_profile_file_exits_two_before_any_planning() {
++    let out = muxsmith()
++        .args(["run", "/nonexistent/profile.yaml"])
++        .output()
++        .unwrap();
++    assert_eq!(out.status.code(), Some(2));
++    asserts_no_job_ran(&String::from_utf8_lossy(&out.stdout));
++}
++
++/// A config-time `invalid-regex` (spec 5.2) leaves `input.pattern`
++/// uncompilable, so discovery finds zero primaries and `run` folds straight
++/// to exit 2 without ever building a `JobSpec` or starting the queue.
++/// Deliberately not gated on a real mkvmerge being installed: whether
++/// mkvmerge is present (plans an empty batch) or missing (stops even
++/// earlier, see the sibling test below), both paths print the same
++/// config-time diagnostic and exit 2 without a single job line, so these
++/// assertions hold regardless of the test machine's mkvmerge situation.
++#[test]
++fn bad_regex_profile_exits_two_without_executing_a_job() {
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("bad.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++
++    let out = muxsmith()
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .output()
++        .unwrap();
++
++    assert_eq!(
++        out.status.code(),
++        Some(2),
++        "stdout: {}, stderr: {}",
++        String::from_utf8_lossy(&out.stdout),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    assert!(
++        stdout.contains("Invalid regular expression"),
++        "expected the config-time diagnostic in stdout, got: {stdout}"
++    );
++    asserts_no_job_ran(&stdout);
++}
++
++/// Same malformed profile, with mkvmerge forced missing via `PATH` (so the
++/// assertion does not depend on whether the test machine happens to have
++/// mkvmerge installed): the config-time diagnostic is still surfaced (spec
++/// 5.5's superset-of-validate guarantee), the mkvmerge-not-found message
++/// lands on stderr, exit code stays 2, and again no job ever runs.
++#[test]
++fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("bad.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++    let no_mkvmerge_path = tempfile::tempdir().unwrap();
++
++    let out = muxsmith()
++        .env("PATH", no_mkvmerge_path.path())
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .output()
++        .unwrap();
++
++    assert_eq!(out.status.code(), Some(2));
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    let stderr = String::from_utf8_lossy(&out.stderr);
++    assert!(
++        stdout.contains("Invalid regular expression"),
++        "expected the config-time diagnostic in stdout, got: {stdout}"
++    );
++    assert!(stderr.contains("mkvmerge"), "got stderr: {stderr}");
++    asserts_no_job_ran(&stdout);
++}
+diff --git a/locales/en/cli.ftl b/locales/en/cli.ftl
+index 932f2bf..d26a4c0 100644
+--- a/locales/en/cli.ftl
++++ b/locales/en/cli.ftl
+@@ -4,10 +4,18 @@ diagnostic-line = [{ $severity }] { $config_path }: { $message }
+ diagnostic-line-file = [{ $severity }] { $file } { $config_path }: { $message }
+ mkvmerge-not-found = mkvmerge was not found on PATH. Install MKVToolNix or set the mkvmerge path.
+ mkvmerge-query-failed = Querying mkvmerge failed.
+ identify-failed = Could not identify { $file }.
+ identify-not-media = { $file } is not a recognized media file.
+ identify-track-line = Track { $id }: { $type } [{ $codec }] { $language }
+ dry-run-file = { $file } (identifier: { $id })
+ dry-run-assignment =   rule { $rule } -> track { $track }
+ dry-run-output =   output: { $path }
+ dry-run-suggestion = Suggestion for { $config_path }:
++run-job-start = [{ $index }/{ $total }] { $output } ... start
++run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
++run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }
++run-job-ok = [{ $index }/{ $total }] { $output } ... ok ({ $seconds }s)
++run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count } warnings, { $seconds }s)
++run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
++run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
++run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled

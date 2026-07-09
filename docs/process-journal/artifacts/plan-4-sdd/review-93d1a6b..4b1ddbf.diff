@@ -1,0 +1,665 @@
+# Review package: 93d1a6b..4b1ddbf
+
+## Commits
+4b1ddbf fix(executor): cap worker count at spec count
+841db0b docs(cli): exit-code doc includes 130 (D16)
+db9f559 fix(cli): emit mkvmerge_found only when the lookup actually ran
+75c075f fix(executor): killed jobs report wait()=None cross-platform via killed flag (D16/D17)
+
+## Files changed
+ crates/muxsmith-cli/src/cli.rs              |  2 +-
+ crates/muxsmith-cli/src/commands/dry_run.rs | 42 +++++++------
+ crates/muxsmith-cli/src/commands/run.rs     | 18 ++++--
+ crates/muxsmith-cli/tests/dry_run_cli.rs    |  6 ++
+ crates/muxsmith-cli/tests/run_cli.rs        |  6 ++
+ crates/muxsmith-core/src/executor/queue.rs  | 71 +++++++++++++++++++++-
+ crates/muxsmith-core/src/executor/spawn.rs  | 93 ++++++++++++++++++++++++++++-
+ 7 files changed, 211 insertions(+), 27 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/cli.rs b/crates/muxsmith-cli/src/cli.rs
+index 8292375..a1d6fdd 100644
+--- a/crates/muxsmith-cli/src/cli.rs
++++ b/crates/muxsmith-cli/src/cli.rs
+@@ -3,21 +3,21 @@
+ 
+ use std::path::PathBuf;
+ 
+ use clap::{Parser, Subcommand};
+ 
+ /// Top-level CLI arg parser (spec 8.1): `muxsmith <subcommand> ...`.
+ #[derive(Parser)]
+ #[command(name = "muxsmith", version, about)]
+ pub struct Cli {
+     /// Selected operation; every command shares the exit-code contract
+-    /// 0 clean / 1 warnings / 2 errors (spec 8.1).
++    /// 0 clean / 1 warnings / 2 errors / 130 cancelled (spec 8.1, D16).
+     #[command(subcommand)]
+     pub command: Cmd,
+ }
+ 
+ /// A `muxsmith` subcommand (spec 8.1): `validate`, `schema`, `dry-run`,
+ /// `identify`, and `run` (plans and actually executes the mux batch).
+ #[derive(Subcommand)]
+ pub enum Cmd {
+     /// Statically validate a profile (YAML or JSON).
+     Validate {
+diff --git a/crates/muxsmith-cli/src/commands/dry_run.rs b/crates/muxsmith-cli/src/commands/dry_run.rs
+index a9b66da..7cb5e25 100644
+--- a/crates/muxsmith-cli/src/commands/dry_run.rs
++++ b/crates/muxsmith-cli/src/commands/dry_run.rs
+@@ -38,21 +38,21 @@ pub fn run(
+     let profile = match load::from_file(profile_path) {
+         Ok(p) => p,
+         Err(d) => {
+             // Load failure never reaches the config-time validate pass or
+             // the mkvmerge lookup, but the `--json` contract still holds:
+             // stdout carries exactly one JSON document. json mode folds
+             // this single diagnostic into the same config-only shape the
+             // mkvmerge-not-found branch below builds (mirrors validate.rs's
+             // `Err(d) => vec![d]` fold); human mode is unchanged.
+             if json {
+-                println!("{}", config_only_json(&[d], renderer));
++                println!("{}", config_only_json(&[d], None, renderer));
+             } else {
+                 println!("{}", renderer.diagnostic(&d));
+             }
+             return 2;
+         }
+     };
+ 
+     // Config-time validate pass (spec 5.5, level 1); needs no filesystem
+     // access beyond the profile itself, so it runs before the mkvmerge
+     // lookup below.
+@@ -60,39 +60,39 @@ pub fn run(
+     config_diags.extend(lint::provable_overlaps(&profile));
+ 
+     let mkv = match Mkvmerge::locate() {
+         Ok(m) => m,
+         Err(_) => {
+             // mkvmerge missing blocks the planning pass entirely, but the
+             // config-time pass above already ran; spec 5.5 requires dry-run
+             // to stay a strict superset of `validate` even on this path, so
+             // those diagnostics are surfaced here rather than dropped.
+             if json {
+-                println!("{}", config_only_json(&config_diags, renderer));
++                println!("{}", config_only_json(&config_diags, Some(false), renderer));
+             } else {
+                 for d in &config_diags {
+                     println!("{}", renderer.diagnostic(d));
+                 }
+                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+             }
+             return 2;
+         }
+     };
+     let lang = match mkv.list_languages() {
+         Ok(l) => l,
+         Err(_) => {
+             // mkvmerge was located but querying it failed (a broken
+             // installation): planning never runs here either, so json mode
+             // gets the same config-only document the locate()-failure
+             // branch above builds; human mode is unchanged (stderr only).
+             if json {
+-                println!("{}", config_only_json(&config_diags, renderer));
++                println!("{}", config_only_json(&config_diags, Some(false), renderer));
+             } else {
+                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
+             }
+             return 2;
+         }
+     };
+     let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
+     let run = RunInputs {
+         source: source_dir,
+         output,
+@@ -140,43 +140,51 @@ pub(crate) fn batch_json(
+         })
+         .collect();
+     serde_json::json!({
+         "config_diagnostics": rendered_diags(config_diags, renderer),
+         "files": files,
+         "batch_diagnostics": rendered_diags(&batch.batch_diagnostics, renderer),
+         "suggestions": batch.suggestions,
+     })
+ }
+ 
+-/// Builds the `--json` report for the mkvmerge-not-found path (spec 5.5):
+-/// planning never ran, so `files`/`batch_diagnostics`/`suggestions` stay
+-/// empty, but the config-time diagnostics collected before the mkvmerge
+-/// lookup are still rendered here, keeping this a valid JSON document (not
+-/// plain text on stderr) and dry-run a superset of `validate` even when
+-/// mkvmerge is missing. `mkvmerge_found: false` flags the condition itself
+-/// for JSON consumers, since the exit code alone (2) does not distinguish
+-/// this from any other error-severity report.
++/// Builds the `--json` report for a path where planning never ran (spec
++/// 5.5): `files`/`batch_diagnostics`/`suggestions` stay empty, but whatever
++/// config-time diagnostics were collected are still rendered here, keeping
++/// this a valid JSON document (not plain text on stderr) and dry-run a
++/// superset of `validate` even on these paths.
+ ///
+-/// `pub(crate)`: `run --json` (D15) reuses this for its own
+-/// mkvmerge-not-found path, which needs the identical superset-of-validate
+-/// guarantee.
++/// `mkvmerge_found` flags, for JSON consumers, whether mkvmerge's presence
++/// was actually established: `Some(false)` on the mkvmerge-not-found and
++/// mkvmerge-query-failed paths, where the lookup ran and the JSON consumer
++/// cannot otherwise distinguish this from any other error-severity report;
++/// `None` (the key is absent from the document) on a profile-load failure,
++/// where the lookup never ran at all and asserting `false` would claim a
++/// fact never established.
++///
++/// `pub(crate)`: `run --json` (D15) reuses this for its own equivalent
++/// paths, which need the identical superset-of-validate guarantee.
+ pub(crate) fn config_only_json(
+     config_diags: &[Diagnostic],
++    mkvmerge_found: Option<bool>,
+     renderer: &Renderer,
+ ) -> serde_json::Value {
+-    serde_json::json!({
++    let mut doc = serde_json::json!({
+         "config_diagnostics": rendered_diags(config_diags, renderer),
+         "files": [],
+         "batch_diagnostics": [],
+         "suggestions": [],
+-        "mkvmerge_found": false,
+-    })
++    });
++    if let Some(found) = mkvmerge_found {
++        doc["mkvmerge_found"] = serde_json::json!(found);
++    }
++    doc
+ }
+ 
+ /// Maps each diagnostic to its JSON value with a `rendered` field injected
+ /// (mirrors `validate.rs`'s `--json` rendering).
+ fn rendered_diags(diags: &[Diagnostic], renderer: &Renderer) -> Vec<serde_json::Value> {
+     diags
+         .iter()
+         .map(|d| {
+             let mut v = serde_json::to_value(d).unwrap();
+             v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index a054761..d41ed70 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -57,25 +57,27 @@ pub fn run(
+ ) -> i32 {
+     let profile = match load::from_file(profile_path) {
+         Ok(p) => p,
+         Err(d) => {
+             // Load failure never reaches the config-time validate pass or
+             // the mkvmerge lookup, but the `--json` contract still holds:
+             // stdout carries exactly one JSON document. json mode folds
+             // this single diagnostic into the same config-only,
+             // empty-jobs/zeroed-summary shape the mkvmerge-not-found branch
+             // below builds (mirrors validate.rs's `Err(d) => vec![d]`
+-            // fold); human mode is unchanged.
++            // fold), minus `mkvmerge_found` itself: the lookup never ran on
++            // this path, so the field is absent rather than asserting a
++            // fact never established; human mode is unchanged.
+             if json {
+                 println!(
+                     "{}",
+-                    run_json_document(dry_run::config_only_json(&[d], renderer), &[], &[])
++                    run_json_document(dry_run::config_only_json(&[d], None, renderer), &[], &[])
+                 );
+             } else {
+                 println!("{}", renderer.diagnostic(&d));
+             }
+             return 2;
+         }
+     };
+ 
+     let mut config_diags = validate::validate(&profile);
+     config_diags.extend(lint::provable_overlaps(&profile));
+@@ -83,21 +85,25 @@ pub fn run(
+     let mkv = match Mkvmerge::locate() {
+         Ok(m) => m,
+         Err(_) => {
+             // Planning never runs without mkvmerge, so json mode gets the
+             // same superset-of-validate document dry-run builds for this
+             // path (D15): config diagnostics surfaced, everything else
+             // empty, `mkvmerge_found: false`.
+             if json {
+                 println!(
+                     "{}",
+-                    run_json_document(dry_run::config_only_json(&config_diags, renderer), &[], &[],)
++                    run_json_document(
++                        dry_run::config_only_json(&config_diags, Some(false), renderer),
++                        &[],
++                        &[],
++                    )
+                 );
+             } else {
+                 for d in &config_diags {
+                     println!("{}", renderer.diagnostic(d));
+                 }
+                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+             }
+             return 2;
+         }
+     };
+@@ -105,21 +111,25 @@ pub fn run(
+         Ok(l) => l,
+         Err(_) => {
+             // mkvmerge was located but querying it failed (a broken
+             // installation): planning never runs here either, so json mode
+             // gets the same config-only, empty-jobs/zeroed-summary document
+             // the locate()-failure branch above builds; human mode is
+             // unchanged (stderr only).
+             if json {
+                 println!(
+                     "{}",
+-                    run_json_document(dry_run::config_only_json(&config_diags, renderer), &[], &[],)
++                    run_json_document(
++                        dry_run::config_only_json(&config_diags, Some(false), renderer),
++                        &[],
++                        &[],
++                    )
+                 );
+             } else {
+                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
+             }
+             return 2;
+         }
+     };
+     let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
+     let run_inputs = RunInputs {
+         source: source_dir,
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index 26c991f..5d6e0a0 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -463,20 +463,26 @@ fn dry_run_json_emits_a_document_on_profile_load_failure() {
+     let config_diags = report["config_diagnostics"]
+         .as_array()
+         .expect("config_diagnostics array");
+     assert!(
+         config_diags.iter().any(|d| d["code"] == "parse-error"),
+         "expected a parse-error diagnostic for the missing profile, got: {report}"
+     );
+     assert_eq!(report["files"].as_array().unwrap().len(), 0);
+     assert_eq!(report["batch_diagnostics"].as_array().unwrap().len(), 0);
+     assert_eq!(report["suggestions"].as_array().unwrap().len(), 0);
++    assert!(
++        report.get("mkvmerge_found").is_none(),
++        "the mkvmerge lookup never ran on a profile-load failure, so \
++         `mkvmerge_found` must be absent rather than asserting a fact never \
++         established, got: {report}"
++    );
+ }
+ 
+ /// Points a child process's PATH at a fake `mkvmerge` script that succeeds
+ /// on `--version` (so `Mkvmerge::locate()` succeeds, unlike
+ /// `empty_path_dir` above) but fails on every other invocation, including
+ /// `--list-languages`: a cheap, deterministic stand-in for an installed but
+ /// broken mkvmerge, with no real MKVToolNix needed. Unix-only: a `#!/bin/sh`
+ /// script has no direct Windows equivalent, and `Command::new("mkvmerge")`
+ /// would look for `mkvmerge.exe`/`.cmd`/`.bat` there instead.
+ #[cfg(unix)]
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index e9775dd..abf1d5a 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -429,20 +429,26 @@ fn run_json_emits_a_document_on_profile_load_failure() {
+         .expect("config_diagnostics array");
+     assert!(
+         config_diags.iter().any(|d| d["code"] == "parse-error"),
+         "expected a parse-error diagnostic for the missing profile, got: {report}"
+     );
+     assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+     assert_eq!(
+         report["summary"],
+         serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+     );
++    assert!(
++        report.get("mkvmerge_found").is_none(),
++        "the mkvmerge lookup never ran on a profile-load failure, so \
++         `mkvmerge_found` must be absent rather than asserting a fact never \
++         established, got: {report}"
++    );
+ }
+ 
+ /// Points a child process's PATH at a fake `mkvmerge` script that succeeds
+ /// on `--version` (so `Mkvmerge::locate()` succeeds) but fails on every
+ /// other invocation, including `--list-languages`: a cheap, deterministic
+ /// stand-in for an installed but broken mkvmerge, no real MKVToolNix
+ /// needed. Unix-only, mirrors the identical helper in `dry_run_cli.rs`
+ /// (kept local per this file's existing per-file-helper convention, e.g.
+ /// `have_mkvmerge`).
+ #[cfg(unix)]
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 23851f5..7b18ca3 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -51,21 +51,23 @@ pub enum JobEvent {
+         /// Index into the `specs` slice passed to [`run_queue`].
+         index: usize,
+         /// The terminal outcome.
+         outcome: JobOutcome,
+     },
+ }
+ 
+ /// Queue policy (spec 6, D14).
+ #[derive(Debug, Clone, Copy)]
+ pub struct QueueOpts {
+-    /// Worker count; clamped to >= 1. Default 1 (sequential).
++    /// Requested worker count; clamped to >= 1, then further capped at the
++    /// batch's spec count (see [`worker_count`]) so a `--jobs` far larger
++    /// than the batch never spawns idle OS threads. Default 1 (sequential).
+     pub jobs: usize,
+     /// Soft fail-fast (D14): on the first Failed, dequeue nothing further;
+     /// in-flight jobs finish; queued jobs become Cancelled.
+     pub fail_fast: bool,
+ }
+ 
+ /// How often the watcher thread polls the caller's cancellation flag.
+ const CANCEL_POLL: Duration = Duration::from_millis(50);
+ 
+ /// Runs `specs` FIFO over a bounded std worker pool. Returns one outcome
+@@ -77,21 +79,21 @@ const CANCEL_POLL: Duration = Duration::from_millis(50);
+ /// started); their Cancelled outcomes appear only in the returned vector.
+ /// Event send failures are ignored (receiver gone = caller stopped
+ /// listening).
+ pub fn run_queue(
+     specs: &[JobSpec],
+     spawner: &(dyn Spawn + Sync),
+     opts: QueueOpts,
+     cancel: &Arc<AtomicBool>,
+     events: &Sender<JobEvent>,
+ ) -> Vec<JobOutcome> {
+-    let workers = opts.jobs.max(1);
++    let workers = worker_count(opts.jobs, specs.len());
+     let next = AtomicUsize::new(0);
+     let stop = AtomicBool::new(false);
+     let done = AtomicBool::new(false);
+     let killers: Mutex<Vec<Option<Killer>>> = Mutex::new((0..workers).map(|_| None).collect());
+     let outcomes: Mutex<Vec<Option<JobOutcome>>> =
+         Mutex::new((0..specs.len()).map(|_| None).collect());
+ 
+     std::thread::scope(|scope| {
+         let next = &next;
+         let stop = &stop;
+@@ -182,20 +184,32 @@ pub fn run_queue(
+                 state: JobState::Cancelled,
+                 exit_code: None,
+                 warnings: Vec::new(),
+                 errors: Vec::new(),
+                 duration_ms: 0,
+             })
+         })
+         .collect()
+ }
+ 
++/// The worker-pool size for a batch of `spec_count` specs: `jobs` clamped to
++/// at least 1, then capped at `spec_count` (also at least 1, so an empty
++/// batch still gets one idle worker rather than zero). A worker beyond
++/// `spec_count` could never dequeue a spec (each fetches a distinct index
++/// once), so it would only ever sit idle; an oversized `--jobs` would
++/// otherwise spawn that many real OS threads for nothing; at extreme values
++/// enough to exhaust the OS and panic inside the scope (`Scope::spawn`
++/// panics on a thread-creation failure).
++fn worker_count(jobs: usize, spec_count: usize) -> usize {
++    jobs.max(1).min(spec_count.max(1))
++}
++
+ /// Wraps the caller's spawner so each successful spawn registers the new
+ /// job's [`Killer`] into this worker's registry slot before `run_job`
+ /// starts streaming, giving the watcher a handle to in-flight jobs it does
+ /// not own.
+ struct RegisteringSpawner<'a> {
+     inner: &'a (dyn Spawn + Sync),
+     killers: &'a Mutex<Vec<Option<Killer>>>,
+     slot: usize,
+ }
+ 
+@@ -637,11 +651,64 @@ mod tests {
+                 _ => None,
+             })
+             .collect();
+         assert_eq!(
+             started,
+             vec![0],
+             "only the in-flight job may start once cancelled"
+         );
+         assert!(kills.load(Ordering::SeqCst) >= 1, "killer must be invoked");
+     }
++
++    // A tiny batch with a wildly oversized `--jobs` must not spawn one OS
++    // thread per requested worker: `worker_count` is the extracted, pure cap
++    // decision (no threads involved), unit-tested directly here.
++
++    #[test]
++    fn worker_count_is_capped_at_spec_count() {
++        assert_eq!(worker_count(100_000, 2), 2);
++        assert_eq!(worker_count(1, 2), 1);
++        assert_eq!(
++            worker_count(0, 2),
++            1,
++            "jobs is clamped to >= 1 before the cap is applied"
++        );
++        assert_eq!(
++            worker_count(3, 0),
++            1,
++            "an empty batch still gets one (idle) worker slot"
++        );
++    }
++
++    #[test]
++    fn jobs_far_exceeding_spec_count_still_completes_with_correct_outcomes() {
++        let dir = tempfile::tempdir().unwrap();
++        let specs = vec![
++            spec(0, dir.path().join("a.mkv")),
++            spec(1, dir.path().join("b.mkv")),
++        ];
++        let tracker = ConcurrencyTracker::new();
++        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0))
++            .with_concurrency_tracker(Arc::clone(&tracker));
++        let cancel = Arc::new(AtomicBool::new(false));
++        let (tx, rx) = mpsc::channel();
++        let opts = QueueOpts {
++            jobs: 100_000,
++            fail_fast: false,
++        };
++
++        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
++        drop(tx);
++        let _events: Vec<JobEvent> = rx.iter().collect();
++
++        assert_eq!(outcomes.len(), 2);
++        for outcome in &outcomes {
++            assert_eq!(outcome.state, JobState::Ok);
++        }
++        assert!(
++            tracker.max() <= 2,
++            "at most one worker per spec can ever be concurrently in \
++             flight, observed max concurrency {}",
++            tracker.max()
++        );
++    }
+ }
+diff --git a/crates/muxsmith-core/src/executor/spawn.rs b/crates/muxsmith-core/src/executor/spawn.rs
+index 84be4d2..af4b112 100644
+--- a/crates/muxsmith-core/src/executor/spawn.rs
++++ b/crates/muxsmith-core/src/executor/spawn.rs
+@@ -26,21 +26,26 @@ pub type Killer = Arc<dyn Fn() + Send + Sync>;
+ pub trait Spawn {
+     /// Spawns one mux with `argv` (the pure `command(&Plan)` vector; the
+     /// live impl prepends `--gui-mode`).
+     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError>;
+ }
+ 
+ /// One running (or scripted) mkvmerge process.
+ pub trait RunningJob: Send {
+     /// Next stdout line; `None` at EOF (or after a kill). Blocking.
+     fn next_line(&mut self) -> Option<String>;
+-    /// Waits for exit; `None` when the process died without a code (killed).
++    /// Waits for exit; `None` exactly when this job's [`Killer`] was
++    /// invoked, regardless of what the OS reports for the exit status.
++    /// Guaranteed cross-platform: Windows' `TerminateProcess` always yields
++    /// a `Some` exit code (unlike Unix's signal death), so an
++    /// implementation must track kill state itself rather than trust the
++    /// raw process status (D16/D17).
+     fn wait(&mut self) -> Option<i32>;
+     /// A [`Killer`] for this job.
+     fn killer(&self) -> Killer;
+ }
+ 
+ /// The production [`Spawn`]: runs the resolved mkvmerge with `--gui-mode`
+ /// prepended for machine-readable progress.
+ ///
+ /// Observed v100 `--gui-mode` line grammar (confirmed empirically against
+ /// the installed binary, not assumed from memory; verbatim examples, ready
+@@ -69,55 +74,78 @@ impl Spawn for LiveSpawner {
+             .arg("--gui-mode")
+             .args(argv)
+             .stdout(Stdio::piped())
+             .stderr(Stdio::null())
+             .spawn()
+             .map_err(|e| SpawnError(e.to_string()))?;
+         let stdout = child.stdout.take().expect("stdout was piped");
+         Ok(Box::new(LiveJob {
+             reader: BufReader::new(stdout),
+             child: Arc::new(Mutex::new(child)),
++            killed: Arc::new(AtomicBool::new(false)),
+         }))
+     }
+ }
+ 
+ /// A real, running mkvmerge child process. Not constructed directly; use
+ /// [`LiveSpawner::spawn`].
+ struct LiveJob {
+     reader: BufReader<std::process::ChildStdout>,
+     child: Arc<Mutex<Child>>,
++    /// Set by this job's [`Killer`] before it signals the child (D16/D17):
++    /// authoritative for `wait`'s `None`-when-killed contract, since a
++    /// Windows `TerminateProcess`-killed child still reports a `Some` exit
++    /// code from `Child::wait`, unlike Unix's signal death.
++    killed: Arc<AtomicBool>,
+ }
+ 
+ impl RunningJob for LiveJob {
+     fn next_line(&mut self) -> Option<String> {
+         let mut line = String::new();
+         match self.reader.read_line(&mut line) {
+             Ok(0) | Err(_) => None,
+             Ok(_) => Some(line.trim_end().to_string()),
+         }
+     }
+     fn wait(&mut self) -> Option<i32> {
+-        self.child
++        let raw_code = self
++            .child
+             .lock()
+             .unwrap()
+             .wait()
+             .ok()
+-            .and_then(|s| s.code())
++            .and_then(|s| s.code());
++        resolve_wait(self.killed.load(Ordering::SeqCst), raw_code)
+     }
+     fn killer(&self) -> Killer {
+         let child = Arc::clone(&self.child);
++        let killed = Arc::clone(&self.killed);
+         Arc::new(move || {
++            // Set before kill(): a concurrent `wait()` must never observe
++            // "the process is gone" without also observing "the flag is
++            // set" (D16/D17).
++            killed.store(true, Ordering::SeqCst);
+             let _ = child.lock().unwrap().kill();
+         })
+     }
+ }
+ 
++/// Combines a job's kill flag with its raw OS exit code into the
++/// [`RunningJob::wait`] contract (`None` exactly when killed). Extracted out
++/// of [`LiveJob::wait`] so the decision is unit-testable without a real
++/// child process: `raw_code` stands in for whatever the OS reports (Unix
++/// `None` on signal death, Windows always `Some`), and the flag overrides it
++/// either way.
++fn resolve_wait(killed: bool, raw_code: Option<i32>) -> Option<i32> {
++    if killed { None } else { raw_code }
++}
++
+ /// Scripted fake for unit tests: yields the scripted lines, then EOF, then
+ /// the scripted exit code; records every argv it was asked to spawn.
+ pub struct FakeSpawner {
+     lines: Vec<String>,
+     exit: Option<i32>,
+     spawned: Mutex<Vec<Vec<String>>>,
+     tracker: Option<Arc<ConcurrencyTracker>>,
+ }
+ 
+ impl FakeSpawner {
+@@ -249,11 +277,70 @@ mod tests {
+     #[test]
+     fn fake_killer_ends_stream_and_wait_returns_none() {
+         let fake = FakeSpawner::script(vec!["line".to_string(); 100], Some(0));
+         let mut job = fake.spawn(&[]).unwrap();
+         let kill = job.killer();
+         job.next_line();
+         kill();
+         assert_eq!(job.next_line(), None);
+         assert_eq!(job.wait(), None);
+     }
++
++    // D16/D17 Windows fix: `TerminateProcess` always yields a `Some` exit
++    // code (unlike Unix's signal death), so `LiveJob::wait` cannot trust the
++    // raw OS status alone. `resolve_wait` is the extracted flag+raw-code
++    // decision, unit-tested directly here since a real child process cannot
++    // be driven into that state deterministically (confirmed empirically:
++    // `std::process::Child::kill` sends SIGKILL on Unix, so the process
++    // always dies by signal here regardless of the flag - see
++    // `live_killer_then_wait_returns_none` below for the live-wiring check).
++
++    #[test]
++    fn resolve_wait_returns_none_when_killed_even_if_the_os_reports_a_code() {
++        assert_eq!(resolve_wait(true, Some(1)), None);
++        assert_eq!(resolve_wait(true, Some(0)), None);
++        assert_eq!(resolve_wait(true, None), None);
++    }
++
++    #[test]
++    fn resolve_wait_passes_the_raw_code_through_when_not_killed() {
++        assert_eq!(resolve_wait(false, Some(0)), Some(0));
++        assert_eq!(resolve_wait(false, Some(2)), Some(2));
++        assert_eq!(resolve_wait(false, None), None);
++    }
++
++    /// D16/D17 regression, live wiring: a killed [`LiveJob`] must report
++    /// `wait() == None`. Uses a scripted fake `mkvmerge` (not a real one) so
++    /// the test is deterministic and self-contained; the script sleeps
++    /// after printing one line so the process is provably alive at kill
++    /// time, mirroring `crates/muxsmith-cli/tests/run_cli.rs`'s
++    /// `fake_mkvmerge_that_fails_queries` stub pattern. Cannot itself
++    /// distinguish the fixed code from the pre-fix code on Unix (kill()
++    /// sends SIGKILL, an untrappable signal death that already yields
++    /// `None` from the raw exit status alone) - `resolve_wait`'s unit tests
++    /// above are what pin the flag's semantics; this test guards that the
++    /// flag is actually wired into `LiveJob`.
++    #[cfg(unix)]
++    #[test]
++    fn live_killer_then_wait_returns_none() {
++        use std::os::unix::fs::PermissionsExt;
++
++        let dir = tempfile::tempdir().unwrap();
++        let script = dir.path().join("fake-mkvmerge");
++        std::fs::write(&script, "#!/bin/sh\necho started\nsleep 30\n").unwrap();
++        let mut perms = std::fs::metadata(&script).unwrap().permissions();
++        perms.set_mode(0o755);
++        std::fs::set_permissions(&script, perms).unwrap();
++
++        let spawner = LiveSpawner { mkvmerge: script };
++        let mut job = spawner.spawn(&[]).unwrap();
++
++        // Proves the process is genuinely alive (not a spawn race) before
++        // it is killed.
++        assert_eq!(job.next_line().as_deref(), Some("started"));
++
++        let kill = job.killer();
++        kill();
++
++        assert_eq!(job.wait(), None);
++    }
+ }
