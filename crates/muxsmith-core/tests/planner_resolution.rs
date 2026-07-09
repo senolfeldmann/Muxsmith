@@ -783,6 +783,130 @@ fn on_disk_collision_under_error_is_error_and_drops_plan() {
     assert_eq!(d.severity, Severity::Error);
 }
 
+// Task 6: `title: clear` resolves to `TitleAction::Clear`.
+#[test]
+fn title_clear_resolves_to_clear() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+title: clear
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
+}
+
+// Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
+// resolution path (not just the Task-4 hardcoded default).
+#[test]
+fn title_keep_resolves_to_keep() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+title: keep
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
+}
+
+// Task 6: a title template renders via the same literal-mode engine as the
+// filename template; `{season}` is a raw capture (no filter applied).
+#[test]
+fn title_template_renders_raw_capture_into_set() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+title: { template: 'Show S{season}' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.title,
+        muxsmith_core::planner::TitleAction::Set("Show S03".into())
+    );
+}
+
+// Task 6: title has no path-separator/empty-name invariants (unlike
+// filenames, spec 4.9 vs 4.8): a template rendering to an empty string is a
+// legitimate `Set("")`, not an error.
+#[test]
+fn title_template_rendering_empty_is_a_legitimate_set() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+title: { template: '{x}' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.title,
+        muxsmith_core::planner::TitleAction::Set(String::new())
+    );
+}
+
+// Task 6: `source_stem` is available to a title template, exactly as it is
+// to output.filename templates (validate.rs allows it identically for
+// both, so the resolve-time Ctx must supply it identically too).
+#[test]
+fn title_template_supports_source_stem_field() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+title: { template: '{source_stem}' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.title,
+        muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
+    );
+}
+
+// Task 6: `tags: { global: drop, track: keep }` resolves to the matching
+// `TagFlags`.
+#[test]
+fn tags_global_drop_track_keep_resolves_to_flags() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tags: { global: drop, track: keep }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.tags,
+        muxsmith_core::planner::TagFlags {
+            global_keep: false,
+            track_keep: true,
+        }
+    );
+}
+
 #[test]
 fn bad_language_value_is_batch_invalid_property_value() {
     let p = r#"

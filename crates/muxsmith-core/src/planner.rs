@@ -15,7 +15,9 @@ use crate::discovery::{self, PrimaryFile};
 use crate::identify::{Identification, Identify};
 use crate::matcher;
 use crate::profile::match_expr::{MatchExpr, Scalar};
-use crate::profile::model::{CollisionPolicy, FilenameCfg, Profile, SourceCfg, TrackRule};
+use crate::profile::model::{
+    CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
+};
 use crate::report::{DiagCode, Diagnostic, Severity};
 use crate::template::Template;
 
@@ -511,6 +513,8 @@ fn resolve_file(
     }
 
     let output = render_output(profile, primary, output_dir, &mut diagnostics);
+    let title = resolve_title(profile, primary);
+    let tags = resolve_tags(profile);
 
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
@@ -521,11 +525,8 @@ fn resolve_file(
             add_files: vec![],
         },
         chapters: ChapterSource::Keep,
-        tags: TagFlags {
-            global_keep: true,
-            track_keep: true,
-        },
-        title: TitleAction::Keep,
+        tags,
+        title,
     });
 
     FileReport {
@@ -678,6 +679,42 @@ fn strip_mkv_suffix(name: &str) -> &str {
         &name[..len - 4]
     } else {
         name
+    }
+}
+
+// Resolves `profile.title` to a `TitleAction` (spec 4.9). Unlike
+// `render_output`'s filename, a title has no path-separator or empty-name
+// invariant: an empty rendered title is a legitimate `Set("")`, so a
+// template's render always passes through unchecked. The Ctx mirrors
+// `render_output`'s exactly, including `source_stem`: validate.rs allows
+// `source_stem` in `title.template` identically to `output.filename.template`
+// (see `validate::validate`), so the two templates' available fields must
+// stay in lockstep. A parse failure or an unexpected keyword cannot occur
+// post-validate (validate.rs rejects both at config time); the fallback to
+// `Keep` is defensive only, never a panic.
+fn resolve_title(profile: &Profile, primary: &PrimaryFile) -> TitleAction {
+    match &profile.title {
+        TitleCfg::Keyword(k) if k == "clear" => TitleAction::Clear,
+        TitleCfg::Keyword(_) => TitleAction::Keep,
+        TitleCfg::Template(block) => {
+            let mut ctx = primary.identifier.to_ctx();
+            if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
+                ctx.set("source_stem", stem);
+            }
+            match Template::parse(&block.template) {
+                Ok(t) => TitleAction::Set(t.render_literal(&ctx)),
+                Err(_) => TitleAction::Keep,
+            }
+        }
+    }
+}
+
+// Resolves `profile.tags` to a `TagFlags` (spec 4.9); a direct KeepDrop ->
+// bool mapping, no plan-time validation needed.
+fn resolve_tags(profile: &Profile) -> TagFlags {
+    TagFlags {
+        global_keep: profile.tags.global == KeepDrop::Keep,
+        track_keep: profile.tags.track == KeepDrop::Keep,
     }
 }
 
