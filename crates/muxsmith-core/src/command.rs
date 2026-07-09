@@ -2,15 +2,14 @@
 //! `command` produces argv only: no process invocation, no filesystem
 //! access beyond the paths already carried in the `Plan`. The canonical
 //! ordering (global section, then one input group per distinct source, then
-//! `--track-order`) is locked by the Task 9-11 golden tests; this module
-//! currently implements the global section, multi-group input handling with
-//! track selection, and per-track property options (Tasks 9-10). The
-//! attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11) slot into
-//! [`push_group`] without reordering what is already here.
+//! `--track-order`) is locked by the Task 9-11 golden tests: the global
+//! section, multi-group input handling, track selection, and per-track
+//! property options (Tasks 9-10), plus the per-group
+//! attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11).
 
 use std::path::{Path, PathBuf};
 
-use crate::planner::{AppliedChange, ChapterSource, Plan, TitleAction};
+use crate::planner::{AppliedChange, ChapterSource, Plan, PrimaryAttachments, TitleAction};
 use crate::profile::match_expr::Scalar;
 
 /// One track-selection category: the `-J` `type` string it matches, and the
@@ -123,17 +122,61 @@ fn push_global(argv: &mut Vec<String>, plan: &Plan) {
     }
 }
 
-// One input group's argv (spec 4.9 item 2). Task 11 adds the
-// `--no-chapters`, `--no-global-tags`/`--no-track-tags`, and
-// attachment-filter flags before track selection; both slot in here without
-// moving the selection/property calls or the closing bracket.
+// One input group's argv (spec 4.9 item 2), in canonical order: chapters
+// (a), tags (b), attachments (c), track selection (d), per-track properties
+// (e), then the bracketed source (f).
 fn push_group(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+    push_group_chapters(argv, plan);
+    push_group_tags(argv, plan);
+    push_group_attachments(argv, plan, source);
     push_track_selection(argv, plan, source);
     push_track_properties(argv, plan, source);
 
     argv.push("(".to_string());
     argv.push(source.display().to_string());
     argv.push(")".to_string());
+}
+
+// `--no-chapters` on every input group when chapters are dropped or replaced
+// by an external file (spec 4.9 item 2a); `Keep` emits nothing.
+fn push_group_chapters(argv: &mut Vec<String>, plan: &Plan) {
+    match &plan.chapters {
+        ChapterSource::Keep => {}
+        ChapterSource::Drop | ChapterSource::External(_) => {
+            argv.push("--no-chapters".to_string());
+        }
+    }
+}
+
+// `--no-global-tags`/`--no-track-tags` on every input group per `plan.tags`
+// (spec 4.9 item 2b).
+fn push_group_tags(argv: &mut Vec<String>, plan: &Plan) {
+    if !plan.tags.global_keep {
+        argv.push("--no-global-tags".to_string());
+    }
+    if !plan.tags.track_keep {
+        argv.push("--no-track-tags".to_string());
+    }
+}
+
+// Attachment filter for one group (spec 4.9 item 2c, D10). The primary group
+// (`source == plan.source`) follows `PrimaryAttachments`; every donor group
+// always gets `--no-attachments` since donor attachments never flow into the
+// output.
+fn push_group_attachments(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+    if source != plan.source.as_path() {
+        argv.push("--no-attachments".to_string());
+        return;
+    }
+
+    match &plan.attachments.primary {
+        PrimaryAttachments::KeepAll => {}
+        PrimaryAttachments::Subset(ids) => {
+            argv.push("--attachments".to_string());
+            argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
+        }
+        PrimaryAttachments::DropAll => argv.push("--no-attachments".to_string()),
+    }
 }
 
 // Track selection for one group, categories in fixed order (spec 4.9 item
