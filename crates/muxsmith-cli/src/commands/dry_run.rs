@@ -19,6 +19,12 @@ use crate::i18n::Renderer;
 /// `validate::validate` + `lint::provable_overlaps` collection `validate`
 /// runs), then a full planning pass, and folds both diagnostic sets into one
 /// report; the exit code reflects the worst severity across all of them.
+/// Exception: if mkvmerge cannot be located, planning never runs (it needs
+/// mkvmerge for identification). The config-time diagnostics are still
+/// surfaced even then, so the superset-of-validate guarantee holds
+/// unconditionally, but the exit code is the mkvmerge-not-found failure (2)
+/// outright rather than a severity fold, since there is nothing else to
+/// fold in.
 pub fn run(
     profile_path: &Path,
     source: Option<PathBuf>,
@@ -43,7 +49,18 @@ pub fn run(
     let mkv = match Mkvmerge::locate() {
         Ok(m) => m,
         Err(_) => {
-            eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+            // mkvmerge missing blocks the planning pass entirely, but the
+            // config-time pass above already ran; spec 5.5 requires dry-run
+            // to stay a strict superset of `validate` even on this path, so
+            // those diagnostics are surfaced here rather than dropped.
+            if json {
+                println!("{}", config_only_json(&config_diags, renderer));
+            } else {
+                for d in &config_diags {
+                    println!("{}", renderer.diagnostic(d));
+                }
+                eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+            }
             return 2;
         }
     };
@@ -121,6 +138,24 @@ fn batch_json(
         "files": files,
         "batch_diagnostics": rendered_diags(&batch.batch_diagnostics, renderer),
         "suggestions": batch.suggestions,
+    })
+}
+
+/// Builds the `--json` report for the mkvmerge-not-found path (spec 5.5):
+/// planning never ran, so `files`/`batch_diagnostics`/`suggestions` stay
+/// empty, but the config-time diagnostics collected before the mkvmerge
+/// lookup are still rendered here, keeping this a valid JSON document (not
+/// plain text on stderr) and dry-run a superset of `validate` even when
+/// mkvmerge is missing. `mkvmerge_found: false` flags the condition itself
+/// for JSON consumers, since the exit code alone (2) does not distinguish
+/// this from any other error-severity report.
+fn config_only_json(config_diags: &[Diagnostic], renderer: &Renderer) -> serde_json::Value {
+    serde_json::json!({
+        "config_diagnostics": rendered_diags(config_diags, renderer),
+        "files": [],
+        "batch_diagnostics": [],
+        "suggestions": [],
+        "mkvmerge_found": false,
     })
 }
 
