@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
+ctrlc = "3"
 fluent-bundle = "0.16.0"
 muxsmith-core = { path = "../muxsmith-core" }
 schemars = "1.2.1"

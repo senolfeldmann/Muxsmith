@@ -33,9 +33,10 @@ const MILESTONES: [u8; 3] = [25, 50, 75];
 /// Runs `muxsmith run`. Returns the mkvmerge-style exit code: worst-of fold
 /// of every planning diagnostic and every job outcome (0 clean / 1 worst is
 /// a warning / 2 worst is an error), overridden to 130 if the cancellation
-/// flag ended the batch. That flag is a plain, never-flipped
-/// `Arc<AtomicBool>` in this task's scope (SIGINT wiring lands separately),
-/// so the 130 branch is structurally present but currently unreachable.
+/// flag ended the batch (D16). A `ctrlc` handler installed just before the
+/// queue runs flips that flag on the first SIGINT (the queue kills
+/// in-flight jobs, partials are deleted, the summary still prints) and
+/// force-exits on a second SIGINT during cleanup.
 ///
 /// Spec 5.5 level 3: identical to `dry-run` through `plan_batch` (re-plans
 /// from scratch immediately before executing, never reuses a stale
@@ -183,9 +184,18 @@ pub fn run(
         mkvmerge: mkv.path().into(),
     };
     let opts = QueueOpts { jobs, fail_fast };
-    // Plain flag (Task 10 wires SIGINT onto this); it never flips in this
-    // task's scope.
     let cancel = Arc::new(AtomicBool::new(false));
+
+    // Single-level SIGINT (D16): first Ctrl-C requests graceful cancel
+    // (queue kills in-flight, partials deleted, summary printed, exit 130);
+    // a second Ctrl-C during cleanup force-exits immediately.
+    let handler_cancel = Arc::clone(&cancel);
+    let _ = ctrlc::set_handler(move || {
+        if handler_cancel.swap(true, Ordering::SeqCst) {
+            std::process::exit(130);
+        }
+    });
+
     let (tx, rx) = mpsc::channel();
 
     // `run_queue` blocks until the whole batch finishes, so it runs on its
