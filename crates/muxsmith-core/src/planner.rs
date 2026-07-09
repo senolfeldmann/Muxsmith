@@ -362,6 +362,17 @@ fn resolve_file(
         );
     }
 
+    if !ident.container_recognized || !ident.container_supported {
+        diagnostics
+            .push(Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(&primary.path));
+        return FileReport {
+            source: primary.path.clone(),
+            identifier: primary.identifier.whole.clone(),
+            plan: None,
+            diagnostics,
+        };
+    }
+
     let mut assignments = Vec::new();
     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();

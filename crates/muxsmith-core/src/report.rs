@@ -118,6 +118,12 @@ diag_codes! {
     AmbiguousExternal => "ambiguous-external",
     /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
     UnidentifiableSource => "unidentifiable-source",
+    /// A primary source mkvmerge identified (exit 0) whose container it does
+    /// not recognize or support, so it cannot be muxed. Distinct from
+    /// `UnidentifiableSource` (mkvmerge exited non-zero). A recognized,
+    /// supported container with zero tracks is NOT this code (stays a
+    /// per-rule `missing-track`).
+    UnsupportedSource => "unsupported-source",
     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
     OutputCollision => "output-collision",
     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.

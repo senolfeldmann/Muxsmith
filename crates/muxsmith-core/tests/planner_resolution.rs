@@ -473,6 +473,78 @@ tracks:
 }
 
 #[test]
+fn unrecognized_container_yields_unsupported_source_not_missing_track() {
+    let json = r#"{ "container": { "recognized": false, "supported": true },
+                    "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                    "tracks": [] }"#;
+    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let count = fr
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnsupportedSource)
+        .count();
+    assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingTrack),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
+fn unsupported_container_yields_unsupported_source_not_missing_track() {
+    let json = r#"{ "container": { "recognized": true, "supported": false },
+                    "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                    "tracks": [] }"#;
+    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let count = fr
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnsupportedSource)
+        .count();
+    assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingTrack),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
+fn recognized_supported_zero_tracks_stays_missing_track_not_unsupported_source() {
+    // D21 decision #5: a recognized+supported container with zero tracks is
+    // NOT UnsupportedSource; it stays a per-rule MissingTrack case.
+    let json = r#"{ "container": { "recognized": true, "supported": true },
+                    "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                    "tracks": [] }"#;
+    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnsupportedSource),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingTrack),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
 fn source_overwrite_when_output_equals_donor_path() {
     let root = tempfile::tempdir().unwrap();
     let src_dir = root.path().join("src");
