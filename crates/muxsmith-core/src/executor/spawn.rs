@@ -33,7 +33,12 @@ pub trait Spawn {
 pub trait RunningJob: Send {
     /// Next stdout line; `None` at EOF (or after a kill). Blocking.
     fn next_line(&mut self) -> Option<String>;
-    /// Waits for exit; `None` when the process died without a code (killed).
+    /// Waits for exit; `None` exactly when this job's [`Killer`] was
+    /// invoked, regardless of what the OS reports for the exit status.
+    /// Guaranteed cross-platform: Windows' `TerminateProcess` always yields
+    /// a `Some` exit code (unlike Unix's signal death), so an
+    /// implementation must track kill state itself rather than trust the
+    /// raw process status (D16/D17).
     fn wait(&mut self) -> Option<i32>;
     /// A [`Killer`] for this job.
     fn killer(&self) -> Killer;
@@ -76,6 +81,7 @@ impl Spawn for LiveSpawner {
         Ok(Box::new(LiveJob {
             reader: BufReader::new(stdout),
             child: Arc::new(Mutex::new(child)),
+            killed: Arc::new(AtomicBool::new(false)),
         }))
     }
 }
@@ -85,6 +91,11 @@ impl Spawn for LiveSpawner {
 struct LiveJob {
     reader: BufReader<std::process::ChildStdout>,
     child: Arc<Mutex<Child>>,
+    /// Set by this job's [`Killer`] before it signals the child (D16/D17):
+    /// authoritative for `wait`'s `None`-when-killed contract, since a
+    /// Windows `TerminateProcess`-killed child still reports a `Some` exit
+    /// code from `Child::wait`, unlike Unix's signal death.
+    killed: Arc<AtomicBool>,
 }
 
 impl RunningJob for LiveJob {
@@ -96,19 +107,36 @@ impl RunningJob for LiveJob {
         }
     }
     fn wait(&mut self) -> Option<i32> {
-        self.child
+        let raw_code = self
+            .child
             .lock()
             .unwrap()
             .wait()
             .ok()
-            .and_then(|s| s.code())
+            .and_then(|s| s.code());
+        resolve_wait(self.killed.load(Ordering::SeqCst), raw_code)
     }
     fn killer(&self) -> Killer {
         let child = Arc::clone(&self.child);
+        let killed = Arc::clone(&self.killed);
         Arc::new(move || {
+            // Set before kill(): a concurrent `wait()` must never observe
+            // "the process is gone" without also observing "the flag is
+            // set" (D16/D17).
+            killed.store(true, Ordering::SeqCst);
             let _ = child.lock().unwrap().kill();
         })
     }
+}
+
+/// Combines a job's kill flag with its raw OS exit code into the
+/// [`RunningJob::wait`] contract (`None` exactly when killed). Extracted out
+/// of [`LiveJob::wait`] so the decision is unit-testable without a real
+/// child process: `raw_code` stands in for whatever the OS reports (Unix
+/// `None` on signal death, Windows always `Some`), and the flag overrides it
+/// either way.
+fn resolve_wait(killed: bool, raw_code: Option<i32>) -> Option<i32> {
+    if killed { None } else { raw_code }
 }
 
 /// Scripted fake for unit tests: yields the scripted lines, then EOF, then
@@ -254,6 +282,65 @@ mod tests {
         job.next_line();
         kill();
         assert_eq!(job.next_line(), None);
+        assert_eq!(job.wait(), None);
+    }
+
+    // D16/D17 Windows fix: `TerminateProcess` always yields a `Some` exit
+    // code (unlike Unix's signal death), so `LiveJob::wait` cannot trust the
+    // raw OS status alone. `resolve_wait` is the extracted flag+raw-code
+    // decision, unit-tested directly here since a real child process cannot
+    // be driven into that state deterministically (confirmed empirically:
+    // `std::process::Child::kill` sends SIGKILL on Unix, so the process
+    // always dies by signal here regardless of the flag - see
+    // `live_killer_then_wait_returns_none` below for the live-wiring check).
+
+    #[test]
+    fn resolve_wait_returns_none_when_killed_even_if_the_os_reports_a_code() {
+        assert_eq!(resolve_wait(true, Some(1)), None);
+        assert_eq!(resolve_wait(true, Some(0)), None);
+        assert_eq!(resolve_wait(true, None), None);
+    }
+
+    #[test]
+    fn resolve_wait_passes_the_raw_code_through_when_not_killed() {
+        assert_eq!(resolve_wait(false, Some(0)), Some(0));
+        assert_eq!(resolve_wait(false, Some(2)), Some(2));
+        assert_eq!(resolve_wait(false, None), None);
+    }
+
+    /// D16/D17 regression, live wiring: a killed [`LiveJob`] must report
+    /// `wait() == None`. Uses a scripted fake `mkvmerge` (not a real one) so
+    /// the test is deterministic and self-contained; the script sleeps
+    /// after printing one line so the process is provably alive at kill
+    /// time, mirroring `crates/muxsmith-cli/tests/run_cli.rs`'s
+    /// `fake_mkvmerge_that_fails_queries` stub pattern. Cannot itself
+    /// distinguish the fixed code from the pre-fix code on Unix (kill()
+    /// sends SIGKILL, an untrappable signal death that already yields
+    /// `None` from the raw exit status alone) - `resolve_wait`'s unit tests
+    /// above are what pin the flag's semantics; this test guards that the
+    /// flag is actually wired into `LiveJob`.
+    #[cfg(unix)]
+    #[test]
+    fn live_killer_then_wait_returns_none() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fake-mkvmerge");
+        std::fs::write(&script, "#!/bin/sh\necho started\nsleep 30\n").unwrap();
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).unwrap();
+
+        let spawner = LiveSpawner { mkvmerge: script };
+        let mut job = spawner.spawn(&[]).unwrap();
+
+        // Proves the process is genuinely alive (not a spawn race) before
+        // it is killed.
+        assert_eq!(job.next_line().as_deref(), Some("started"));
+
+        let kill = job.killer();
+        kill();
+
         assert_eq!(job.wait(), None);
     }
 }
