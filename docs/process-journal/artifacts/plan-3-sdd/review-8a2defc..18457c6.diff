@@ -1,0 +1,111 @@
+# Review package: 8a2defc..18457c6
+
+## Commits
+18457c6 feat(matcher): match attachment rules via Matchable
+
+## Files changed
+ crates/muxsmith-core/src/matcher.rs | 50 ++++++++++++++++++++++++++++++++++---
+ 1 file changed, 47 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/matcher.rs b/crates/muxsmith-core/src/matcher.rs
+index c4993fc..28afd73 100644
+--- a/crates/muxsmith-core/src/matcher.rs
++++ b/crates/muxsmith-core/src/matcher.rs
+@@ -2,37 +2,43 @@
+ //! expression, a [`Matchable`] item, and a language index, decides membership
+ //! with no I/O and no diagnostics. The correctness core; covered by unit
+ //! tests here and by the planner's fixture tests. Config validity (unknown
+ //! property, wrong type, bad enum value) is checked earlier (validate) or
+ //! reported by the planner; this function assumes a validated expression and
+ //! answers only "does this item match?".
+ 
+ use crate::capability::codec_kind_prefixes;
+ use crate::capability::runtime::LanguageIndex;
+ use crate::capability::{PropType, matchable_type};
+-use crate::identify::{PropValue, Track};
++use crate::identify::{Attachment, PropValue, Track};
+ use crate::profile::match_expr::{MatchExpr, Scalar};
+ 
+ /// A property-bearing item the matcher can evaluate a [`MatchExpr`] against.
+-/// [`Track`] is the only implementor today; a later item type (e.g.
+-/// attachments) implements it to reuse the same match algebra.
++/// [`Track`] and [`Attachment`] implement it, each reusing the same match
++/// algebra over its own flat property namespace.
+ pub trait Matchable {
+     /// The value of a match property, or `None` if absent.
+     fn get(&self, prop: &str) -> Option<PropValue>;
+ }
+ 
+ impl Matchable for Track {
+     fn get(&self, prop: &str) -> Option<PropValue> {
+         Track::get(self, prop)
+     }
+ }
+ 
++impl Matchable for Attachment {
++    fn get(&self, prop: &str) -> Option<PropValue> {
++        Attachment::get(self, prop)
++    }
++}
++
+ // `Iterator::filter`'s predicate takes `&Self::Item`, so filtering an
+ // iterator of `&Track` (e.g. `Vec<Track>::iter()`) hands the predicate a
+ // `&&Track`. Generic trait-bound unification does not apply deref coercion
+ // the way a concrete `&Track` parameter would, so without this blanket impl
+ // `M` would resolve to `&Track` and fail the `Matchable` bound at existing
+ // call sites. This keeps those sites compiling unchanged.
+ impl<M: Matchable> Matchable for &M {
+     fn get(&self, prop: &str) -> Option<PropValue> {
+         (**self).get(prop)
+     }
+@@ -345,11 +351,49 @@ mod tests {
+     }
+ 
+     #[test]
+     fn matches_is_generic_over_matchable() {
+         fn check<M: Matchable>(m: &M) -> bool {
+             matches(&expr("exact: { type: audio }"), m, &lang())
+         }
+         let t = track("audio", &[]);
+         assert!(check(&t));
+     }
++
++    #[test]
++    fn attachment_matching_uses_the_same_algebra() {
++        use crate::identify::Attachment;
++        let font = Attachment {
++            id: 1,
++            file_name: "Roboto.ttf".into(),
++            size: 100,
++            content_type: Some("font/ttf".into()),
++            description: None,
++            uid: None,
++        };
++        assert!(matches(
++            &expr("substring: { file_name: robot }"),
++            &font,
++            &lang()
++        ));
++        assert!(matches(
++            &expr("exact: { content_type: font/ttf }"),
++            &font,
++            &lang()
++        ));
++        assert!(matches(
++            &expr("any:\n  - substring: { file_name: .ttf }\n  - substring: { file_name: .otf }"),
++            &font,
++            &lang()
++        ));
++        assert!(!matches(
++            &expr("exact: { description: whatever }"),
++            &font,
++            &lang()
++        ));
++        assert!(!matches(
++            &expr("substring: { content_type: pdf }"),
++            &font,
++            &lang()
++        ));
++    }
+ }

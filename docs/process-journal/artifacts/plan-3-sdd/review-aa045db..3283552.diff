@@ -1,0 +1,502 @@
+# Review package: aa045db..3283552
+
+## Commits
+3283552 feat(planner): resolve attachments (rules, unmatched, external adds)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs                | 100 +++++++++-
+ crates/muxsmith-core/src/report.rs                 |   2 +-
+ .../tests/fixtures/identify/with-attachments.json  |  30 +++
+ crates/muxsmith-core/tests/planner_resolution.rs   | 218 +++++++++++++++++++++
+ 4 files changed, 344 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 78da458..daddeb9 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -5,21 +5,21 @@
+ //! external work is identification, driven through the injected [`Identify`].
+ 
+ use std::collections::{BTreeMap, BTreeSet};
+ use std::path::{Path, PathBuf};
+ 
+ use serde::Serialize;
+ 
+ use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
+ use crate::capability::runtime::LanguageIndex;
+ use crate::discovery::{self, PrimaryFile};
+-use crate::identify::{Identification, Identify};
++use crate::identify::{Attachment, Identification, Identify};
+ use crate::matcher;
+ use crate::profile::match_expr::{MatchExpr, Scalar};
+ use crate::profile::model::{
+     ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
+ };
+ use crate::report::{DiagCode, Diagnostic, Severity};
+ use crate::template::Template;
+ 
+ /// Run inputs, separable from the profile (spec 3): overrides for source and
+ /// output directories and the collision policy. `None` falls back to the
+@@ -509,29 +509,34 @@ fn resolve_file(
+                     .with("rule_b", format!("tracks[{}]", rules[1]))
+                     .with("track", tid.to_string()),
+             );
+         }
+     }
+ 
+     let output = render_output(profile, primary, output_dir, &mut diagnostics);
+     let title = resolve_title(profile, primary);
+     let tags = resolve_tags(profile);
+     let chapters = resolve_chapters(profile, primary, primary_dir, &mut diagnostics);
++    let attachments = resolve_attachments(
++        profile,
++        primary,
++        primary_dir,
++        &ident.attachments,
++        lang,
++        &mut diagnostics,
++    );
+ 
+     let plan = output.map(|output| Plan {
+         source: primary.path.clone(),
+         output,
+         assignments,
+-        attachments: AttachmentPlan {
+-            primary: PrimaryAttachments::KeepAll,
+-            add_files: vec![],
+-        },
++        attachments,
+         chapters,
+         tags,
+         title,
+     });
+ 
+     FileReport {
+         source: primary.path.clone(),
+         identifier: primary.identifier.whole.clone(),
+         plan,
+         diagnostics,
+@@ -757,20 +762,105 @@ fn resolve_chapters(
+                             .for_file(&primary.path)
+                             .with("count", n.to_string()),
+                     );
+                     ChapterSource::Keep
+                 }
+             }
+         }
+     }
+ }
+ 
++// Resolves `profile.attachments` against the primary's own attachments
++// (spec 4.9, D10): donor attachments never flow in, so `primary_attachments`
++// is always the primary's identification's attachments, never a donor's
++// (the command drops donor attachments outright via `--no-attachments`,
++// Task 11).
++//
++// Existing attachments (select/drop/unmatched): walks `rules` in order per
++// attachment; the first matching `select` keeps it, the first matching
++// `drop` drops it, `add` rules are skipped in this pass. An attachment no
++// select/drop rule claims falls to `unmatched`. The kept id set then reduces
++// to the most compact `PrimaryAttachments` the command can express: `KeepAll`
++// when nothing was filtered out, `DropAll` when everything was, `Subset`
++// otherwise (spec 4.9's minimal-argv intent).
++//
++// Adds (D12): each `add` locator is a query that populates the attachment
++// collection, like `select`/`drop`, not a unique slot-filler like a donor
++// source, so ALL its hits are attached, not just one. A rule whose locator
++// matches zero files still gets a `MissingExternal` warning (not an error:
++// an add is an auxiliary payload, so a miss must never suppress the plan) at
++// `attachments.rules[i].add`. After every rule runs, `add_files` is deduped
++// by path, keeping first-seen order, so two rules matching one file attach
++// it once.
++fn resolve_attachments(
++    profile: &Profile,
++    primary: &PrimaryFile,
++    primary_dir: &Path,
++    primary_attachments: &[Attachment],
++    lang: &LanguageIndex,
++    diags: &mut Vec<Diagnostic>,
++) -> AttachmentPlan {
++    let mut kept: Vec<u64> = Vec::new();
++    for att in primary_attachments {
++        let mut decision: Option<bool> = None;
++        for rule in &profile.attachments.rules {
++            if let Some(select) = &rule.select
++                && matcher::matches(select, att, lang)
++            {
++                decision = Some(true);
++                break;
++            }
++            if let Some(drop) = &rule.drop
++                && matcher::matches(drop, att, lang)
++            {
++                decision = Some(false);
++                break;
++            }
++        }
++        if decision.unwrap_or(profile.attachments.unmatched == KeepDrop::Keep) {
++            kept.push(att.id);
++        }
++    }
++
++    let primary_disposition = if kept.len() == primary_attachments.len() {
++        PrimaryAttachments::KeepAll
++    } else if kept.is_empty() {
++        PrimaryAttachments::DropAll
++    } else {
++        kept.sort_unstable();
++        PrimaryAttachments::Subset(kept)
++    };
++
++    let mut add_files: Vec<PathBuf> = Vec::new();
++    for (i, rule) in profile.attachments.rules.iter().enumerate() {
++        let Some(locator) = &rule.add else { continue };
++        let hits = discovery::resolve_locator(locator, primary_dir, &primary.identifier);
++        if hits.is_empty() {
++            diags.push(
++                Diagnostic::warning(
++                    DiagCode::MissingExternal,
++                    format!("attachments.rules[{i}].add"),
++                )
++                .for_file(&primary.path),
++            );
++        }
++        add_files.extend(hits);
++    }
++    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
++    add_files.retain(|p| seen.insert(p.clone()));
++
++    AttachmentPlan {
++        primary: primary_disposition,
++        add_files,
++    }
++}
++
+ // A rendered output must never equal an input path anywhere in the batch:
+ // every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
+ // Batch-wide because one primary's output can equal a donor a *different*
+ // primary reads from; `Assignment.source` already carries that donor path
+ // (or the primary path, for a primary-source rule), so the union of every
+ // file's assignment sources plus the primaries is the complete input set.
+ // Runs before `finalize_plans` drops anything, so every file's assignments
+ // are still present to gather from.
+ fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf]) {
+     let mut inputs: BTreeSet<PathBuf> = primary_paths.iter().cloned().collect();
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index c195cc0..2aa9a26 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -105,21 +105,21 @@ diag_codes! {
+     AttachmentRuleShape => "attachment-rule-shape",
+     /// Static lint: one exact-only rule's conditions subsume another's, so any track matching the stricter rule must overlap the looser one (warning, spec 5.4).
+     ProvableOverlap => "provable-overlap",
+     // Planning-time (produced from Plan 2 on; defined now for a stable catalog)
+     /// A rule matched two or more tracks of its source; strict uniqueness requires exactly one, and `optional` does not relax this (spec 5.2).
+     AmbiguousRule => "ambiguous-rule",
+     /// One track is claimed by two or more rules; every overlap is an error under strict independent uniqueness (spec 2, 5.2).
+     OverlappingRules => "overlapping-rules",
+     /// A non-optional rule matched zero tracks; the hint lists near-misses (same type/language) and which condition each failed (spec 5.2).
+     MissingTrack => "missing-track",
+-    /// An external locator (track rule or chapters) found zero files for a non-optional use (spec 5.2).
++    /// An external locator (track rule, chapters, or attachment add) found zero files for a non-optional use (spec 5.2).
+     MissingExternal => "missing-external",
+     /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
+     AmbiguousExternal => "ambiguous-external",
+     /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
+     UnidentifiableSource => "unidentifiable-source",
+     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
+     OutputCollision => "output-collision",
+     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
+     PathSeparatorInRenderedName => "path-separator-in-rendered-name",
+     /// The rendered output filename has an empty stem or is `.`/`..` (spec 4.8); the ".mkv appended if missing" rule would otherwise produce a hidden or invalid file. `name` param carries the rendered name.
+diff --git a/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json b/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
+new file mode 100644
+index 0000000..d5e3db7
+--- /dev/null
++++ b/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
+@@ -0,0 +1,30 @@
++{
++  "attachments": [
++    { "id": 0, "file_name": "a.ttf", "size": 100 },
++    { "id": 1, "file_name": "b.otf", "size": 100 },
++    { "id": 2, "file_name": "cover.jpg", "size": 100 }
++  ],
++  "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [],
++  "file_name": "Show.S01E01.mkv",
++  "global_tags": [],
++  "identification_format_version": 20,
++  "track_tags": [],
++  "tracks": [
++    {
++      "codec": "AVC/H.264/MPEG-4p10",
++      "id": 0,
++      "type": "video",
++      "properties": {
++        "codec_id": "V_MPEG4/ISO/AVC",
++        "default_track": true,
++        "forced_track": false,
++        "language": "und",
++        "language_ietf": "und",
++        "number": 1,
++        "pixel_dimensions": "1920x1080"
++      }
++    }
++  ]
++}
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 8f06adf..f473326 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -25,20 +25,23 @@ impl Identify for FakeIdent {
+ 
+ fn lang() -> LanguageIndex {
+     LanguageIndex::from_rows(&[
+         ["English", "eng", "eng", "en"],
+         ["German", "ger", "ger", "de"],
+         ["Turkish", "tur", "tur", "tr"],
+     ])
+ }
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
++// Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
++// id2 "cover.jpg"), the fixture the brief's attachment-rule test cases use.
++const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
+ 
+ fn plan_one(
+     profile_yaml: &str,
+     file_name: &str,
+     ident_json: &str,
+ ) -> muxsmith_core::planner::Batch {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join(file_name), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+@@ -1078,10 +1081,225 @@ tracks:
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::AmbiguousExternal)
+         .unwrap_or_else(|| panic!("expected AmbiguousExternal, got: {:?}", fr.diagnostics));
+     assert_eq!(d.config_path, "chapters.external");
+     assert_eq!(d.params.get("count").map(String::as_str), Some("2"));
+ }
++
++// Task 8: a `select` rule keeps only the attachments it matches; `unmatched:
++// drop` removes everything else, reducing to `Subset` of just the matched id.
++#[test]
++fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: drop
++  rules:
++    - select: { substring: { file_name: .ttf } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0])
++    );
++}
++
++// Task 8: no rules at all, `unmatched: keep` -> every attachment falls
++// through to `unmatched` and is kept, reducing to `KeepAll`.
++#[test]
++fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: keep
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::KeepAll
++    );
++}
++
++// Task 8: no rules at all, `unmatched: drop` -> every attachment falls
++// through to `unmatched` and is dropped, reducing to `DropAll`.
++#[test]
++fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: drop
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::DropAll
++    );
++}
++
++// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
++// `unmatched: keep` keeps the other two, reducing to `Subset([0, 1])`.
++#[test]
++fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: keep
++  rules:
++    - drop: { substring: { file_name: cover } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0, 1])
++    );
++}
++
++// Task 8 (D12): an `add` locator attaches ALL files it matches, not just one;
++// both fonts land in `add_files`, in the locator's sorted order.
++#[test]
++fn attachment_add_locator_attaches_all_matching_files() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("b.ttf"), b"font-b").unwrap();
++    std::fs::write(dir.path().join("a.ttf"), b"font-a").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    let expected = vec![dir.path().join("a.ttf"), dir.path().join("b.ttf")];
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.attachments.add_files, expected);
++}
++
++// Task 8 (D12): two `add` rules that both match the same file attach it
++// exactly once (dedup by path, first-seen order).
++#[test]
++fn attachment_add_two_rules_matching_same_file_is_deduped() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("font.ttf"), b"font").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf] }
++    - add: { path: '.', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    let expected = vec![dir.path().join("font.ttf")];
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.attachments.add_files, expected);
++}
++
++// Task 8 (D12): an `add` locator matching zero files is a WARNING
++// `MissingExternal` at `attachments.rules[i].add`, an auxiliary payload that
++// must not suppress the plan (unlike a track rule's or chapters' external
++// zero-match, both of which are errors).
++#[test]
++fn attachment_add_locator_zero_matches_yields_missing_external_warning_and_plan_survives() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert!(plan.attachments.add_files.is_empty());
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::MissingExternal)
++        .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
++    assert_eq!(d.config_path, "attachments.rules[0].add");
++    assert_eq!(d.severity, Severity::Warning);
++}

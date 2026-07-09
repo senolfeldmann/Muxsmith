@@ -1,0 +1,286 @@
+# Review package: 2706cda..693c38f
+
+## Commits
+693c38f feat(planner): resolve title and tags
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs              |  49 +++++++--
+ crates/muxsmith-core/tests/planner_resolution.rs | 124 +++++++++++++++++++++++
+ 2 files changed, 167 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 1010c1c..5d0c0b6 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -8,21 +8,23 @@ use std::collections::{BTreeMap, BTreeSet};
+ use std::path::{Path, PathBuf};
+ 
+ use serde::Serialize;
+ 
+ use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
+ use crate::capability::runtime::LanguageIndex;
+ use crate::discovery::{self, PrimaryFile};
+ use crate::identify::{Identification, Identify};
+ use crate::matcher;
+ use crate::profile::match_expr::{MatchExpr, Scalar};
+-use crate::profile::model::{CollisionPolicy, FilenameCfg, Profile, SourceCfg, TrackRule};
++use crate::profile::model::{
++    CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
++};
+ use crate::report::{DiagCode, Diagnostic, Severity};
+ use crate::template::Template;
+ 
+ /// Run inputs, separable from the profile (spec 3): overrides for source and
+ /// output directories and the collision policy. `None` falls back to the
+ /// profile's stored value (and, for output, ultimately to the source dir).
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct RunInputs {
+     /// Directory scanned for primary files.
+     pub source: PathBuf,
+@@ -504,35 +506,34 @@ fn resolve_file(
+                 Diagnostic::error(DiagCode::OverlappingRules, format!("tracks[{}]", rules[0]))
+                     .for_file(&primary.path)
+                     .with("rule_a", format!("tracks[{}]", rules[0]))
+                     .with("rule_b", format!("tracks[{}]", rules[1]))
+                     .with("track", tid.to_string()),
+             );
+         }
+     }
+ 
+     let output = render_output(profile, primary, output_dir, &mut diagnostics);
++    let title = resolve_title(profile, primary);
++    let tags = resolve_tags(profile);
+ 
+     let plan = output.map(|output| Plan {
+         source: primary.path.clone(),
+         output,
+         assignments,
+         attachments: AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         },
+         chapters: ChapterSource::Keep,
+-        tags: TagFlags {
+-            global_keep: true,
+-            track_keep: true,
+-        },
+-        title: TitleAction::Keep,
++        tags,
++        title,
+     });
+ 
+     FileReport {
+         source: primary.path.clone(),
+         identifier: primary.identifier.whole.clone(),
+         plan,
+         diagnostics,
+     }
+ }
+ 
+@@ -674,20 +675,56 @@ fn render_output(
+ // non-matching multi-byte tail must never be sliced into.
+ fn strip_mkv_suffix(name: &str) -> &str {
+     let len = name.len();
+     if len >= 4 && name.is_char_boundary(len - 4) && name[len - 4..].eq_ignore_ascii_case(".mkv") {
+         &name[..len - 4]
+     } else {
+         name
+     }
+ }
+ 
++// Resolves `profile.title` to a `TitleAction` (spec 4.9). Unlike
++// `render_output`'s filename, a title has no path-separator or empty-name
++// invariant: an empty rendered title is a legitimate `Set("")`, so a
++// template's render always passes through unchecked. The Ctx mirrors
++// `render_output`'s exactly, including `source_stem`: validate.rs allows
++// `source_stem` in `title.template` identically to `output.filename.template`
++// (see `validate::validate`), so the two templates' available fields must
++// stay in lockstep. A parse failure or an unexpected keyword cannot occur
++// post-validate (validate.rs rejects both at config time); the fallback to
++// `Keep` is defensive only, never a panic.
++fn resolve_title(profile: &Profile, primary: &PrimaryFile) -> TitleAction {
++    match &profile.title {
++        TitleCfg::Keyword(k) if k == "clear" => TitleAction::Clear,
++        TitleCfg::Keyword(_) => TitleAction::Keep,
++        TitleCfg::Template(block) => {
++            let mut ctx = primary.identifier.to_ctx();
++            if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
++                ctx.set("source_stem", stem);
++            }
++            match Template::parse(&block.template) {
++                Ok(t) => TitleAction::Set(t.render_literal(&ctx)),
++                Err(_) => TitleAction::Keep,
++            }
++        }
++    }
++}
++
++// Resolves `profile.tags` to a `TagFlags` (spec 4.9); a direct KeepDrop ->
++// bool mapping, no plan-time validation needed.
++fn resolve_tags(profile: &Profile) -> TagFlags {
++    TagFlags {
++        global_keep: profile.tags.global == KeepDrop::Keep,
++        track_keep: profile.tags.track == KeepDrop::Keep,
++    }
++}
++
+ // A rendered output must never equal an input path anywhere in the batch:
+ // every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
+ // Batch-wide because one primary's output can equal a donor a *different*
+ // primary reads from; `Assignment.source` already carries that donor path
+ // (or the primary path, for a primary-source rule), so the union of every
+ // file's assignment sources plus the primaries is the complete input set.
+ // Runs before `finalize_plans` drops anything, so every file's assignments
+ // are still present to gather from.
+ fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf]) {
+     let mut inputs: BTreeSet<PathBuf> = primary_paths.iter().cloned().collect();
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index e686d58..19c36c1 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -776,20 +776,144 @@ fn on_disk_collision_under_error_is_error_and_drops_plan() {
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::OutputCollision)
+         .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+     assert_eq!(d.severity, Severity::Error);
+ }
+ 
++// Task 6: `title: clear` resolves to `TitleAction::Clear`.
++#[test]
++fn title_clear_resolves_to_clear() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: clear
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
++}
++
++// Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
++// resolution path (not just the Task-4 hardcoded default).
++#[test]
++fn title_keep_resolves_to_keep() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: keep
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
++}
++
++// Task 6: a title template renders via the same literal-mode engine as the
++// filename template; `{season}` is a raw capture (no filter applied).
++#[test]
++fn title_template_renders_raw_capture_into_set() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: { template: 'Show S{season}' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.title,
++        muxsmith_core::planner::TitleAction::Set("Show S03".into())
++    );
++}
++
++// Task 6: title has no path-separator/empty-name invariants (unlike
++// filenames, spec 4.9 vs 4.8): a template rendering to an empty string is a
++// legitimate `Set("")`, not an error.
++#[test]
++fn title_template_rendering_empty_is_a_legitimate_set() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
++title: { template: '{x}' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.title,
++        muxsmith_core::planner::TitleAction::Set(String::new())
++    );
++}
++
++// Task 6: `source_stem` is available to a title template, exactly as it is
++// to output.filename templates (validate.rs allows it identically for
++// both, so the resolve-time Ctx must supply it identically too).
++#[test]
++fn title_template_supports_source_stem_field() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: { template: '{source_stem}' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.title,
++        muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
++    );
++}
++
++// Task 6: `tags: { global: drop, track: keep }` resolves to the matching
++// `TagFlags`.
++#[test]
++fn tags_global_drop_track_keep_resolves_to_flags() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tags: { global: drop, track: keep }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.tags,
++        muxsmith_core::planner::TagFlags {
++            global_keep: false,
++            track_keep: true,
++        }
++    );
++}
++
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: audio, language: zz } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     assert!(

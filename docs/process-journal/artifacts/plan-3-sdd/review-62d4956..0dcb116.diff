@@ -1,0 +1,3197 @@
+# Review package: 62d4956..0dcb116
+
+## Commits
+0dcb116 test(command): reference-example golden and live mkvmerge acceptance
+afa8074 feat(command): attachments, chapters, and tags argv
+61ab07c feat(command): per-track property options and multi-input grouping
+d55f19d fix(command): exclude unmatched donor sources from input groups
+78ee2e1 feat(command): global section and track-order
+3283552 feat(planner): resolve attachments (rules, unmatched, external adds)
+aa045db feat(planner): resolve chapters (keep/drop/external)
+693c38f feat(planner): resolve title and tags
+2706cda feat(planner): resolve settable changes and validate plan-time language values
+61dcf4f feat(planner): enrich Plan and Assignment with resolution fields (defaults)
+18457c6 feat(matcher): match attachment rules via Matchable
+8a2defc refactor(matcher): generalize matches over a Matchable trait
+b40c084 feat(identify): parse attachments and chapters from -J
+
+## Files changed
+ crates/muxsmith-core/src/command.rs                | 263 +++++++++
+ crates/muxsmith-core/src/identify.rs               | 153 +++++-
+ crates/muxsmith-core/src/lib.rs                    |   1 +
+ crates/muxsmith-core/src/matcher.rs                | 124 ++++-
+ crates/muxsmith-core/src/planner.rs                | 346 +++++++++++-
+ crates/muxsmith-core/src/report.rs                 |   2 +-
+ crates/muxsmith-core/tests/command.rs              | 589 ++++++++++++++++++++
+ crates/muxsmith-core/tests/command_integration.rs  | 277 ++++++++++
+ .../tests/fixtures/identify/reference-donor.json   |  21 +
+ .../tests/fixtures/identify/reference-primary.json | 124 +++++
+ .../tests/fixtures/identify/with-attachments.json  |  30 ++
+ crates/muxsmith-core/tests/planner_resolution.rs   | 592 ++++++++++++++++++++-
+ 12 files changed, 2489 insertions(+), 33 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/command.rs b/crates/muxsmith-core/src/command.rs
+new file mode 100644
+index 0000000..f5fbc1d
+--- /dev/null
++++ b/crates/muxsmith-core/src/command.rs
+@@ -0,0 +1,263 @@
++//! Renders a resolved [`Plan`] into the mkvmerge argument vector (spec 4.9).
++//! `command` produces argv only: no process invocation, no filesystem
++//! access beyond the paths already carried in the `Plan`. The canonical
++//! ordering (global section, then one input group per distinct source, then
++//! `--track-order`) is locked by the Task 9-11 golden tests: the global
++//! section, multi-group input handling, track selection, and per-track
++//! property options (Tasks 9-10), plus the per-group
++//! attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11).
++
++use std::path::{Path, PathBuf};
++
++use crate::planner::{AppliedChange, ChapterSource, Plan, PrimaryAttachments, TitleAction};
++use crate::profile::match_expr::Scalar;
++
++/// One track-selection category: the `-J` `type` string it matches, and the
++/// pair of mkvmerge flags that select it or exclude it entirely. The
++/// no-selection flag name does not mechanically derive from the category
++/// name (`--no-video`/`--no-subtitles`/`--no-buttons` are singular-vs-plural
++/// inconsistent with their select-flag counterparts), so both are spelled
++/// out rather than templated.
++struct Category {
++    kind: &'static str,
++    select_flag: &'static str,
++    no_flag: &'static str,
++}
++
++/// Track categories in mkvmerge's fixed selection order (spec 4.9 item 2d).
++const CATEGORIES: [Category; 4] = [
++    Category {
++        kind: "video",
++        select_flag: "--video-tracks",
++        no_flag: "--no-video",
++    },
++    Category {
++        kind: "audio",
++        select_flag: "--audio-tracks",
++        no_flag: "--no-audio",
++    },
++    Category {
++        kind: "subtitles",
++        select_flag: "--subtitle-tracks",
++        no_flag: "--no-subtitles",
++    },
++    Category {
++        kind: "buttons",
++        select_flag: "--button-tracks",
++        no_flag: "--no-buttons",
++    },
++];
++
++/// Renders `plan` into the mkvmerge argument vector, without the leading
++/// `mkvmerge` program name (spec 4.9). Deterministic: the global section,
++/// then one input group per distinct source (the primary always first),
++/// then `--track-order`.
++pub fn command(plan: &Plan) -> Vec<String> {
++    let mut argv: Vec<String> = Vec::new();
++    let groups = input_groups(plan);
++
++    push_global(&mut argv, plan);
++    for source in &groups {
++        push_group(&mut argv, plan, source);
++    }
++    push_track_order(&mut argv, plan, &groups);
++
++    argv
++}
++
++// Computes the input groups: the primary is always group 0, then every
++// distinct `Assignment::source` with a resolved `track_id` not already
++// present, in first-appearance order (spec 4.9 item 2). A source whose only
++// assignment(s) have `track_id: None` (an external rule that matched no
++// track) contributes no group: opening it would render an empty group
++// (`--no-video --no-audio --no-subtitles --no-buttons ( <source> )`) that
++// mkvmerge may reject.
++fn input_groups(plan: &Plan) -> Vec<PathBuf> {
++    let mut groups = vec![plan.source.clone()];
++    for a in &plan.assignments {
++        if a.track_id.is_some() && !groups.iter().any(|g| g.as_path() == a.source.as_path()) {
++            groups.push(a.source.clone());
++        }
++    }
++    groups
++}
++
++// Index of `path` within `groups`. Every assignment source is always one of
++// the groups `input_groups` computed (it is built from those same sources),
++// so a lookup miss here would mean `input_groups` itself is wrong, not a
++// legitimate "unknown source" case worth propagating as an error.
++fn group_index(groups: &[PathBuf], path: &Path) -> usize {
++    groups
++        .iter()
++        .position(|g| g.as_path() == path)
++        .expect("assignment source is always one of the computed input groups")
++}
++
++// The global section: `--output`, title, external chapters, `--attach-file`
++// per add (spec 4.9 item 1).
++fn push_global(argv: &mut Vec<String>, plan: &Plan) {
++    argv.push("--output".to_string());
++    argv.push(plan.output.display().to_string());
++
++    match &plan.title {
++        TitleAction::Keep => {}
++        TitleAction::Clear => {
++            argv.push("--title".to_string());
++            argv.push(String::new());
++        }
++        TitleAction::Set(s) => {
++            argv.push("--title".to_string());
++            argv.push(s.clone());
++        }
++    }
++
++    if let ChapterSource::External(path) = &plan.chapters {
++        argv.push("--chapters".to_string());
++        argv.push(path.display().to_string());
++    }
++
++    for add in &plan.attachments.add_files {
++        argv.push("--attach-file".to_string());
++        argv.push(add.display().to_string());
++    }
++}
++
++// One input group's argv (spec 4.9 item 2), in canonical order: chapters
++// (a), tags (b), attachments (c), track selection (d), per-track properties
++// (e), then the bracketed source (f).
++fn push_group(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
++    push_group_chapters(argv, plan);
++    push_group_tags(argv, plan);
++    push_group_attachments(argv, plan, source);
++    push_track_selection(argv, plan, source);
++    push_track_properties(argv, plan, source);
++
++    argv.push("(".to_string());
++    argv.push(source.display().to_string());
++    argv.push(")".to_string());
++}
++
++// `--no-chapters` on every input group when chapters are dropped or replaced
++// by an external file (spec 4.9 item 2a); `Keep` emits nothing.
++fn push_group_chapters(argv: &mut Vec<String>, plan: &Plan) {
++    match &plan.chapters {
++        ChapterSource::Keep => {}
++        ChapterSource::Drop | ChapterSource::External(_) => {
++            argv.push("--no-chapters".to_string());
++        }
++    }
++}
++
++// `--no-global-tags`/`--no-track-tags` on every input group per `plan.tags`
++// (spec 4.9 item 2b).
++fn push_group_tags(argv: &mut Vec<String>, plan: &Plan) {
++    if !plan.tags.global_keep {
++        argv.push("--no-global-tags".to_string());
++    }
++    if !plan.tags.track_keep {
++        argv.push("--no-track-tags".to_string());
++    }
++}
++
++// Attachment filter for one group (spec 4.9 item 2c, D10). The primary group
++// (`source == plan.source`) follows `PrimaryAttachments`; every donor group
++// always gets `--no-attachments` since donor attachments never flow into the
++// output.
++fn push_group_attachments(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
++    if source != plan.source.as_path() {
++        argv.push("--no-attachments".to_string());
++        return;
++    }
++
++    match &plan.attachments.primary {
++        PrimaryAttachments::KeepAll => {}
++        PrimaryAttachments::Subset(ids) => {
++            argv.push("--attachments".to_string());
++            argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
++        }
++        PrimaryAttachments::DropAll => argv.push("--no-attachments".to_string()),
++    }
++}
++
++// Track selection for one group, categories in fixed order (spec 4.9 item
++// 2d): assigned ids of that category in this group, ascending, if any;
++// otherwise the category's `--no-*` flag.
++fn push_track_selection(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
++    for cat in &CATEGORIES {
++        let mut ids: Vec<u64> = plan
++            .assignments
++            .iter()
++            .filter(|a| a.source.as_path() == source && a.track_kind.as_deref() == Some(cat.kind))
++            .filter_map(|a| a.track_id)
++            .collect();
++        ids.sort_unstable();
++
++        if ids.is_empty() {
++            argv.push(cat.no_flag.to_string());
++        } else {
++            argv.push(cat.select_flag.to_string());
++            argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
++        }
++    }
++}
++
++// Per-track property options for one group (spec 4.9 item 2e): for each
++// assigned track in this group (track_id ascending), for each
++// `AppliedChange` on that assignment (property name ascending; the
++// `changes` vec is already property-ascending from the planner, sorted
++// again here defensively), the mkvmerge option for the property followed
++// by `<tid>:<value>`.
++fn push_track_properties(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
++    let mut tracks: Vec<(u64, &[AppliedChange])> = plan
++        .assignments
++        .iter()
++        .filter(|a| a.source.as_path() == source)
++        .filter_map(|a| a.track_id.map(|tid| (tid, a.changes.as_slice())))
++        .collect();
++    tracks.sort_by_key(|(tid, _)| *tid);
++
++    for (tid, changes) in tracks {
++        let mut changes: Vec<&AppliedChange> = changes.iter().collect();
++        changes.sort_by(|a, b| a.property.cmp(&b.property));
++
++        for c in changes {
++            let (_, option) = crate::capability::settable(&c.property)
++                .expect("changes carry only validated settable properties");
++            argv.push(option.to_string());
++            argv.push(format!("{tid}:{}", value_str(&c.value)));
++        }
++    }
++}
++
++// Renders a Scalar as the plain value string a per-track property option
++// takes: `1`/`0` for booleans (mkvmerge's flag encoding), the raw string
++// for `Str` (no quoting), `to_string()` otherwise.
++fn value_str(value: &Scalar) -> String {
++    match value {
++        Scalar::Bool(b) => if *b { "1" } else { "0" }.to_string(),
++        Scalar::Str(s) => s.clone(),
++        Scalar::Int(i) => i.to_string(),
++        Scalar::Float(f) => f.to_string(),
++    }
++}
++
++// `--track-order g:tid,...`: one entry per assignment with a resolved
++// track_id, in profile (assignment) order, `g` the input group index of
++// that assignment's source (spec 4.9 item 3). Omitted entirely if no
++// assignment has a track.
++fn push_track_order(argv: &mut Vec<String>, plan: &Plan, groups: &[PathBuf]) {
++    let entries: Vec<String> = plan
++        .assignments
++        .iter()
++        .filter_map(|a| {
++            a.track_id
++                .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
++        })
++        .collect();
++
++    if entries.is_empty() {
++        return;
++    }
++    argv.push("--track-order".to_string());
++    argv.push(entries.join(","));
++}
+diff --git a/crates/muxsmith-core/src/identify.rs b/crates/muxsmith-core/src/identify.rs
+index 13c8e5b..297cf6c 100644
+--- a/crates/muxsmith-core/src/identify.rs
++++ b/crates/muxsmith-core/src/identify.rs
+@@ -1,15 +1,14 @@
+ //! Source-file identification via `mkvmerge -J` (spec 5.5, 9). Wraps the
+-//! external process, parses its JSON into a track model, and caches results
+-//! in memory keyed on path + mtime + size so dry-run and run never re-identify
+-//! an unchanged file (spec 5.5). Attachments/chapters parsing arrives in
+-//! Plan 3 where command generation consumes them.
++//! external process, parses its JSON into a track/attachment/chapter model,
++//! and caches results in memory keyed on path + mtime + size so dry-run and
++//! run never re-identify an unchanged file (spec 5.5).
+ 
+ use std::collections::BTreeMap;
+ use std::collections::HashMap;
+ use std::path::{Path, PathBuf};
+ 
+ use serde_json::Value;
+ 
+ use crate::capability::runtime::{Mkvmerge, RuntimeError};
+ 
+ /// A scalar track-property value from `-J` output. Non-scalar JSON (arrays,
+@@ -70,37 +69,79 @@ impl Track {
+     pub fn get(&self, name: &str) -> Option<PropValue> {
+         match name {
+             "type" => Some(PropValue::Str(self.kind.clone())),
+             "codec" => Some(PropValue::Str(self.codec.clone())),
+             "id" => Some(PropValue::Int(self.id as i64)),
+             other => self.properties.get(other).cloned(),
+         }
+     }
+ }
+ 
++/// One attachment from `-J` output (a font, cover image, or other embedded
++/// file). The schema's attachment `type` field is not parsed here: it is not
++/// a matchable property.
++#[derive(Debug, Clone, PartialEq)]
++pub struct Attachment {
++    /// The `-J` attachment `id` (mkvmerge's per-file attachment index).
++    pub id: u64,
++    /// The `-J` `file_name` (the attachment's stored name, not the source
++    /// file's).
++    pub file_name: String,
++    /// The `-J` `size` in bytes.
++    pub size: u64,
++    /// The `-J` `content_type` (a MIME type), if mkvmerge reported one.
++    pub content_type: Option<String>,
++    /// The `-J` `description`, if the container carries one.
++    pub description: Option<String>,
++    /// The nested `properties.uid`, if the attachment has an explicit UID.
++    pub uid: Option<u64>,
++}
++
++impl Attachment {
++    /// Looks up a matchable property by name, unifying the top-level fields
++    /// into the same flat namespace [`Track::get`] exposes for tracks.
++    /// Returns `None` if the attachment carries no such property.
++    pub fn get(&self, name: &str) -> Option<PropValue> {
++        match name {
++            "file_name" => Some(PropValue::Str(self.file_name.clone())),
++            "content_type" => self.content_type.clone().map(PropValue::Str),
++            "description" => self.description.clone().map(PropValue::Str),
++            "id" => Some(PropValue::Int(self.id as i64)),
++            "size" => Some(PropValue::Int(self.size as i64)),
++            _ => None,
++        }
++    }
++}
++
+ /// The result of identifying one source file (spec 5.5). Carries the track
+ /// model plus enough container status to tell an identifiable media file from
+ /// a non-media file (mkvmerge exits 0 either way).
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct Identification {
+     /// The `file_name` mkvmerge echoed back.
+     pub file_name: String,
+     /// `identification_format_version`; compared against
+     /// [`crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION`] to detect
+     /// schema skew (spec 9.2).
+     pub format_version: u64,
+     /// `container.recognized`.
+     pub container_recognized: bool,
+     /// `container.supported`.
+     pub container_supported: bool,
+     /// The parsed tracks (empty for a non-media file).
+     pub tracks: Vec<Track>,
++    /// The parsed attachments (empty if the container carries none).
++    pub attachments: Vec<Attachment>,
++    /// The total chapter entry count, summed over the `-J` `chapters` array's
++    /// `num_entries` (a file has at most one chapter edition in this array,
++    /// but the sum is defensive against more).
++    pub chapters: u64,
+ }
+ 
+ impl Identification {
+     /// Whether the file is a usable media container: recognized, supported, and
+     /// carrying at least one track. A file matching an extension list but not
+     /// identifiable is handled by discovery, not treated as a source.
+     pub fn is_identifiable(&self) -> bool {
+         self.container_recognized && self.container_supported && !self.tracks.is_empty()
+     }
+ 
+@@ -116,33 +157,49 @@ impl Identification {
+             .unwrap_or(false);
+         let container_supported = container
+             .and_then(|c| c.get("supported"))
+             .and_then(Value::as_bool)
+             .unwrap_or(false);
+         let tracks = v
+             .get("tracks")
+             .and_then(Value::as_array)
+             .map(|arr| arr.iter().filter_map(parse_track).collect())
+             .unwrap_or_default();
++        let attachments = v
++            .get("attachments")
++            .and_then(Value::as_array)
++            .map(|arr| arr.iter().filter_map(parse_attachment).collect())
++            .unwrap_or_default();
++        let chapters = v
++            .get("chapters")
++            .and_then(Value::as_array)
++            .map(|arr| {
++                arr.iter()
++                    .filter_map(|c| c.get("num_entries").and_then(Value::as_u64))
++                    .sum()
++            })
++            .unwrap_or(0);
+         Ok(Identification {
+             file_name: v
+                 .get("file_name")
+                 .and_then(Value::as_str)
+                 .unwrap_or("")
+                 .to_string(),
+             format_version: v
+                 .get("identification_format_version")
+                 .and_then(Value::as_u64)
+                 .unwrap_or(0),
+             container_recognized,
+             container_supported,
+             tracks,
++            attachments,
++            chapters,
+         })
+     }
+ }
+ 
+ fn parse_track(v: &Value) -> Option<Track> {
+     let id = v.get("id").and_then(Value::as_u64)?;
+     let kind = v.get("type").and_then(Value::as_str)?.to_string();
+     let codec = v
+         .get("codec")
+         .and_then(Value::as_str)
+@@ -157,20 +214,48 @@ fn parse_track(v: &Value) -> Option<Track> {
+         }
+     }
+     Some(Track {
+         id,
+         kind,
+         codec,
+         properties,
+     })
+ }
+ 
++/// Parses one `-J` attachment entry. Required fields (`id`, `file_name`,
++/// `size`) missing or wrong-typed drop the entry, mirroring [`parse_track`].
++fn parse_attachment(v: &Value) -> Option<Attachment> {
++    let id = v.get("id").and_then(Value::as_u64)?;
++    let file_name = v.get("file_name").and_then(Value::as_str)?.to_string();
++    let size = v.get("size").and_then(Value::as_u64)?;
++    let content_type = v
++        .get("content_type")
++        .and_then(Value::as_str)
++        .map(str::to_string);
++    let description = v
++        .get("description")
++        .and_then(Value::as_str)
++        .map(str::to_string);
++    let uid = v
++        .get("properties")
++        .and_then(|p| p.get("uid"))
++        .and_then(Value::as_u64);
++    Some(Attachment {
++        id,
++        file_name,
++        size,
++        content_type,
++        description,
++        uid,
++    })
++}
++
+ /// Failure identifying a file. Data only; call sites render it to diagnostics.
+ #[derive(Debug, Clone)]
+ pub enum IdentifyError {
+     /// The mkvmerge process failed (spawn, non-zero, not found).
+     Runtime(RuntimeError),
+     /// The `-J` output was not valid JSON in the expected shape.
+     Json(String),
+     /// The file could not be stat'd for the cache key.
+     Stat(String),
+ }
+@@ -357,11 +442,71 @@ mod tests {
+             PropValue::from_json(&json!(1.5)),
+             Some(PropValue::Float(1.5))
+         );
+         assert_eq!(
+             PropValue::from_json(&json!("x")),
+             Some(PropValue::Str("x".into()))
+         );
+         assert_eq!(PropValue::from_json(&json!([1, 2])), None);
+         assert_eq!(PropValue::from_json(&json!(null)), None);
+     }
++
++    #[test]
++    fn parses_attachments_with_optional_fields() {
++        let json = r#"{
++          "file_name": "e.mkv",
++          "identification_format_version": 20,
++          "container": { "recognized": true, "supported": true },
++          "tracks": [],
++          "attachments": [
++            { "id": 1, "file_name": "font.ttf", "size": 1234,
++              "content_type": "application/x-truetype-font",
++              "description": "Main font", "properties": { "uid": 99 } },
++            { "id": 2, "file_name": "cover.jpg", "size": 5678, "properties": {} }
++          ],
++          "chapters": [ { "num_entries": 12 } ]
++        }"#;
++        let id = Identification::from_json(json).unwrap();
++        assert_eq!(id.attachments.len(), 2);
++        let a = &id.attachments[0];
++        assert_eq!(a.id, 1);
++        assert_eq!(a.file_name, "font.ttf");
++        assert_eq!(a.size, 1234);
++        assert_eq!(
++            a.content_type.as_deref(),
++            Some("application/x-truetype-font")
++        );
++        assert_eq!(a.description.as_deref(), Some("Main font"));
++        assert_eq!(a.uid, Some(99));
++        assert_eq!(id.attachments[1].content_type, None);
++        assert_eq!(id.attachments[1].description, None);
++        assert_eq!(id.attachments[1].uid, None);
++        assert_eq!(id.chapters, 12);
++    }
++
++    #[test]
++    fn absent_attachments_and_chapters_default_empty() {
++        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
++          "container": { "recognized": true, "supported": true }, "tracks": [] }"#;
++        let id = Identification::from_json(json).unwrap();
++        assert!(id.attachments.is_empty());
++        assert_eq!(id.chapters, 0);
++    }
++
++    #[test]
++    fn attachment_get_exposes_match_properties() {
++        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
++          "container": { "recognized": true, "supported": true }, "tracks": [],
++          "attachments": [ { "id": 3, "file_name": "f.otf", "size": 10,
++            "content_type": "font/otf", "properties": {} } ] }"#;
++        let a = &Identification::from_json(json).unwrap().attachments[0];
++        assert_eq!(a.get("file_name"), Some(PropValue::Str("f.otf".into())));
++        assert_eq!(
++            a.get("content_type"),
++            Some(PropValue::Str("font/otf".into()))
++        );
++        assert_eq!(a.get("description"), None);
++        assert_eq!(a.get("id"), Some(PropValue::Int(3)));
++        assert_eq!(a.get("size"), Some(PropValue::Int(10)));
++        assert_eq!(a.get("nope"), None);
++    }
+ }
+diff --git a/crates/muxsmith-core/src/lib.rs b/crates/muxsmith-core/src/lib.rs
+index 733117c..8051109 100644
+--- a/crates/muxsmith-core/src/lib.rs
++++ b/crates/muxsmith-core/src/lib.rs
+@@ -1,15 +1,16 @@
+ #![deny(missing_docs)]
+ 
+ //! Muxsmith core: all rule evaluation, profile validation, diagnostics and
+ //! template rendering live here (spec 7). This crate emits no user-facing
+ //! prose; it produces diagnostic codes and structured params only (spec
+ //! 5.2, 8.4), for the CLI and GUI renderers to turn into localized text.
+ 
+ pub mod capability;
++pub mod command;
+ pub mod discovery;
+ pub mod identify;
+ pub mod matcher;
+ pub mod planner;
+ pub mod profile;
+ pub mod report;
+ pub mod template;
+diff --git a/crates/muxsmith-core/src/matcher.rs b/crates/muxsmith-core/src/matcher.rs
+index 3454a4d..28afd73 100644
+--- a/crates/muxsmith-core/src/matcher.rs
++++ b/crates/muxsmith-core/src/matcher.rs
+@@ -1,126 +1,159 @@
+ //! Match-expression evaluation (spec 4.3, 4.4). Pure and total: given an
+-//! expression, a track, and a language index, decides membership with no I/O
+-//! and no diagnostics. The correctness core; covered by unit tests here and by
+-//! the planner's fixture tests. Config validity (unknown property, wrong type,
+-//! bad enum value) is checked earlier (validate) or reported by the planner;
+-//! this function assumes a validated expression and answers only "does this
+-//! track match?".
++//! expression, a [`Matchable`] item, and a language index, decides membership
++//! with no I/O and no diagnostics. The correctness core; covered by unit
++//! tests here and by the planner's fixture tests. Config validity (unknown
++//! property, wrong type, bad enum value) is checked earlier (validate) or
++//! reported by the planner; this function assumes a validated expression and
++//! answers only "does this item match?".
+ 
+ use crate::capability::codec_kind_prefixes;
+ use crate::capability::runtime::LanguageIndex;
+ use crate::capability::{PropType, matchable_type};
+-use crate::identify::{PropValue, Track};
++use crate::identify::{Attachment, PropValue, Track};
+ use crate::profile::match_expr::{MatchExpr, Scalar};
+ 
+-/// Whether `track` satisfies `expr` (spec 4.3): the conjunction of all present
++/// A property-bearing item the matcher can evaluate a [`MatchExpr`] against.
++/// [`Track`] and [`Attachment`] implement it, each reusing the same match
++/// algebra over its own flat property namespace.
++pub trait Matchable {
++    /// The value of a match property, or `None` if absent.
++    fn get(&self, prop: &str) -> Option<PropValue>;
++}
++
++impl Matchable for Track {
++    fn get(&self, prop: &str) -> Option<PropValue> {
++        Track::get(self, prop)
++    }
++}
++
++impl Matchable for Attachment {
++    fn get(&self, prop: &str) -> Option<PropValue> {
++        Attachment::get(self, prop)
++    }
++}
++
++// `Iterator::filter`'s predicate takes `&Self::Item`, so filtering an
++// iterator of `&Track` (e.g. `Vec<Track>::iter()`) hands the predicate a
++// `&&Track`. Generic trait-bound unification does not apply deref coercion
++// the way a concrete `&Track` parameter would, so without this blanket impl
++// `M` would resolve to `&Track` and fail the `Matchable` bound at existing
++// call sites. This keeps those sites compiling unchanged.
++impl<M: Matchable> Matchable for &M {
++    fn get(&self, prop: &str) -> Option<PropValue> {
++        (**self).get(prop)
++    }
++}
++
++/// Whether `item` satisfies `expr` (spec 4.3): the conjunction of all present
+ /// parts. `lang` normalizes language tokens so ISO 639-2 and BCP-47 values
+ /// compare equal (spec 4.4).
+-pub fn matches(expr: &MatchExpr, track: &Track, lang: &LanguageIndex) -> bool {
++pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -> bool {
+     if let Some(exact) = &expr.exact {
+         for (prop, want) in exact {
+-            if !exact_matches(prop, want, track, lang) {
++            if !exact_matches(prop, want, item, lang) {
+                 return false;
+             }
+         }
+     }
+     if let Some(sub) = &expr.substring {
+         for (prop, needle) in sub {
+-            match track_str(prop, track) {
++            match item_str(prop, item) {
+                 Some(hay) if hay.to_lowercase().contains(&needle.to_lowercase()) => {}
+                 _ => return false,
+             }
+         }
+     }
+     if let Some(rx) = &expr.regex {
+         for (prop, pattern) in rx {
+-            let hay = match track_str(prop, track) {
++            let hay = match item_str(prop, item) {
+                 Some(h) => h,
+                 None => return false,
+             };
+             // A validated expression compiles; an invalid regex was already an
+             // InvalidRegex config error, so a failure here means no match.
+             match regex::Regex::new(pattern) {
+                 Ok(re) if re.is_match(&hay) => {}
+                 _ => return false,
+             }
+         }
+     }
+     if let Some(any) = &expr.any
+         && !any.is_empty()
+-        && !any.iter().any(|e| matches(e, track, lang))
++        && !any.iter().any(|e| matches(e, item, lang))
+     {
+         return false;
+     }
+     if let Some(not) = &expr.not
+-        && not.iter().any(|e| matches(e, track, lang))
++        && not.iter().any(|e| matches(e, item, lang))
+     {
+         return false;
+     }
+     true
+ }
+ 
+-fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex) -> bool {
++fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &LanguageIndex) -> bool {
+     match prop {
+         // language matches against both `language` and `language_ietf`,
+         // normalized so `de` and `ger` are equal (spec 4.4).
+         "language" => {
+             let Scalar::Str(want) = want else {
+                 return false;
+             };
+             ["language", "language_ietf"]
+                 .iter()
+-                .filter_map(|f| track_str(f, track))
++                .filter_map(|f| item_str(f, item))
+                 .any(|have| lang_eq(want, &have, lang))
+         }
+         // codec_kind is a codec_id prefix match over a curated alias set.
+         "codec_kind" => {
+             let Scalar::Str(kind) = want else {
+                 return false;
+             };
+             let Some(prefixes) = codec_kind_prefixes(kind) else {
+                 return false;
+             };
+-            match track_str("codec_id", track) {
++            match item_str("codec_id", item) {
+                 Some(id) => prefixes.iter().any(|p| id.starts_with(p)),
+                 None => false,
+             }
+         }
+         // A boolean-typed property mkvmerge omitted is Matroska
+         // false-when-absent (spec 4.4): the vanity flags (hearing-impaired,
+         // commentary, ...) are only emitted when set, so absence must
+         // compare equal to `false` for exact matching, same as a track that
+         // reported the flag as `false` explicitly.
+-        _ => match track.get(prop) {
++        _ => match item.get(prop) {
+             Some(have) => scalar_eq(want, &have),
+             None => match matchable_type(prop) {
+                 Some(PropType::Boolean) => scalar_eq(want, &PropValue::Bool(false)),
+                 _ => false,
+             },
+         },
+     }
+ }
+ 
+ /// True when two language tokens denote the same language. Both are normalized
+ /// through the index; if either is unrecognized, fall back to a raw
+ /// case-insensitive compare so unusual-but-equal tags still match.
+ fn lang_eq(a: &str, b: &str, lang: &LanguageIndex) -> bool {
+     match (lang.normalize(a), lang.normalize(b)) {
+         (Some(na), Some(nb)) => na == nb,
+         _ => a.eq_ignore_ascii_case(b),
+     }
+ }
+ 
+-/// The string form of a track property, for substring/regex/language. Only
+-/// `PropValue::Str` yields a value; numeric/boolean properties are not strings.
+-fn track_str(prop: &str, track: &Track) -> Option<String> {
+-    match track.get(prop) {
++/// The string form of a matchable item's property, for substring/regex/
++/// language. Only `PropValue::Str` yields a value; numeric/boolean
++/// properties are not strings.
++fn item_str<M: Matchable>(prop: &str, item: &M) -> Option<String> {
++    match item.get(prop) {
+         Some(PropValue::Str(s)) => Some(s),
+         _ => None,
+     }
+ }
+ 
+ /// Value equality between a profile `Scalar` and a track `PropValue`, with
+ /// int/float cross-comparison (spec 4.3, `exact`). Strings compare
+ /// case-sensitively (language is special-cased before reaching here).
+ fn scalar_eq(want: &Scalar, have: &PropValue) -> bool {
+     match (want, have) {
+@@ -309,11 +342,58 @@ mod tests {
+             &t,
+             &lang()
+         ));
+     }
+ 
+     #[test]
+     fn absent_non_boolean_property_still_does_not_match() {
+         let t = track("subtitles", &[]);
+         assert!(!matches(&expr("exact: { track_name: X }"), &t, &lang()));
+     }
++
++    #[test]
++    fn matches_is_generic_over_matchable() {
++        fn check<M: Matchable>(m: &M) -> bool {
++            matches(&expr("exact: { type: audio }"), m, &lang())
++        }
++        let t = track("audio", &[]);
++        assert!(check(&t));
++    }
++
++    #[test]
++    fn attachment_matching_uses_the_same_algebra() {
++        use crate::identify::Attachment;
++        let font = Attachment {
++            id: 1,
++            file_name: "Roboto.ttf".into(),
++            size: 100,
++            content_type: Some("font/ttf".into()),
++            description: None,
++            uid: None,
++        };
++        assert!(matches(
++            &expr("substring: { file_name: robot }"),
++            &font,
++            &lang()
++        ));
++        assert!(matches(
++            &expr("exact: { content_type: font/ttf }"),
++            &font,
++            &lang()
++        ));
++        assert!(matches(
++            &expr("any:\n  - substring: { file_name: .ttf }\n  - substring: { file_name: .otf }"),
++            &font,
++            &lang()
++        ));
++        assert!(!matches(
++            &expr("exact: { description: whatever }"),
++            &font,
++            &lang()
++        ));
++        assert!(!matches(
++            &expr("substring: { content_type: pdf }"),
++            &font,
++            &lang()
++        ));
++    }
+ }
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 32f3e59..daddeb9 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -5,24 +5,26 @@
+ //! external work is identification, driven through the injected [`Identify`].
+ 
+ use std::collections::{BTreeMap, BTreeSet};
+ use std::path::{Path, PathBuf};
+ 
+ use serde::Serialize;
+ 
+ use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
+ use crate::capability::runtime::LanguageIndex;
+ use crate::discovery::{self, PrimaryFile};
+-use crate::identify::{Identification, Identify};
++use crate::identify::{Attachment, Identification, Identify};
+ use crate::matcher;
+ use crate::profile::match_expr::{MatchExpr, Scalar};
+-use crate::profile::model::{CollisionPolicy, FilenameCfg, Profile, SourceCfg};
++use crate::profile::model::{
++    ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
++};
+ use crate::report::{DiagCode, Diagnostic, Severity};
+ use crate::template::Template;
+ 
+ /// Run inputs, separable from the profile (spec 3): overrides for source and
+ /// output directories and the collision policy. `None` falls back to the
+ /// profile's stored value (and, for output, ultimately to the source dir).
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct RunInputs {
+     /// Directory scanned for primary files.
+     pub source: PathBuf,
+@@ -37,33 +39,117 @@ pub struct RunInputs {
+ /// One resolved rule-to-track assignment. `track_id` is `None` for a satisfied
+ /// `optional` rule that matched nothing (spec 5.1).
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Assignment {
+     /// Index into `profile.tracks`.
+     pub rule_index: usize,
+     /// The source file the track comes from (the primary, or a donor).
+     pub source: PathBuf,
+     /// The resolved `-J` track id, or `None` for an unmatched optional rule.
+     pub track_id: Option<u64>,
++    /// The matched track's `-J` type (`video`/`audio`/`subtitles`/`buttons`),
++    /// needed by `command` to pick `--audio-tracks` vs `--video-tracks` etc.
++    /// `None` exactly when `track_id` is `None`.
++    pub track_kind: Option<String>,
++    /// Settable changes to apply to the resolved track; empty when the rule has
++    /// no `changes` or matched nothing.
++    pub changes: Vec<AppliedChange>,
++}
++
++/// A resolved settable change on an assignment (spec 4.4). Format-neutral: the
++/// property name and value, not an mkvmerge flag; `command` maps the property
++/// to its option via `capability::settable`.
++#[derive(Debug, Clone, PartialEq, Serialize)]
++pub struct AppliedChange {
++    /// Settable property name (spec 4.4 table key), e.g. `language`,
++    /// `track_name`.
++    pub property: String,
++    /// The value to set.
++    pub value: Scalar,
++}
++
++/// What happens to the output's chapters (spec 4.9).
++#[derive(Debug, Clone, PartialEq, Serialize)]
++#[serde(tag = "kind", rename_all = "snake_case")]
++pub enum ChapterSource {
++    /// mkvmerge default (no `--no-chapters`).
++    Keep,
++    /// `--no-chapters` on every input group.
++    Drop,
++    /// `--chapters <path>` globally, `--no-chapters` on every input group.
++    External(PathBuf),
++}
++
++/// Output tag handling (spec 4.9).
++#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
++pub struct TagFlags {
++    /// Keep global (container) tags; `false` -> `--no-global-tags`.
++    pub global_keep: bool,
++    /// Keep per-track tags; `false` -> `--no-track-tags`.
++    pub track_keep: bool,
++}
++
++/// Output title handling (spec 4.9).
++#[derive(Debug, Clone, PartialEq, Serialize)]
++#[serde(tag = "kind", rename_all = "snake_case")]
++pub enum TitleAction {
++    /// mkvmerge default (no `--title`).
++    Keep,
++    /// `--title ""` (force empty).
++    Clear,
++    /// `--title <s>` (rendered template).
++    Set(String),
++}
++
++/// How the primary file's existing attachments are treated (spec 4.9). Donor
++/// files always get `--no-attachments` (D10), so this concerns the primary
++/// only.
++#[derive(Debug, Clone, PartialEq, Serialize)]
++#[serde(tag = "kind", rename_all = "snake_case")]
++pub enum PrimaryAttachments {
++    /// Keep all (no attachment filter on the primary group).
++    KeepAll,
++    /// Keep exactly these attachment ids (`--attachments id,id`); non-empty.
++    Subset(Vec<u64>),
++    /// Keep none (`--no-attachments`).
++    DropAll,
++}
++
++/// Resolved attachment disposition for one plan (spec 4.9, D10).
++#[derive(Debug, Clone, PartialEq, Serialize)]
++pub struct AttachmentPlan {
++    /// Disposition of the primary's own attachments.
++    pub primary: PrimaryAttachments,
++    /// External files to attach via `--attach-file`, from `add` locators, in
++    /// resolution order.
++    pub add_files: Vec<PathBuf>,
+ }
+ 
+ /// The fully resolved plan for one primary (spec 3). Present only when the file
+ /// has no error-severity diagnostic.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Plan {
+     /// The primary source file.
+     pub source: PathBuf,
+     /// The rendered absolute output path.
+     pub output: PathBuf,
+     /// One entry per track rule, in profile order (also the output track order,
+     /// spec 4.5).
+     pub assignments: Vec<Assignment>,
++    /// Resolved attachment disposition (spec 4.9).
++    pub attachments: AttachmentPlan,
++    /// Resolved chapters disposition (spec 4.9).
++    pub chapters: ChapterSource,
++    /// Resolved tag flags (spec 4.9).
++    pub tags: TagFlags,
++    /// Resolved output title (spec 4.9).
++    pub title: TitleAction,
+ }
+ 
+ /// Per-file result: the plan (if any) and every diagnostic about the file.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct FileReport {
+     /// The primary source file.
+     pub source: PathBuf,
+     /// The identifier matched from its basename.
+     pub identifier: String,
+     /// The plan, or `None` if any diagnostic is error-severity (spec 5.1).
+@@ -290,20 +376,22 @@ fn resolve_file(
+                                     DiagCode::MissingExternal,
+                                     format!("{base}.source.external"),
+                                 )
+                                 .for_file(&primary.path),
+                             );
+                         }
+                         assignments.push(Assignment {
+                             rule_index: ri,
+                             source: primary.path.clone(),
+                             track_id: None,
++                            track_kind: None,
++                            changes: vec![],
+                         });
+                         continue;
+                     }
+                     1 => {
+                         let donor = hits.into_iter().next().unwrap();
+                         if primary_paths.contains(&donor) {
+                             diagnostics.push(
+                                 Diagnostic::warning(
+                                     DiagCode::DonorIsPrimary,
+                                     format!("{base}.source.external"),
+@@ -320,122 +408,204 @@ fn resolve_file(
+                                         DiagCode::UnidentifiableSource,
+                                         format!("{base}.source.external"),
+                                     )
+                                     .for_file(&primary.path)
+                                     .with("detail", format!("{e}")),
+                                 );
+                                 assignments.push(Assignment {
+                                     rule_index: ri,
+                                     source: primary.path.clone(),
+                                     track_id: None,
++                                    track_kind: None,
++                                    changes: vec![],
+                                 });
+                                 continue;
+                             }
+                         }
+                     }
+                     n => {
+                         diagnostics.push(
+                             Diagnostic::error(
+                                 DiagCode::AmbiguousExternal,
+                                 format!("{base}.source.external"),
+                             )
+                             .for_file(&primary.path)
+                             .with("count", n.to_string()),
+                         );
+                         assignments.push(Assignment {
+                             rule_index: ri,
+                             source: primary.path.clone(),
+                             track_id: None,
++                            track_kind: None,
++                            changes: vec![],
+                         });
+                         continue;
+                     }
+                 }
+             }
+         };
+ 
+-        let matched: Vec<u64> = source_ident
++        let matched: Vec<(u64, String)> = source_ident
+             .tracks
+             .iter()
+             .filter(|t| matcher::matches(&rule.match_expr, t, lang))
+-            .map(|t| t.id)
++            .map(|t| (t.id, t.kind.clone()))
+             .collect();
+ 
+         match matched.len() {
+             0 => {
+                 if !rule.optional {
+                     diagnostics.push(
+                         Diagnostic::error(DiagCode::MissingTrack, format!("{base}.match"))
+                             .for_file(&primary.path),
+                     );
+                 }
+                 assignments.push(Assignment {
+                     rule_index: ri,
+                     source: source_path,
+                     track_id: None,
++                    track_kind: None,
++                    changes: vec![],
+                 });
+             }
+             1 => {
+-                let tid = matched[0];
++                let (tid, tkind) = matched[0].clone();
+                 claims
+                     .entry((source_path.clone(), tid))
+                     .or_default()
+                     .push(ri);
++                let changes = resolve_changes(rule, &base, &primary.path, lang, &mut diagnostics);
+                 assignments.push(Assignment {
+                     rule_index: ri,
+                     source: source_path,
+                     track_id: Some(tid),
++                    track_kind: Some(tkind),
++                    changes,
+                 });
+             }
+             n => {
+                 diagnostics.push(
+                     Diagnostic::error(DiagCode::AmbiguousRule, format!("{base}.match"))
+                         .for_file(&primary.path)
+                         .with("count", n.to_string()),
+                 );
+                 assignments.push(Assignment {
+                     rule_index: ri,
+                     source: source_path,
+                     track_id: None,
++                    track_kind: None,
++                    changes: vec![],
+                 });
+             }
+         }
+     }
+ 
+     // OverlappingRules: one track claimed by two or more rules (spec 5.2).
+     for ((_src, tid), rules) in &claims {
+         if rules.len() >= 2 {
+             diagnostics.push(
+                 Diagnostic::error(DiagCode::OverlappingRules, format!("tracks[{}]", rules[0]))
+                     .for_file(&primary.path)
+                     .with("rule_a", format!("tracks[{}]", rules[0]))
+                     .with("rule_b", format!("tracks[{}]", rules[1]))
+                     .with("track", tid.to_string()),
+             );
+         }
+     }
+ 
+     let output = render_output(profile, primary, output_dir, &mut diagnostics);
++    let title = resolve_title(profile, primary);
++    let tags = resolve_tags(profile);
++    let chapters = resolve_chapters(profile, primary, primary_dir, &mut diagnostics);
++    let attachments = resolve_attachments(
++        profile,
++        primary,
++        primary_dir,
++        &ident.attachments,
++        lang,
++        &mut diagnostics,
++    );
+ 
+     let plan = output.map(|output| Plan {
+         source: primary.path.clone(),
+         output,
+         assignments,
++        attachments,
++        chapters,
++        tags,
++        title,
+     });
+ 
+     FileReport {
+         source: primary.path.clone(),
+         identifier: primary.identifier.whole.clone(),
+         plan,
+         diagnostics,
+     }
+ }
+ 
++// Builds the AppliedChange list for a track a rule resolved to, from the
++// rule's `changes` map (spec 4.4). Iterates the BTreeMap in key order, so the
++// result is already property-name ascending. Validates a `language` value
++// against the runtime LanguageIndex at the point of application (plan-time
++// InvalidPropertyValue, D2); other settables are carried through unchecked,
++// since validate.rs already checked their type and known-ness at config
++// time (deliberate scope choice, see task brief: batch-wide language
++// consistency with `walk_exact_languages` is not required for v1).
++fn resolve_changes(
++    rule: &TrackRule,
++    base: &str,
++    primary_path: &Path,
++    lang: &LanguageIndex,
++    diags: &mut Vec<Diagnostic>,
++) -> Vec<AppliedChange> {
++    let Some(changes) = &rule.changes else {
++        return Vec::new();
++    };
++    changes
++        .iter()
++        .map(|(property, value)| {
++            if property == "language" {
++                let valid = matches!(value, Scalar::Str(s) if lang.normalize(s).is_some());
++                if !valid {
++                    diags.push(
++                        Diagnostic::error(
++                            DiagCode::InvalidPropertyValue,
++                            format!("{base}.changes.language"),
++                        )
++                        .for_file(primary_path)
++                        .with("property", "language")
++                        .with("value", scalar_display(value)),
++                    );
++                }
++            }
++            AppliedChange {
++                property: property.clone(),
++                value: value.clone(),
++            }
++        })
++        .collect()
++}
++
++// Renders a Scalar as the plain string a diagnostic's `value` param wants:
++// no quoting, no type tag, just the value a user typed (or its literal
++// rendering for non-string types, which only reach here via a mistyped
++// `changes.language`, since the settable `language` is always a string).
++fn scalar_display(value: &Scalar) -> String {
++    match value {
++        Scalar::Bool(b) => b.to_string(),
++        Scalar::Int(i) => i.to_string(),
++        Scalar::Float(f) => f.to_string(),
++        Scalar::Str(s) => s.clone(),
++    }
++}
++
+ // Renders the output path, enforcing the D4 rendered-name invariants. Returns
+ // None (and pushes a diagnostic) if the rendered name is invalid.
+ fn render_output(
+     profile: &Profile,
+     primary: &PrimaryFile,
+     output_dir: &Path,
+     diags: &mut Vec<Diagnostic>,
+ ) -> Option<PathBuf> {
+     // Rendered BEFORE ".mkv" is appended: PathSeparatorInRenderedName must
+     // see the actual rendered value, not one already carrying the enforced
+@@ -511,20 +681,186 @@ fn render_output(
+ // non-matching multi-byte tail must never be sliced into.
+ fn strip_mkv_suffix(name: &str) -> &str {
+     let len = name.len();
+     if len >= 4 && name.is_char_boundary(len - 4) && name[len - 4..].eq_ignore_ascii_case(".mkv") {
+         &name[..len - 4]
+     } else {
+         name
+     }
+ }
+ 
++// Resolves `profile.title` to a `TitleAction` (spec 4.9). Unlike
++// `render_output`'s filename, a title has no path-separator or empty-name
++// invariant: an empty rendered title is a legitimate `Set("")`, so a
++// template's render always passes through unchecked. The Ctx mirrors
++// `render_output`'s exactly, including `source_stem`: validate.rs allows
++// `source_stem` in `title.template` identically to `output.filename.template`
++// (see `validate::validate`), so the two templates' available fields must
++// stay in lockstep. A parse failure or an unexpected keyword cannot occur
++// post-validate (validate.rs rejects both at config time); the fallback to
++// `Keep` is defensive only, never a panic.
++fn resolve_title(profile: &Profile, primary: &PrimaryFile) -> TitleAction {
++    match &profile.title {
++        TitleCfg::Keyword(k) if k == "clear" => TitleAction::Clear,
++        TitleCfg::Keyword(_) => TitleAction::Keep,
++        TitleCfg::Template(block) => {
++            let mut ctx = primary.identifier.to_ctx();
++            if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
++                ctx.set("source_stem", stem);
++            }
++            match Template::parse(&block.template) {
++                Ok(t) => TitleAction::Set(t.render_literal(&ctx)),
++                Err(_) => TitleAction::Keep,
++            }
++        }
++    }
++}
++
++// Resolves `profile.tags` to a `TagFlags` (spec 4.9); a direct KeepDrop ->
++// bool mapping, no plan-time validation needed.
++fn resolve_tags(profile: &Profile) -> TagFlags {
++    TagFlags {
++        global_keep: profile.tags.global == KeepDrop::Keep,
++        track_keep: profile.tags.track == KeepDrop::Keep,
++    }
++}
++
++// Resolves `profile.chapters` to a `ChapterSource` (spec 4.9). The external
++// case reuses the same locator machinery as a track rule's external source
++// (`resolve_locator` plus the 0/1/n uniqueness split), but a chapters file is
++// never run through `Identify`: it is XML/simple-format text consumed
++// directly by `--chapters`, not an mkvmerge source with tracks of its own.
++// `config_path` is the literal top-level `"chapters.external"`, never
++// `tracks[i]`-scoped, since chapters is a singular profile-wide setting.
++// Unlike a track rule's external source, there is no `optional` escape: zero
++// matches is always `MissingExternal`. Both error branches return `Keep` as
++// a placeholder; it never surfaces because the pushed error diagnostic
++// already forces `plan: None` in the caller's later finalize step.
++fn resolve_chapters(
++    profile: &Profile,
++    primary: &PrimaryFile,
++    primary_dir: &Path,
++    diags: &mut Vec<Diagnostic>,
++) -> ChapterSource {
++    match &profile.chapters {
++        ChaptersCfg::Keyword(k) if k == "drop" => ChapterSource::Drop,
++        ChaptersCfg::Keyword(_) => ChapterSource::Keep,
++        ChaptersCfg::External(block) => {
++            let hits =
++                discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
++            match hits.len() {
++                1 => ChapterSource::External(hits.into_iter().next().unwrap()),
++                0 => {
++                    diags.push(
++                        Diagnostic::error(DiagCode::MissingExternal, "chapters.external")
++                            .for_file(&primary.path),
++                    );
++                    ChapterSource::Keep
++                }
++                n => {
++                    diags.push(
++                        Diagnostic::error(DiagCode::AmbiguousExternal, "chapters.external")
++                            .for_file(&primary.path)
++                            .with("count", n.to_string()),
++                    );
++                    ChapterSource::Keep
++                }
++            }
++        }
++    }
++}
++
++// Resolves `profile.attachments` against the primary's own attachments
++// (spec 4.9, D10): donor attachments never flow in, so `primary_attachments`
++// is always the primary's identification's attachments, never a donor's
++// (the command drops donor attachments outright via `--no-attachments`,
++// Task 11).
++//
++// Existing attachments (select/drop/unmatched): walks `rules` in order per
++// attachment; the first matching `select` keeps it, the first matching
++// `drop` drops it, `add` rules are skipped in this pass. An attachment no
++// select/drop rule claims falls to `unmatched`. The kept id set then reduces
++// to the most compact `PrimaryAttachments` the command can express: `KeepAll`
++// when nothing was filtered out, `DropAll` when everything was, `Subset`
++// otherwise (spec 4.9's minimal-argv intent).
++//
++// Adds (D12): each `add` locator is a query that populates the attachment
++// collection, like `select`/`drop`, not a unique slot-filler like a donor
++// source, so ALL its hits are attached, not just one. A rule whose locator
++// matches zero files still gets a `MissingExternal` warning (not an error:
++// an add is an auxiliary payload, so a miss must never suppress the plan) at
++// `attachments.rules[i].add`. After every rule runs, `add_files` is deduped
++// by path, keeping first-seen order, so two rules matching one file attach
++// it once.
++fn resolve_attachments(
++    profile: &Profile,
++    primary: &PrimaryFile,
++    primary_dir: &Path,
++    primary_attachments: &[Attachment],
++    lang: &LanguageIndex,
++    diags: &mut Vec<Diagnostic>,
++) -> AttachmentPlan {
++    let mut kept: Vec<u64> = Vec::new();
++    for att in primary_attachments {
++        let mut decision: Option<bool> = None;
++        for rule in &profile.attachments.rules {
++            if let Some(select) = &rule.select
++                && matcher::matches(select, att, lang)
++            {
++                decision = Some(true);
++                break;
++            }
++            if let Some(drop) = &rule.drop
++                && matcher::matches(drop, att, lang)
++            {
++                decision = Some(false);
++                break;
++            }
++        }
++        if decision.unwrap_or(profile.attachments.unmatched == KeepDrop::Keep) {
++            kept.push(att.id);
++        }
++    }
++
++    let primary_disposition = if kept.len() == primary_attachments.len() {
++        PrimaryAttachments::KeepAll
++    } else if kept.is_empty() {
++        PrimaryAttachments::DropAll
++    } else {
++        kept.sort_unstable();
++        PrimaryAttachments::Subset(kept)
++    };
++
++    let mut add_files: Vec<PathBuf> = Vec::new();
++    for (i, rule) in profile.attachments.rules.iter().enumerate() {
++        let Some(locator) = &rule.add else { continue };
++        let hits = discovery::resolve_locator(locator, primary_dir, &primary.identifier);
++        if hits.is_empty() {
++            diags.push(
++                Diagnostic::warning(
++                    DiagCode::MissingExternal,
++                    format!("attachments.rules[{i}].add"),
++                )
++                .for_file(&primary.path),
++            );
++        }
++        add_files.extend(hits);
++    }
++    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
++    add_files.retain(|p| seen.insert(p.clone()));
++
++    AttachmentPlan {
++        primary: primary_disposition,
++        add_files,
++    }
++}
++
+ // A rendered output must never equal an input path anywhere in the batch:
+ // every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
+ // Batch-wide because one primary's output can equal a donor a *different*
+ // primary reads from; `Assignment.source` already carries that donor path
+ // (or the primary path, for a primary-source rule), so the union of every
+ // file's assignment sources plus the primaries is the complete input set.
+ // Runs before `finalize_plans` drops anything, so every file's assignments
+ // are still present to gather from.
+ fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf]) {
+     let mut inputs: BTreeSet<PathBuf> = primary_paths.iter().cloned().collect();
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index c195cc0..2aa9a26 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -105,21 +105,21 @@ diag_codes! {
+     AttachmentRuleShape => "attachment-rule-shape",
+     /// Static lint: one exact-only rule's conditions subsume another's, so any track matching the stricter rule must overlap the looser one (warning, spec 5.4).
+     ProvableOverlap => "provable-overlap",
+     // Planning-time (produced from Plan 2 on; defined now for a stable catalog)
+     /// A rule matched two or more tracks of its source; strict uniqueness requires exactly one, and `optional` does not relax this (spec 5.2).
+     AmbiguousRule => "ambiguous-rule",
+     /// One track is claimed by two or more rules; every overlap is an error under strict independent uniqueness (spec 2, 5.2).
+     OverlappingRules => "overlapping-rules",
+     /// A non-optional rule matched zero tracks; the hint lists near-misses (same type/language) and which condition each failed (spec 5.2).
+     MissingTrack => "missing-track",
+-    /// An external locator (track rule or chapters) found zero files for a non-optional use (spec 5.2).
++    /// An external locator (track rule, chapters, or attachment add) found zero files for a non-optional use (spec 5.2).
+     MissingExternal => "missing-external",
+     /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
+     AmbiguousExternal => "ambiguous-external",
+     /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
+     UnidentifiableSource => "unidentifiable-source",
+     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
+     OutputCollision => "output-collision",
+     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
+     PathSeparatorInRenderedName => "path-separator-in-rendered-name",
+     /// The rendered output filename has an empty stem or is `.`/`..` (spec 4.8); the ".mkv appended if missing" rule would otherwise produce a hidden or invalid file. `name` param carries the rendered name.
+diff --git a/crates/muxsmith-core/tests/command.rs b/crates/muxsmith-core/tests/command.rs
+new file mode 100644
+index 0000000..01e29e3
+--- /dev/null
++++ b/crates/muxsmith-core/tests/command.rs
+@@ -0,0 +1,589 @@
++//! Golden tests for `command::command` (Task 9-11 progressively lock the
++//! canonical argv contract; Task 9 covered the global section, single
++//! primary input group with track selection, and `--track-order`; Task 10
++//! added multi-group input handling and per-track property options; this
++//! file now also covers Task 11's slice: per-group attachment/chapter/tag
++//! flags).
++
++use muxsmith_core::planner::*;
++use muxsmith_core::profile::match_expr::Scalar;
++use std::path::PathBuf;
++
++fn p(s: &str) -> PathBuf {
++    PathBuf::from(s)
++}
++
++fn change(property: &str, value: Scalar) -> AppliedChange {
++    AppliedChange {
++        property: property.to_string(),
++        value,
++    }
++}
++
++#[test]
++fn global_and_single_video_group() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![Assignment {
++            rule_index: 0,
++            source: p("/m/e.mkv"),
++            track_id: Some(0),
++            track_kind: Some("video".into()),
++            changes: vec![],
++        }],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Clear,
++    };
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--title",
++            "",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--track-order",
++            "0:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn unmatched_donor_rule_opens_no_input_group() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![
++            Assignment {
++                rule_index: 0,
++                source: p("/m/e.mkv"),
++                track_id: Some(0),
++                track_kind: Some("video".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 1,
++                source: p("/m/e.tr.srt"),
++                track_id: None,
++                track_kind: None,
++                changes: vec![],
++            },
++        ],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Clear,
++    };
++    let argv = muxsmith_core::command::command(&plan);
++
++    assert!(
++        !argv.iter().any(|a| a == "/m/e.tr.srt"),
++        "unmatched donor source must not open an input group: {argv:?}"
++    );
++
++    let track_order = argv
++        .iter()
++        .position(|a| a == "--track-order")
++        .map(|i| argv[i + 1].as_str());
++    assert_eq!(track_order, Some("0:0"));
++}
++
++#[test]
++fn per_track_properties_and_multi_group() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![
++            Assignment {
++                rule_index: 0,
++                source: p("/m/e.mkv"),
++                track_id: Some(0),
++                track_kind: Some("video".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 1,
++                source: p("/m/e.mkv"),
++                track_id: Some(1),
++                track_kind: Some("audio".into()),
++                changes: vec![
++                    change("language", Scalar::Str("de".into())),
++                    change("default_track", Scalar::Bool(true)),
++                ],
++            },
++            Assignment {
++                rule_index: 2,
++                source: p("/m/e.tr.srt"),
++                track_id: Some(0),
++                track_kind: Some("subtitles".into()),
++                changes: vec![
++                    change("track_name", Scalar::Str("Turkce".into())),
++                    change("language", Scalar::Str("tr".into())),
++                ],
++            },
++        ],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    };
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--video-tracks",
++            "0",
++            "--audio-tracks",
++            "1",
++            "--no-subtitles",
++            "--no-buttons",
++            "--default-track-flag",
++            "1:1",
++            "--language",
++            "1:de",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--no-attachments",
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "--language",
++            "0:tr",
++            "--track-name",
++            "0:Turkce",
++            "(",
++            "/m/e.tr.srt",
++            ")",
++            "--track-order",
++            "0:0,0:1,1:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn boolean_and_string_value_encoding() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![Assignment {
++            rule_index: 0,
++            source: p("/m/e.mkv"),
++            track_id: Some(0),
++            track_kind: Some("video".into()),
++            changes: vec![
++                change("forced_track", Scalar::Bool(false)),
++                change("language", Scalar::Str("en".into())),
++            ],
++        }],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    };
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "--forced-display-flag",
++            "0:0",
++            "--language",
++            "0:en",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--track-order",
++            "0:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++// A single-group plan: one primary video track, no donor. Used by the
++// attachment/global-flag tests below where a second group is not needed to
++// demonstrate the behavior.
++fn single_group_plan(attachments: AttachmentPlan) -> Plan {
++    Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![Assignment {
++            rule_index: 0,
++            source: p("/m/e.mkv"),
++            track_id: Some(0),
++            track_kind: Some("video".into()),
++            changes: vec![],
++        }],
++        attachments,
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    }
++}
++
++// A two-group plan: primary video track plus a donor subtitle track, so
++// "every group" assertions (chapters, tags) are actually exercised across
++// both the primary and a donor input group.
++fn multi_group_plan(attachments: AttachmentPlan, chapters: ChapterSource, tags: TagFlags) -> Plan {
++    Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![
++            Assignment {
++                rule_index: 0,
++                source: p("/m/e.mkv"),
++                track_id: Some(0),
++                track_kind: Some("video".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 1,
++                source: p("/m/e.tr.srt"),
++                track_id: Some(0),
++                track_kind: Some("subtitles".into()),
++                changes: vec![],
++            },
++        ],
++        attachments,
++        chapters,
++        tags,
++        title: TitleAction::Keep,
++    }
++}
++
++#[test]
++fn attachments_subset_on_primary_no_attachments_on_donor() {
++    let plan = multi_group_plan(
++        AttachmentPlan {
++            primary: PrimaryAttachments::Subset(vec![0, 2]),
++            add_files: vec![],
++        },
++        ChapterSource::Keep,
++        TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++    );
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--attachments",
++            "0,2",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--no-attachments",
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "(",
++            "/m/e.tr.srt",
++            ")",
++            "--track-order",
++            "0:0,1:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn attachments_drop_all_on_primary() {
++    let plan = single_group_plan(AttachmentPlan {
++        primary: PrimaryAttachments::DropAll,
++        add_files: vec![],
++    });
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--no-attachments",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--track-order",
++            "0:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn attachments_keep_all_emits_no_flag_on_primary() {
++    let plan = single_group_plan(AttachmentPlan {
++        primary: PrimaryAttachments::KeepAll,
++        add_files: vec![],
++    });
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--track-order",
++            "0:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn add_files_emit_global_attach_file() {
++    let plan = single_group_plan(AttachmentPlan {
++        primary: PrimaryAttachments::KeepAll,
++        add_files: vec![p("/m/x.ttf")],
++    });
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--attach-file",
++            "/m/x.ttf",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--track-order",
++            "0:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn chapters_drop_emits_no_chapters_on_every_group_and_no_global_flag() {
++    let plan = multi_group_plan(
++        AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        ChapterSource::Drop,
++        TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++    );
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--no-chapters",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--no-chapters",
++            "--no-attachments",
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "(",
++            "/m/e.tr.srt",
++            ")",
++            "--track-order",
++            "0:0,1:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn chapters_external_emits_global_chapters_and_no_chapters_on_every_group() {
++    let plan = multi_group_plan(
++        AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        ChapterSource::External(p("/m/e.xml")),
++        TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++    );
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--chapters",
++            "/m/e.xml",
++            "--no-chapters",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--no-chapters",
++            "--no-attachments",
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "(",
++            "/m/e.tr.srt",
++            ")",
++            "--track-order",
++            "0:0,1:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn tags_dropped_emit_flags_on_every_group() {
++    let plan = multi_group_plan(
++        AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        ChapterSource::Keep,
++        TagFlags {
++            global_keep: false,
++            track_keep: false,
++        },
++    );
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--no-global-tags",
++            "--no-track-tags",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--no-global-tags",
++            "--no-track-tags",
++            "--no-attachments",
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "(",
++            "/m/e.tr.srt",
++            ")",
++            "--track-order",
++            "0:0,1:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
+diff --git a/crates/muxsmith-core/tests/command_integration.rs b/crates/muxsmith-core/tests/command_integration.rs
+new file mode 100644
+index 0000000..76de166
+--- /dev/null
++++ b/crates/muxsmith-core/tests/command_integration.rs
+@@ -0,0 +1,277 @@
++//! Task 12: the whole pure layer end to end, plus real-mkvmerge acceptance
++//! (spec 4.1, 6, 10).
++//!
++//! Two tests:
++//! - `reference_example_end_to_end`: the spec 4.1 reference example (the
++//!   full, German-completed profile checked in at `fixtures/reference.yaml`,
++//!   see `docs/superpowers/plans/2026-07-08-plan-1-core-foundations-validate-cli.md`
++//!   task 4) driven through `plan_batch` with a fake `Identify`, asserting
++//!   the FULL `command::command` argv. Pure: no mkvmerge needed, always runs.
++//! - `live_mkvmerge_accepts_planned_command`: spawns real mkvmerge on the
++//!   argv a tiny real plan produces, gated on `Mkvmerge::locate()` (mirrors
++//!   `identify_live.rs` / `mkvmerge_runtime.rs`'s self-skip pattern).
++//!
++//! The parenthesized `( file )` input-group syntax `command.rs` emits for
++//! every input source (spec 4.9 item 2f) was confirmed by hand against the
++//! installed mkvmerge v100 before writing these tests: per `man mkvmerge`,
++//! `( file1 file2 )` concatenates multiple files into one logical segment
++//! and is documented as unusable for stand-alone self-contained containers
++//! (it explicitly cannot be used for formats "which contains its own set of
++//! headers", e.g. AVI/MP4 -- MKV likewise). A single-file group is the
++//! degenerate n=1 case, which the same manual page states is equivalent to
++//! prefixing the file with `=` (disables VOB-sibling auto-detection): a
++//! harmless no-op for a non-VOB source. Manually running
++//! `mkvmerge -o out.mkv --audio-tracks 0 ... ( a.mkv ) --subtitle-tracks 0 ... ( b.mkv ) --track-order 0:0,1:0`
++//! against two real single-track MKVs produced exit 0 and the correctly
++//! combined two-track output, confirming the existing `command.rs` argv
++//! shape needs no change for Task 12.
++
++use std::collections::HashMap;
++use std::path::Path;
++use std::process::Command;
++
++use muxsmith_core::capability::runtime::{LanguageIndex, Mkvmerge};
++use muxsmith_core::command::command;
++use muxsmith_core::identify::{
++    Identification, Identify, IdentifyCache, IdentifyError, LiveIdentifier,
++};
++use muxsmith_core::planner::{RunInputs, plan_batch};
++use muxsmith_core::profile::load::{Format, from_str};
++
++// ---------------------------------------------------------------------------
++// Pure golden: the spec 4.1 reference example, end to end.
++// ---------------------------------------------------------------------------
++
++// The full reference profile (spec 4.1, completed with the German subtitle
++// trio the spec elides "for brevity"; see fixtures/reference.yaml's own
++// history). Ten rules in profile order: video, audio en, audio de, subtitle
++// en forced/plain/SDH, subtitle de forced/plain/SDH, external Turkish
++// subtitle donor.
++const REFERENCE_PROFILE: &str = include_str!("fixtures/reference.yaml");
++
++// Nine primary tracks, one per non-external rule (ids 0-8, in rule order),
++// each carrying exactly the properties that rule's match expression needs to
++// resolve unambiguously: e.g. track 4 (subtitle, en, not forced, no SDH
++// marker) matches only the "English" plain rule, never the forced or SDH
++// rules, and track 5 (subtitle, en, not forced, flag_hearing_impaired) is
++// excluded from the plain rule's `not` clause and falls to the SDH rule.
++const REFERENCE_PRIMARY: &str = include_str!("fixtures/identify/reference-primary.json");
++
++// The external Turkish-subtitle donor: one subtitle track, matched by the
++// reference profile's final rule (`exact: { type: subtitles }`, no further
++// constraint) regardless of its own language/name, since that rule's
++// `changes` overwrite both anyway.
++const REFERENCE_DONOR: &str = include_str!("fixtures/identify/reference-donor.json");
++
++// A fake identifier backed by fixture JSON keyed on file name (mirrors
++// `planner_resolution.rs`'s `FakeIdent`).
++struct FakeIdent {
++    by_name: HashMap<String, Identification>,
++}
++
++impl Identify for FakeIdent {
++    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
++        let name = path.file_name().unwrap().to_str().unwrap();
++        self.by_name
++            .get(name)
++            .cloned()
++            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
++    }
++}
++
++fn lang() -> LanguageIndex {
++    LanguageIndex::from_rows(&[
++        ["English", "eng", "eng", "en"],
++        ["German", "ger", "ger", "de"],
++        ["Turkish", "tur", "tur", "tr"],
++    ])
++}
++
++#[test]
++fn reference_example_end_to_end() {
++    let dir = tempfile::tempdir().unwrap();
++    // The primary must match `input.pattern` (`S(?<season>\d{2})E(?<episode>\d{2})`)
++    // and the external locator's `match_to_source` donor must share its
++    // `{match}` identifier ("S01E01") as a basename substring (spec 4.6).
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.srt"), b"x").unwrap();
++
++    let profile = from_str(REFERENCE_PROFILE, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(REFERENCE_PRIMARY).unwrap(),
++    );
++    by_name.insert(
++        "Show.S01E01.srt".to_string(),
++        Identification::from_json(REFERENCE_DONOR).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    assert_eq!(batch.files.len(), 1);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++
++    // Sanity on the resolution itself before locking the argv: ten
++    // assignments (nine primary tracks plus the external donor), all
++    // resolved (no MissingTrack/AmbiguousRule -- the fixture tracks were
++    // built to be unambiguous under the profile's match expressions).
++    assert_eq!(plan.assignments.len(), 10);
++    assert!(plan.assignments.iter().all(|a| a.track_id.is_some()));
++
++    let primary_disp = plan.source.display().to_string();
++    let output_disp = plan.output.display().to_string();
++    let donor_disp = plan.assignments[9].source.display().to_string();
++    assert_ne!(donor_disp, primary_disp);
++    assert!(donor_disp.ends_with("Show.S01E01.srt"));
++
++    let expected: Vec<String> = [
++        "--output",
++        &output_disp,
++        "--title",
++        "",
++        // --- primary group (spec 4.9 item 2, D10) ---
++        "--no-global-tags", // tags.global: drop
++        "--video-tracks",
++        "0",
++        "--audio-tracks",
++        "1,2",
++        "--subtitle-tracks",
++        "3,4,5,6,7,8",
++        "--no-buttons",
++        "--default-track-flag",
++        "1:1", // audio en: changes.default_track
++        "--default-track-flag",
++        "3:1", // subtitle en forced: changes (default_track < track_name)
++        "--track-name",
++        "3:English forced",
++        "--track-name",
++        "4:English", // subtitle en plain
++        "--hearing-impaired-flag",
++        "5:1", // subtitle en SDH (flag_hearing_impaired < track_name)
++        "--track-name",
++        "5:English SDH",
++        "--default-track-flag",
++        "6:1", // subtitle de forced
++        "--track-name",
++        "6:German forced",
++        "--track-name",
++        "7:German", // subtitle de plain
++        "--hearing-impaired-flag",
++        "8:1", // subtitle de SDH
++        "--track-name",
++        "8:German SDH",
++        "(",
++        &primary_disp,
++        ")",
++        // --- donor group: external Turkish subtitle ---
++        "--no-global-tags",
++        "--no-attachments", // donor attachments always dropped (D10)
++        "--no-video",
++        "--no-audio",
++        "--subtitle-tracks",
++        "0",
++        "--no-buttons",
++        "--language",
++        "0:tr", // changes (language < track_name)
++        "--track-name",
++        "0:Türkçe",
++        "(",
++        &donor_disp,
++        ")",
++        "--track-order",
++        "0:0,0:1,0:2,0:3,0:4,0:5,0:6,0:7,0:8,1:0",
++    ]
++    .into_iter()
++    .map(String::from)
++    .collect();
++
++    assert_eq!(command(plan), expected);
++}
++
++// ---------------------------------------------------------------------------
++// Live acceptance: real mkvmerge, gated + self-skipping (spec 10).
++// ---------------------------------------------------------------------------
++
++fn mkvmerge() -> Option<Mkvmerge> {
++    Mkvmerge::locate().ok()
++}
++
++const LIVE_PROFILE: &str = r#"
++profile_version: 1
++input: { pattern: 'source', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: subtitles } }
++"#;
++
++#[test]
++fn live_mkvmerge_accepts_planned_command() {
++    let Some(m) = mkvmerge() else {
++        eprintln!("mkvmerge not found; skipping");
++        return;
++    };
++
++    let dir = tempfile::tempdir().unwrap();
++    let srt = dir.path().join("seed.srt");
++    std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
++
++    // A minimal one-track MKV: an SRT needs no media libs to mux (task
++    // brief), unlike audio/video which would need a real codec.
++    let source = dir.path().join("source.mkv");
++    let status = Command::new(m.path())
++        .args(["-q", "-o"])
++        .arg(&source)
++        .arg(&srt)
++        .status()
++        .expect("spawn mkvmerge to build the fixture source");
++    assert!(status.success(), "mkvmerge failed to build the source");
++
++    let out_dir = dir.path().join("out");
++    std::fs::create_dir_all(&out_dir).unwrap();
++
++    let profile = from_str(LIVE_PROFILE, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(out_dir),
++        on_collision: None,
++    };
++    let lang = m.list_languages().expect("list-languages");
++    let mut identify = LiveIdentifier {
++        cache: IdentifyCache::new(),
++        mkv: &m,
++    };
++
++    let batch = plan_batch(&profile, &run, &mut identify, &lang);
++    assert_eq!(batch.files.len(), 1);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.assignments.len(), 1);
++    assert_eq!(plan.assignments[0].track_id, Some(0));
++
++    let argv = command(plan);
++    let status = Command::new(m.path())
++        .args(&argv)
++        .status()
++        .expect("spawn mkvmerge on the planned command");
++    assert!(
++        status.success(),
++        "mkvmerge rejected the planned argv: {argv:?}"
++    );
++    assert!(plan.output.exists(), "output file was not created");
++
++    let out_json = m
++        .identify_json(&plan.output)
++        .expect("re-identify the muxed output");
++    let out_id = Identification::from_json(&out_json).expect("parse re-identification JSON");
++    assert!(out_id.is_identifiable());
++    assert_eq!(out_id.tracks.len(), 1);
++    assert_eq!(out_id.tracks[0].kind, "subtitles");
++}
+diff --git a/crates/muxsmith-core/tests/fixtures/identify/reference-donor.json b/crates/muxsmith-core/tests/fixtures/identify/reference-donor.json
+new file mode 100644
+index 0000000..9de65c6
+--- /dev/null
++++ b/crates/muxsmith-core/tests/fixtures/identify/reference-donor.json
+@@ -0,0 +1,21 @@
++{
++  "attachments": [],
++  "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "SubRip/SRT" },
++  "errors": [],
++  "file_name": "Show.S01E01.srt",
++  "global_tags": [],
++  "identification_format_version": 20,
++  "track_tags": [],
++  "tracks": [
++    {
++      "codec": "SubRip/SRT",
++      "id": 0,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "language": "und"
++      }
++    }
++  ]
++}
+diff --git a/crates/muxsmith-core/tests/fixtures/identify/reference-primary.json b/crates/muxsmith-core/tests/fixtures/identify/reference-primary.json
+new file mode 100644
+index 0000000..0981aab
+--- /dev/null
++++ b/crates/muxsmith-core/tests/fixtures/identify/reference-primary.json
+@@ -0,0 +1,124 @@
++{
++  "attachments": [],
++  "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [],
++  "file_name": "Show.S01E01.mkv",
++  "global_tags": [],
++  "identification_format_version": 20,
++  "track_tags": [],
++  "tracks": [
++    {
++      "codec": "AVC/H.264/MPEG-4p10",
++      "id": 0,
++      "type": "video",
++      "properties": {
++        "codec_id": "V_MPEG4/ISO/AVC",
++        "default_track": true,
++        "forced_track": false,
++        "language": "und",
++        "pixel_dimensions": "1920x1080"
++      }
++    },
++    {
++      "codec": "AC-3",
++      "id": 1,
++      "type": "audio",
++      "properties": {
++        "audio_channels": 2,
++        "codec_id": "A_AC3",
++        "default_track": false,
++        "forced_track": false,
++        "language": "eng",
++        "track_name": "English"
++      }
++    },
++    {
++      "codec": "AC-3",
++      "id": 2,
++      "type": "audio",
++      "properties": {
++        "audio_channels": 2,
++        "codec_id": "A_AC3",
++        "default_track": false,
++        "forced_track": false,
++        "language": "ger",
++        "track_name": "German"
++      }
++    },
++    {
++      "codec": "SubRip/SRT",
++      "id": 3,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "default_track": false,
++        "forced_track": true,
++        "language": "eng",
++        "track_name": "Forced"
++      }
++    },
++    {
++      "codec": "SubRip/SRT",
++      "id": 4,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "default_track": false,
++        "forced_track": false,
++        "language": "eng",
++        "track_name": "Untitled"
++      }
++    },
++    {
++      "codec": "SubRip/SRT",
++      "id": 5,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "default_track": false,
++        "flag_hearing_impaired": true,
++        "forced_track": false,
++        "language": "eng",
++        "track_name": "Untitled HI"
++      }
++    },
++    {
++      "codec": "SubRip/SRT",
++      "id": 6,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "default_track": false,
++        "forced_track": true,
++        "language": "ger",
++        "track_name": "Erzwungen"
++      }
++    },
++    {
++      "codec": "SubRip/SRT",
++      "id": 7,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "default_track": false,
++        "forced_track": false,
++        "language": "ger",
++        "track_name": "Unbenannt"
++      }
++    },
++    {
++      "codec": "SubRip/SRT",
++      "id": 8,
++      "type": "subtitles",
++      "properties": {
++        "codec_id": "S_TEXT/UTF8",
++        "default_track": false,
++        "flag_hearing_impaired": true,
++        "forced_track": false,
++        "language": "ger",
++        "track_name": "Unbenannt HI"
++      }
++    }
++  ]
++}
+diff --git a/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json b/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
+new file mode 100644
+index 0000000..d5e3db7
+--- /dev/null
++++ b/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
+@@ -0,0 +1,30 @@
++{
++  "attachments": [
++    { "id": 0, "file_name": "a.ttf", "size": 100 },
++    { "id": 1, "file_name": "b.otf", "size": 100 },
++    { "id": 2, "file_name": "cover.jpg", "size": 100 }
++  ],
++  "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [],
++  "file_name": "Show.S01E01.mkv",
++  "global_tags": [],
++  "identification_format_version": 20,
++  "track_tags": [],
++  "tracks": [
++    {
++      "codec": "AVC/H.264/MPEG-4p10",
++      "id": 0,
++      "type": "video",
++      "properties": {
++        "codec_id": "V_MPEG4/ISO/AVC",
++        "default_track": true,
++        "forced_track": false,
++        "language": "und",
++        "language_ietf": "und",
++        "number": 1,
++        "pixel_dimensions": "1920x1080"
++      }
++    }
++  ]
++}
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index c74a8c3..f473326 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1,17 +1,18 @@
+ use std::collections::HashMap;
+ use std::path::Path;
+ 
+ use muxsmith_core::capability::runtime::LanguageIndex;
+ use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+-use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
++use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
++use muxsmith_core::profile::match_expr::Scalar;
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::report::{DiagCode, Severity};
+ 
+ // A fake identifier backed by fixture JSON keyed on file name.
+ struct FakeIdent {
+     by_name: HashMap<String, Identification>,
+ }
+ impl Identify for FakeIdent {
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+         let name = path.file_name().unwrap().to_str().unwrap();
+@@ -19,24 +20,28 @@ impl Identify for FakeIdent {
+             .get(name)
+             .cloned()
+             .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
+     }
+ }
+ 
+ fn lang() -> LanguageIndex {
+     LanguageIndex::from_rows(&[
+         ["English", "eng", "eng", "en"],
+         ["German", "ger", "ger", "de"],
++        ["Turkish", "tur", "tur", "tr"],
+     ])
+ }
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
++// Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
++// id2 "cover.jpg"), the fixture the brief's attachment-rule test cases use.
++const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
+ 
+ fn plan_one(
+     profile_yaml: &str,
+     file_name: &str,
+     ident_json: &str,
+ ) -> muxsmith_core::planner::Batch {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join(file_name), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+@@ -68,20 +73,106 @@ fn resolves_each_rule_to_one_track() {
+     let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     assert_eq!(batch.files.len(), 1);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.assignments.len(), 2);
+     assert_eq!(plan.assignments[0].track_id, Some(0));
+     assert_eq!(plan.assignments[1].track_id, Some(1));
+ }
+ 
++// Task 4: Plan/Assignment resolution-field defaults (Tasks 5-8 fill real
++// resolution; this only asserts the wiring is defaulted correctly).
++#[test]
++fn plan_and_assignment_carry_resolution_field_defaults() {
++    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments,
++        muxsmith_core::planner::AttachmentPlan {
++            primary: muxsmith_core::planner::PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        }
++    );
++    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
++    assert_eq!(
++        plan.tags,
++        muxsmith_core::planner::TagFlags {
++            global_keep: true,
++            track_keep: true,
++        }
++    );
++    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
++    assert_eq!(plan.assignments[0].track_kind.as_deref(), Some("video"));
++    assert!(plan.assignments[0].changes.is_empty());
++}
++
++// Task 5: settable `changes` resolve onto a matched assignment, in
++// property-name order (the rule's `changes` map is a BTreeMap).
++#[test]
++fn changes_resolve_to_applied_changes_in_property_order() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: audio, language: en } }
++    changes:
++      language: tr
++      track_name: X
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.assignments[0].changes,
++        vec![
++            AppliedChange {
++                property: "language".into(),
++                value: Scalar::Str("tr".into()),
++            },
++            AppliedChange {
++                property: "track_name".into(),
++                value: Scalar::Str("X".into()),
++            },
++        ]
++    );
++}
++
++// Task 5: a settable `language` value validated at plan time (D2), at the
++// point of application, distinct from the batch-level `match.exact.language`
++// walk (`bad_language_value_is_batch_invalid_property_value`).
++#[test]
++fn invalid_changes_language_is_plan_time_invalid_property_value() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: audio, language: en } }
++    changes:
++      language: zzz
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none());
++    assert!(
++        fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::InvalidPropertyValue
++                && d.config_path == "tracks[0].changes.language"),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
+ #[test]
+ fn ambiguous_rule_when_two_tracks_match() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+@@ -688,28 +779,527 @@ fn on_disk_collision_under_error_is_error_and_drops_plan() {
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::OutputCollision)
+         .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+     assert_eq!(d.severity, Severity::Error);
+ }
+ 
++// Task 6: `title: clear` resolves to `TitleAction::Clear`.
++#[test]
++fn title_clear_resolves_to_clear() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: clear
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
++}
++
++// Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
++// resolution path (not just the Task-4 hardcoded default).
++#[test]
++fn title_keep_resolves_to_keep() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: keep
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
++}
++
++// Task 6: a title template renders via the same literal-mode engine as the
++// filename template; `{season}` is a raw capture (no filter applied).
++#[test]
++fn title_template_renders_raw_capture_into_set() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: { template: 'Show S{season}' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.title,
++        muxsmith_core::planner::TitleAction::Set("Show S03".into())
++    );
++}
++
++// Task 6: title has no path-separator/empty-name invariants (unlike
++// filenames, spec 4.9 vs 4.8): a template rendering to an empty string is a
++// legitimate `Set("")`, not an error.
++#[test]
++fn title_template_rendering_empty_is_a_legitimate_set() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
++title: { template: '{x}' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.title,
++        muxsmith_core::planner::TitleAction::Set(String::new())
++    );
++}
++
++// Task 6: `source_stem` is available to a title template, exactly as it is
++// to output.filename templates (validate.rs allows it identically for
++// both, so the resolve-time Ctx must supply it identically too).
++#[test]
++fn title_template_supports_source_stem_field() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++title: { template: '{source_stem}' }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.title,
++        muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
++    );
++}
++
++// Task 6: `tags: { global: drop, track: keep }` resolves to the matching
++// `TagFlags`.
++#[test]
++fn tags_global_drop_track_keep_resolves_to_flags() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tags: { global: drop, track: keep }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.tags,
++        muxsmith_core::planner::TagFlags {
++            global_keep: false,
++            track_keep: true,
++        }
++    );
++}
++
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   - match: { exact: { type: audio, language: zz } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     assert!(
+         batch
+             .batch_diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+         "batch diags: {:?}",
+         batch.batch_diagnostics
+     );
+ }
++
++// Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
++#[test]
++fn chapters_drop_keyword_resolves_to_drop() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++chapters: drop
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Drop);
++}
++
++// Task 7: `chapters: keep` resolves to `ChapterSource::Keep` (also the
++// default already covered by Task 4's tests, but exercised explicitly here
++// since Task 7 is what makes the keyword branch real).
++#[test]
++fn chapters_keep_keyword_resolves_to_keep() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++chapters: keep
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
++}
++
++// Task 7: an external chapters locator with exactly one matching donor
++// resolves to `ChapterSource::External(<that path>)`. A chapters file is
++// never run through Identify (it is XML/simple, not an mkvmerge source), so
++// the fixture map only needs the primary.
++#[test]
++fn chapters_external_one_match_resolves_to_external_path() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++chapters:
++  external: { path: '.', extensions: [xml], match_to_source: true }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    let expected = dir.path().join("Show.S01E01.xml");
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.chapters,
++        muxsmith_core::planner::ChapterSource::External(expected)
++    );
++}
++
++// Task 7: zero matches for an external chapters locator is a hard error
++// (`MissingExternal` at `chapters.external`); the file gets no plan. Unlike
++// a track rule's external source, chapters has no `optional` escape.
++#[test]
++fn chapters_external_zero_matches_yields_missing_external_and_no_plan() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++chapters:
++  external: { path: '.', extensions: [xml], match_to_source: true }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::MissingExternal)
++        .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
++    assert_eq!(d.config_path, "chapters.external");
++}
++
++// Task 7: two matches for an external chapters locator is `AmbiguousExternal`
++// at `chapters.external`, with `count` = 2, and no plan.
++#[test]
++fn chapters_external_two_matches_yields_ambiguous_external() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.alt.xml"), b"<Chapters/>").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++chapters:
++  external: { path: '.', extensions: [xml], match_to_source: true }
++tracks:
++  - match: { exact: { type: video } }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::AmbiguousExternal)
++        .unwrap_or_else(|| panic!("expected AmbiguousExternal, got: {:?}", fr.diagnostics));
++    assert_eq!(d.config_path, "chapters.external");
++    assert_eq!(d.params.get("count").map(String::as_str), Some("2"));
++}
++
++// Task 8: a `select` rule keeps only the attachments it matches; `unmatched:
++// drop` removes everything else, reducing to `Subset` of just the matched id.
++#[test]
++fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: drop
++  rules:
++    - select: { substring: { file_name: .ttf } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0])
++    );
++}
++
++// Task 8: no rules at all, `unmatched: keep` -> every attachment falls
++// through to `unmatched` and is kept, reducing to `KeepAll`.
++#[test]
++fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: keep
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::KeepAll
++    );
++}
++
++// Task 8: no rules at all, `unmatched: drop` -> every attachment falls
++// through to `unmatched` and is dropped, reducing to `DropAll`.
++#[test]
++fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: drop
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::DropAll
++    );
++}
++
++// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
++// `unmatched: keep` keeps the other two, reducing to `Subset([0, 1])`.
++#[test]
++fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  unmatched: keep
++  rules:
++    - drop: { substring: { file_name: cover } }
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(
++        plan.attachments.primary,
++        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0, 1])
++    );
++}
++
++// Task 8 (D12): an `add` locator attaches ALL files it matches, not just one;
++// both fonts land in `add_files`, in the locator's sorted order.
++#[test]
++fn attachment_add_locator_attaches_all_matching_files() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("b.ttf"), b"font-b").unwrap();
++    std::fs::write(dir.path().join("a.ttf"), b"font-a").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    let expected = vec![dir.path().join("a.ttf"), dir.path().join("b.ttf")];
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.attachments.add_files, expected);
++}
++
++// Task 8 (D12): two `add` rules that both match the same file attach it
++// exactly once (dedup by path, first-seen order).
++#[test]
++fn attachment_add_two_rules_matching_same_file_is_deduped() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("font.ttf"), b"font").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf] }
++    - add: { path: '.', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    let expected = vec![dir.path().join("font.ttf")];
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.attachments.add_files, expected);
++}
++
++// Task 8 (D12): an `add` locator matching zero files is a WARNING
++// `MissingExternal` at `attachments.rules[i].add`, an auxiliary payload that
++// must not suppress the plan (unlike a track rule's or chapters' external
++// zero-match, both of which are errors).
++#[test]
++fn attachment_add_locator_zero_matches_yields_missing_external_warning_and_plan_survives() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    std::mem::forget(dir);
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert!(plan.attachments.add_files.is_empty());
++    let d = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::MissingExternal)
++        .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
++    assert_eq!(d.config_path, "attachments.rules[0].add");
++    assert_eq!(d.severity, Severity::Warning);
++}

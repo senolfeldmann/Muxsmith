@@ -1,0 +1,322 @@
+# Review package: d55f19d..61ab07c
+
+## Commits
+61ab07c feat(command): per-track property options and multi-input grouping
+
+## Files changed
+ crates/muxsmith-core/src/command.rs   |  57 +++++++++++--
+ crates/muxsmith-core/tests/command.rs | 152 +++++++++++++++++++++++++++++++++-
+ 2 files changed, 199 insertions(+), 10 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/command.rs b/crates/muxsmith-core/src/command.rs
+index 60102c9..8edb9ab 100644
+--- a/crates/muxsmith-core/src/command.rs
++++ b/crates/muxsmith-core/src/command.rs
+@@ -1,23 +1,24 @@
+ //! Renders a resolved [`Plan`] into the mkvmerge argument vector (spec 4.9).
+ //! `command` produces argv only: no process invocation, no filesystem
+ //! access beyond the paths already carried in the `Plan`. The canonical
+ //! ordering (global section, then one input group per distinct source, then
+ //! `--track-order`) is locked by the Task 9-11 golden tests; this module
+-//! currently implements the global section and the input-group scaffolding
+-//! with track selection (Task 9). Per-track property options (Task 10) and
+-//! the attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11) slot
+-//! into [`push_group`] without reordering what is already here.
++//! currently implements the global section, multi-group input handling with
++//! track selection, and per-track property options (Tasks 9-10). The
++//! attachment-filter/`--no-chapters`/`--no-*-tags` flags (Task 11) slot into
++//! [`push_group`] without reordering what is already here.
+ 
+ use std::path::{Path, PathBuf};
+ 
+-use crate::planner::{ChapterSource, Plan, TitleAction};
++use crate::planner::{AppliedChange, ChapterSource, Plan, TitleAction};
++use crate::profile::match_expr::Scalar;
+ 
+ /// One track-selection category: the `-J` `type` string it matches, and the
+ /// pair of mkvmerge flags that select it or exclude it entirely. The
+ /// no-selection flag name does not mechanically derive from the category
+ /// name (`--no-video`/`--no-subtitles`/`--no-buttons` are singular-vs-plural
+ /// inconsistent with their select-flag counterparts), so both are spelled
+ /// out rather than templated.
+ struct Category {
+     kind: &'static str,
+     select_flag: &'static str,
+@@ -117,25 +118,25 @@ fn push_global(argv: &mut Vec<String>, plan: &Plan) {
+     }
+ 
+     for add in &plan.attachments.add_files {
+         argv.push("--attach-file".to_string());
+         argv.push(add.display().to_string());
+     }
+ }
+ 
+ // One input group's argv (spec 4.9 item 2). Task 11 adds the
+ // `--no-chapters`, `--no-global-tags`/`--no-track-tags`, and
+-// attachment-filter flags before track selection; Task 10 adds per-track
+-// property options after it; both slot in here without moving the
+-// selection call or the closing bracket.
++// attachment-filter flags before track selection; both slot in here without
++// moving the selection/property calls or the closing bracket.
+ fn push_group(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+     push_track_selection(argv, plan, source);
++    push_track_properties(argv, plan, source);
+ 
+     argv.push("(".to_string());
+     argv.push(source.display().to_string());
+     argv.push(")".to_string());
+ }
+ 
+ // Track selection for one group, categories in fixed order (spec 4.9 item
+ // 2d): assigned ids of that category in this group, ascending, if any;
+ // otherwise the category's `--no-*` flag.
+ fn push_track_selection(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+@@ -150,20 +151,60 @@ fn push_track_selection(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+ 
+         if ids.is_empty() {
+             argv.push(cat.no_flag.to_string());
+         } else {
+             argv.push(cat.select_flag.to_string());
+             argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
+         }
+     }
+ }
+ 
++// Per-track property options for one group (spec 4.9 item 2e): for each
++// assigned track in this group (track_id ascending), for each
++// `AppliedChange` on that assignment (property name ascending; the
++// `changes` vec is already property-ascending from the planner, sorted
++// again here defensively), the mkvmerge option for the property followed
++// by `<tid>:<value>`.
++fn push_track_properties(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
++    let mut tracks: Vec<(u64, &[AppliedChange])> = plan
++        .assignments
++        .iter()
++        .filter(|a| a.source.as_path() == source)
++        .filter_map(|a| a.track_id.map(|tid| (tid, a.changes.as_slice())))
++        .collect();
++    tracks.sort_by_key(|(tid, _)| *tid);
++
++    for (tid, changes) in tracks {
++        let mut changes: Vec<&AppliedChange> = changes.iter().collect();
++        changes.sort_by(|a, b| a.property.cmp(&b.property));
++
++        for c in changes {
++            let (_, option) = crate::capability::settable(&c.property)
++                .expect("changes carry only validated settable properties");
++            argv.push(option.to_string());
++            argv.push(format!("{tid}:{}", value_str(&c.value)));
++        }
++    }
++}
++
++// Renders a Scalar as the plain value string a per-track property option
++// takes: `1`/`0` for booleans (mkvmerge's flag encoding), the raw string
++// for `Str` (no quoting), `to_string()` otherwise.
++fn value_str(value: &Scalar) -> String {
++    match value {
++        Scalar::Bool(b) => if *b { "1" } else { "0" }.to_string(),
++        Scalar::Str(s) => s.clone(),
++        Scalar::Int(i) => i.to_string(),
++        Scalar::Float(f) => f.to_string(),
++    }
++}
++
+ // `--track-order g:tid,...`: one entry per assignment with a resolved
+ // track_id, in profile (assignment) order, `g` the input group index of
+ // that assignment's source (spec 4.9 item 3). Omitted entirely if no
+ // assignment has a track.
+ fn push_track_order(argv: &mut Vec<String>, plan: &Plan, groups: &[PathBuf]) {
+     let entries: Vec<String> = plan
+         .assignments
+         .iter()
+         .filter_map(|a| {
+             a.track_id
+diff --git a/crates/muxsmith-core/tests/command.rs b/crates/muxsmith-core/tests/command.rs
+index b7b8a1b..48d5bc2 100644
+--- a/crates/muxsmith-core/tests/command.rs
++++ b/crates/muxsmith-core/tests/command.rs
+@@ -1,21 +1,31 @@
+ //! Golden tests for `command::command` (Task 9-11 progressively lock the
+-//! canonical argv contract; this file covers Task 9's slice: global section,
+-//! single primary input group with track selection, and `--track-order`).
++//! canonical argv contract; Task 9 covered the global section, single
++//! primary input group with track selection, and `--track-order`; this file
++//! now also covers Task 10's slice: multi-group input handling and
++//! per-track property options).
+ 
+ use muxsmith_core::planner::*;
++use muxsmith_core::profile::match_expr::Scalar;
+ use std::path::PathBuf;
+ 
+ fn p(s: &str) -> PathBuf {
+     PathBuf::from(s)
+ }
+ 
++fn change(property: &str, value: Scalar) -> AppliedChange {
++    AppliedChange {
++        property: property.to_string(),
++        value,
++    }
++}
++
+ #[test]
+ fn global_and_single_video_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+@@ -94,10 +104,148 @@ fn unmatched_donor_rule_opens_no_input_group() {
+         !argv.iter().any(|a| a == "/m/e.tr.srt"),
+         "unmatched donor source must not open an input group: {argv:?}"
+     );
+ 
+     let track_order = argv
+         .iter()
+         .position(|a| a == "--track-order")
+         .map(|i| argv[i + 1].as_str());
+     assert_eq!(track_order, Some("0:0"));
+ }
++
++#[test]
++fn per_track_properties_and_multi_group() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![
++            Assignment {
++                rule_index: 0,
++                source: p("/m/e.mkv"),
++                track_id: Some(0),
++                track_kind: Some("video".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 1,
++                source: p("/m/e.mkv"),
++                track_id: Some(1),
++                track_kind: Some("audio".into()),
++                changes: vec![
++                    change("language", Scalar::Str("de".into())),
++                    change("default_track", Scalar::Bool(true)),
++                ],
++            },
++            Assignment {
++                rule_index: 2,
++                source: p("/m/e.tr.srt"),
++                track_id: Some(0),
++                track_kind: Some("subtitles".into()),
++                changes: vec![
++                    change("track_name", Scalar::Str("Turkce".into())),
++                    change("language", Scalar::Str("tr".into())),
++                ],
++            },
++        ],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    };
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--video-tracks",
++            "0",
++            "--audio-tracks",
++            "1",
++            "--no-subtitles",
++            "--no-buttons",
++            "--default-track-flag",
++            "1:1",
++            "--language",
++            "1:de",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "--language",
++            "0:tr",
++            "--track-name",
++            "0:Turkce",
++            "(",
++            "/m/e.tr.srt",
++            ")",
++            "--track-order",
++            "0:0,0:1,1:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn boolean_and_string_value_encoding() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        assignments: vec![Assignment {
++            rule_index: 0,
++            source: p("/m/e.mkv"),
++            track_id: Some(0),
++            track_kind: Some("video".into()),
++            changes: vec![
++                change("forced_track", Scalar::Bool(false)),
++                change("language", Scalar::Str("en".into())),
++            ],
++        }],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    };
++
++    assert_eq!(
++        muxsmith_core::command::command(&plan),
++        vec![
++            "--output",
++            "/out/e.mkv",
++            "--video-tracks",
++            "0",
++            "--no-audio",
++            "--no-subtitles",
++            "--no-buttons",
++            "--forced-display-flag",
++            "0:0",
++            "--language",
++            "0:en",
++            "(",
++            "/m/e.mkv",
++            ")",
++            "--track-order",
++            "0:0",
++        ]
++        .into_iter()
++        .map(String::from)
++        .collect::<Vec<_>>()
++    );
++}
