@@ -7,7 +7,7 @@
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Why a spawn error is not a job failure: failing to even start mkvmerge
@@ -117,6 +117,7 @@ pub struct FakeSpawner {
     lines: Vec<String>,
     exit: Option<i32>,
     spawned: Mutex<Vec<Vec<String>>>,
+    tracker: Option<Arc<ConcurrencyTracker>>,
 }
 
 impl FakeSpawner {
@@ -127,6 +128,7 @@ impl FakeSpawner {
             lines,
             exit,
             spawned: Mutex::new(Vec::new()),
+            tracker: None,
         }
     }
 
@@ -134,16 +136,28 @@ impl FakeSpawner {
     pub fn spawned(&self) -> Vec<Vec<String>> {
         self.spawned.lock().unwrap().clone()
     }
+
+    /// Attaches a [`ConcurrencyTracker`] so every job this fake spawns
+    /// increments it on `spawn` and decrements it on `wait` (Task 3 test
+    /// support for the queue's `--jobs N` bound).
+    pub fn with_concurrency_tracker(mut self, tracker: Arc<ConcurrencyTracker>) -> FakeSpawner {
+        self.tracker = Some(tracker);
+        self
+    }
 }
 
 impl Spawn for FakeSpawner {
     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
         self.spawned.lock().unwrap().push(argv.to_vec());
+        if let Some(tracker) = &self.tracker {
+            tracker.enter();
+        }
         Ok(Box::new(FakeJob {
             lines: self.lines.clone(),
             cursor: 0,
             exit: self.exit,
             killed: Arc::new(AtomicBool::new(false)),
+            tracker: self.tracker.clone(),
         }))
     }
 }
@@ -155,6 +169,7 @@ struct FakeJob {
     cursor: usize,
     exit: Option<i32>,
     killed: Arc<AtomicBool>,
+    tracker: Option<Arc<ConcurrencyTracker>>,
 }
 
 impl RunningJob for FakeJob {
@@ -167,6 +182,9 @@ impl RunningJob for FakeJob {
         Some(line)
     }
     fn wait(&mut self) -> Option<i32> {
+        if let Some(tracker) = &self.tracker {
+            tracker.exit();
+        }
         if self.killed.load(Ordering::SeqCst) {
             None
         } else {
@@ -176,6 +194,38 @@ impl RunningJob for FakeJob {
     fn killer(&self) -> Killer {
         let killed = Arc::clone(&self.killed);
         Arc::new(move || killed.store(true, Ordering::SeqCst))
+    }
+}
+
+/// Live/max concurrency counter, attached to a [`FakeSpawner`] via
+/// [`FakeSpawner::with_concurrency_tracker`] (Task 3 test support): `current`
+/// is incremented in `spawn` and decremented in `wait`, mirroring the window
+/// during which a real job is in flight, and `max` records the high-water
+/// mark so a `--jobs N` bound is observable from a test.
+#[derive(Default)]
+pub struct ConcurrencyTracker {
+    current: AtomicUsize,
+    max: AtomicUsize,
+}
+
+impl ConcurrencyTracker {
+    /// A fresh tracker starting at zero concurrent jobs.
+    pub fn new() -> Arc<ConcurrencyTracker> {
+        Arc::new(ConcurrencyTracker::default())
+    }
+
+    /// The highest concurrent-job count observed so far.
+    pub fn max(&self) -> usize {
+        self.max.load(Ordering::SeqCst)
+    }
+
+    fn enter(&self) {
+        let now = self.current.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max.fetch_max(now, Ordering::SeqCst);
+    }
+
+    fn exit(&self) {
+        self.current.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
