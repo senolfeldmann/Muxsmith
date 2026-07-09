@@ -1,8 +1,7 @@
 //! Source-file identification via `mkvmerge -J` (spec 5.5, 9). Wraps the
-//! external process, parses its JSON into a track model, and caches results
-//! in memory keyed on path + mtime + size so dry-run and run never re-identify
-//! an unchanged file (spec 5.5). Attachments/chapters parsing arrives in
-//! Plan 3 where command generation consumes them.
+//! external process, parses its JSON into a track/attachment/chapter model,
+//! and caches results in memory keyed on path + mtime + size so dry-run and
+//! run never re-identify an unchanged file (spec 5.5).
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -77,6 +76,42 @@ impl Track {
     }
 }
 
+/// One attachment from `-J` output (a font, cover image, or other embedded
+/// file). The schema's attachment `type` field is not parsed here: it is not
+/// a matchable property.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attachment {
+    /// The `-J` attachment `id` (mkvmerge's per-file attachment index).
+    pub id: u64,
+    /// The `-J` `file_name` (the attachment's stored name, not the source
+    /// file's).
+    pub file_name: String,
+    /// The `-J` `size` in bytes.
+    pub size: u64,
+    /// The `-J` `content_type` (a MIME type), if mkvmerge reported one.
+    pub content_type: Option<String>,
+    /// The `-J` `description`, if the container carries one.
+    pub description: Option<String>,
+    /// The nested `properties.uid`, if the attachment has an explicit UID.
+    pub uid: Option<u64>,
+}
+
+impl Attachment {
+    /// Looks up a matchable property by name, unifying the top-level fields
+    /// into the same flat namespace [`Track::get`] exposes for tracks.
+    /// Returns `None` if the attachment carries no such property.
+    pub fn get(&self, name: &str) -> Option<PropValue> {
+        match name {
+            "file_name" => Some(PropValue::Str(self.file_name.clone())),
+            "content_type" => self.content_type.clone().map(PropValue::Str),
+            "description" => self.description.clone().map(PropValue::Str),
+            "id" => Some(PropValue::Int(self.id as i64)),
+            "size" => Some(PropValue::Int(self.size as i64)),
+            _ => None,
+        }
+    }
+}
+
 /// The result of identifying one source file (spec 5.5). Carries the track
 /// model plus enough container status to tell an identifiable media file from
 /// a non-media file (mkvmerge exits 0 either way).
@@ -94,6 +129,12 @@ pub struct Identification {
     pub container_supported: bool,
     /// The parsed tracks (empty for a non-media file).
     pub tracks: Vec<Track>,
+    /// The parsed attachments (empty if the container carries none).
+    pub attachments: Vec<Attachment>,
+    /// The total chapter entry count, summed over the `-J` `chapters` array's
+    /// `num_entries` (a file has at most one chapter edition in this array,
+    /// but the sum is defensive against more).
+    pub chapters: u64,
 }
 
 impl Identification {
@@ -123,6 +164,20 @@ impl Identification {
             .and_then(Value::as_array)
             .map(|arr| arr.iter().filter_map(parse_track).collect())
             .unwrap_or_default();
+        let attachments = v
+            .get("attachments")
+            .and_then(Value::as_array)
+            .map(|arr| arr.iter().filter_map(parse_attachment).collect())
+            .unwrap_or_default();
+        let chapters = v
+            .get("chapters")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|c| c.get("num_entries").and_then(Value::as_u64))
+                    .sum()
+            })
+            .unwrap_or(0);
         Ok(Identification {
             file_name: v
                 .get("file_name")
@@ -136,6 +191,8 @@ impl Identification {
             container_recognized,
             container_supported,
             tracks,
+            attachments,
+            chapters,
         })
     }
 }
@@ -161,6 +218,34 @@ fn parse_track(v: &Value) -> Option<Track> {
         kind,
         codec,
         properties,
+    })
+}
+
+/// Parses one `-J` attachment entry. Required fields (`id`, `file_name`,
+/// `size`) missing or wrong-typed drop the entry, mirroring [`parse_track`].
+fn parse_attachment(v: &Value) -> Option<Attachment> {
+    let id = v.get("id").and_then(Value::as_u64)?;
+    let file_name = v.get("file_name").and_then(Value::as_str)?.to_string();
+    let size = v.get("size").and_then(Value::as_u64)?;
+    let content_type = v
+        .get("content_type")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let description = v
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let uid = v
+        .get("properties")
+        .and_then(|p| p.get("uid"))
+        .and_then(Value::as_u64);
+    Some(Attachment {
+        id,
+        file_name,
+        size,
+        content_type,
+        description,
+        uid,
     })
 }
 
@@ -363,5 +448,65 @@ mod tests {
         );
         assert_eq!(PropValue::from_json(&json!([1, 2])), None);
         assert_eq!(PropValue::from_json(&json!(null)), None);
+    }
+
+    #[test]
+    fn parses_attachments_with_optional_fields() {
+        let json = r#"{
+          "file_name": "e.mkv",
+          "identification_format_version": 20,
+          "container": { "recognized": true, "supported": true },
+          "tracks": [],
+          "attachments": [
+            { "id": 1, "file_name": "font.ttf", "size": 1234,
+              "content_type": "application/x-truetype-font",
+              "description": "Main font", "properties": { "uid": 99 } },
+            { "id": 2, "file_name": "cover.jpg", "size": 5678, "properties": {} }
+          ],
+          "chapters": [ { "num_entries": 12 } ]
+        }"#;
+        let id = Identification::from_json(json).unwrap();
+        assert_eq!(id.attachments.len(), 2);
+        let a = &id.attachments[0];
+        assert_eq!(a.id, 1);
+        assert_eq!(a.file_name, "font.ttf");
+        assert_eq!(a.size, 1234);
+        assert_eq!(
+            a.content_type.as_deref(),
+            Some("application/x-truetype-font")
+        );
+        assert_eq!(a.description.as_deref(), Some("Main font"));
+        assert_eq!(a.uid, Some(99));
+        assert_eq!(id.attachments[1].content_type, None);
+        assert_eq!(id.attachments[1].description, None);
+        assert_eq!(id.attachments[1].uid, None);
+        assert_eq!(id.chapters, 12);
+    }
+
+    #[test]
+    fn absent_attachments_and_chapters_default_empty() {
+        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
+          "container": { "recognized": true, "supported": true }, "tracks": [] }"#;
+        let id = Identification::from_json(json).unwrap();
+        assert!(id.attachments.is_empty());
+        assert_eq!(id.chapters, 0);
+    }
+
+    #[test]
+    fn attachment_get_exposes_match_properties() {
+        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
+          "container": { "recognized": true, "supported": true }, "tracks": [],
+          "attachments": [ { "id": 3, "file_name": "f.otf", "size": 10,
+            "content_type": "font/otf", "properties": {} } ] }"#;
+        let a = &Identification::from_json(json).unwrap().attachments[0];
+        assert_eq!(a.get("file_name"), Some(PropValue::Str("f.otf".into())));
+        assert_eq!(
+            a.get("content_type"),
+            Some(PropValue::Str("font/otf".into()))
+        );
+        assert_eq!(a.get("description"), None);
+        assert_eq!(a.get("id"), Some(PropValue::Int(3)));
+        assert_eq!(a.get("size"), Some(PropValue::Int(10)));
+        assert_eq!(a.get("nope"), None);
     }
 }
