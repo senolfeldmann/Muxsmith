@@ -165,6 +165,16 @@ impl LanguageIndex {
             .get(&token.trim().to_ascii_lowercase())
             .cloned()
     }
+
+    /// Whether `token` is an acceptable language value: a recognized ISO
+    /// 639-1/2/3 code (via [`normalize`](Self::normalize)) OR a well-formed
+    /// IETF BCP 47 tag (region/script subtags, e.g. `pt-BR`, `sr-Latn`).
+    /// Well-formedness only (RFC 5646 grammar); a grammatically valid but
+    /// nonexistent tag is accepted here and left for mkvmerge to reject at
+    /// mux time (D19).
+    pub fn is_valid_value(&self, token: &str) -> bool {
+        self.normalize(token).is_some() || language_tags::LanguageTag::parse(token).is_ok()
+    }
 }
 
 /// Parses `mkvmerge --list-languages` table output into a [`LanguageIndex`].

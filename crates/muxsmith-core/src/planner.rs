@@ -303,7 +303,7 @@ fn walk_exact_languages(
 ) {
     if let Some(exact) = &expr.exact
         && let Some(Scalar::Str(v)) = exact.get("language")
-        && lang.normalize(v).is_none()
+        && !lang.is_valid_value(v)
     {
         diags.push(
             Diagnostic::error(
@@ -574,7 +574,7 @@ fn resolve_changes(
         .iter()
         .map(|(property, value)| {
             if property == "language" {
-                let valid = matches!(value, Scalar::Str(s) if lang.normalize(s).is_some());
+                let valid = matches!(value, Scalar::Str(s) if lang.is_valid_value(s));
                 if !valid {
                     diags.push(
                         Diagnostic::error(

@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+language-tags = "0.3.2"
 regex = "1.12.4"
 schemars = "1.2.1"
 serde = { version = "1.0.228", features = ["derive"] }

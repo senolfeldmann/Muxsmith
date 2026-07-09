@@ -154,7 +154,7 @@ tracks:
   rules:
     - match: { exact: { type: audio, language: en } }
       changes:
-        language: zzz
+        language: notalanguage
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
@@ -171,7 +171,7 @@ tracks:
 
 // Task 5: a non-string `changes.language` value (e.g. a bool) is also
 // InvalidPropertyValue at plan time, same as a recognized-but-invalid
-// string ("zzz" above): `resolve_changes` only accepts `Scalar::Str`.
+// string ("notalanguage" above): `resolve_changes` only accepts `Scalar::Str`.
 #[test]
 fn changes_language_non_string_value_is_invalid_property_value() {
     let p = r#"
@@ -191,6 +191,33 @@ tracks:
             .iter()
             .any(|d| d.code == DiagCode::InvalidPropertyValue
                 && d.config_path == "tracks[0].changes.language"),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+// Task 4 (D19): a well-formed BCP-47 regional tag is not an ISO 639 code, but
+// `is_valid_value` accepts it too, so `changes.language: pt-BR` no longer
+// hard-fails at plan time (mkvmerge, not muxsmith, is the authority on
+// whether the tag actually exists).
+#[test]
+fn changes_language_pt_br_regional_tag_is_not_invalid_property_value() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: audio, language: en } }
+      changes:
+        language: pt-BR
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::InvalidPropertyValue),
         "diags: {:?}",
         fr.diagnostics
     );
@@ -968,7 +995,7 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 tracks:
   rules:
-    - match: { exact: { type: audio, language: zz } }
+    - match: { exact: { type: audio, language: notalanguage } }
 "#;
     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
     assert!(
