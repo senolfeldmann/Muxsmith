@@ -81,6 +81,8 @@ diag_codes! {
     CodecKindExactOnly => "codec-kind-exact-only",
     /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender, `allowed` a hint sample.
     InvalidPropertyValue => "invalid-property-value",
+    /// An `any` or `not` list is present but has zero sub-expressions (spec 4.3); such a list is either always-false (`any`) or always-true (`not`) and is almost certainly a mistake.
+    EmptyMatchList => "empty-match-list",
     /// A `substring` or `regex` condition targets a non-string property; both are defined for string properties only (spec 4.3).
     NotStringProperty => "not-string-property",
     /// A condition or change value's type does not fit the property's declared type (an integer fits a float property, never the reverse).
@@ -114,6 +116,8 @@ diag_codes! {
     MissingExternal => "missing-external",
     /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
     AmbiguousExternal => "ambiguous-external",
+    /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
+    UnidentifiableSource => "unidentifiable-source",
     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
     OutputCollision => "output-collision",
     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
@@ -294,6 +298,18 @@ mod tests {
             DiagCode::PathSeparatorInRenderedName,
             DiagCode::EmptyRenderedName,
         ] {
+            assert!(DiagCode::ALL.contains(&c), "{c:?} missing from ALL");
+        }
+    }
+
+    #[test]
+    fn f2_codes_are_registered_with_keys() {
+        assert_eq!(DiagCode::EmptyMatchList.key(), "empty-match-list");
+        assert_eq!(
+            DiagCode::UnidentifiableSource.key(),
+            "unidentifiable-source"
+        );
+        for c in [DiagCode::EmptyMatchList, DiagCode::UnidentifiableSource] {
             assert!(DiagCode::ALL.contains(&c), "{c:?} missing from ALL");
         }
     }

@@ -39,3 +39,5 @@ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not {
 invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
 path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
 empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+unidentifiable-source = A source file exists but could not be identified: { $detail }.
