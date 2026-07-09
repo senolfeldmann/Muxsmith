@@ -1,10 +1,10 @@
 //! Match-expression evaluation (spec 4.3, 4.4). Pure and total: given an
-//! expression, a track, and a language index, decides membership with no I/O
-//! and no diagnostics. The correctness core; covered by unit tests here and by
-//! the planner's fixture tests. Config validity (unknown property, wrong type,
-//! bad enum value) is checked earlier (validate) or reported by the planner;
-//! this function assumes a validated expression and answers only "does this
-//! track match?".
+//! expression, a [`Matchable`] item, and a language index, decides membership
+//! with no I/O and no diagnostics. The correctness core; covered by unit
+//! tests here and by the planner's fixture tests. Config validity (unknown
+//! property, wrong type, bad enum value) is checked earlier (validate) or
+//! reported by the planner; this function assumes a validated expression and
+//! answers only "does this item match?".
 
 use crate::capability::codec_kind_prefixes;
 use crate::capability::runtime::LanguageIndex;
@@ -12,20 +12,46 @@ use crate::capability::{PropType, matchable_type};
 use crate::identify::{PropValue, Track};
 use crate::profile::match_expr::{MatchExpr, Scalar};
 
-/// Whether `track` satisfies `expr` (spec 4.3): the conjunction of all present
+/// A property-bearing item the matcher can evaluate a [`MatchExpr`] against.
+/// [`Track`] is the only implementor today; a later item type (e.g.
+/// attachments) implements it to reuse the same match algebra.
+pub trait Matchable {
+    /// The value of a match property, or `None` if absent.
+    fn get(&self, prop: &str) -> Option<PropValue>;
+}
+
+impl Matchable for Track {
+    fn get(&self, prop: &str) -> Option<PropValue> {
+        Track::get(self, prop)
+    }
+}
+
+// `Iterator::filter`'s predicate takes `&Self::Item`, so filtering an
+// iterator of `&Track` (e.g. `Vec<Track>::iter()`) hands the predicate a
+// `&&Track`. Generic trait-bound unification does not apply deref coercion
+// the way a concrete `&Track` parameter would, so without this blanket impl
+// `M` would resolve to `&Track` and fail the `Matchable` bound at existing
+// call sites. This keeps those sites compiling unchanged.
+impl<M: Matchable> Matchable for &M {
+    fn get(&self, prop: &str) -> Option<PropValue> {
+        (**self).get(prop)
+    }
+}
+
+/// Whether `item` satisfies `expr` (spec 4.3): the conjunction of all present
 /// parts. `lang` normalizes language tokens so ISO 639-2 and BCP-47 values
 /// compare equal (spec 4.4).
-pub fn matches(expr: &MatchExpr, track: &Track, lang: &LanguageIndex) -> bool {
+pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -> bool {
     if let Some(exact) = &expr.exact {
         for (prop, want) in exact {
-            if !exact_matches(prop, want, track, lang) {
+            if !exact_matches(prop, want, item, lang) {
                 return false;
             }
         }
     }
     if let Some(sub) = &expr.substring {
         for (prop, needle) in sub {
-            match track_str(prop, track) {
+            match item_str(prop, item) {
                 Some(hay) if hay.to_lowercase().contains(&needle.to_lowercase()) => {}
                 _ => return false,
             }
@@ -33,7 +59,7 @@ pub fn matches(expr: &MatchExpr, track: &Track, lang: &LanguageIndex) -> bool {
     }
     if let Some(rx) = &expr.regex {
         for (prop, pattern) in rx {
-            let hay = match track_str(prop, track) {
+            let hay = match item_str(prop, item) {
                 Some(h) => h,
                 None => return false,
             };
@@ -47,19 +73,19 @@ pub fn matches(expr: &MatchExpr, track: &Track, lang: &LanguageIndex) -> bool {
     }
     if let Some(any) = &expr.any
         && !any.is_empty()
-        && !any.iter().any(|e| matches(e, track, lang))
+        && !any.iter().any(|e| matches(e, item, lang))
     {
         return false;
     }
     if let Some(not) = &expr.not
-        && not.iter().any(|e| matches(e, track, lang))
+        && not.iter().any(|e| matches(e, item, lang))
     {
         return false;
     }
     true
 }
 
-fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex) -> bool {
+fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &LanguageIndex) -> bool {
     match prop {
         // language matches against both `language` and `language_ietf`,
         // normalized so `de` and `ger` are equal (spec 4.4).
@@ -69,7 +95,7 @@ fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex)
             };
             ["language", "language_ietf"]
                 .iter()
-                .filter_map(|f| track_str(f, track))
+                .filter_map(|f| item_str(f, item))
                 .any(|have| lang_eq(want, &have, lang))
         }
         // codec_kind is a codec_id prefix match over a curated alias set.
@@ -80,7 +106,7 @@ fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex)
             let Some(prefixes) = codec_kind_prefixes(kind) else {
                 return false;
             };
-            match track_str("codec_id", track) {
+            match item_str("codec_id", item) {
                 Some(id) => prefixes.iter().any(|p| id.starts_with(p)),
                 None => false,
             }
@@ -90,7 +116,7 @@ fn exact_matches(prop: &str, want: &Scalar, track: &Track, lang: &LanguageIndex)
         // commentary, ...) are only emitted when set, so absence must
         // compare equal to `false` for exact matching, same as a track that
         // reported the flag as `false` explicitly.
-        _ => match track.get(prop) {
+        _ => match item.get(prop) {
             Some(have) => scalar_eq(want, &have),
             None => match matchable_type(prop) {
                 Some(PropType::Boolean) => scalar_eq(want, &PropValue::Bool(false)),
@@ -110,10 +136,11 @@ fn lang_eq(a: &str, b: &str, lang: &LanguageIndex) -> bool {
     }
 }
 
-/// The string form of a track property, for substring/regex/language. Only
-/// `PropValue::Str` yields a value; numeric/boolean properties are not strings.
-fn track_str(prop: &str, track: &Track) -> Option<String> {
-    match track.get(prop) {
+/// The string form of a matchable item's property, for substring/regex/
+/// language. Only `PropValue::Str` yields a value; numeric/boolean
+/// properties are not strings.
+fn item_str<M: Matchable>(prop: &str, item: &M) -> Option<String> {
+    match item.get(prop) {
         Some(PropValue::Str(s)) => Some(s),
         _ => None,
     }
@@ -315,5 +342,14 @@ mod tests {
     fn absent_non_boolean_property_still_does_not_match() {
         let t = track("subtitles", &[]);
         assert!(!matches(&expr("exact: { track_name: X }"), &t, &lang()));
+    }
+
+    #[test]
+    fn matches_is_generic_over_matchable() {
+        fn check<M: Matchable>(m: &M) -> bool {
+            matches(&expr("exact: { type: audio }"), m, &lang())
+        }
+        let t = track("audio", &[]);
+        assert!(check(&t));
     }
 }
