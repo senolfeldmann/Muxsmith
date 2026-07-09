@@ -357,6 +357,53 @@ mod tests {
         assert_eq!(primaries[0].identifier.whole, "E01");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn broken_symlink_is_skipped_silently() {
+        use std::os::unix::fs::symlink;
+
+        // The link's target never exists; walk_files must resolve this via a
+        // failing `fs::metadata` call and skip it silently, not panic.
+        let source_dir = tempfile::tempdir().unwrap();
+        let link = source_dir.path().join("Show.S01E06.mkv");
+        symlink(source_dir.path().join("does-not-exist.mkv"), &link).unwrap();
+
+        let (primaries, diags) = scan_primaries(
+            source_dir.path(),
+            &input(r"S(?<season>\d{2})E(?<episode>\d{2})", &["mkv"], true),
+        );
+        assert_eq!(primaries.len(), 0, "diags: {diags:?}");
+        assert!(diags.is_empty(), "diags: {diags:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn multi_hop_symlink_chain_is_discovered() {
+        use std::os::unix::fs::symlink;
+
+        // symlink (in source_dir) -> symlink (in link_dir) -> real file (in
+        // target_dir). fs::metadata follows the full chain in a single call.
+        let target_dir = tempfile::tempdir().unwrap();
+        let target = target_dir.path().join("Show.S01E07.mkv");
+        fs::write(&target, b"x").unwrap();
+
+        let link_dir = tempfile::tempdir().unwrap();
+        let hop = link_dir.path().join("hop.mkv");
+        symlink(&target, &hop).unwrap();
+
+        let source_dir = tempfile::tempdir().unwrap();
+        let link = source_dir.path().join("Show.S01E07.mkv");
+        symlink(&hop, &link).unwrap();
+
+        let (primaries, diags) = scan_primaries(
+            source_dir.path(),
+            &input(r"S(?<season>\d{2})E(?<episode>\d{2})", &["mkv"], true),
+        );
+        assert_eq!(primaries.len(), 1, "diags: {diags:?}");
+        assert_eq!(primaries[0].path, link);
+        assert_eq!(primaries[0].identifier.whole, "S01E07");
+    }
+
     #[test]
     fn resolve_locator_matches_by_identifier() {
         let dir = tempfile::tempdir().unwrap();
