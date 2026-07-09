@@ -474,10 +474,22 @@ fn render_output(
         return None;
     }
 
-    let mut name = rendered;
-    if !name.to_lowercase().ends_with(".mkv") {
-        name.push_str(".mkv");
-    }
+    // keep and template diverge here (spec 4.8): keep is file_stem +
+    // ".mkv" unconditionally, since the source's own extension carries no
+    // meaning to preserve, even if the stem happens to already end in
+    // something that looks like ".mkv". A template's rendered value keeps
+    // a trailing ".mkv" if already present (case-insensitively) instead of
+    // doubling it. The two must not share one conditional.
+    let name = match &profile.output.filename {
+        FilenameCfg::Keyword(_) => format!("{rendered}.mkv"),
+        FilenameCfg::Template(_) => {
+            if rendered.to_lowercase().ends_with(".mkv") {
+                rendered
+            } else {
+                format!("{rendered}.mkv")
+            }
+        }
+    };
 
     Some(output_dir.join(name))
 }

@@ -163,6 +163,72 @@ fn keep_filename_renders_mkv_output() {
 }
 
 #[test]
+fn keep_filename_on_mp4_source_replaces_extension_with_mkv() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mp4] }
+tracks:
+  - match: { exact: { type: video } }
+  - match: { exact: { type: audio, language: en } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mp4", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv");
+}
+
+// keep is file_stem + ".mkv" unconditionally (spec 4.8): it must never check
+// whether the stem already looks like it ends in ".mkv" before appending --
+// that conditional belongs to the template arm only. A source whose stem
+// already ends in ".mkv" (a double extension, e.g. re-fed prior output) is
+// the case that tells the two apart: the keep arm keeps the stem intact and
+// still appends, the (wrong) shared-conditional version instead truncates
+// one ".mkv" off.
+#[test]
+fn keep_filename_does_not_apply_the_templates_conditional_append() {
+    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv.mkv");
+}
+
+#[test]
+fn template_filename_appends_mkv_when_missing() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+output:
+  filename: { template: 'Custom' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.output.file_name().unwrap(), "Custom.mkv");
+}
+
+#[test]
+fn template_filename_already_ending_in_mkv_is_not_doubled() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+output:
+  filename: { template: 'Custom.mkv' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.output.file_name().unwrap(), "Custom.mkv");
+}
+
+#[test]
 fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
@@ -390,6 +456,28 @@ profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
 output:
   filename: { template: '.' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
+fn empty_rendered_name_when_template_renders_to_empty_string() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+output:
+  filename: { template: '' }
 tracks:
   - match: { exact: { type: video } }
 "#;
