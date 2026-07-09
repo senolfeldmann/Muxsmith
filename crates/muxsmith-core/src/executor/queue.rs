@@ -58,7 +58,9 @@ pub enum JobEvent {
 /// Queue policy (spec 6, D14).
 #[derive(Debug, Clone, Copy)]
 pub struct QueueOpts {
-    /// Worker count; clamped to >= 1. Default 1 (sequential).
+    /// Requested worker count; clamped to >= 1, then further capped at the
+    /// batch's spec count (see [`worker_count`]) so a `--jobs` far larger
+    /// than the batch never spawns idle OS threads. Default 1 (sequential).
     pub jobs: usize,
     /// Soft fail-fast (D14): on the first Failed, dequeue nothing further;
     /// in-flight jobs finish; queued jobs become Cancelled.
@@ -84,7 +86,7 @@ pub fn run_queue(
     cancel: &Arc<AtomicBool>,
     events: &Sender<JobEvent>,
 ) -> Vec<JobOutcome> {
-    let workers = opts.jobs.max(1);
+    let workers = worker_count(opts.jobs, specs.len());
     let next = AtomicUsize::new(0);
     let stop = AtomicBool::new(false);
     let done = AtomicBool::new(false);
@@ -187,6 +189,18 @@ pub fn run_queue(
             })
         })
         .collect()
+}
+
+/// The worker-pool size for a batch of `spec_count` specs: `jobs` clamped to
+/// at least 1, then capped at `spec_count` (also at least 1, so an empty
+/// batch still gets one idle worker rather than zero). A worker beyond
+/// `spec_count` could never dequeue a spec (each fetches a distinct index
+/// once), so it would only ever sit idle; an oversized `--jobs` would
+/// otherwise spawn that many real OS threads for nothing; at extreme values
+/// enough to exhaust the OS and panic inside the scope (`Scope::spawn`
+/// panics on a thread-creation failure).
+fn worker_count(jobs: usize, spec_count: usize) -> usize {
+    jobs.max(1).min(spec_count.max(1))
 }
 
 /// Wraps the caller's spawner so each successful spawn registers the new
@@ -643,5 +657,58 @@ mod tests {
             "only the in-flight job may start once cancelled"
         );
         assert!(kills.load(Ordering::SeqCst) >= 1, "killer must be invoked");
+    }
+
+    // A tiny batch with a wildly oversized `--jobs` must not spawn one OS
+    // thread per requested worker: `worker_count` is the extracted, pure cap
+    // decision (no threads involved), unit-tested directly here.
+
+    #[test]
+    fn worker_count_is_capped_at_spec_count() {
+        assert_eq!(worker_count(100_000, 2), 2);
+        assert_eq!(worker_count(1, 2), 1);
+        assert_eq!(
+            worker_count(0, 2),
+            1,
+            "jobs is clamped to >= 1 before the cap is applied"
+        );
+        assert_eq!(
+            worker_count(3, 0),
+            1,
+            "an empty batch still gets one (idle) worker slot"
+        );
+    }
+
+    #[test]
+    fn jobs_far_exceeding_spec_count_still_completes_with_correct_outcomes() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![
+            spec(0, dir.path().join("a.mkv")),
+            spec(1, dir.path().join("b.mkv")),
+        ];
+        let tracker = ConcurrencyTracker::new();
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0))
+            .with_concurrency_tracker(Arc::clone(&tracker));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel();
+        let opts = QueueOpts {
+            jobs: 100_000,
+            fail_fast: false,
+        };
+
+        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
+        drop(tx);
+        let _events: Vec<JobEvent> = rx.iter().collect();
+
+        assert_eq!(outcomes.len(), 2);
+        for outcome in &outcomes {
+            assert_eq!(outcome.state, JobState::Ok);
+        }
+        assert!(
+            tracker.max() <= 2,
+            "at most one worker per spec can ever be concurrently in \
+             flight, observed max concurrency {}",
+            tracker.max()
+        );
     }
 }
