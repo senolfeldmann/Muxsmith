@@ -210,6 +210,17 @@ impl Diagnostic {
         self.file = Some(path.into());
         self
     }
+
+    /// Overrides the severity set by the constructor (`error`/`warning`/
+    /// `info`), for a code whose severity is not fixed but depends on
+    /// runtime policy (e.g. `OutputCollision`'s severity follows
+    /// `on_collision`, spec 4.8). Builder-style, so callers set severity
+    /// through the same chain as `with`/`for_file` rather than mutating the
+    /// public `severity` field directly.
+    pub fn with_severity(mut self, severity: Severity) -> Self {
+        self.severity = severity;
+        self
+    }
 }
 
 /// The highest severity present, or `None` for an empty slice.
@@ -247,6 +258,13 @@ mod tests {
         assert_eq!(d.config_path, "input.pattern");
         assert_eq!(d.params["detail"], "unclosed group");
         assert!(d.file.is_none());
+    }
+
+    #[test]
+    fn with_severity_overrides_constructor_severity() {
+        let d =
+            Diagnostic::info(DiagCode::OutputCollision, "output").with_severity(Severity::Warning);
+        assert_eq!(d.severity, Severity::Warning);
     }
 
     #[test]

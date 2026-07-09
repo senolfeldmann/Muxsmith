@@ -3,10 +3,10 @@ use std::path::Path;
 
 use muxsmith_core::capability::runtime::LanguageIndex;
 use muxsmith_core::identify::{Identification, Identify, IdentifyError};
-use muxsmith_core::planner::{RunInputs, plan_batch};
+use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::model::CollisionPolicy;
-use muxsmith_core::report::DiagCode;
+use muxsmith_core::report::{DiagCode, Severity};
 
 // A fake identifier backed by fixture JSON keyed on file name.
 struct FakeIdent {
@@ -381,6 +381,173 @@ tracks:
         "diags: {:?}",
         a.diagnostics
     );
+}
+
+#[test]
+fn empty_rendered_name_when_template_renders_to_dot() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+output:
+  filename: { template: '.' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+// Two primaries whose profile renders both to a fixed literal name (no
+// {match} field), in a sibling `out/` directory so pre-existing files in it
+// are never rediscovered as extra primaries (input.recursive defaults true,
+// scoped to `run.source` only). `policy` is threaded through as the run
+// override; `None` exercises the profile default (`error`).
+fn plan_two_same_output(policy: Option<CollisionPolicy>) -> Batch {
+    let root = tempfile::tempdir().unwrap();
+    let src_dir = root.path().join("src");
+    let out_dir = root.path().join("out");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(src_dir.join("Show.S01E02.mkv"), b"x").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+output:
+  filename: { template: 'Same.mkv' }
+tracks:
+  - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: src_dir,
+        output: Some(out_dir),
+        on_collision: policy,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Show.S01E02.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(root);
+    batch
+}
+
+#[test]
+fn two_planned_outputs_to_same_path_are_always_output_collision_error() {
+    // Decision #3: an internally inconsistent batch is always an error,
+    // independent of on_collision -- neither skip nor overwrite can pick a
+    // winner between two plans claiming the same path.
+    for policy in [
+        None,
+        Some(CollisionPolicy::Error),
+        Some(CollisionPolicy::Overwrite),
+        Some(CollisionPolicy::Skip),
+    ] {
+        let batch = plan_two_same_output(policy);
+        assert_eq!(batch.files.len(), 2, "policy {policy:?}");
+        for fr in &batch.files {
+            assert!(
+                fr.plan.is_none(),
+                "policy {policy:?}: diags: {:?}",
+                fr.diagnostics
+            );
+            let d = fr
+                .diagnostics
+                .iter()
+                .find(|d| d.code == DiagCode::OutputCollision)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "policy {policy:?}: expected OutputCollision, got: {:?}",
+                        fr.diagnostics
+                    )
+                });
+            assert_eq!(d.severity, Severity::Error, "policy {policy:?}: {d:?}");
+        }
+    }
+}
+
+// A single primary whose "keep" output name already exists on disk (a file
+// that is not itself a batch input; sibling out/ dir keeps it out of
+// discovery's recursive scan of src/).
+fn plan_one_with_existing_output(policy: CollisionPolicy) -> Batch {
+    let root = tempfile::tempdir().unwrap();
+    let src_dir = root.path().join("src");
+    let out_dir = root.path().join("out");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::create_dir_all(&out_dir).unwrap();
+    std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(out_dir.join("Show.S01E01.mkv"), b"pre-existing").unwrap();
+
+    let profile = from_str(P_VIDEO_AUDIO, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: src_dir,
+        output: Some(out_dir),
+        on_collision: Some(policy),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(root);
+    batch
+}
+
+#[test]
+fn on_disk_collision_under_skip_is_warning_and_drops_plan() {
+    let batch = plan_one_with_existing_output(CollisionPolicy::Skip);
+    let fr = &batch.files[0];
+    // Bug E: "skip" means the output is not produced, even though the
+    // diagnostic itself is only a warning.
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::OutputCollision)
+        .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+    assert_eq!(d.severity, Severity::Warning);
+}
+
+#[test]
+fn on_disk_collision_under_overwrite_is_info_and_keeps_plan() {
+    let batch = plan_one_with_existing_output(CollisionPolicy::Overwrite);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::OutputCollision)
+        .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+    assert_eq!(d.severity, Severity::Info);
+}
+
+#[test]
+fn on_disk_collision_under_error_is_error_and_drops_plan() {
+    let batch = plan_one_with_existing_output(CollisionPolicy::Error);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::OutputCollision)
+        .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+    assert_eq!(d.severity, Severity::Error);
 }
 
 #[test]

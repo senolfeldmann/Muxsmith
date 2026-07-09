@@ -435,49 +435,48 @@ fn render_output(
     output_dir: &Path,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<PathBuf> {
-    let name = match &profile.output.filename {
-        FilenameCfg::Keyword(_) => {
-            let stem = primary
-                .path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            format!("{stem}.mkv")
-        }
+    // Rendered BEFORE ".mkv" is appended: both invariants below (D4, spec
+    // 4.8) must see the actual rendered stem, not a value already carrying
+    // the enforced extension, or a template rendering to "." would silently
+    // become the hidden/invalid "..mkv" instead of being rejected.
+    let rendered = match &profile.output.filename {
+        FilenameCfg::Keyword(_) => primary
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string(),
         FilenameCfg::Template(block) => {
             let mut ctx = primary.identifier.to_ctx();
             if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
                 ctx.set("source_stem", stem);
             }
-            let mut rendered = Template::parse(&block.template)
+            Template::parse(&block.template)
                 .map(|t| t.render_literal(&ctx))
-                .unwrap_or_default();
-            if !rendered.to_lowercase().ends_with(".mkv") {
-                rendered.push_str(".mkv");
-            }
-            rendered
+                .unwrap_or_default()
         }
     };
 
-    if name.contains('/') || name.contains('\\') {
+    if rendered.contains('/') || rendered.contains('\\') {
         diags.push(
             Diagnostic::error(DiagCode::PathSeparatorInRenderedName, "output.filename")
                 .for_file(&primary.path)
-                .with("name", name.clone()),
+                .with("name", rendered.clone()),
         );
         return None;
     }
-    let stem_only = name
-        .strip_suffix(".mkv")
-        .or_else(|| name.strip_suffix(".MKV"))
-        .unwrap_or(&name);
-    if stem_only.is_empty() || name == "." || name == ".." {
+    if rendered.is_empty() || rendered == "." || rendered == ".." {
         diags.push(
             Diagnostic::error(DiagCode::EmptyRenderedName, "output.filename")
                 .for_file(&primary.path)
-                .with("name", name.clone()),
+                .with("name", rendered.clone()),
         );
         return None;
+    }
+
+    let mut name = rendered;
+    if !name.to_lowercase().ends_with(".mkv") {
+        name.push_str(".mkv");
     }
 
     Some(output_dir.join(name))
@@ -512,7 +511,8 @@ fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf])
 }
 
 // Two plans rendering to the same output path collide, as does an existing
-// on-disk file (spec 4.8). Only surviving plans (post-finalize) are considered.
+// on-disk file (spec 4.8, decision #3). Only surviving plans (post the
+// SourceOverwrite finalize pass) are considered.
 fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
     let mut counts: BTreeMap<PathBuf, usize> = BTreeMap::new();
     for f in files.iter() {
@@ -521,20 +521,21 @@ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
         }
     }
     for f in files.iter_mut() {
-        let Some(plan) = &f.plan else { continue };
-        let out = plan.output.clone();
+        let Some(out) = f.plan.as_ref().map(|p| p.output.clone()) else {
+            continue;
+        };
         let planned_twice = counts.get(&out).copied().unwrap_or(0) >= 2;
         let exists_on_disk = out.exists();
         if !planned_twice && !exists_on_disk {
             continue;
         }
-        // Two planned outputs to one path: always an error unless Skip. An
-        // existing on-disk file: severity follows the policy.
+        // Two planned outputs to one path: the batch is internally
+        // inconsistent, always an error, independent of `on_collision`
+        // (decision #3) -- neither skip nor overwrite can pick a winner. A
+        // pre-existing on-disk file that is not itself a batch input
+        // (SourceOverwrite covers that case) follows the policy.
         let severity = if planned_twice {
-            match policy {
-                CollisionPolicy::Skip => Severity::Warning,
-                _ => Severity::Error,
-            }
+            Severity::Error
         } else {
             match policy {
                 CollisionPolicy::Error => Severity::Error,
@@ -542,11 +543,19 @@ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
                 CollisionPolicy::Overwrite => Severity::Info,
             }
         };
-        let mut d = Diagnostic::info(DiagCode::OutputCollision, "output")
-            .for_file(&plan.source)
-            .with("path", out.display().to_string());
-        d.severity = severity;
-        f.diagnostics.push(d);
+        f.diagnostics.push(
+            Diagnostic::info(DiagCode::OutputCollision, "output")
+                .for_file(&f.source)
+                .with("path", out.display().to_string())
+                .with_severity(severity),
+        );
+        // "skip" on an on-disk collision means the output is not produced
+        // (bug E), even though the diagnostic above is only a Warning;
+        // `finalize_plans` only drops Error-severity plans, so null it here
+        // explicitly rather than relying on that pass.
+        if !planned_twice && policy == CollisionPolicy::Skip {
+            f.plan = None;
+        }
     }
 }
 
