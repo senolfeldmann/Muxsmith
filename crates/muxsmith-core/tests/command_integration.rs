@@ -34,19 +34,19 @@
 //! shape needs no change for Task 12.
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::process::Command;
 
-use muxsmith_core::capability::runtime::{LanguageIndex, Mkvmerge};
+use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::command::command;
-use muxsmith_core::identify::{
-    Identification, Identify, IdentifyCache, IdentifyError, LiveIdentifier, PropValue, Track,
-};
+use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier, PropValue, Track};
 use muxsmith_core::planner::{
     Assignment, AttachmentPlan, ChapterSource, Plan, PrimaryAttachments, RunInputs, TagFlags,
     TitleAction, plan_batch,
 };
 use muxsmith_core::profile::load::{Format, from_str};
+
+mod support;
+use support::{FakeIdent, lang};
 
 // ---------------------------------------------------------------------------
 // Pure golden: the spec 4.1 reference example, end to end.
@@ -72,30 +72,6 @@ const REFERENCE_PRIMARY: &str = include_str!("fixtures/identify/reference-primar
 // constraint) regardless of its own language/name, since that rule's
 // `changes` overwrite both anyway.
 const REFERENCE_DONOR: &str = include_str!("fixtures/identify/reference-donor.json");
-
-// A fake identifier backed by fixture JSON keyed on file name (mirrors
-// `planner_resolution.rs`'s `FakeIdent`).
-struct FakeIdent {
-    by_name: HashMap<String, Identification>,
-}
-
-impl Identify for FakeIdent {
-    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
-        let name = path.file_name().unwrap().to_str().unwrap();
-        self.by_name
-            .get(name)
-            .cloned()
-            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
-    }
-}
-
-fn lang() -> LanguageIndex {
-    LanguageIndex::from_rows(&[
-        ["English", "eng", "eng", "en"],
-        ["German", "ger", "ger", "de"],
-        ["Turkish", "tur", "tur", "tr"],
-    ])
-}
 
 #[test]
 fn reference_example_end_to_end() {

@@ -1,35 +1,14 @@
 use std::collections::HashMap;
-use std::path::Path;
 
-use muxsmith_core::capability::runtime::LanguageIndex;
-use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+use muxsmith_core::identify::Identification;
 use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::Scalar;
 use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::report::{DiagCode, Severity};
 
-// A fake identifier backed by fixture JSON keyed on file name.
-struct FakeIdent {
-    by_name: HashMap<String, Identification>,
-}
-impl Identify for FakeIdent {
-    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
-        let name = path.file_name().unwrap().to_str().unwrap();
-        self.by_name
-            .get(name)
-            .cloned()
-            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
-    }
-}
-
-fn lang() -> LanguageIndex {
-    LanguageIndex::from_rows(&[
-        ["English", "eng", "eng", "en"],
-        ["German", "ger", "ger", "de"],
-        ["Turkish", "tur", "tur", "tr"],
-    ])
-}
+mod support;
+use support::{FakeIdent, lang};
 
 const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
 // Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
@@ -40,7 +19,7 @@ fn plan_one(
     profile_yaml: &str,
     file_name: &str,
     ident_json: &str,
-) -> muxsmith_core::planner::Batch {
+) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join(file_name), b"x").unwrap();
     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
@@ -56,8 +35,7 @@ fn plan_one(
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
-    batch
+    (batch, dir)
 }
 
 const P_VIDEO_AUDIO: &str = r#"
@@ -71,7 +49,7 @@ tracks:
 
 #[test]
 fn resolves_each_rule_to_one_track() {
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
     assert_eq!(batch.files.len(), 1);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
@@ -85,7 +63,7 @@ fn resolves_each_rule_to_one_track() {
 // resolution; this only asserts the wiring is defaulted correctly).
 #[test]
 fn plan_and_assignment_carry_resolution_field_defaults() {
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -123,7 +101,7 @@ tracks:
         language: tr
         track_name: X
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -156,7 +134,7 @@ tracks:
       changes:
         language: notalanguage
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
     assert!(
@@ -183,7 +161,7 @@ tracks:
       changes:
         language: true
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
     assert!(
@@ -211,7 +189,7 @@ tracks:
       changes:
         language: pt-BR
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     assert!(
@@ -232,7 +210,7 @@ tracks:
   rules:
     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
     assert!(
@@ -251,7 +229,7 @@ tracks:
   rules:
     - match: { exact: { type: audio, language: de } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
     assert!(
@@ -272,7 +250,7 @@ tracks:
     - match: { exact: { type: audio, language: de } }
       optional: true
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -289,7 +267,7 @@ tracks:
     - match: { exact: { type: video } }
     - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none());
     assert!(
@@ -301,7 +279,7 @@ tracks:
 
 #[test]
 fn keep_filename_renders_mkv_output() {
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
     let plan = batch.files[0].plan.as_ref().unwrap();
     assert!(
         plan.output
@@ -324,7 +302,7 @@ tracks:
     - match: { exact: { type: video } }
     - match: { exact: { type: audio, language: en } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mp4", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mp4", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -340,7 +318,7 @@ tracks:
 // one ".mkv" off.
 #[test]
 fn keep_filename_does_not_apply_the_templates_conditional_append() {
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv.mkv", SERIES);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -358,7 +336,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -376,7 +354,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -398,7 +376,6 @@ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
         by_name: HashMap::new(),
     };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
@@ -450,7 +427,6 @@ tracks:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     // A present-but-unidentifiable donor is a hard error even though the
@@ -477,7 +453,7 @@ fn unrecognized_container_yields_unsupported_source_not_missing_track() {
     let json = r#"{ "container": { "recognized": false, "supported": true },
                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
                     "tracks": [] }"#;
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     let count = fr
@@ -500,7 +476,7 @@ fn unsupported_container_yields_unsupported_source_not_missing_track() {
     let json = r#"{ "container": { "recognized": true, "supported": false },
                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
                     "tracks": [] }"#;
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     let count = fr
@@ -525,7 +501,7 @@ fn recognized_supported_zero_tracks_stays_missing_track_not_unsupported_source()
     let json = r#"{ "container": { "recognized": true, "supported": true },
                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
                     "tracks": [] }"#;
-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     assert!(
@@ -589,7 +565,6 @@ tracks:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(root);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
@@ -659,7 +634,6 @@ tracks:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(root);
 
     // A never resolves B's donor itself, but its rendered output equals it -
     // a batch-wide SourceOverwrite, invisible to a check scoped to A's own
@@ -690,7 +664,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     assert!(
@@ -713,7 +687,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     assert!(
@@ -743,7 +717,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     assert!(
@@ -772,7 +746,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     assert!(
@@ -789,7 +763,7 @@ tracks:
 // are never rediscovered as extra primaries (input.recursive defaults true,
 // scoped to `run.source` only). `policy` is threaded through as the run
 // override; `None` exercises the profile default (`error`).
-fn plan_two_same_output(policy: Option<CollisionPolicy>) -> Batch {
+fn plan_two_same_output(policy: Option<CollisionPolicy>) -> (Batch, tempfile::TempDir) {
     let root = tempfile::tempdir().unwrap();
     let src_dir = root.path().join("src");
     let out_dir = root.path().join("out");
@@ -822,8 +796,7 @@ tracks:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(root);
-    batch
+    (batch, root)
 }
 
 #[test]
@@ -837,7 +810,7 @@ fn two_planned_outputs_to_same_path_are_always_output_collision_error() {
         Some(CollisionPolicy::Overwrite),
         Some(CollisionPolicy::Skip),
     ] {
-        let batch = plan_two_same_output(policy);
+        let (batch, _dir) = plan_two_same_output(policy);
         assert_eq!(batch.files.len(), 2, "policy {policy:?}");
         for fr in &batch.files {
             assert!(
@@ -863,7 +836,7 @@ fn two_planned_outputs_to_same_path_are_always_output_collision_error() {
 // A single primary whose "keep" output name already exists on disk (a file
 // that is not itself a batch input; sibling out/ dir keeps it out of
 // discovery's recursive scan of src/).
-fn plan_one_with_existing_output(policy: CollisionPolicy) -> Batch {
+fn plan_one_with_existing_output(policy: CollisionPolicy) -> (Batch, tempfile::TempDir) {
     let root = tempfile::tempdir().unwrap();
     let src_dir = root.path().join("src");
     let out_dir = root.path().join("out");
@@ -885,13 +858,12 @@ fn plan_one_with_existing_output(policy: CollisionPolicy) -> Batch {
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(root);
-    batch
+    (batch, root)
 }
 
 #[test]
 fn on_disk_collision_under_skip_is_warning_and_drops_plan() {
-    let batch = plan_one_with_existing_output(CollisionPolicy::Skip);
+    let (batch, _dir) = plan_one_with_existing_output(CollisionPolicy::Skip);
     let fr = &batch.files[0];
     // Bug E: "skip" means the output is not produced, even though the
     // diagnostic itself is only a warning.
@@ -906,7 +878,7 @@ fn on_disk_collision_under_skip_is_warning_and_drops_plan() {
 
 #[test]
 fn on_disk_collision_under_overwrite_is_info_and_keeps_plan() {
-    let batch = plan_one_with_existing_output(CollisionPolicy::Overwrite);
+    let (batch, _dir) = plan_one_with_existing_output(CollisionPolicy::Overwrite);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let d = fr
@@ -919,7 +891,7 @@ fn on_disk_collision_under_overwrite_is_info_and_keeps_plan() {
 
 #[test]
 fn on_disk_collision_under_error_is_error_and_drops_plan() {
-    let batch = plan_one_with_existing_output(CollisionPolicy::Error);
+    let (batch, _dir) = plan_one_with_existing_output(CollisionPolicy::Error);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
     let d = fr
@@ -941,7 +913,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -960,7 +932,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -979,7 +951,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S03E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1002,7 +974,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1025,7 +997,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1047,7 +1019,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1069,7 +1041,7 @@ tracks:
   rules:
     - match: { exact: { type: audio, language: notalanguage } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     assert!(
         batch
             .batch_diagnostics
@@ -1091,7 +1063,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1111,7 +1083,7 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1150,7 +1122,6 @@ tracks:
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
     let expected = dir.path().join("Show.S01E01.xml");
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
@@ -1190,7 +1161,6 @@ tracks:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
@@ -1232,7 +1202,6 @@ tracks:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
@@ -1260,7 +1229,7 @@ attachments:
   rules:
     - select: { substring: { file_name: .ttf } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1283,7 +1252,7 @@ tracks:
 attachments:
   unmatched: keep
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1306,7 +1275,7 @@ tracks:
 attachments:
   unmatched: drop
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1331,7 +1300,7 @@ attachments:
   rules:
     - drop: { substring: { file_name: cover } }
 "#;
-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
@@ -1373,7 +1342,6 @@ attachments:
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
     let expected = vec![dir.path().join("a.ttf"), dir.path().join("b.ttf")];
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
@@ -1413,7 +1381,6 @@ attachments:
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
     let expected = vec![dir.path().join("font.ttf")];
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
@@ -1452,7 +1419,6 @@ attachments:
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);

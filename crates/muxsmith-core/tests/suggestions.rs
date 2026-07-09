@@ -1,31 +1,15 @@
 use std::collections::HashMap;
-use std::path::Path;
 
 use serde::Deserialize;
 
-use muxsmith_core::capability::runtime::LanguageIndex;
-use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+use muxsmith_core::identify::Identification;
 use muxsmith_core::planner::{Batch, RunInputs, StructuredEdit, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
 use muxsmith_core::report::DiagCode;
 
-struct FakeIdent {
-    by_name: HashMap<String, Identification>,
-}
-impl Identify for FakeIdent {
-    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
-        let name = path.file_name().unwrap().to_str().unwrap();
-        self.by_name
-            .get(name)
-            .cloned()
-            .ok_or_else(|| IdentifyError::Json("no fixture".into()))
-    }
-}
-
-fn lang() -> LanguageIndex {
-    LanguageIndex::from_rows(&[["English", "eng", "eng", "en"]])
-}
+mod support;
+use support::{FakeIdent, lang};
 
 const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
 
@@ -37,7 +21,7 @@ tracks:
     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
 "#;
 
-fn plan(profile_yaml: &str) -> muxsmith_core::planner::Batch {
+fn plan(profile_yaml: &str) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
@@ -53,13 +37,12 @@ fn plan(profile_yaml: &str) -> muxsmith_core::planner::Batch {
     );
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
-    batch
+    (batch, dir)
 }
 
 #[test]
 fn ambiguous_rule_gets_a_validated_suggestion() {
-    let batch = plan(P_AMBIGUOUS);
+    let (batch, _dir) = plan(P_AMBIGUOUS);
     assert!(
         batch.files[0]
             .diagnostics
@@ -84,10 +67,10 @@ fn ambiguous_rule_gets_a_validated_suggestion() {
 
 #[test]
 fn every_suggestion_survives_the_next_dry_run() {
-    let batch = plan(P_AMBIGUOUS);
+    let (batch, _dir) = plan(P_AMBIGUOUS);
     for s in &batch.suggestions {
         let edited = apply_edit_to_first_rule(&s.edit);
-        let re = plan(&edited);
+        let (re, _dir) = plan(&edited);
         assert!(
             !re.files[0]
                 .diagnostics
@@ -131,7 +114,7 @@ fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
 
 // Plans an arbitrary set of named fixture files (name -> -J JSON), unlike
 // `plan()` which is wired to the single-file SERIES fixture.
-fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> Batch {
+fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> (Batch, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let mut by_name = HashMap::new();
     for (name, json) in files {
@@ -149,8 +132,7 @@ fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> Batch {
     };
     let mut ident = FakeIdent { by_name };
     let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    std::mem::forget(dir);
-    batch
+    (batch, dir)
 }
 
 // --- (a) with_rule_match must not clobber an existing constraint (bug C) ---
@@ -209,7 +191,7 @@ const GUARDED_FOO: &str = r#"
 }
 "#;
 
-fn no_clobber_batch() -> Batch {
+fn no_clobber_batch() -> (Batch, tempfile::TempDir) {
     plan_multi(
         P_NO_CLOBBER,
         &[
@@ -248,7 +230,7 @@ fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
 
 #[test]
 fn with_rule_match_never_widens_an_existing_substring_constraint() {
-    let batch = no_clobber_batch();
+    let (batch, _dir) = no_clobber_batch();
     assert!(
         batch.files[0]
             .diagnostics
@@ -281,7 +263,7 @@ fn with_rule_match_never_widens_an_existing_substring_constraint() {
     // decoy (id 2) -- the behavioral form of "never widens."
     for s in &batch.suggestions {
         let edited = apply_edit_to_no_clobber_rule(&s.edit);
-        let re = plan_multi(
+        let (re, _dir) = plan_multi(
             &edited,
             &[
                 ("Show.S01E01.mkv", AMBIGUOUS_FOO),
@@ -342,7 +324,7 @@ struct MatchFragmentDoc {
 
 #[test]
 fn yaml_fragment_round_trips_a_value_containing_a_colon() {
-    let batch = plan_multi(P_COLON_AMBIGUOUS, &[("Show.S01E01.mkv", COLON_TRACK_NAMES)]);
+    let (batch, _dir) = plan_multi(P_COLON_AMBIGUOUS, &[("Show.S01E01.mkv", COLON_TRACK_NAMES)]);
 
     let target = batch
         .suggestions
@@ -382,7 +364,7 @@ fn suggestion_cap_truncation_is_logged_not_silent() {
     // English SDH) differ across enough matchable properties and track_name
     // tokens that well over 3 candidates are accepted for tracks[0]; the cap
     // truncates the emitted list to 3 and must record the rest.
-    let batch = plan(P_AMBIGUOUS);
+    let (batch, _dir) = plan(P_AMBIGUOUS);
 
     let cap_diag = batch
         .batch_diagnostics
