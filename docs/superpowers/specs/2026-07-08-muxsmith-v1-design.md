@@ -143,6 +143,8 @@ expr := {
 - Case sensitivity: `exact` compares strings case-sensitively (language values are normalized per 4.4); `substring` is case-insensitive; `regex` is taken as written (use `(?i)` for case-insensitive matching).
 - Semantics carrier of the whole product; specified exhaustively by the property model (4.4) plus this evaluation rule, and covered by property-based tests.
 
+`exact` is typed value-equality, not raw string equality: each property is compared in its own domain. Numbers compare numerically (`6` == `6.0`); languages compare as languages, with ISO 639 spellings and BCP-47 tags reduced to canonical form (`de` == `ger`, `pt-Latn-BR` == `pt-BR`) while meaningful distinctions are preserved (`pt-BR` != `pt-PT`, `zh-Hans` != `zh-Hant`). Use `regex` for byte-literal matching.
+
 ### 4.4 Property model
 
 Two disjoint property sets, both owned by the `capability` module (section 9):

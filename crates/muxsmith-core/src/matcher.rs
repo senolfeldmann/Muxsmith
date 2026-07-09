@@ -132,14 +132,40 @@ fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &Langu
     }
 }
 
-/// True when two language tokens denote the same language. Both are normalized
-/// through the index; if either is unrecognized, fall back to a raw
-/// case-insensitive compare so unusual-but-equal tags still match.
+/// True when two language tokens denote the same language. ISO 639
+/// codes are normalized through the index first; if either operand is not a
+/// recognized ISO code, fall back to comparing BCP-47 canonical forms so
+/// unusual-but-equal tags still match.
+// mkvmerge's own default is `--normalize-language-ietf canonical` (v100), so
+// mkvmerge-authored tracks already arrive canonical; the canonicalization
+// path below mainly earns its keep on non-mkvmerge-authored or older files.
 fn lang_eq(a: &str, b: &str, lang: &LanguageIndex) -> bool {
-    match (lang.normalize(a), lang.normalize(b)) {
-        (Some(na), Some(nb)) => na == nb,
-        _ => a.eq_ignore_ascii_case(b),
+    if let (Some(na), Some(nb)) = (lang.normalize(a), lang.normalize(b)) {
+        return na == nb;
     }
+    // Non-ISO operand(s): compare BCP-47 CANONICAL forms (case + script
+    // suppression + deprecated-subtag replacement) so two spellings of the
+    // same language match (pt-Latn-BR == pt-BR, iw == he) while meaningful
+    // distinctions survive (pt-BR != pt-PT). Raw case-insensitive compare is
+    // the fallback when a value is not a canonicalizable tag.
+    if let (Some(ca), Some(cb)) = (canonical_tag(a), canonical_tag(b)) {
+        return ca.eq_ignore_ascii_case(&cb);
+    }
+    a.eq_ignore_ascii_case(b)
+}
+
+// The canonical BCP-47 form of `s`, or `None` if `s` does not even parse as
+// a well-formed tag. `canonicalize()` itself only errors on a pathological
+// case (multiple extended-language subtags, no unique canonicalization); a
+// well-formed but nonexistent-region/script tag like `xx-YY` canonicalizes
+// unchanged (empirically verified against language-tags 0.3.2), so `None`
+// here is reached almost exclusively via a `parse()` failure.
+fn canonical_tag(s: &str) -> Option<String> {
+    language_tags::LanguageTag::parse(s)
+        .ok()?
+        .canonicalize()
+        .ok()
+        .map(|t| t.as_str().to_string())
 }
 
 /// The string form of a matchable item's property, for substring/regex/
@@ -237,6 +263,22 @@ mod tests {
         let t = track("audio", &[("language", PropValue::Str("zxx".into()))]);
         assert!(matches(&expr("exact: { language: zxx }"), &t, &lang()));
         assert!(!matches(&expr("exact: { language: qqq }"), &t, &lang()));
+    }
+
+    #[test]
+    fn lang_eq_canonical_forms_match() {
+        let idx = LanguageIndex::default(); // empty: neither token normalizes as ISO
+        assert!(lang_eq("pt-BR", "pt-Latn-BR", &idx)); // redundant default script suppressed
+        assert!(lang_eq("pt-BR", "PT-br", &idx)); // case
+        assert!(lang_eq("he", "iw", &idx)); // deprecated code replaced
+    }
+
+    #[test]
+    fn lang_eq_preserves_meaningful_distinctions() {
+        let idx = LanguageIndex::default();
+        assert!(!lang_eq("pt-BR", "pt-PT", &idx)); // region
+        assert!(!lang_eq("zh-Hans", "zh-Hant", &idx)); // script (both meaningful)
+        assert!(!lang_eq("pt-BR", "pt", &idx)); // region-specific != bare
     }
 
     #[test]
