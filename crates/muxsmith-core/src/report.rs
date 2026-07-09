@@ -112,7 +112,7 @@ diag_codes! {
     OverlappingRules => "overlapping-rules",
     /// A non-optional rule matched zero tracks; the hint lists near-misses (same type/language) and which condition each failed (spec 5.2).
     MissingTrack => "missing-track",
-    /// An external locator (track rule or chapters) found zero files for a non-optional use (spec 5.2).
+    /// An external locator (track rule, chapters, or attachment add) found zero files for a non-optional use (spec 5.2).
     MissingExternal => "missing-external",
     /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
     AmbiguousExternal => "ambiguous-external",

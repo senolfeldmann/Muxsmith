@@ -1,0 +1,30 @@
+{
+  "attachments": [
+    { "id": 0, "file_name": "a.ttf", "size": 100 },
+    { "id": 1, "file_name": "b.otf", "size": 100 },
+    { "id": 2, "file_name": "cover.jpg", "size": 100 }
+  ],
+  "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [],
+  "file_name": "Show.S01E01.mkv",
+  "global_tags": [],
+  "identification_format_version": 20,
+  "track_tags": [],
+  "tracks": [
+    {
+      "codec": "AVC/H.264/MPEG-4p10",
+      "id": 0,
+      "type": "video",
+      "properties": {
+        "codec_id": "V_MPEG4/ISO/AVC",
+        "default_track": true,
+        "forced_track": false,
+        "language": "und",
+        "language_ietf": "und",
+        "number": 1,
+        "pixel_dimensions": "1920x1080"
+      }
+    }
+  ]
+}

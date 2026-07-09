@@ -32,6 +32,9 @@ fn lang() -> LanguageIndex {
 }
 
 const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+// Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
+// id2 "cover.jpg"), the fixture the brief's attachment-rule test cases use.
+const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
 
 fn plan_one(
     profile_yaml: &str,
@@ -1084,4 +1087,219 @@ tracks:
         .unwrap_or_else(|| panic!("expected AmbiguousExternal, got: {:?}", fr.diagnostics));
     assert_eq!(d.config_path, "chapters.external");
     assert_eq!(d.params.get("count").map(String::as_str), Some("2"));
+}
+
+// Task 8: a `select` rule keeps only the attachments it matches; `unmatched:
+// drop` removes everything else, reducing to `Subset` of just the matched id.
+#[test]
+fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  unmatched: drop
+  rules:
+    - select: { substring: { file_name: .ttf } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.attachments.primary,
+        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0])
+    );
+}
+
+// Task 8: no rules at all, `unmatched: keep` -> every attachment falls
+// through to `unmatched` and is kept, reducing to `KeepAll`.
+#[test]
+fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  unmatched: keep
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.attachments.primary,
+        muxsmith_core::planner::PrimaryAttachments::KeepAll
+    );
+}
+
+// Task 8: no rules at all, `unmatched: drop` -> every attachment falls
+// through to `unmatched` and is dropped, reducing to `DropAll`.
+#[test]
+fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  unmatched: drop
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.attachments.primary,
+        muxsmith_core::planner::PrimaryAttachments::DropAll
+    );
+}
+
+// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
+// `unmatched: keep` keeps the other two, reducing to `Subset([0, 1])`.
+#[test]
+fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  unmatched: keep
+  rules:
+    - drop: { substring: { file_name: cover } }
+"#;
+    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(
+        plan.attachments.primary,
+        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0, 1])
+    );
+}
+
+// Task 8 (D12): an `add` locator attaches ALL files it matches, not just one;
+// both fonts land in `add_files`, in the locator's sorted order.
+#[test]
+fn attachment_add_locator_attaches_all_matching_files() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("b.ttf"), b"font-b").unwrap();
+    std::fs::write(dir.path().join("a.ttf"), b"font-a").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: '.', extensions: [ttf] }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    let expected = vec![dir.path().join("a.ttf"), dir.path().join("b.ttf")];
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.attachments.add_files, expected);
+}
+
+// Task 8 (D12): two `add` rules that both match the same file attach it
+// exactly once (dedup by path, first-seen order).
+#[test]
+fn attachment_add_two_rules_matching_same_file_is_deduped() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("font.ttf"), b"font").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: '.', extensions: [ttf] }
+    - add: { path: '.', extensions: [ttf] }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    let expected = vec![dir.path().join("font.ttf")];
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.attachments.add_files, expected);
+}
+
+// Task 8 (D12): an `add` locator matching zero files is a WARNING
+// `MissingExternal` at `attachments.rules[i].add`, an auxiliary payload that
+// must not suppress the plan (unlike a track rule's or chapters' external
+// zero-match, both of which are errors).
+#[test]
+fn attachment_add_locator_zero_matches_yields_missing_external_warning_and_plan_survives() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: '.', extensions: [ttf] }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    std::mem::forget(dir);
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert!(plan.attachments.add_files.is_empty());
+    let d = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::MissingExternal)
+        .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
+    assert_eq!(d.config_path, "attachments.rules[0].add");
+    assert_eq!(d.severity, Severity::Warning);
 }

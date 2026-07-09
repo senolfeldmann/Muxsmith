@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
 use crate::capability::runtime::LanguageIndex;
 use crate::discovery::{self, PrimaryFile};
-use crate::identify::{Identification, Identify};
+use crate::identify::{Attachment, Identification, Identify};
 use crate::matcher;
 use crate::profile::match_expr::{MatchExpr, Scalar};
 use crate::profile::model::{
@@ -516,15 +516,20 @@ fn resolve_file(
     let title = resolve_title(profile, primary);
     let tags = resolve_tags(profile);
     let chapters = resolve_chapters(profile, primary, primary_dir, &mut diagnostics);
+    let attachments = resolve_attachments(
+        profile,
+        primary,
+        primary_dir,
+        &ident.attachments,
+        lang,
+        &mut diagnostics,
+    );
 
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
         output,
         assignments,
-        attachments: AttachmentPlan {
-            primary: PrimaryAttachments::KeepAll,
-            add_files: vec![],
-        },
+        attachments,
         chapters,
         tags,
         title,
@@ -761,6 +766,91 @@ fn resolve_chapters(
                 }
             }
         }
+    }
+}
+
+// Resolves `profile.attachments` against the primary's own attachments
+// (spec 4.9, D10): donor attachments never flow in, so `primary_attachments`
+// is always the primary's identification's attachments, never a donor's
+// (the command drops donor attachments outright via `--no-attachments`,
+// Task 11).
+//
+// Existing attachments (select/drop/unmatched): walks `rules` in order per
+// attachment; the first matching `select` keeps it, the first matching
+// `drop` drops it, `add` rules are skipped in this pass. An attachment no
+// select/drop rule claims falls to `unmatched`. The kept id set then reduces
+// to the most compact `PrimaryAttachments` the command can express: `KeepAll`
+// when nothing was filtered out, `DropAll` when everything was, `Subset`
+// otherwise (spec 4.9's minimal-argv intent).
+//
+// Adds (D12): each `add` locator is a query that populates the attachment
+// collection, like `select`/`drop`, not a unique slot-filler like a donor
+// source, so ALL its hits are attached, not just one. A rule whose locator
+// matches zero files still gets a `MissingExternal` warning (not an error:
+// an add is an auxiliary payload, so a miss must never suppress the plan) at
+// `attachments.rules[i].add`. After every rule runs, `add_files` is deduped
+// by path, keeping first-seen order, so two rules matching one file attach
+// it once.
+fn resolve_attachments(
+    profile: &Profile,
+    primary: &PrimaryFile,
+    primary_dir: &Path,
+    primary_attachments: &[Attachment],
+    lang: &LanguageIndex,
+    diags: &mut Vec<Diagnostic>,
+) -> AttachmentPlan {
+    let mut kept: Vec<u64> = Vec::new();
+    for att in primary_attachments {
+        let mut decision: Option<bool> = None;
+        for rule in &profile.attachments.rules {
+            if let Some(select) = &rule.select
+                && matcher::matches(select, att, lang)
+            {
+                decision = Some(true);
+                break;
+            }
+            if let Some(drop) = &rule.drop
+                && matcher::matches(drop, att, lang)
+            {
+                decision = Some(false);
+                break;
+            }
+        }
+        if decision.unwrap_or(profile.attachments.unmatched == KeepDrop::Keep) {
+            kept.push(att.id);
+        }
+    }
+
+    let primary_disposition = if kept.len() == primary_attachments.len() {
+        PrimaryAttachments::KeepAll
+    } else if kept.is_empty() {
+        PrimaryAttachments::DropAll
+    } else {
+        kept.sort_unstable();
+        PrimaryAttachments::Subset(kept)
+    };
+
+    let mut add_files: Vec<PathBuf> = Vec::new();
+    for (i, rule) in profile.attachments.rules.iter().enumerate() {
+        let Some(locator) = &rule.add else { continue };
+        let hits = discovery::resolve_locator(locator, primary_dir, &primary.identifier);
+        if hits.is_empty() {
+            diags.push(
+                Diagnostic::warning(
+                    DiagCode::MissingExternal,
+                    format!("attachments.rules[{i}].add"),
+                )
+                .for_file(&primary.path),
+            );
+        }
+        add_files.extend(hits);
+    }
+    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    add_files.retain(|p| seen.insert(p.clone()));
+
+    AttachmentPlan {
+        primary: primary_disposition,
+        add_files,
     }
 }
 
