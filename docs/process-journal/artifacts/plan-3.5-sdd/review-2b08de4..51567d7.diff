@@ -1,0 +1,646 @@
+# Review package: 2b08de4..HEAD
+
+## Commits
+51567d7 feat(command,planner): keep-mode --track-order lists primary before donors (D20 revision B)
+
+## Files changed
+ crates/muxsmith-core/src/command.rs                |  52 +++++--
+ crates/muxsmith-core/src/planner.rs                |   8 +
+ crates/muxsmith-core/src/profile/validate.rs       |   2 +-
+ crates/muxsmith-core/tests/command.rs              |  17 ++-
+ crates/muxsmith-core/tests/command_integration.rs  | 165 ++++++++++++---------
+ .../specs/2026-07-08-muxsmith-v1-design.md         |   2 +-
+ 6 files changed, 159 insertions(+), 87 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/command.rs b/crates/muxsmith-core/src/command.rs
+index 1212898..1ae1563 100644
+--- a/crates/muxsmith-core/src/command.rs
++++ b/crates/muxsmith-core/src/command.rs
+@@ -240,30 +240,58 @@ fn push_track_properties(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+ // for `Str` (no quoting), `to_string()` otherwise.
+ fn value_str(value: &Scalar) -> String {
+     match value {
+         Scalar::Bool(b) => (if *b { "1" } else { "0" }).to_string(),
+         Scalar::Str(s) => s.clone(),
+         Scalar::Int(i) => i.to_string(),
+         Scalar::Float(f) => f.to_string(),
+     }
+ }
+ 
+-// `--track-order g:tid,...`: one entry per assignment with a resolved
+-// track_id, in profile (assignment) order, `g` the input group index of
+-// that assignment's source (spec 4.9 item 3). Omitted entirely if no
+-// assignment has a track.
++// `--track-order g:tid,...` (spec 4.9 item 3). `drop` (default): one entry
++// per assignment with a resolved track_id, in profile (assignment) order,
++// `g` the input group index of that assignment's source. `keep`
++// (`plan.keep_unmatched`, D20): every primary track first (group 0, source
++// order, from `plan.primary_track_ids`), then donor assignments in profile
++// order -- the primary leads, donors trail, and matched-primary assignments
++// are already covered by `primary_track_ids` so are not repeated. Omitted
++// entirely if there is nothing to order.
+ fn push_track_order(argv: &mut Vec<String>, plan: &Plan, groups: &[PathBuf]) {
+-    let entries: Vec<String> = plan
+-        .assignments
+-        .iter()
+-        .filter_map(|a| {
+-            a.track_id
+-                .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
+-        })
+-        .collect();
++    let entries: Vec<String> = if plan.keep_unmatched {
++        push_track_order_keep(plan, groups)
++    } else {
++        plan.assignments
++            .iter()
++            .filter_map(|a| {
++                a.track_id
++                    .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
++            })
++            .collect()
++    };
+ 
+     if entries.is_empty() {
+         return;
+     }
+     argv.push("--track-order".to_string());
+     argv.push(entries.join(","));
+ }
++
++// keep-mode --track-order entries (D20): the primary's full track-id list
++// (always group 0; `input_groups` puts the primary there unconditionally),
++// then every DONOR assignment's track (source != plan.source, track_id
++// Some), in assignment order. Matched-primary assignments are covered by
++// `primary_track_ids` already and must not be listed twice.
++fn push_track_order_keep(plan: &Plan, groups: &[PathBuf]) -> Vec<String> {
++    let mut entries: Vec<String> = plan
++        .primary_track_ids
++        .iter()
++        .map(|tid| format!("0:{tid}"))
++        .collect();
++    entries.extend(plan.assignments.iter().filter_map(|a| {
++        if a.source.as_path() == plan.source.as_path() {
++            return None;
++        }
++        a.track_id
++            .map(|tid| format!("{}:{}", group_index(groups, &a.source), tid))
++    }));
++    entries
++}
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 700afab..bc494d1 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -141,20 +141,27 @@ pub struct Plan {
+     pub chapters: ChapterSource,
+     /// Resolved tag flags (spec 4.9).
+     pub tags: TagFlags,
+     /// Resolved output title (spec 4.9).
+     pub title: TitleAction,
+     /// When true (`tracks.unmatched: keep`), the primary's unmatched tracks
+     /// pass through: `command` emits no track-selection flags for the primary
+     /// group. Donor groups are unaffected. Default construction is `false`
+     /// (drop).
+     pub keep_unmatched: bool,
++    /// The primary file's full track-id list, in source order (as `-J`
++    /// reports them). Under `keep_unmatched`, `command` lists these first in
++    /// `--track-order` (group 0), ahead of any donor track (D20): a
++    /// kept-but-unmatched primary track counts as matched ("keep = match to
++    /// what is already there"), and the primary leads, donors trail.
++    /// Unused when `keep_unmatched` is `false`.
++    pub primary_track_ids: Vec<u64>,
+ }
+ 
+ /// Per-file result: the plan (if any) and every diagnostic about the file.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct FileReport {
+     /// The primary source file.
+     pub source: PathBuf,
+     /// The identifier matched from its basename.
+     pub identifier: String,
+     /// The plan, or `None` if any diagnostic is error-severity (spec 5.1).
+@@ -546,20 +553,21 @@ fn resolve_file(
+         output,
+         assignments,
+         attachments,
+         chapters,
+         tags,
+         title,
+         keep_unmatched: matches!(
+             profile.tracks.unmatched,
+             crate::profile::model::KeepDrop::Keep
+         ),
++        primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
+     });
+ 
+     FileReport {
+         source: primary.path.clone(),
+         identifier: primary.identifier.whole.clone(),
+         plan,
+         diagnostics,
+     }
+ }
+ 
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index 919c249..f0a1ef6 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -50,21 +50,21 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
+     }
+ 
+     if profile.input.extensions.is_empty() {
+         diags.push(Diagnostic::error(
+             DiagCode::EmptyExtensions,
+             "input.extensions",
+         ));
+     }
+ 
+     if profile.tracks.rules.is_empty() {
+-        diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks"));
++        diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks.rules"));
+     }
+ 
+     for (i, rule) in profile.tracks.rules.iter().enumerate() {
+         let base = format!("tracks[{i}]");
+         if rule.match_expr.is_empty() {
+             diags.push(Diagnostic::warning(
+                 DiagCode::EmptyMatchExpression,
+                 format!("{base}.match"),
+             ));
+         }
+diff --git a/crates/muxsmith-core/tests/command.rs b/crates/muxsmith-core/tests/command.rs
+index bbf3516..ea90509 100644
+--- a/crates/muxsmith-core/tests/command.rs
++++ b/crates/muxsmith-core/tests/command.rs
+@@ -19,20 +19,21 @@ fn change(property: &str, value: Scalar) -> AppliedChange {
+         value,
+     }
+ }
+ 
+ #[test]
+ fn global_and_single_video_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
++        primary_track_ids: vec![0],
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+             changes: vec![],
+         }],
+         attachments: AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+@@ -67,20 +68,23 @@ fn global_and_single_video_group() {
+         .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn keep_unmatched_suppresses_primary_selection_flags() {
+     let plan = Plan {
+         source: p("/m/show.mkv"),
+         output: p("/out/show.mkv"),
+         keep_unmatched: true,
++        // video(0), audio(1, matched below), subtitle(2, kept-unmatched):
++        // the full primary track-id list `-J` would report, source order.
++        primary_track_ids: vec![0, 1, 2],
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/show.mkv"),
+             track_id: Some(1),
+             track_kind: Some("audio".into()),
+             changes: vec![change("default_track", Scalar::Bool(true))],
+         }],
+         attachments: AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+@@ -97,29 +101,36 @@ fn keep_unmatched_suppresses_primary_selection_flags() {
+         !argv.iter().any(|a| a == "--no-video"
+             || a == "--no-subtitles"
+             || a == "--no-buttons"
+             || a == "--audio-tracks"),
+         "keep must emit no primary selection flags, got {argv:?}"
+     );
+     assert!(
+         argv.windows(2)
+             .any(|w| w[0] == "--default-track-flag" && w[1] == "1:1")
+     );
+-    assert!(argv.iter().any(|a| a == "--track-order"));
++    // D20: --track-order lists every primary track (0,1,2), source order,
++    // group 0 -- not just the matched (audio, id 1) assignment.
++    let track_order = argv
++        .iter()
++        .position(|a| a == "--track-order")
++        .map(|i| argv[i + 1].as_str());
++    assert_eq!(track_order, Some("0:0,0:1,0:2"));
+ }
+ 
+ #[test]
+ fn unmatched_donor_rule_opens_no_input_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
++        primary_track_ids: vec![0],
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+                 source: p("/m/e.mkv"),
+                 track_id: Some(0),
+                 track_kind: Some("video".into()),
+                 changes: vec![],
+             },
+             Assignment {
+                 rule_index: 1,
+@@ -153,20 +164,21 @@ fn unmatched_donor_rule_opens_no_input_group() {
+         .map(|i| argv[i + 1].as_str());
+     assert_eq!(track_order, Some("0:0"));
+ }
+ 
+ #[test]
+ fn per_track_properties_and_multi_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
++        primary_track_ids: vec![0, 1],
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+                 source: p("/m/e.mkv"),
+                 track_id: Some(0),
+                 track_kind: Some("video".into()),
+                 changes: vec![],
+             },
+             Assignment {
+                 rule_index: 1,
+@@ -240,20 +252,21 @@ fn per_track_properties_and_multi_group() {
+         .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn boolean_and_string_value_encoding() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
++        primary_track_ids: vec![0],
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+             changes: vec![
+                 change("forced_track", Scalar::Bool(false)),
+                 change("language", Scalar::Str("en".into())),
+             ],
+         }],
+@@ -296,20 +309,21 @@ fn boolean_and_string_value_encoding() {
+ }
+ 
+ // A single-group plan: one primary video track, no donor. Used by the
+ // attachment/global-flag tests below where a second group is not needed to
+ // demonstrate the behavior.
+ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
+     Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
++        primary_track_ids: vec![0],
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+             changes: vec![],
+         }],
+         attachments,
+         chapters: ChapterSource::Keep,
+         tags: TagFlags {
+@@ -321,20 +335,21 @@ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
+ }
+ 
+ // A two-group plan: primary video track plus a donor subtitle track, so
+ // "every group" assertions (chapters, tags) are actually exercised across
+ // both the primary and a donor input group.
+ fn multi_group_plan(attachments: AttachmentPlan, chapters: ChapterSource, tags: TagFlags) -> Plan {
+     Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
++        primary_track_ids: vec![0],
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+                 source: p("/m/e.mkv"),
+                 track_id: Some(0),
+                 track_kind: Some("video".into()),
+                 changes: vec![],
+             },
+             Assignment {
+                 rule_index: 1,
+diff --git a/crates/muxsmith-core/tests/command_integration.rs b/crates/muxsmith-core/tests/command_integration.rs
+index 0dc9f6c..1091895 100644
+--- a/crates/muxsmith-core/tests/command_integration.rs
++++ b/crates/muxsmith-core/tests/command_integration.rs
+@@ -3,24 +3,27 @@
+ //!
+ //! Two tests:
+ //! - `reference_example_end_to_end`: the spec 4.1 reference example (the
+ //!   full, German-completed profile checked in at `fixtures/reference.yaml`,
+ //!   see `docs/superpowers/plans/2026-07-08-plan-1-core-foundations-validate-cli.md`
+ //!   task 4) driven through `plan_batch` with a fake `Identify`, asserting
+ //!   the FULL `command::command` argv. Pure: no mkvmerge needed, always runs.
+ //! - `live_mkvmerge_accepts_planned_command`: spawns real mkvmerge on the
+ //!   argv a tiny real plan produces, gated on `Mkvmerge::locate()` (mirrors
+ //!   `identify_live.rs` / `mkvmerge_runtime.rs`'s self-skip pattern).
+-//! - `live_keep_unmatched_orders_only_listed_track` (Plan 3.5 Task 3):
+-//!   confirms the D20 assumption against real mkvmerge rather than from
+-//!   memory (SI-3): under `keep_unmatched`, a primary track kept but absent
+-//!   from `--track-order` lands after the listed ones, in source order.
++//! - `live_keep_donor_trails_primary` (Plan 3.5 Task 7): confirms the
++//!   resolved D20 track order against real mkvmerge rather than from memory
++//!   (SI-3): under `keep_unmatched`, `--track-order` lists every primary
++//!   track first, in source order, before any donor track -- a primary +
++//!   external-donor cross-file case, the whole-branch-review-flagged
++//!   scenario D20 exists to fix (this test replaces the Task 3 version,
++//!   which locked the superseded matched-first/unmatched-appended order).
+ //!
+ //! The parenthesized `( file )` input-group syntax `command.rs` emits for
+ //! every input source (spec 4.9 item 2f) was confirmed by hand against the
+ //! installed mkvmerge v100 before writing these tests: per `man mkvmerge`,
+ //! `( file1 file2 )` concatenates multiple files into one logical segment
+ //! and is documented as unusable for stand-alone self-contained containers
+ //! (it explicitly cannot be used for formats "which contains its own set of
+ //! headers", e.g. AVI/MP4 -- MKV likewise). A single-file group is the
+ //! degenerate n=1 case, which the same manual page states is equivalent to
+ //! prefixing the file with `=` (disables VOB-sibling auto-detection): a
+@@ -278,116 +281,139 @@ fn live_mkvmerge_accepts_planned_command() {
+     let out_json = m
+         .identify_json(&plan.output)
+         .expect("re-identify the muxed output");
+     let out_id = Identification::from_json(&out_json).expect("parse re-identification JSON");
+     assert!(out_id.is_identifiable());
+     assert_eq!(out_id.tracks.len(), 1);
+     assert_eq!(out_id.tracks[0].kind, "subtitles");
+ }
+ 
+ // ---------------------------------------------------------------------------
+-// Live acceptance: the D20 assumption (Plan 3.5 Task 3, SI-3). Confirmed
+-// against real mkvmerge v100 (see this test's construction), not taken from
+-// memory: under `keep_unmatched`, a primary track that mkvmerge keeps but
+-// that has no `--track-order` entry lands, in the output, after every
+-// explicitly-ordered track, in its original source-relative position among
+-// the other unlisted tracks.
++// Live acceptance: the resolved D20 track order (Plan 3.5 Task 7, SI-3).
++// Confirmed against real mkvmerge v100 (see this test's construction), not
++// taken from memory: under `keep_unmatched`, `--track-order` lists every
++// primary track first, in source order, before any donor track. This
++// replaces the Task 3 version of this test, which locked the superseded
++// matched-first/unmatched-appended order the whole-branch review flagged as
++// producing a donor-FIRST result on exactly the additive use case `keep`
++// exists for.
+ // ---------------------------------------------------------------------------
+ 
+ /// Looks up a track's `track_name`, panicking if absent (every track in this
+ /// test's fixture is named, so a miss means the fixture or the mux step
+ /// broke, not a legitimate "no name" case).
+ fn track_name(t: &Track) -> String {
+     match t.get("track_name") {
+         Some(PropValue::Str(s)) => s,
+         other => panic!("expected a track_name property, got {other:?}"),
+     }
+ }
+ 
+ #[test]
+-fn live_keep_unmatched_orders_only_listed_track() {
++fn live_keep_donor_trails_primary() {
+     let Some(m) = mkvmerge() else {
+         eprintln!("mkvmerge not found; skipping");
+         return;
+     };
+ 
+     let dir = tempfile::tempdir().unwrap();
+-    let alpha = dir.path().join("alpha.srt");
+-    let bravo = dir.path().join("bravo.srt");
+-    let charlie = dir.path().join("charlie.srt");
+-    std::fs::write(&alpha, "1\n00:00:00,000 --> 00:00:01,000\nALPHA\n").unwrap();
+-    std::fs::write(&bravo, "1\n00:00:00,000 --> 00:00:01,000\nBRAVO\n").unwrap();
+-    std::fs::write(&charlie, "1\n00:00:00,000 --> 00:00:01,000\nCHARLIE\n").unwrap();
+-
+-    // A 3-track source: three single-track SRTs merged as separate
+-    // (non-grouped) input files, each carrying a distinguishing
+-    // `--track-name` so the output can be matched back to its origin.
+-    // mkvmerge assigns sequential track ids in argument order for
+-    // single-track sources like these (confirmed below, not assumed).
+-    let source = dir.path().join("source.mkv");
++    let pa_srt = dir.path().join("pa.srt");
++    let pb_srt = dir.path().join("pb.srt");
++    let donor_srt = dir.path().join("donor.srt");
++    std::fs::write(&pa_srt, "1\n00:00:00,000 --> 00:00:01,000\nPA\n").unwrap();
++    std::fs::write(&pb_srt, "1\n00:00:00,000 --> 00:00:01,000\nPB\n").unwrap();
++    std::fs::write(&donor_srt, "1\n00:00:00,000 --> 00:00:01,000\nDONOR\n").unwrap();
++
++    // Primary: a real 2-track source (task brief: >= 2 tracks), built the
++    // same way as the sibling golden fixture -- two single-track SRTs
++    // merged as separate input files, sequential track ids in argument
++    // order (confirmed below, not assumed).
++    let primary = dir.path().join("primary.mkv");
+     let status = Command::new(m.path())
+         .args(["-q", "-o"])
+-        .arg(&source)
+-        .args(["--track-name", "0:ALPHA"])
+-        .arg(&alpha)
+-        .args(["--track-name", "0:BRAVO"])
+-        .arg(&bravo)
+-        .args(["--track-name", "0:CHARLIE"])
+-        .arg(&charlie)
++        .arg(&primary)
++        .args(["--track-name", "0:PA"])
++        .arg(&pa_srt)
++        .args(["--track-name", "0:PB"])
++        .arg(&pb_srt)
+         .status()
+-        .expect("spawn mkvmerge to build the 3-track fixture source");
+-    assert!(status.success(), "mkvmerge failed to build the source");
++        .expect("spawn mkvmerge to build the primary fixture");
++    assert!(status.success(), "mkvmerge failed to build the primary");
+ 
+-    let src_json = m
+-        .identify_json(&source)
+-        .expect("identify the fixture source");
+-    let src_id = Identification::from_json(&src_json).expect("parse source identification JSON");
+-    let mut src_tracks = src_id.tracks;
+-    src_tracks.sort_by_key(|t| t.id);
++    // Donor: a real, separate external file with one subtitle track -- the
++    // additive case D20 exists for ("add a German sub, keep the rest").
++    let donor = dir.path().join("donor.mkv");
++    let status = Command::new(m.path())
++        .args(["-q", "-o"])
++        .arg(&donor)
++        .args(["--track-name", "0:DONOR"])
++        .arg(&donor_srt)
++        .status()
++        .expect("spawn mkvmerge to build the donor fixture");
++    assert!(status.success(), "mkvmerge failed to build the donor");
++
++    let primary_json = m
++        .identify_json(&primary)
++        .expect("identify the primary fixture");
++    let primary_id =
++        Identification::from_json(&primary_json).expect("parse primary identification JSON");
++    let mut primary_tracks = primary_id.tracks;
++    primary_tracks.sort_by_key(|t| t.id);
+     assert_eq!(
+-        src_tracks.len(),
+-        3,
+-        "fixture must carry exactly 3 tracks, got {src_tracks:?}"
++        primary_tracks.len(),
++        2,
++        "primary fixture must carry exactly 2 tracks, got {primary_tracks:?}"
++    );
++    assert_eq!(
++        track_name(&primary_tracks[0]),
++        "PA",
++        "fixture sanity: primary id 0 is PA"
++    );
++    assert_eq!(
++        track_name(&primary_tracks[1]),
++        "PB",
++        "fixture sanity: primary id 1 is PB"
+     );
+ 
+-    // "The second track" (task brief), in source order (ascending id): BRAVO.
+-    // The unlisted remainder, in source order: ALPHA, then CHARLIE.
+-    let ordered = &src_tracks[1];
+-    let unlisted = [&src_tracks[0], &src_tracks[2]];
++    let donor_json = m.identify_json(&donor).expect("identify the donor fixture");
++    let donor_id = Identification::from_json(&donor_json).expect("parse donor identification JSON");
+     assert_eq!(
+-        track_name(ordered),
+-        "BRAVO",
+-        "fixture sanity: id 1 is BRAVO"
++        donor_id.tracks.len(),
++        1,
++        "donor fixture must carry exactly 1 track, got {:?}",
++        donor_id.tracks
+     );
++    let donor_track = &donor_id.tracks[0];
+     assert_eq!(
+-        unlisted.map(track_name),
+-        ["ALPHA".to_string(), "CHARLIE".to_string()],
+-        "fixture sanity: ids 0 and 2 are ALPHA and CHARLIE"
++        track_name(donor_track),
++        "DONOR",
++        "fixture sanity: donor id 0 is DONOR"
+     );
+ 
+     let out_dir = dir.path().join("out");
+     std::fs::create_dir_all(&out_dir).unwrap();
+     let output = out_dir.join("out.mkv");
+ 
+-    // `keep_unmatched: true`, one assignment ordering only the second track
+-    // (BRAVO). ALPHA and CHARLIE are kept -- `keep` emits no primary
+-    // selection flags -- but never appear in any assignment, hence never in
+-    // `--track-order`.
++    // `keep_unmatched: true`, a single donor rule adding the external
++    // subtitle; neither primary track has an assignment (both pass through
++    // as kept-unmatched). D20 says the primary still leads `--track-order`
++    // (both PA and PB, source order) and the donor trails.
+     let plan = Plan {
+-        source: source.clone(),
++        source: primary.clone(),
+         output: output.clone(),
+         keep_unmatched: true,
++        primary_track_ids: primary_tracks.iter().map(|t| t.id).collect(),
+         assignments: vec![Assignment {
+             rule_index: 0,
+-            source: source.clone(),
+-            track_id: Some(ordered.id),
+-            track_kind: Some(ordered.kind.clone()),
++            source: donor.clone(),
++            track_id: Some(donor_track.id),
++            track_kind: Some(donor_track.kind.clone()),
+             changes: vec![],
+         }],
+         attachments: AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         },
+         chapters: ChapterSource::Keep,
+         tags: TagFlags {
+             global_keep: true,
+             track_keep: true,
+@@ -406,32 +432,27 @@ fn live_keep_unmatched_orders_only_listed_track() {
+     );
+     assert!(output.exists(), "output file was not created");
+ 
+     let out_json = m
+         .identify_json(&output)
+         .expect("re-identify the muxed output");
+     let out_id = Identification::from_json(&out_json).expect("parse re-identification JSON");
+     let mut out_tracks = out_id.tracks;
+     out_tracks.sort_by_key(|t| t.id);
+ 
+-    // (a) all source tracks are present (kept), even though only one was in
+-    // `--track-order`.
++    // (a) all three tracks survive: both kept-unmatched primary tracks plus
++    // the donor's.
+     assert_eq!(
+         out_tracks.len(),
+         3,
+-        "keep_unmatched must keep every source track, got {out_tracks:?}"
++        "expected primary(2) + donor(1) tracks, got {out_tracks:?}"
+     );
+ 
+-    // (b) the D20 assumption: the explicitly-ordered track (BRAVO) precedes
+-    // the unlisted ones, which retain their source-relative order (ALPHA
+-    // before CHARLIE).
++    // (b) D20, observed against real mkvmerge (not assumed, SI-3): the
++    // primary's tracks lead in source order, the donor trails.
+     let out_names: Vec<String> = out_tracks.iter().map(track_name).collect();
+     assert_eq!(
+         out_names,
+-        vec![
+-            "BRAVO".to_string(),
+-            "ALPHA".to_string(),
+-            "CHARLIE".to_string()
+-        ],
+-        "unmatched-kept tracks must follow the ordered track, in source order"
++        vec!["PA".to_string(), "PB".to_string(), "DONOR".to_string()],
++        "donor must trail every primary track (D20)"
+     );
+ }
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index de66786..af99965 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -180,21 +180,21 @@ Conveniences:
+ 
+ ```
+ rule := {
+   source?:   primary (default) | { external: locator }
+   match:     expr                 # required
+   optional?: bool (default false) # exactly the zero-candidate case; two candidates remain an error
+   changes?:  { settable: value, ... }
+ }
+ ```
+ 
+-List order in `tracks.rules` defines the output track order (`--track-order`).
++List order in `tracks.rules` defines the output track order (`--track-order`). Under `unmatched: keep`, that order applies only within the primary: `--track-order` lists every primary track first, in the primary's own source order, then donor tracks in `tracks.rules` order (D20) - kept-but-unmatched primary tracks count as matched, so the primary leads and donors trail. An explicit primary rule under `keep` still applies its `changes` but does not reposition the track; reordering the primary is a `drop`-mode operation.
+ 
+ ### 4.6 External locator
+ 
+ ```
+ locator := {
+   path:             string        # relative to the primary file's directory, or absolute
+   recursive?:       bool (default false)
+   extensions:       [string]      # validated against mkvmerge --list-types
+   match_to_source?: true          # sugar for match_pattern: '{match}'
+   match_pattern?:   template      # mutually exclusive with match_to_source

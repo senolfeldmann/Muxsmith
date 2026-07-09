@@ -1,0 +1,291 @@
+# Review package: 342ea42..HEAD
+
+## Commits
+1676b7c fix(planner): accept well-formed BCP-47 language tags (D19)
+
+## Files changed
+ Cargo.lock                                       |  7 +++++
+ crates/muxsmith-core/Cargo.toml                  |  1 +
+ crates/muxsmith-core/src/capability/runtime.rs   | 10 +++++++
+ crates/muxsmith-core/src/planner.rs              |  4 +--
+ crates/muxsmith-core/tests/planner_resolution.rs | 33 +++++++++++++++++++++---
+ 5 files changed, 50 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index fdc7645..f60c8ac 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -297,20 +297,26 @@ name = "is_terminal_polyfill"
+ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+ 
+ [[package]]
+ name = "itoa"
+ version = "1.0.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+ 
++[[package]]
++name = "language-tags"
++version = "0.3.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
++
+ [[package]]
+ name = "libc"
+ version = "0.2.186"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+ 
+ [[package]]
+ name = "libyaml-rs"
+ version = "0.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -341,20 +347,21 @@ dependencies = [
+  "serde_json",
+  "sys-locale",
+  "tempfile",
+  "unic-langid",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-core"
+ version = "0.1.0"
+ dependencies = [
++ "language-tags",
+  "regex",
+  "schemars",
+  "serde",
+  "serde_json",
+  "serde_path_to_error",
+  "tempfile",
+  "yaml_serde",
+ ]
+ 
+ [[package]]
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 44089a0..592e307 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -1,17 +1,18 @@
+ [package]
+ name = "muxsmith-core"
+ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ publish = false
+ 
+ [dependencies]
++language-tags = "0.3.2"
+ regex = "1.12.4"
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ serde_path_to_error = "0.1.20"
+ yaml_serde = "0.10.4"
+ 
+ [dev-dependencies]
+ tempfile = "3.27.0"
+diff --git a/crates/muxsmith-core/src/capability/runtime.rs b/crates/muxsmith-core/src/capability/runtime.rs
+index 07c1989..319fc50 100644
+--- a/crates/muxsmith-core/src/capability/runtime.rs
++++ b/crates/muxsmith-core/src/capability/runtime.rs
+@@ -158,20 +158,30 @@ impl LanguageIndex {
+     }
+ 
+     /// The canonical key for `token`, or `None` if unrecognized. Matching is
+     /// case-insensitive. Two tokens are the same language iff their canonical
+     /// keys are equal.
+     pub fn normalize(&self, token: &str) -> Option<String> {
+         self.to_canonical
+             .get(&token.trim().to_ascii_lowercase())
+             .cloned()
+     }
++
++    /// Whether `token` is an acceptable language value: a recognized ISO
++    /// 639-1/2/3 code (via [`normalize`](Self::normalize)) OR a well-formed
++    /// IETF BCP 47 tag (region/script subtags, e.g. `pt-BR`, `sr-Latn`).
++    /// Well-formedness only (RFC 5646 grammar); a grammatically valid but
++    /// nonexistent tag is accepted here and left for mkvmerge to reject at
++    /// mux time (D19).
++    pub fn is_valid_value(&self, token: &str) -> bool {
++        self.normalize(token).is_some() || language_tags::LanguageTag::parse(token).is_ok()
++    }
+ }
+ 
+ /// Parses `mkvmerge --list-languages` table output into a [`LanguageIndex`].
+ /// The table is `name | 639-3 | 639-2 | 639-1`, pipe-separated, with a header
+ /// row and a `---+---` separator row that are skipped.
+ pub fn parse_list_languages(output: &str) -> LanguageIndex {
+     let mut owned: Vec<[String; 4]> = Vec::new();
+     for line in output.lines() {
+         if !line.contains('|') {
+             continue;
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index eb689b4..b83f08c 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -296,21 +296,21 @@ fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut
+ // Recurses match expressions collecting exact `language` values, checking each
+ // against the runtime index (plan-time InvalidPropertyValue, D2).
+ fn walk_exact_languages(
+     expr: &MatchExpr,
+     path: &str,
+     lang: &LanguageIndex,
+     diags: &mut Vec<Diagnostic>,
+ ) {
+     if let Some(exact) = &expr.exact
+         && let Some(Scalar::Str(v)) = exact.get("language")
+-        && lang.normalize(v).is_none()
++        && !lang.is_valid_value(v)
+     {
+         diags.push(
+             Diagnostic::error(
+                 DiagCode::InvalidPropertyValue,
+                 format!("{path}.exact.language"),
+             )
+             .with("property", "language")
+             .with("value", v.clone())
+             .with("allowed", "a valid ISO 639/BCP-47 language code"),
+         );
+@@ -567,21 +567,21 @@ fn resolve_changes(
+     lang: &LanguageIndex,
+     diags: &mut Vec<Diagnostic>,
+ ) -> Vec<AppliedChange> {
+     let Some(changes) = &rule.changes else {
+         return Vec::new();
+     };
+     changes
+         .iter()
+         .map(|(property, value)| {
+             if property == "language" {
+-                let valid = matches!(value, Scalar::Str(s) if lang.normalize(s).is_some());
++                let valid = matches!(value, Scalar::Str(s) if lang.is_valid_value(s));
+                 if !valid {
+                     diags.push(
+                         Diagnostic::error(
+                             DiagCode::InvalidPropertyValue,
+                             format!("{base}.changes.language"),
+                         )
+                         .for_file(primary_path)
+                         .with("property", "language")
+                         .with("value", scalar_display(value)),
+                     );
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 40f6619..3b54695 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -147,38 +147,38 @@ tracks:
+ // walk (`bad_language_value_is_batch_invalid_property_value`).
+ #[test]
+ fn invalid_changes_language_is_plan_time_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+       changes:
+-        language: zzz
++        language: notalanguage
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue
+                 && d.config_path == "tracks[0].changes.language"),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
+ // Task 5: a non-string `changes.language` value (e.g. a bool) is also
+ // InvalidPropertyValue at plan time, same as a recognized-but-invalid
+-// string ("zzz" above): `resolve_changes` only accepts `Scalar::Str`.
++// string ("notalanguage" above): `resolve_changes` only accepts `Scalar::Str`.
+ #[test]
+ fn changes_language_non_string_value_is_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+       changes:
+         language: true
+@@ -189,20 +189,47 @@ tracks:
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue
+                 && d.config_path == "tracks[0].changes.language"),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
++// Task 4 (D19): a well-formed BCP-47 regional tag is not an ISO 639 code, but
++// `is_valid_value` accepts it too, so `changes.language: pt-BR` no longer
++// hard-fails at plan time (mkvmerge, not muxsmith, is the authority on
++// whether the tag actually exists).
++#[test]
++fn changes_language_pt_br_regional_tag_is_not_invalid_property_value() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: audio, language: en } }
++      changes:
++        language: pt-BR
++"#;
++    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    assert!(
++        !fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::InvalidPropertyValue),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
+ #[test]
+ fn ambiguous_rule_when_two_tracks_match() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+@@ -961,21 +988,21 @@ tracks:
+     );
+ }
+ 
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+-    - match: { exact: { type: audio, language: zz } }
++    - match: { exact: { type: audio, language: notalanguage } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     assert!(
+         batch
+             .batch_diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+         "batch diags: {:?}",
+         batch.batch_diagnostics
+     );

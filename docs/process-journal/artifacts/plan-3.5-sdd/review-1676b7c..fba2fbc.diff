@@ -1,0 +1,140 @@
+# Review package: 1676b7c..HEAD
+
+## Commits
+fba2fbc feat(matcher): BCP-47 canonical-form language equality (D19)
+
+## Files changed
+ crates/muxsmith-core/src/matcher.rs                | 54 +++++++++++++++++++---
+ .../specs/2026-07-08-muxsmith-v1-design.md         |  2 +
+ 2 files changed, 50 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/matcher.rs b/crates/muxsmith-core/src/matcher.rs
+index 28afd73..daf127c 100644
+--- a/crates/muxsmith-core/src/matcher.rs
++++ b/crates/muxsmith-core/src/matcher.rs
+@@ -125,28 +125,54 @@ fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &Langu
+         _ => match item.get(prop) {
+             Some(have) => scalar_eq(want, &have),
+             None => match matchable_type(prop) {
+                 Some(PropType::Boolean) => scalar_eq(want, &PropValue::Bool(false)),
+                 _ => false,
+             },
+         },
+     }
+ }
+ 
+-/// True when two language tokens denote the same language. Both are normalized
+-/// through the index; if either is unrecognized, fall back to a raw
+-/// case-insensitive compare so unusual-but-equal tags still match.
++/// True when two language tokens denote the same language. ISO 639
++/// codes are normalized through the index first; if either operand is not a
++/// recognized ISO code, fall back to comparing BCP-47 canonical forms so
++/// unusual-but-equal tags still match.
++// mkvmerge's own default is `--normalize-language-ietf canonical` (v100), so
++// mkvmerge-authored tracks already arrive canonical; the canonicalization
++// path below mainly earns its keep on non-mkvmerge-authored or older files.
+ fn lang_eq(a: &str, b: &str, lang: &LanguageIndex) -> bool {
+-    match (lang.normalize(a), lang.normalize(b)) {
+-        (Some(na), Some(nb)) => na == nb,
+-        _ => a.eq_ignore_ascii_case(b),
++    if let (Some(na), Some(nb)) = (lang.normalize(a), lang.normalize(b)) {
++        return na == nb;
+     }
++    // Non-ISO operand(s): compare BCP-47 CANONICAL forms (case + script
++    // suppression + deprecated-subtag replacement) so two spellings of the
++    // same language match (pt-Latn-BR == pt-BR, iw == he) while meaningful
++    // distinctions survive (pt-BR != pt-PT). Raw case-insensitive compare is
++    // the fallback when a value is not a canonicalizable tag.
++    if let (Some(ca), Some(cb)) = (canonical_tag(a), canonical_tag(b)) {
++        return ca.eq_ignore_ascii_case(&cb);
++    }
++    a.eq_ignore_ascii_case(b)
++}
++
++// The canonical BCP-47 form of `s`, or `None` if `s` does not even parse as
++// a well-formed tag. `canonicalize()` itself only errors on a pathological
++// case (multiple extended-language subtags, no unique canonicalization); a
++// well-formed but nonexistent-region/script tag like `xx-YY` canonicalizes
++// unchanged (empirically verified against language-tags 0.3.2), so `None`
++// here is reached almost exclusively via a `parse()` failure.
++fn canonical_tag(s: &str) -> Option<String> {
++    language_tags::LanguageTag::parse(s)
++        .ok()?
++        .canonicalize()
++        .ok()
++        .map(|t| t.as_str().to_string())
+ }
+ 
+ /// The string form of a matchable item's property, for substring/regex/
+ /// language. Only `PropValue::Str` yields a value; numeric/boolean
+ /// properties are not strings.
+ fn item_str<M: Matchable>(prop: &str, item: &M) -> Option<String> {
+     match item.get(prop) {
+         Some(PropValue::Str(s)) => Some(s),
+         _ => None,
+     }
+@@ -232,20 +258,36 @@ mod tests {
+         assert!(!matches(&expr("exact: { language: en }"), &t, &lang()));
+     }
+ 
+     #[test]
+     fn language_falls_back_to_raw_compare_when_unknown() {
+         let t = track("audio", &[("language", PropValue::Str("zxx".into()))]);
+         assert!(matches(&expr("exact: { language: zxx }"), &t, &lang()));
+         assert!(!matches(&expr("exact: { language: qqq }"), &t, &lang()));
+     }
+ 
++    #[test]
++    fn lang_eq_canonical_forms_match() {
++        let idx = LanguageIndex::default(); // empty: neither token normalizes as ISO
++        assert!(lang_eq("pt-BR", "pt-Latn-BR", &idx)); // redundant default script suppressed
++        assert!(lang_eq("pt-BR", "PT-br", &idx)); // case
++        assert!(lang_eq("he", "iw", &idx)); // deprecated code replaced
++    }
++
++    #[test]
++    fn lang_eq_preserves_meaningful_distinctions() {
++        let idx = LanguageIndex::default();
++        assert!(!lang_eq("pt-BR", "pt-PT", &idx)); // region
++        assert!(!lang_eq("zh-Hans", "zh-Hant", &idx)); // script (both meaningful)
++        assert!(!lang_eq("pt-BR", "pt", &idx)); // region-specific != bare
++    }
++
+     #[test]
+     fn codec_kind_is_codec_id_prefix_match() {
+         let srt = track(
+             "subtitles",
+             &[("codec_id", PropValue::Str("S_TEXT/UTF8".into()))],
+         );
+         let ass = track(
+             "subtitles",
+             &[("codec_id", PropValue::Str("S_TEXT/ASS".into()))],
+         );
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index f0cea73..de66786 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -136,20 +136,22 @@ expr := {
+ }
+ ```
+ 
+ - Multiple entries inside one condition map are AND.
+ - `any` / `not` recurse; arbitrary depth is legal, typical profiles stay flat.
+ - A present-but-empty `any` or `not` list is a config-time error (`EmptyMatchList`): an empty OR/NOR group is always a mistake (an unfinished edit or a generator artifact), never a meaningful "no constraint"; omit the key instead.
+ - `substring` and `regex` on a non-string property are config-time type errors.
+ - Case sensitivity: `exact` compares strings case-sensitively (language values are normalized per 4.4); `substring` is case-insensitive; `regex` is taken as written (use `(?i)` for case-insensitive matching).
+ - Semantics carrier of the whole product; specified exhaustively by the property model (4.4) plus this evaluation rule, and covered by property-based tests.
+ 
++`exact` is typed value-equality, not raw string equality: each property is compared in its own domain. Numbers compare numerically (`6` == `6.0`); languages compare as languages, with ISO 639 spellings and BCP-47 tags reduced to canonical form (`de` == `ger`, `pt-Latn-BR` == `pt-BR`) while meaningful distinctions are preserved (`pt-BR` != `pt-PT`, `zh-Hans` != `zh-Hant`). Use `regex` for byte-literal matching.
++
+ ### 4.4 Property model
+ 
+ Two disjoint property sets, both owned by the `capability` module (section 9):
+ 
+ **Matchable properties** are generated at build time from the mkvmerge identification output schema: `type`, `codec_id`, `language`, `language_ietf`, `track_name`, `default_track`, `forced_track`, `enabled_track`, `flag_hearing_impaired`, `flag_visual_impaired`, `flag_commentary`, `flag_original`, `audio_channels`, `audio_sampling_frequency`, `pixel_dimensions`, and the rest of the schema's track properties. Names in profiles are exactly the identification schema names.
+ 
+ **Settable properties** (`changes`) are a curated table mapped to mkvmerge options:
+ 
+ | Profile name | mkvmerge option |
+ |---|---|

@@ -1,0 +1,194 @@
+# Review package: fba2fbc..HEAD
+
+## Commits
+2b08de4 feat(planner): clean UnsupportedSource diagnostic (D21)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs              | 11 ++++
+ crates/muxsmith-core/src/report.rs               |  6 ++
+ crates/muxsmith-core/tests/planner_resolution.rs | 72 ++++++++++++++++++++++++
+ locales/en/diagnostics.ftl                       |  1 +
+ 4 files changed, 90 insertions(+)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index b83f08c..700afab 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -355,20 +355,31 @@ fn resolve_file(
+         }
+     };
+     if ident.format_version > PINNED_IDENTIFICATION_FORMAT_VERSION {
+         diagnostics.push(
+             Diagnostic::warning(DiagCode::UnknownPropertySkew, "input")
+                 .for_file(&primary.path)
+                 .with("version", ident.format_version.to_string()),
+         );
+     }
+ 
++    if !ident.container_recognized || !ident.container_supported {
++        diagnostics
++            .push(Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(&primary.path));
++        return FileReport {
++            source: primary.path.clone(),
++            identifier: primary.identifier.whole.clone(),
++            plan: None,
++            diagnostics,
++        };
++    }
++
+     let mut assignments = Vec::new();
+     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
+     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();
+ 
+     for (ri, rule) in profile.tracks.rules.iter().enumerate() {
+         let base = format!("tracks[{ri}]");
+         let (source_path, source_ident): (PathBuf, Identification) = match &rule.source {
+             SourceCfg::Keyword(_) => (primary.path.clone(), ident.clone()),
+             SourceCfg::External(block) => {
+                 let hits =
+diff --git a/crates/muxsmith-core/src/report.rs b/crates/muxsmith-core/src/report.rs
+index 2aa9a26..b640e84 100644
+--- a/crates/muxsmith-core/src/report.rs
++++ b/crates/muxsmith-core/src/report.rs
+@@ -111,20 +111,26 @@ diag_codes! {
+     /// One track is claimed by two or more rules; every overlap is an error under strict independent uniqueness (spec 2, 5.2).
+     OverlappingRules => "overlapping-rules",
+     /// A non-optional rule matched zero tracks; the hint lists near-misses (same type/language) and which condition each failed (spec 5.2).
+     MissingTrack => "missing-track",
+     /// An external locator (track rule, chapters, or attachment add) found zero files for a non-optional use (spec 5.2).
+     MissingExternal => "missing-external",
+     /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
+     AmbiguousExternal => "ambiguous-external",
+     /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
+     UnidentifiableSource => "unidentifiable-source",
++    /// A primary source mkvmerge identified (exit 0) whose container it does
++    /// not recognize or support, so it cannot be muxed. Distinct from
++    /// `UnidentifiableSource` (mkvmerge exited non-zero). A recognized,
++    /// supported container with zero tracks is NOT this code (stays a
++    /// per-rule `missing-track`).
++    UnsupportedSource => "unsupported-source",
+     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
+     OutputCollision => "output-collision",
+     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
+     PathSeparatorInRenderedName => "path-separator-in-rendered-name",
+     /// The rendered output filename has an empty stem or is `.`/`..` (spec 4.8); the ".mkv appended if missing" rule would otherwise produce a hidden or invalid file. `name` param carries the rendered name.
+     EmptyRenderedName => "empty-rendered-name",
+     /// An output path equals an input path: a hard error regardless of collision policy, since sources are never modified (spec 4.8).
+     SourceOverwrite => "source-overwrite",
+     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
+     DuplicateIdentifier => "duplicate-identifier",
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 3b54695..460916b 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -465,20 +465,92 @@ tracks:
+     );
+     assert!(
+         !fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::MissingExternal),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
++#[test]
++fn unrecognized_container_yields_unsupported_source_not_missing_track() {
++    let json = r#"{ "container": { "recognized": false, "supported": true },
++                    "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
++                    "tracks": [] }"#;
++    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let count = fr
++        .diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnsupportedSource)
++        .count();
++    assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
++    assert!(
++        !fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::MissingTrack),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
++#[test]
++fn unsupported_container_yields_unsupported_source_not_missing_track() {
++    let json = r#"{ "container": { "recognized": true, "supported": false },
++                    "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
++                    "tracks": [] }"#;
++    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let count = fr
++        .diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnsupportedSource)
++        .count();
++    assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
++    assert!(
++        !fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::MissingTrack),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
++#[test]
++fn recognized_supported_zero_tracks_stays_missing_track_not_unsupported_source() {
++    // D21 decision #5: a recognized+supported container with zero tracks is
++    // NOT UnsupportedSource; it stays a per-rule MissingTrack case.
++    let json = r#"{ "container": { "recognized": true, "supported": true },
++                    "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
++                    "tracks": [] }"#;
++    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    assert!(
++        !fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::UnsupportedSource),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++    assert!(
++        fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::MissingTrack),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
+ #[test]
+ fn source_overwrite_when_output_equals_donor_path() {
+     let root = tempfile::tempdir().unwrap();
+     let src_dir = root.path().join("src");
+     let donors_dir = root.path().join("donors");
+     std::fs::create_dir_all(&src_dir).unwrap();
+     std::fs::create_dir_all(&donors_dir).unwrap();
+     std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(donors_dir.join("Donor.S01E01.mkv"), b"y").unwrap();
+ 
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 4fb0c7c..477499b 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -34,11 +34,12 @@ duplicate-identifier = Files { $file_a } and { $file_b } share the identifier "{
+ donor-is-primary = External donor file { $donor } is itself a primary source.
+ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
++unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
+ suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.

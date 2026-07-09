@@ -1,0 +1,2481 @@
+# Review package: b04c4a2..HEAD
+
+## Commits
+91b19eb refactor(profile)!: tracks becomes a { unmatched, rules } block (D20)
+
+## Files changed
+ crates/muxsmith-cli/tests/cli_validate.rs          |   5 +-
+ crates/muxsmith-cli/tests/dry_run_cli.rs           |  10 +-
+ crates/muxsmith-cli/tests/fixtures/bad.yaml        |   7 +-
+ crates/muxsmith-cli/tests/fixtures/good.yaml       |   5 +-
+ crates/muxsmith-core/src/planner.rs                |  12 +-
+ crates/muxsmith-core/src/profile/lint.rs           |  61 ++++----
+ crates/muxsmith-core/src/profile/model.rs          |  30 +++-
+ crates/muxsmith-core/src/profile/validate.rs       |   4 +-
+ crates/muxsmith-core/tests/command_integration.rs  |   3 +-
+ crates/muxsmith-core/tests/fixtures/reference.yaml |  88 ++++++------
+ crates/muxsmith-core/tests/planner_resolution.rs   | 160 +++++++++++++--------
+ crates/muxsmith-core/tests/profile_load.rs         |  67 +++++++--
+ crates/muxsmith-core/tests/suggestions.rs          |  27 ++--
+ crates/muxsmith-core/tests/validate_hardening.rs   |  20 +--
+ crates/muxsmith-core/tests/validate_semantics.rs   |  17 ++-
+ crates/muxsmith-core/tests/validate_structure.rs   |  20 +--
+ .../specs/2026-07-08-muxsmith-v1-design.md         |  76 +++++-----
+ 17 files changed, 375 insertions(+), 237 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/tests/cli_validate.rs b/crates/muxsmith-cli/tests/cli_validate.rs
+index 79e0987..de9d603 100644
+--- a/crates/muxsmith-cli/tests/cli_validate.rs
++++ b/crates/muxsmith-cli/tests/cli_validate.rs
+@@ -31,22 +31,23 @@ fn invalid_profile_exits_two_and_renders_messages() {
+         );
+ }
+ 
+ #[test]
+ fn warnings_only_exits_one() {
+     // good.yaml plus an overlap warning: audio subset rule.
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio } }
+-  - match: { exact: { type: audio, language: en } }
++  rules:
++    - match: { exact: { type: audio } }
++    - match: { exact: { type: audio, language: en } }
+ "#;
+     let dir = tempfile::tempdir().unwrap();
+     let path = dir.path().join("warn.yaml");
+     std::fs::write(&path, y).unwrap();
+     muxsmith()
+         .args(["validate", path.to_str().unwrap()])
+         .assert()
+         .code(1)
+         .stdout(predicate::str::contains("provably overlap"));
+ }
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index 815554b..595ba7a 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -38,21 +38,21 @@ fn dry_run_plans_a_single_file() {
+         .args(["--language", "0:eng"])
+         .arg(srt)
+         .status()
+         .unwrap()
+         .success();
+     assert!(ok);
+ 
+     let profile = dir.path().join("p.yaml");
+     std::fs::write(
+         &profile,
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .args(["--output"])
+@@ -80,21 +80,21 @@ fn dry_run_plans_a_single_file() {
+ #[test]
+ fn dry_run_surfaces_config_time_invalid_regex() {
+     if !have_mkvmerge() {
+         eprintln!("mkvmerge not found; skipping");
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("bad.yaml");
+     std::fs::write(
+         &profile,
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .arg("--json")
+@@ -149,21 +149,21 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
+     assert!(ok);
+     // Not matched by input.pattern -> IgnoredFile (batch-level, info).
+     std::fs::write(dir.path().join("extra.mkv"), b"not a real mkv").unwrap();
+ 
+     let profile = dir.path().join("p.yaml");
+     std::fs::write(
+         &profile,
+         // rule 0 matches the audio track; rule 1 matches nothing (no video
+         // track in the fixture) -> per-file MissingTrack; rule 2 references
+         // an unknown property -> config-time UnknownProperty.
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n  - match: { exact: { type: video } }\n  - match: { exact: { bogus_property: 1 } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n    - match: { exact: { type: video } }\n    - match: { exact: { bogus_property: 1 } }\n",
+     )
+     .unwrap();
+ 
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .args(["--output"])
+@@ -218,21 +218,21 @@ fn empty_path_dir() -> tempfile::TempDir {
+ /// `suggestions` empty (planning never ran) and a `mkvmerge_found: false`
+ /// marker; exit code stays 2. Does not depend on `have_mkvmerge()`: the
+ /// no-mkvmerge condition is forced via PATH, not by the test environment's
+ /// actual mkvmerge presence.
+ #[test]
+ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("bad.yaml");
+     std::fs::write(
+         &profile,
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+     let no_mkvmerge_path = empty_path_dir();
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .env("PATH", no_mkvmerge_path.path())
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+@@ -276,21 +276,21 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
+ /// Same forced-missing-mkvmerge condition as above, human (non-`--json`)
+ /// mode: the config diagnostic must still be printed (superset of
+ /// `validate`), and the mkvmerge-not-found message must still appear, exit
+ /// code 2.
+ #[test]
+ fn dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing() {
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("bad.yaml");
+     std::fs::write(
+         &profile,
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  - match: { exact: { type: audio } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+     let no_mkvmerge_path = empty_path_dir();
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .env("PATH", no_mkvmerge_path.path())
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+diff --git a/crates/muxsmith-cli/tests/fixtures/bad.yaml b/crates/muxsmith-cli/tests/fixtures/bad.yaml
+index 8e4aaae..19b810a 100644
+--- a/crates/muxsmith-cli/tests/fixtures/bad.yaml
++++ b/crates/muxsmith-cli/tests/fixtures/bad.yaml
+@@ -1,6 +1,7 @@
+ profile_version: 1
+ input: { pattern: '([', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio } }
+-  - match: { exact: { type: audio, language: en } }
+-  - match: { substring: { forced_track: 'x' } }
++  rules:
++    - match: { exact: { type: audio } }
++    - match: { exact: { type: audio, language: en } }
++    - match: { substring: { forced_track: 'x' } }
+diff --git a/crates/muxsmith-cli/tests/fixtures/good.yaml b/crates/muxsmith-cli/tests/fixtures/good.yaml
+index a13aeb0..ed66588 100644
+--- a/crates/muxsmith-cli/tests/fixtures/good.yaml
++++ b/crates/muxsmith-cli/tests/fixtures/good.yaml
+@@ -1,5 +1,6 @@
+ profile_version: 1
+ input: { pattern: 'S(?<season>\d{2})E(?<episode>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
+-  - match: { exact: { type: audio, language: en } }
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { type: audio, language: en } }
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index daddeb9..82063cb 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -33,21 +33,21 @@ pub struct RunInputs {
+     /// for a keep-name `.mkv` source).
+     pub output: Option<PathBuf>,
+     /// Collision policy override; falls back to `profile.output.on_collision`.
+     pub on_collision: Option<CollisionPolicy>,
+ }
+ 
+ /// One resolved rule-to-track assignment. `track_id` is `None` for a satisfied
+ /// `optional` rule that matched nothing (spec 5.1).
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Assignment {
+-    /// Index into `profile.tracks`.
++    /// Index into `profile.tracks.rules`.
+     pub rule_index: usize,
+     /// The source file the track comes from (the primary, or a donor).
+     pub source: PathBuf,
+     /// The resolved `-J` track id, or `None` for an unmatched optional rule.
+     pub track_id: Option<u64>,
+     /// The matched track's `-J` type (`video`/`audio`/`subtitles`/`buttons`),
+     /// needed by `command` to pick `--audio-tracks` vs `--video-tracks` etc.
+     /// `None` exactly when `track_id` is `None`.
+     pub track_kind: Option<String>,
+     /// Settable changes to apply to the resolved track; empty when the rule has
+@@ -276,21 +276,21 @@ pub fn plan_batch(
+     let (primaries, discovery_diags) = discovery::scan_primaries(&run.source, &profile.input);
+     let mut batch = plan_core(profile, run, &primaries, id, lang);
+     batch.batch_diagnostics.extend(discovery_diags);
+     let (suggestions, cap_diagnostics) = suggest(profile, run, &primaries, id, lang, &batch);
+     batch.suggestions = suggestions;
+     batch.batch_diagnostics.extend(cap_diagnostics);
+     batch
+ }
+ 
+ fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
+-    for (i, rule) in profile.tracks.iter().enumerate() {
++    for (i, rule) in profile.tracks.rules.iter().enumerate() {
+         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
+     }
+ }
+ 
+ // Recurses match expressions collecting exact `language` values, checking each
+ // against the runtime index (plan-time InvalidPropertyValue, D2).
+ fn walk_exact_languages(
+     expr: &MatchExpr,
+     path: &str,
+     lang: &LanguageIndex,
+@@ -354,21 +354,21 @@ fn resolve_file(
+             Diagnostic::warning(DiagCode::UnknownPropertySkew, "input")
+                 .for_file(&primary.path)
+                 .with("version", ident.format_version.to_string()),
+         );
+     }
+ 
+     let mut assignments = Vec::new();
+     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
+     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();
+ 
+-    for (ri, rule) in profile.tracks.iter().enumerate() {
++    for (ri, rule) in profile.tracks.rules.iter().enumerate() {
+         let base = format!("tracks[{ri}]");
+         let (source_path, source_ident): (PathBuf, Identification) = match &rule.source {
+             SourceCfg::Keyword(_) => (primary.path.clone(), ident.clone()),
+             SourceCfg::External(block) => {
+                 let hits =
+                     discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
+                 match hits.len() {
+                     0 => {
+                         if !rule.optional {
+                             diagnostics.push(
+@@ -973,21 +973,21 @@ fn suggest(
+         .flat_map(|f| f.diagnostics.iter())
+         .filter(|d| d.code == DiagCode::AmbiguousRule)
+         .filter_map(|d| rule_index_of(&d.config_path))
+         .collect();
+     conflicted.sort_unstable();
+     conflicted.dedup();
+ 
+     let mut out = Vec::new();
+     let mut cap_diagnostics = Vec::new();
+     for ri in conflicted {
+-        let Some(rule) = profile.tracks.get(ri) else {
++        let Some(rule) = profile.tracks.rules.get(ri) else {
+             continue;
+         };
+         // Only primary-source rules get suggestions in v1 (external deferred).
+         if matches!(rule.source, SourceCfg::External(_)) {
+             continue;
+         }
+         let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
+         let mut accepted: Vec<Candidate> = Vec::new();
+         for cand in candidates {
+             let edited = with_rule_match(profile, ri, &cand.apply);
+@@ -1021,21 +1021,21 @@ fn suggest(
+ 
+ // Discriminator candidates for a rule, drawn from the property vectors of the
+ // tracks it ambiguously matches, across every affected file.
+ fn candidates_for_rule(
+     profile: &Profile,
+     ri: usize,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+ ) -> Vec<Candidate> {
+-    let rule = &profile.tracks[ri];
++    let rule = &profile.tracks.rules[ri];
+     let mut raw: Vec<Candidate> = Vec::new();
+     let mut seen: std::collections::BTreeSet<(String, String, u8)> =
+         std::collections::BTreeSet::new();
+ 
+     for primary in primaries {
+         let Ok(ident) = id.identify(&primary.path) else {
+             continue;
+         };
+         let matched: Vec<&crate::identify::Track> = ident
+             .tracks
+@@ -1159,21 +1159,21 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
+ // Merges a delta into rule `ri`'s match expression, returning an edited
+ // profile. `exact`/`substring` use insert-only-if-absent semantics (bug C):
+ // a candidate whose key already exists on the rule must never overwrite the
+ // existing constraint, since a suggestion may only narrow a match, never
+ // relax it (D6). A key collision then makes the delta a no-op for that key,
+ // which `resolves_without_regression` correctly rejects for not resolving
+ // the ambiguity. `not` entries are always additive (appending a not-clause
+ // always narrows, never relaxes), so plain `extend` stays correct there.
+ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+     let mut p = profile.clone();
+-    let expr = &mut p.tracks[ri].match_expr;
++    let expr = &mut p.tracks.rules[ri].match_expr;
+     if let Some(add) = &delta.exact {
+         let map = expr.exact.get_or_insert_with(BTreeMap::new);
+         for (k, v) in add {
+             map.entry(k.clone()).or_insert_with(|| v.clone());
+         }
+     }
+     if let Some(add) = &delta.substring {
+         let map = expr.substring.get_or_insert_with(BTreeMap::new);
+         for (k, v) in add {
+             map.entry(k.clone()).or_insert_with(|| v.clone());
+diff --git a/crates/muxsmith-core/src/profile/lint.rs b/crates/muxsmith-core/src/profile/lint.rs
+index 3b4a2eb..47c1990 100644
+--- a/crates/muxsmith-core/src/profile/lint.rs
++++ b/crates/muxsmith-core/src/profile/lint.rs
+@@ -12,20 +12,21 @@ use super::model::{Profile, SourceCfg};
+ /// Static overlap lint (spec 5.4): flags pairs of primary-source,
+ /// exact-only track rules where one rule's condition map is a subset of
+ /// the other's, so any track matching the superset rule necessarily also
+ /// matches the subset rule. Emits `ProvableOverlap` warnings; a
+ /// conservative, decidable subset of the planner's runtime
+ /// `OverlappingRules` error (spec 5.2) that never replaces the dry run.
+ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
+     let mut diags = Vec::new();
+     let exact_only: Vec<(usize, &MatchExpr)> = profile
+         .tracks
++        .rules
+         .iter()
+         .enumerate()
+         .filter(|(_, r)| matches!(&r.source, SourceCfg::Keyword(k) if k == "primary"))
+         .filter(|(_, r)| is_exact_only(&r.match_expr))
+         .map(|(i, r)| (i, &r.match_expr))
+         .collect();
+ 
+     for (ai, (a_idx, a)) in exact_only.iter().enumerate() {
+         for (b_idx, b) in exact_only.iter().skip(ai + 1) {
+             if subset_of(a, b) || subset_of(b, a) {
+@@ -66,119 +67,127 @@ mod tests {
+     fn lint(y: &str) -> Vec<crate::report::Diagnostic> {
+         provable_overlaps(&from_str(y, Format::Yaml).unwrap())
+     }
+ 
+     #[test]
+     fn subset_conditions_are_provable_overlap() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio } }
+-  - match: { exact: { type: audio, language: en } }
++  rules:
++    - match: { exact: { type: audio } }
++    - match: { exact: { type: audio, language: en } }
+ "#;
+         let diags = lint(y);
+         assert_eq!(diags.len(), 1);
+         assert_eq!(diags[0].code, DiagCode::ProvableOverlap);
+         assert_eq!(diags[0].params["rule_a"], "0");
+         assert_eq!(diags[0].params["rule_b"], "1");
+     }
+ 
+     #[test]
+     fn identical_exact_rules_are_provable_overlap() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: en } }
+-  - match: { exact: { type: audio, language: en } }
++  rules:
++    - match: { exact: { type: audio, language: en } }
++    - match: { exact: { type: audio, language: en } }
+ "#;
+         assert_eq!(lint(y).len(), 1);
+     }
+ 
+     #[test]
+     fn disjoint_exact_values_are_not_flagged() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: en } }
+-  - match: { exact: { type: audio, language: de } }
++  rules:
++    - match: { exact: { type: audio, language: en } }
++    - match: { exact: { type: audio, language: de } }
+ "#;
+         assert!(lint(y).is_empty());
+     }
+ 
+     #[test]
+     fn rules_with_negations_or_regex_are_skipped() {
+         // Not exact-only: undecidable statically, planner handles it.
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles } }
+-  - match:
+-      exact: { type: subtitles }
+-      not:
+-        - substring: { track_name: SDH }
++  rules:
++    - match: { exact: { type: subtitles } }
++    - match:
++        exact: { type: subtitles }
++        not:
++          - substring: { track_name: SDH }
+ "#;
+         assert!(lint(y).is_empty());
+     }
+ 
+     #[test]
+     fn reversed_direction_overlap_is_flagged() {
+         // Superset-conditions rule first: locks the subset_of(b, a) branch.
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: en } }
+-  - match: { exact: { type: audio } }
++  rules:
++    - match: { exact: { type: audio, language: en } }
++    - match: { exact: { type: audio } }
+ "#;
+         let diags = lint(y);
+         assert_eq!(diags.len(), 1);
+         assert_eq!(diags[0].params["rule_a"], "0");
+         assert_eq!(diags[0].params["rule_b"], "1");
+     }
+ 
+     #[test]
+     fn rules_with_any_are_skipped() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles } }
+-  - match:
+-      exact: { type: subtitles }
+-      any:
+-        - substring: { track_name: SDH }
++  rules:
++    - match: { exact: { type: subtitles } }
++    - match:
++        exact: { type: subtitles }
++        any:
++          - substring: { track_name: SDH }
+ "#;
+         assert!(lint(y).is_empty());
+     }
+ 
+     #[test]
+     fn rules_with_substring_are_skipped() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles } }
+-  - match:
+-      exact: { type: subtitles }
+-      substring: { track_name: SDH }
++  rules:
++    - match: { exact: { type: subtitles } }
++    - match:
++        exact: { type: subtitles }
++        substring: { track_name: SDH }
+ "#;
+         assert!(lint(y).is_empty());
+     }
+ 
+     #[test]
+     fn external_source_rules_are_skipped() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles } }
+-  - source:
+-      external: { path: '.', extensions: [srt], match_to_source: true }
+-    match: { exact: { type: subtitles } }
++  rules:
++    - match: { exact: { type: subtitles } }
++    - source:
++        external: { path: '.', extensions: [srt], match_to_source: true }
++      match: { exact: { type: subtitles } }
+ "#;
+         assert!(lint(y).is_empty());
+     }
+ }
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index e866e08..8ca3179 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -22,23 +22,24 @@ pub struct Profile {
+     pub profile_version: u32,
+     /// Optional descriptive metadata; purely informational, never
+     /// interpreted by matching or planning.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub meta: Option<Meta>,
+     /// Primary-file matching rule and directory-walk options (spec 4.2).
+     pub input: Input,
+     /// Output naming and collision policy (spec 4.8).
+     #[serde(default)]
+     pub output: OutputCfg,
+-    /// Track selection/change rules; list order defines the output
+-    /// `--track-order` (spec 4.5).
+-    pub tracks: Vec<TrackRule>,
++    /// Track selection/change rules plus the unmatched-track policy
++    /// (spec 4.5). Restructured into a block so the policy lives with its
++    /// rules, matching `attachments` and `output`/`tags`.
++    pub tracks: TracksCfg,
+     /// Attachment keep/drop/add rules (spec 4.9).
+     #[serde(default)]
+     pub attachments: AttachmentsCfg,
+     /// Chapters handling: keep, drop, or an external locator (spec 4.9).
+     #[serde(default)]
+     pub chapters: ChaptersCfg,
+     /// Global and per-track tag handling (spec 4.9).
+     #[serde(default)]
+     pub tags: TagsCfg,
+     /// Output title handling: keep, clear, or a literal-mode template
+@@ -284,20 +285,43 @@ pub struct AttachmentsCfg {
+     /// several attachments (fonts come in sets); rules apply in list order,
+     /// first matching rule wins per attachment.
+     #[serde(default)]
+     pub rules: Vec<AttachmentRule>,
+ }
+ 
+ fn keep() -> KeepDrop {
+     KeepDrop::Keep
+ }
+ 
++/// Track handling: the unmatched-track policy plus the ordered rules
++/// (spec 4.5). Parallel in shape to [`AttachmentsCfg`], but `unmatched`
++/// defaults to `drop`: only rule-matched tracks survive unless the profile
++/// opts into `keep` (spec 4.9 asymmetry note).
++#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[serde(deny_unknown_fields)]
++pub struct TracksCfg {
++    /// Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
++    /// `drop` (the declarative default). `keep` passes them through
++    /// untouched; consumed by `command` (Task 2). Donor tracks are
++    /// unaffected: a donor contributes only its rule-selected track.
++    #[serde(default = "drop_policy")]
++    pub unmatched: KeepDrop,
++    /// Ordered track rules; list order defines the output `--track-order`
++    /// (spec 4.5). Uniqueness-constrained (spec 2): each rule resolves to
++    /// exactly one track.
++    pub rules: Vec<TrackRule>,
++}
++
++fn drop_policy() -> KeepDrop {
++    KeepDrop::Drop
++}
++
+ impl Default for AttachmentsCfg {
+     fn default() -> Self {
+         AttachmentsCfg {
+             unmatched: KeepDrop::Keep,
+             rules: Vec::new(),
+         }
+     }
+ }
+ 
+ /// Exactly one of `select` / `drop` / `add` must be set; enforced in
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index 45c1b49..919c249 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -49,25 +49,25 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
+         }
+     }
+ 
+     if profile.input.extensions.is_empty() {
+         diags.push(Diagnostic::error(
+             DiagCode::EmptyExtensions,
+             "input.extensions",
+         ));
+     }
+ 
+-    if profile.tracks.is_empty() {
++    if profile.tracks.rules.is_empty() {
+         diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks"));
+     }
+ 
+-    for (i, rule) in profile.tracks.iter().enumerate() {
++    for (i, rule) in profile.tracks.rules.iter().enumerate() {
+         let base = format!("tracks[{i}]");
+         if rule.match_expr.is_empty() {
+             diags.push(Diagnostic::warning(
+                 DiagCode::EmptyMatchExpression,
+                 format!("{base}.match"),
+             ));
+         }
+         validate_expr(
+             &rule.match_expr,
+             &format!("{base}.match"),
+diff --git a/crates/muxsmith-core/tests/command_integration.rs b/crates/muxsmith-core/tests/command_integration.rs
+index 76de166..d136b9b 100644
+--- a/crates/muxsmith-core/tests/command_integration.rs
++++ b/crates/muxsmith-core/tests/command_integration.rs
+@@ -201,21 +201,22 @@ fn reference_example_end_to_end() {
+ // ---------------------------------------------------------------------------
+ 
+ fn mkvmerge() -> Option<Mkvmerge> {
+     Mkvmerge::locate().ok()
+ }
+ 
+ const LIVE_PROFILE: &str = r#"
+ profile_version: 1
+ input: { pattern: 'source', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles } }
++  rules:
++    - match: { exact: { type: subtitles } }
+ "#;
+ 
+ #[test]
+ fn live_mkvmerge_accepts_planned_command() {
+     let Some(m) = mkvmerge() else {
+         eprintln!("mkvmerge not found; skipping");
+         return;
+     };
+ 
+     let dir = tempfile::tempdir().unwrap();
+diff --git a/crates/muxsmith-core/tests/fixtures/reference.yaml b/crates/muxsmith-core/tests/fixtures/reference.yaml
+index 907e4bf..d15b084 100644
+--- a/crates/muxsmith-core/tests/fixtures/reference.yaml
++++ b/crates/muxsmith-core/tests/fixtures/reference.yaml
+@@ -7,72 +7,74 @@ input:
+   pattern: 'S(?<season>\d{2})E(?<episode>\d{2})'
+   extensions: [mkv, mp4]
+   recursive: true
+ 
+ output:
+   directory: null          # usually supplied as run input
+   filename: keep           # keep | template: "Show - S{season}E{episode}.mkv"
+   on_collision: error      # error | skip | overwrite
+ 
+ tracks:                    # list order = output track order
+-  - match: { exact: { type: video } }
++  unmatched: drop           # keep | drop; default drop
++  rules:
++    - match: { exact: { type: video } }
+ 
+-  - match: { exact: { type: audio, language: en } }
+-    changes: { default_track: true }
++    - match: { exact: { type: audio, language: en } }
++      changes: { default_track: true }
+ 
+-  - match: { exact: { type: audio, language: de } }
++    - match: { exact: { type: audio, language: de } }
+ 
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
+-    optional: true
+-    changes: { track_name: English forced, default_track: true }
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
++      optional: true
++      changes: { track_name: English forced, default_track: true }
+ 
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+-      not:
+-        - substring: { track_name: SDH }
+-        - exact: { flag_hearing_impaired: true }
+-    changes: { track_name: English }
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
++        not:
++          - substring: { track_name: SDH }
++          - exact: { flag_hearing_impaired: true }
++      changes: { track_name: English }
+ 
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+-      any:
+-        - substring: { track_name: SDH }
+-        - exact: { flag_hearing_impaired: true }
+-    changes: { track_name: English SDH, flag_hearing_impaired: true }
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
++        any:
++          - substring: { track_name: SDH }
++          - exact: { flag_hearing_impaired: true }
++      changes: { track_name: English SDH, flag_hearing_impaired: true }
+ 
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: true }
+-    optional: true
+-    changes: { track_name: German forced, default_track: true }
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: de, forced_track: true }
++      optional: true
++      changes: { track_name: German forced, default_track: true }
+ 
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
+-      not:
+-        - substring: { track_name: SDH }
+-        - exact: { flag_hearing_impaired: true }
+-    changes: { track_name: German }
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
++        not:
++          - substring: { track_name: SDH }
++          - exact: { flag_hearing_impaired: true }
++      changes: { track_name: German }
+ 
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
+-      any:
+-        - substring: { track_name: SDH }
+-        - exact: { flag_hearing_impaired: true }
+-    changes: { track_name: German SDH, flag_hearing_impaired: true }
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: de, forced_track: false }
++        any:
++          - substring: { track_name: SDH }
++          - exact: { flag_hearing_impaired: true }
++      changes: { track_name: German SDH, flag_hearing_impaired: true }
+ 
+-  - source:
+-      external:
+-        path: .              # relative to the primary file's directory
+-        extensions: [srt]
+-        match_to_source: true
+-    match: { exact: { type: subtitles } }
+-    changes: { language: tr, track_name: "Türkçe" }
++    - source:
++        external:
++          path: .              # relative to the primary file's directory
++          extensions: [srt]
++          match_to_source: true
++      match: { exact: { type: subtitles } }
++      changes: { language: tr, track_name: "Türkçe" }
+ 
+ attachments:
+   unmatched: keep            # keep | drop; default keep (dropping fonts silently breaks ASS subs)
+   rules: []                  # select/drop/add rules, same match algebra (4.3)
+ 
+ chapters: keep               # keep | drop | external locator (same mechanism as external tracks)
+ tags:
+   global: drop               # keep | drop
+   track: keep                # keep | drop
+ title: clear                 # keep | clear | template: "..."
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index bf9a621..40f6619 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -57,22 +57,23 @@ fn plan_one(
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+     std::mem::forget(dir);
+     batch
+ }
+ 
+ const P_VIDEO_AUDIO: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
+-  - match: { exact: { type: audio, language: en } }
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { type: audio, language: en } }
+ "#;
+ 
+ #[test]
+ fn resolves_each_rule_to_one_track() {
+     let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     assert_eq!(batch.files.len(), 1);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.assignments.len(), 2);
+@@ -109,24 +110,25 @@ fn plan_and_assignment_carry_resolution_field_defaults() {
+ }
+ 
+ // Task 5: settable `changes` resolve onto a matched assignment, in
+ // property-name order (the rule's `changes` map is a BTreeMap).
+ #[test]
+ fn changes_resolve_to_applied_changes_in_property_order() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: en } }
+-    changes:
+-      language: tr
+-      track_name: X
++  rules:
++    - match: { exact: { type: audio, language: en } }
++      changes:
++        language: tr
++        track_name: X
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.assignments[0].changes,
+         vec![
+             AppliedChange {
+                 property: "language".into(),
+@@ -142,23 +144,24 @@ tracks:
+ 
+ // Task 5: a settable `language` value validated at plan time (D2), at the
+ // point of application, distinct from the batch-level `match.exact.language`
+ // walk (`bad_language_value_is_batch_invalid_property_value`).
+ #[test]
+ fn invalid_changes_language_is_plan_time_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: en } }
+-    changes:
+-      language: zzz
++  rules:
++    - match: { exact: { type: audio, language: en } }
++      changes:
++        language: zzz
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue
+                 && d.config_path == "tracks[0].changes.language"),
+         "diags: {:?}",
+@@ -168,98 +171,103 @@ tracks:
+ 
+ // Task 5: a non-string `changes.language` value (e.g. a bool) is also
+ // InvalidPropertyValue at plan time, same as a recognized-but-invalid
+ // string ("zzz" above): `resolve_changes` only accepts `Scalar::Str`.
+ #[test]
+ fn changes_language_non_string_value_is_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: en } }
+-    changes:
+-      language: true
++  rules:
++    - match: { exact: { type: audio, language: en } }
++      changes:
++        language: true
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue
+                 && d.config_path == "tracks[0].changes.language"),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
+ #[test]
+ fn ambiguous_rule_when_two_tracks_match() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
++  rules:
++    - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::AmbiguousRule)
+     );
+ }
+ 
+ #[test]
+ fn missing_track_when_no_match_and_not_optional() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: de } }
++  rules:
++    - match: { exact: { type: audio, language: de } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::MissingTrack)
+     );
+ }
+ 
+ #[test]
+ fn optional_absent_track_is_no_error() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
+-  - match: { exact: { type: audio, language: de } }
+-    optional: true
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { type: audio, language: de } }
++      optional: true
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.assignments[1].track_id, None);
+ }
+ 
+ #[test]
+ fn overlapping_rules_when_two_rules_claim_one_track() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
+-  - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::OverlappingRules)
+     );
+ }
+@@ -278,22 +286,23 @@ fn keep_filename_renders_mkv_output() {
+     );
+     assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv");
+ }
+ 
+ #[test]
+ fn keep_filename_on_mp4_source_replaces_extension_with_mkv() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mp4] }
+ tracks:
+-  - match: { exact: { type: video } }
+-  - match: { exact: { type: audio, language: en } }
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { type: audio, language: en } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mp4", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv");
+ }
+ 
+ // keep is file_stem + ".mkv" unconditionally (spec 4.8): it must never check
+ // whether the stem already looks like it ends in ".mkv" before appending --
+@@ -312,38 +321,40 @@ fn keep_filename_does_not_apply_the_templates_conditional_append() {
+ }
+ 
+ #[test]
+ fn template_filename_appends_mkv_when_missing() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'Custom' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Custom.mkv");
+ }
+ 
+ #[test]
+ fn template_filename_already_ending_in_mkv_is_not_doubled() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'Custom.mkv' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Custom.mkv");
+ }
+ 
+ #[test]
+ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
+@@ -384,25 +395,26 @@ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
+ 
+ #[test]
+ fn unidentifiable_donor_yields_unidentifiable_source_not_missing_external() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("Donor.S01E01.srt"), b"y").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
+-  - source:
+-      external: { path: '.', extensions: [srt], match_to_source: true }
+-    match: { exact: { type: subtitles } }
+-    optional: true
++  rules:
++    - match: { exact: { type: video } }
++    - source:
++        external: { path: '.', extensions: [srt], match_to_source: true }
++      match: { exact: { type: subtitles } }
++      optional: true
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     // Only the primary identifies; the donor has no fixture, so it fails.
+     by_name.insert(
+@@ -446,24 +458,25 @@ fn source_overwrite_when_output_equals_donor_path() {
+     // The rendered output ("Donor.S01E01.mkv" in the donor directory) is made
+     // to collide exactly with the external rule's resolved donor path.
+     let donors_dir_str = donors_dir.to_str().unwrap();
+     let profile_yaml = format!(
+         r#"
+ profile_version: 1
+ input: {{ pattern: 'S(?<s>\d{{2}})E(?<e>\d{{2}})', extensions: [mkv] }}
+ output:
+   filename: {{ template: 'Donor.{{match}}.mkv' }}
+ tracks:
+-  - match: {{ exact: {{ type: video }} }}
+-  - source:
+-      external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
+-    match: {{ exact: {{ type: audio }} }}
++  rules:
++    - match: {{ exact: {{ type: video }} }}
++    - source:
++        external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
++      match: {{ exact: {{ type: audio }} }}
+ "#,
+         donors_dir = donors_dir_str
+     );
+     let profile = from_str(&profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: src_dir.clone(),
+         output: Some(donors_dir.clone()),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+@@ -510,25 +523,26 @@ fn source_overwrite_is_batch_wide_not_per_primary() {
+     // pointed at donors_dir, that name is byte-for-byte B's donor path - for
+     // A as much as for B, even though A never resolved that donor itself.
+     let donors_dir_str = donors_dir.to_str().unwrap();
+     let profile_yaml = format!(
+         r#"
+ profile_version: 1
+ input: {{ pattern: 'S(?<s>\d{{2}})E(?<e>\d{{2}})', extensions: [mkv] }}
+ output:
+   filename: {{ template: 'Donor.S01E02.mkv' }}
+ tracks:
+-  - match: {{ exact: {{ type: video }} }}
+-  - source:
+-      external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
+-    match: {{ exact: {{ type: audio }} }}
+-    optional: true
++  rules:
++    - match: {{ exact: {{ type: video }} }}
++    - source:
++        external: {{ path: '{donors_dir}', extensions: [mkv], match_to_source: true }}
++      match: {{ exact: {{ type: audio }} }}
++      optional: true
+ "#,
+         donors_dir = donors_dir_str
+     );
+     let profile = from_str(&profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: src_dir.clone(),
+         output: Some(donors_dir.clone()),
+         on_collision: Some(CollisionPolicy::Overwrite),
+     };
+     let mut by_name = HashMap::new();
+@@ -567,21 +581,22 @@ tracks:
+ }
+ 
+ #[test]
+ fn empty_rendered_name_when_template_renders_to_dot() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '.' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+@@ -589,21 +604,22 @@ tracks:
+ }
+ 
+ #[test]
+ fn empty_rendered_name_when_template_renders_to_empty_string() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+@@ -618,21 +634,22 @@ tracks:
+ // on the FINAL name's stem (after ".mkv" is stripped back off), not on the
+ // pre-append rendered value.
+ #[test]
+ fn empty_rendered_name_when_template_renders_to_literal_mkv() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '.mkv' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+@@ -646,21 +663,22 @@ tracks:
+ // segment. Confirms the fix catches "empty field + literal .mkv", not just
+ // the bare ".mkv" literal.
+ #[test]
+ fn empty_rendered_name_when_template_field_renders_empty_before_literal_mkv() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+ output:
+   filename: { template: '{x}.mkv' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+@@ -678,21 +696,22 @@ fn plan_two_same_output(policy: Option<CollisionPolicy>) -> Batch {
+     let out_dir = root.path().join("out");
+     std::fs::create_dir_all(&src_dir).unwrap();
+     std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(src_dir.join("Show.S01E02.mkv"), b"x").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'Same.mkv' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: src_dir,
+         output: Some(out_dir),
+         on_collision: policy,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+@@ -813,57 +832,60 @@ fn on_disk_collision_under_error_is_error_and_drops_plan() {
+ }
+ 
+ // Task 6: `title: clear` resolves to `TitleAction::Clear`.
+ #[test]
+ fn title_clear_resolves_to_clear() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: clear
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
+ }
+ 
+ // Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
+ // resolution path (not just the Task-4 hardcoded default).
+ #[test]
+ fn title_keep_resolves_to_keep() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: keep
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
+ }
+ 
+ // Task 6: a title template renders via the same literal-mode engine as the
+ // filename template; `{season}` is a raw capture (no filter applied).
+ #[test]
+ fn title_template_renders_raw_capture_into_set() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: { template: 'Show S{season}' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.title,
+         muxsmith_core::planner::TitleAction::Set("Show S03".into())
+     );
+ }
+@@ -871,21 +893,22 @@ tracks:
+ // Task 6: title has no path-separator/empty-name invariants (unlike
+ // filenames, spec 4.9 vs 4.8): a template rendering to an empty string is a
+ // legitimate `Set("")`, not an error.
+ #[test]
+ fn title_template_rendering_empty_is_a_legitimate_set() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+ title: { template: '{x}' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.title,
+         muxsmith_core::planner::TitleAction::Set(String::new())
+     );
+ }
+@@ -893,103 +916,108 @@ tracks:
+ // Task 6: `source_stem` is available to a title template, exactly as it is
+ // to output.filename templates (validate.rs allows it identically for
+ // both, so the resolve-time Ctx must supply it identically too).
+ #[test]
+ fn title_template_supports_source_stem_field() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: { template: '{source_stem}' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.title,
+         muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
+     );
+ }
+ 
+ // Task 6: `tags: { global: drop, track: keep }` resolves to the matching
+ // `TagFlags`.
+ #[test]
+ fn tags_global_drop_track_keep_resolves_to_flags() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tags: { global: drop, track: keep }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.tags,
+         muxsmith_core::planner::TagFlags {
+             global_keep: false,
+             track_keep: true,
+         }
+     );
+ }
+ 
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: audio, language: zz } }
++  rules:
++    - match: { exact: { type: audio, language: zz } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     assert!(
+         batch
+             .batch_diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+         "batch diags: {:?}",
+         batch.batch_diagnostics
+     );
+ }
+ 
+ // Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
+ #[test]
+ fn chapters_drop_keyword_resolves_to_drop() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: drop
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Drop);
+ }
+ 
+ // Task 7: `chapters: keep` resolves to `ChapterSource::Keep` (also the
+ // default already covered by Task 4's tests, but exercised explicitly here
+ // since Task 7 is what makes the keyword branch real).
+ #[test]
+ fn chapters_keep_keyword_resolves_to_keep() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: keep
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
+ }
+ 
+ // Task 7: an external chapters locator with exactly one matching donor
+ // resolves to `ChapterSource::External(<that path>)`. A chapters file is
+@@ -999,21 +1027,22 @@ tracks:
+ fn chapters_external_one_match_resolves_to_external_path() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters:
+   external: { path: '.', extensions: [xml], match_to_source: true }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+@@ -1039,21 +1068,22 @@ tracks:
+ #[test]
+ fn chapters_external_zero_matches_yields_missing_external_and_no_plan() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters:
+   external: { path: '.', extensions: [xml], match_to_source: true }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+@@ -1080,21 +1110,22 @@ fn chapters_external_two_matches_yields_ambiguous_external() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.alt.xml"), b"<Chapters/>").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters:
+   external: { path: '.', extensions: [xml], match_to_source: true }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+@@ -1116,21 +1147,22 @@ tracks:
+ }
+ 
+ // Task 8: a `select` rule keeps only the attachments it matches; `unmatched:
+ // drop` removes everything else, reducing to `Subset` of just the matched id.
+ #[test]
+ fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   unmatched: drop
+   rules:
+     - select: { substring: { file_name: .ttf } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+@@ -1140,21 +1172,22 @@ attachments:
+ }
+ 
+ // Task 8: no rules at all, `unmatched: keep` -> every attachment falls
+ // through to `unmatched` and is kept, reducing to `KeepAll`.
+ #[test]
+ fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   unmatched: keep
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::KeepAll
+@@ -1162,21 +1195,22 @@ attachments:
+ }
+ 
+ // Task 8: no rules at all, `unmatched: drop` -> every attachment falls
+ // through to `unmatched` and is dropped, reducing to `DropAll`.
+ #[test]
+ fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   unmatched: drop
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::DropAll
+@@ -1184,21 +1218,22 @@ attachments:
+ }
+ 
+ // Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
+ // `unmatched: keep` keeps the other two, reducing to `Subset([0, 1])`.
+ #[test]
+ fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   unmatched: keep
+   rules:
+     - drop: { substring: { file_name: cover } }
+ "#;
+     let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+@@ -1212,21 +1247,22 @@ attachments:
+ #[test]
+ fn attachment_add_locator_attaches_all_matching_files() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("b.ttf"), b"font-b").unwrap();
+     std::fs::write(dir.path().join("a.ttf"), b"font-a").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   rules:
+     - add: { path: '.', extensions: [ttf] }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+@@ -1250,21 +1286,22 @@ attachments:
+ // exactly once (dedup by path, first-seen order).
+ #[test]
+ fn attachment_add_two_rules_matching_same_file_is_deduped() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("font.ttf"), b"font").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   rules:
+     - add: { path: '.', extensions: [ttf] }
+     - add: { path: '.', extensions: [ttf] }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+@@ -1290,21 +1327,22 @@ attachments:
+ // must not suppress the plan (unlike a track rule's or chapters' external
+ // zero-match, both of which are errors).
+ #[test]
+ fn attachment_add_locator_zero_matches_yields_missing_external_warning_and_plan_survives() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   rules:
+     - add: { path: '.', extensions: [ttf] }
+ "#;
+     let profile = from_str(p, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+diff --git a/crates/muxsmith-core/tests/profile_load.rs b/crates/muxsmith-core/tests/profile_load.rs
+index c073d15..c9d3787 100644
+--- a/crates/muxsmith-core/tests/profile_load.rs
++++ b/crates/muxsmith-core/tests/profile_load.rs
+@@ -5,29 +5,29 @@ use muxsmith_core::profile::model::{
+ use muxsmith_core::report::DiagCode;
+ 
+ const REFERENCE: &str = include_str!("fixtures/reference.yaml");
+ 
+ #[test]
+ fn reference_profile_parses() {
+     let p = from_str(REFERENCE, Format::Yaml).unwrap();
+     assert_eq!(p.profile_version, 1);
+     assert_eq!(p.input.pattern, r"S(?<season>\d{2})E(?<episode>\d{2})");
+     assert!(p.input.recursive);
+-    assert_eq!(p.tracks.len(), 10); // 1 video + 2 audio + 6 subs + 1 external
++    assert_eq!(p.tracks.rules.len(), 10); // 1 video + 2 audio + 6 subs + 1 external
+     assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
+     assert!(matches!(p.chapters, ChaptersCfg::Keyword(ref k) if k == "keep"));
+     assert!(matches!(p.title, TitleCfg::Keyword(ref k) if k == "clear"));
+     assert_eq!(p.tags.global, KeepDrop::Drop);
+     assert_eq!(p.tags.track, KeepDrop::Keep);
+     assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
+ 
+-    let last = p.tracks.last().unwrap();
++    let last = p.tracks.rules.last().unwrap();
+     match &last.source {
+         SourceCfg::External(block) => {
+             assert_eq!(block.external.path, std::path::Path::new("."));
+             assert_eq!(block.external.extensions, vec!["srt"]);
+             assert_eq!(block.external.match_to_source, Some(true));
+             assert!(block.external.match_pattern.is_none());
+             assert!(!block.external.recursive);
+             assert!(!block.external.case_sensitive);
+         }
+         other => panic!("expected external source, got {other:?}"),
+@@ -35,81 +35,124 @@ fn reference_profile_parses() {
+     let changes = last.changes.as_ref().unwrap();
+     assert!(changes.contains_key("language") && changes.contains_key("track_name"));
+ }
+ 
+ #[test]
+ fn json_profile_parses_identically_to_yaml() {
+     let yaml = r#"
+ profile_version: 1
+ input: { pattern: 'S(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let json = r#"{
+   "profile_version": 1,
+   "input": { "pattern": "S(\\d+)", "extensions": ["mkv"] },
+-  "tracks": [ { "match": { "exact": { "type": "video" } } } ]
++  "tracks": { "rules": [ { "match": { "exact": { "type": "video" } } } ] }
+ }"#;
+     let a = from_str(yaml, Format::Yaml).unwrap();
+     let b = from_str(json, Format::Json).unwrap();
+     assert_eq!(a, b);
+ }
+ 
+ #[test]
+ fn defaults_apply_when_sections_absent() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     let p = from_str(y, Format::Yaml).unwrap();
+     assert!(matches!(p.output.filename, FilenameCfg::Keyword(ref k) if k == "keep"));
+     assert_eq!(p.output.on_collision, CollisionPolicy::Error);
+     assert!(matches!(p.chapters, ChaptersCfg::Keyword(ref k) if k == "keep"));
+     assert!(matches!(p.title, TitleCfg::Keyword(ref k) if k == "keep"));
+     assert_eq!(p.tags.global, KeepDrop::Keep);
+     assert_eq!(p.tags.track, KeepDrop::Keep);
+     assert_eq!(p.attachments.unmatched, KeepDrop::Keep);
+-    assert!(matches!(p.tracks[0].source, SourceCfg::Keyword(ref k) if k == "primary"));
+-    assert!(!p.tracks[0].optional);
++    assert!(matches!(p.tracks.rules[0].source, SourceCfg::Keyword(ref k) if k == "primary"));
++    assert!(!p.tracks.rules[0].optional);
+ }
+ 
+ #[test]
+ fn unknown_key_is_parse_error_with_path() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
+-    optionall: true
++  rules:
++    - match: { exact: { type: video } }
++      optionall: true
+ "#;
+     let err = from_str(y, Format::Yaml).unwrap_err();
+     assert_eq!(err.code, DiagCode::ParseError);
+     assert!(err.params["detail"].contains("optionall"));
+     assert!(err.params.contains_key("at"));
+ }
+ 
+ #[test]
+ fn unknown_key_inside_filename_template_is_rejected() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ output:
+   filename: { template: 'x{g1}', extra: 1 }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     assert!(from_str(y, Format::Yaml).is_err());
+ }
+ 
+ #[test]
+ fn unknown_key_inside_source_external_is_rejected() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - source: { external: { path: '.', extensions: [srt] }, bogus: true }
+-    match: { exact: { type: subtitles } }
++  rules:
++    - source: { external: { path: '.', extensions: [srt] }, bogus: true }
++      match: { exact: { type: subtitles } }
+ "#;
+     assert!(from_str(y, Format::Yaml).is_err());
+ }
++
++#[test]
++fn tracks_block_parses_and_unmatched_defaults_to_drop() {
++    let yaml = r#"
++profile_version: 1
++input: { pattern: 'x', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let p =
++        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
++            .expect("block-form tracks must parse");
++    assert_eq!(
++        p.tracks.unmatched,
++        muxsmith_core::profile::model::KeepDrop::Drop
++    );
++    assert_eq!(p.tracks.rules.len(), 1);
++}
++
++#[test]
++fn tracks_unmatched_keep_parses() {
++    let yaml = r#"
++profile_version: 1
++input: { pattern: 'x', extensions: [mkv] }
++tracks:
++  unmatched: keep
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let p =
++        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
++            .expect("keep must parse");
++    assert_eq!(
++        p.tracks.unmatched,
++        muxsmith_core::profile::model::KeepDrop::Keep
++    );
++}
+diff --git a/crates/muxsmith-core/tests/suggestions.rs b/crates/muxsmith-core/tests/suggestions.rs
+index 4ff3740..4742564 100644
+--- a/crates/muxsmith-core/tests/suggestions.rs
++++ b/crates/muxsmith-core/tests/suggestions.rs
+@@ -26,21 +26,22 @@ impl Identify for FakeIdent {
+ fn lang() -> LanguageIndex {
+     LanguageIndex::from_rows(&[["English", "eng", "eng", "en"]])
+ }
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+ 
+ const P_AMBIGUOUS: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
++  rules:
++    - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+ 
+ fn plan(profile_yaml: &str) -> muxsmith_core::planner::Batch {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+@@ -107,31 +108,31 @@ fn every_suggestion_survives_the_next_dry_run() {
+ }
+ 
+ // Rebuild an edited profile YAML by inserting the structured edit into the
+ // single rule's match. Mirrors what the GUI/CLI apply would do.
+ fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
+     let inner = match edit {
+         StructuredEdit::AddExact { property, value } => format!(
+             "exact: {{ type: subtitles, codec_kind: srt, language: en, {property}: {value} }}"
+         ),
+         StructuredEdit::AddNotExact { property, value } => format!(
+-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      not:\n        - exact: {{ {property}: {value} }}"
++            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - exact: {{ {property}: {value} }}"
+         ),
+         StructuredEdit::AddSubstring { value } => format!(
+-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      substring: {{ track_name: {value} }}"
++            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        substring: {{ track_name: {value} }}"
+         ),
+         StructuredEdit::AddNotSubstring { value } => format!(
+-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n      not:\n        - substring: {{ track_name: {value} }}"
++            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - substring: {{ track_name: {value} }}"
+         ),
+     };
+     format!(
+-        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  - match:\n      {inner}\n"
++        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
+     )
+ }
+ 
+ // Plans an arbitrary set of named fixture files (name -> -J JSON), unlike
+ // `plan()` which is wired to the single-file SERIES fixture.
+ fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> Batch {
+     let dir = tempfile::tempdir().unwrap();
+     let mut by_name = HashMap::new();
+     for (name, json) in files {
+         std::fs::write(dir.path().join(name), b"x").unwrap();
+@@ -151,21 +152,22 @@ fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> Batch {
+     std::mem::forget(dir);
+     batch
+ }
+ 
+ // --- (a) with_rule_match must not clobber an existing constraint (bug C) ---
+ 
+ const P_NO_CLOBBER: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles }, substring: { track_name: Foo } }
++  rules:
++    - match: { exact: { type: subtitles }, substring: { track_name: Foo } }
+ "#;
+ 
+ // File 1: two subtitle tracks both containing "Foo" in track_name, both
+ // otherwise identical -- ambiguous under the rule above, and the only source
+ // of discriminator candidates (candidate generation only looks at files
+ // whose current matched set has >= 2 tracks).
+ const AMBIGUOUS_FOO: &str = r#"
+ {
+   "attachments": [], "chapters": [],
+   "container": { "recognized": true, "supported": true, "type": "Matroska" },
+@@ -220,34 +222,34 @@ fn no_clobber_batch() -> Batch {
+ // Rebuild the edited profile YAML the same way a literal/naive splice of the
+ // structured edit would (what a buggy overwrite-based with_rule_match, or a
+ // GUI/CLI apply mirroring it, would produce): AddExact/AddNotExact/
+ // AddNotSubstring add alongside the existing `exact`/`substring` map or into
+ // an independent `not` list; AddSubstring replaces the substring map's
+ // `track_name` entry wholesale, since that is what overwriting a BTreeMap key
+ // via `extend` actually does.
+ fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
+     let inner = match edit {
+         StructuredEdit::AddExact { property, value } => format!(
+-            "exact: {{ type: subtitles, {property}: {value} }}\n      substring: {{ track_name: Foo }}"
++            "exact: {{ type: subtitles, {property}: {value} }}\n        substring: {{ track_name: Foo }}"
+         ),
+         StructuredEdit::AddNotExact { property, value } => format!(
+-            "exact: {{ type: subtitles }}\n      substring: {{ track_name: Foo }}\n      not:\n        - exact: {{ {property}: {value} }}"
++            "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - exact: {{ {property}: {value} }}"
+         ),
+         StructuredEdit::AddSubstring { value } => {
+-            format!("exact: {{ type: subtitles }}\n      substring: {{ track_name: {value} }}")
++            format!("exact: {{ type: subtitles }}\n        substring: {{ track_name: {value} }}")
+         }
+         StructuredEdit::AddNotSubstring { value } => format!(
+-            "exact: {{ type: subtitles }}\n      substring: {{ track_name: Foo }}\n      not:\n        - substring: {{ track_name: {value} }}"
++            "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - substring: {{ track_name: {value} }}"
+         ),
+     };
+     format!(
+-        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  - match:\n      {inner}\n"
++        "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
+     )
+ }
+ 
+ #[test]
+ fn with_rule_match_never_widens_an_existing_substring_constraint() {
+     let batch = no_clobber_batch();
+     assert!(
+         batch.files[0]
+             .diagnostics
+             .iter()
+@@ -303,21 +305,22 @@ fn with_rule_match_never_widens_an_existing_substring_constraint() {
+         );
+     }
+ }
+ 
+ // --- (b) yaml_fragment must emit valid, round-trippable YAML (bug D) ---
+ 
+ const P_COLON_AMBIGUOUS: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: subtitles } }
++  rules:
++    - match: { exact: { type: subtitles } }
+ "#;
+ 
+ // Two subtitle tracks, ambiguous under a bare `type: subtitles` rule; one
+ // track_name contains a colon, which breaks a hand-formatted YAML fragment.
+ const COLON_TRACK_NAMES: &str = r#"
+ {
+   "attachments": [], "chapters": [],
+   "container": { "recognized": true, "supported": true, "type": "Matroska" },
+   "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
+   "identification_format_version": 20, "track_tags": [],
+diff --git a/crates/muxsmith-core/tests/validate_hardening.rs b/crates/muxsmith-core/tests/validate_hardening.rs
+index 5c21b92..c4add83 100644
+--- a/crates/muxsmith-core/tests/validate_hardening.rs
++++ b/crates/muxsmith-core/tests/validate_hardening.rs
+@@ -1,69 +1,69 @@
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::validate::validate;
+ use muxsmith_core::report::DiagCode;
+ 
+ fn codes(yaml: &str) -> Vec<DiagCode> {
+     let p = from_str(yaml, Format::Yaml).expect("parses");
+     validate(&p).into_iter().map(|d| d.code).collect()
+ }
+ 
+ const HEAD: &str =
+-    "profile_version: 1\ninput: { pattern: 'E(\\d+)', extensions: [mkv] }\ntracks:\n";
++    "profile_version: 1\ninput: { pattern: 'E(\\d+)', extensions: [mkv] }\ntracks:\n  rules:\n";
+ 
+ #[test]
+ fn codec_kind_under_substring_is_exact_only() {
+-    let y = format!("{HEAD}  - match: {{ substring: {{ codec_kind: srt }} }}\n");
++    let y = format!("{HEAD}    - match: {{ substring: {{ codec_kind: srt }} }}\n");
+     assert!(codes(&y).contains(&DiagCode::CodecKindExactOnly));
+ }
+ 
+ #[test]
+ fn codec_kind_under_regex_is_exact_only() {
+-    let y = format!("{HEAD}  - match: {{ regex: {{ codec_kind: 'sr.' }} }}\n");
++    let y = format!("{HEAD}    - match: {{ regex: {{ codec_kind: 'sr.' }} }}\n");
+     assert!(codes(&y).contains(&DiagCode::CodecKindExactOnly));
+ }
+ 
+ #[test]
+ fn codec_kind_under_exact_is_allowed() {
+-    let y = format!("{HEAD}  - match: {{ exact: {{ codec_kind: srt }} }}\n");
++    let y = format!("{HEAD}    - match: {{ exact: {{ codec_kind: srt }} }}\n");
+     let c = codes(&y);
+     assert!(!c.contains(&DiagCode::CodecKindExactOnly));
+     assert!(!c.contains(&DiagCode::InvalidPropertyValue));
+ }
+ 
+ #[test]
+ fn bad_type_value_is_invalid_property_value() {
+-    let y = format!("{HEAD}  - match: {{ exact: {{ type: vdieo }} }}\n");
++    let y = format!("{HEAD}    - match: {{ exact: {{ type: vdieo }} }}\n");
+     assert!(codes(&y).contains(&DiagCode::InvalidPropertyValue));
+ }
+ 
+ #[test]
+ fn bad_codec_kind_value_is_invalid_property_value() {
+-    let y = format!("{HEAD}  - match: {{ exact: {{ codec_kind: nope }} }}\n");
++    let y = format!("{HEAD}    - match: {{ exact: {{ codec_kind: nope }} }}\n");
+     assert!(codes(&y).contains(&DiagCode::InvalidPropertyValue));
+ }
+ 
+ #[test]
+ fn good_type_value_passes() {
+-    let y = format!("{HEAD}  - match: {{ exact: {{ type: subtitles }} }}\n");
++    let y = format!("{HEAD}    - match: {{ exact: {{ type: subtitles }} }}\n");
+     assert!(!codes(&y).contains(&DiagCode::InvalidPropertyValue));
+ }
+ 
+ #[test]
+ fn empty_any_list_is_empty_match_list() {
+-    let y = format!("{HEAD}  - match: {{ any: [] }}\n");
++    let y = format!("{HEAD}    - match: {{ any: [] }}\n");
+     assert!(codes(&y).contains(&DiagCode::EmptyMatchList));
+ }
+ 
+ #[test]
+ fn empty_not_list_is_empty_match_list() {
+-    let y = format!("{HEAD}  - match: {{ not: [] }}\n");
++    let y = format!("{HEAD}    - match: {{ not: [] }}\n");
+     assert!(codes(&y).contains(&DiagCode::EmptyMatchList));
+ }
+ 
+ #[test]
+ fn populated_any_and_not_are_not_empty_match_list() {
+     let y = format!(
+-        "{HEAD}  - match: {{ any: [{{ exact: {{ type: subtitles }} }}], not: [{{ exact: {{ type: audio }} }}] }}\n"
++        "{HEAD}    - match: {{ any: [{{ exact: {{ type: subtitles }} }}], not: [{{ exact: {{ type: audio }} }}] }}\n"
+     );
+     assert!(!codes(&y).contains(&DiagCode::EmptyMatchList));
+ }
+diff --git a/crates/muxsmith-core/tests/validate_semantics.rs b/crates/muxsmith-core/tests/validate_semantics.rs
+index fa5c8fa..a2f0988 100644
+--- a/crates/muxsmith-core/tests/validate_semantics.rs
++++ b/crates/muxsmith-core/tests/validate_semantics.rs
+@@ -1,21 +1,27 @@
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::validate::validate;
+ use muxsmith_core::report::{DiagCode, Severity};
+ 
+ fn profile(tracks_yaml: &str) -> muxsmith_core::profile::Profile {
++    let indented: String = tracks_yaml
++        .lines()
++        .map(|l| format!("  {l}"))
++        .collect::<Vec<_>>()
++        .join("\n");
+     let y = format!(
+         r#"
+ profile_version: 1
+ input: {{ pattern: 'S(?<season>\d{{2}})E(?<episode>\d{{2}})', extensions: [mkv] }}
+ tracks:
+-{tracks_yaml}
++  rules:
++{indented}
+ "#
+     );
+     from_str(&y, Format::Yaml).unwrap()
+ }
+ 
+ fn codes(p: &muxsmith_core::profile::Profile) -> Vec<DiagCode> {
+     validate(p).into_iter().map(|d| d.code).collect()
+ }
+ 
+ #[test]
+@@ -34,21 +40,22 @@ fn wrong_profile_version_is_rejected() {
+     let mut p = profile("  - match: { exact: { type: video } }");
+     p.profile_version = 2;
+     assert!(codes(&p).contains(&DiagCode::UnsupportedProfileVersion));
+ }
+ 
+ #[test]
+ fn empty_tracks_list_is_rejected() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+-tracks: []
++tracks:
++  rules: []
+ "#;
+     let p = from_str(y, Format::Yaml).unwrap();
+     assert!(codes(&p).contains(&DiagCode::NoTrackRules));
+ }
+ 
+ #[test]
+ fn unknown_match_property_is_flagged_with_path() {
+     let p = profile("  - match: { exact: { colour_depth: 10 } }");
+     let diags = validate(&p);
+     let d = diags
+@@ -122,35 +129,37 @@ fn change_value_type_mismatch_is_flagged() {
+     let p = profile("  - match: { exact: { type: video } }\n    changes: { default_track: 'yes' }");
+     assert!(codes(&p).contains(&DiagCode::ValueTypeMismatch));
+ }
+ 
+ #[test]
+ fn attachment_rule_must_have_exactly_one_action() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   rules:
+     - select: { substring: { content_type: font } }
+       drop: { substring: { file_name: cover } }
+ "#;
+     let p = from_str(y, Format::Yaml).unwrap();
+     assert!(codes(&p).contains(&DiagCode::AttachmentRuleShape));
+ }
+ 
+ #[test]
+ fn attachment_match_uses_attachment_property_set() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ attachments:
+   rules:
+     - select: { exact: { language: en } }
+ "#;
+     let p = from_str(y, Format::Yaml).unwrap();
+     // "language" is a track property, not an attachment property.
+     assert!(codes(&p).contains(&DiagCode::UnknownProperty));
+ }
+diff --git a/crates/muxsmith-core/tests/validate_structure.rs b/crates/muxsmith-core/tests/validate_structure.rs
+index 0e1084b..0822f44 100644
+--- a/crates/muxsmith-core/tests/validate_structure.rs
++++ b/crates/muxsmith-core/tests/validate_structure.rs
+@@ -7,77 +7,78 @@ fn parse(y: &str) -> muxsmith_core::profile::Profile {
+ }
+ 
+ fn codes(y: &str) -> Vec<DiagCode> {
+     validate(&parse(y)).into_iter().map(|d| d.code).collect()
+ }
+ 
+ const BASE: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<season>\d{2})E(?<episode>\d{2})', extensions: [mkv] }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+ 
+ #[test]
+ fn invalid_input_pattern_is_flagged() {
+     let y = BASE.replace(r"S(?<season>\d{2})E(?<episode>\d{2})", "([");
+     assert!(codes(&y).contains(&DiagCode::InvalidRegex));
+ }
+ 
+ #[test]
+ fn empty_extensions_flagged_for_input_and_locator() {
+     let y = BASE.replace("extensions: [mkv]", "extensions: []");
+     assert!(codes(&y).contains(&DiagCode::EmptyExtensions));
+ }
+ 
+ #[test]
+ fn locator_with_both_match_options_is_conflict() {
+     let y = format!(
+-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: true, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_to_source: true, match_pattern: '{{match}}' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     assert!(codes(&y).contains(&DiagCode::LocatorConflict));
+ }
+ 
+ #[test]
+ fn match_to_source_false_is_rejected() {
+     let y = format!(
+-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_to_source: false }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     let c = codes(&y);
+     assert!(c.contains(&DiagCode::InvalidKeyword));
+     assert!(!c.contains(&DiagCode::LocatorConflict));
+ }
+ 
+ #[test]
+ fn match_to_source_false_with_pattern_is_not_conflict() {
+     let y = format!(
+-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_to_source: false, match_pattern: '{{match}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_to_source: false, match_pattern: '{{match}}' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     let c = codes(&y);
+     assert!(c.contains(&DiagCode::InvalidKeyword));
+     assert!(!c.contains(&DiagCode::LocatorConflict));
+ }
+ 
+ #[test]
+ fn match_pattern_with_unknown_field_is_flagged() {
+     let y = format!(
+-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_pattern: 'x{{volume}}y' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_pattern: 'x{{volume}}y' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     let c = codes(&y);
+     assert!(c.contains(&DiagCode::UnknownTemplateField));
+ }
+ 
+ #[test]
+ fn match_pattern_may_not_use_source_stem() {
+     // source_stem is literal-mode only (spec 4.7).
+     let y = format!(
+-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [srt], match_pattern: '{{source_stem}}' }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++        "{BASE}    - source:\n        external: {{ path: '.', extensions: [srt], match_pattern: '{{source_stem}}' }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     assert!(codes(&y).contains(&DiagCode::UnknownTemplateField));
+ }
+ 
+ #[test]
+ fn filename_template_fields_checked_against_pattern_groups() {
+     let good =
+         BASE.to_string() + "output:\n  filename: { template: 'X S{season}E{episode:pad2}.mkv' }\n";
+     assert!(!codes(&good).contains(&DiagCode::UnknownTemplateField));
+ 
+@@ -124,42 +125,43 @@ fn unknown_keywords_are_flagged() {
+         ("title: wipe\n", "title"),
+     ] {
+         let y = BASE.to_string() + snippet;
+         assert!(
+             codes(&y).contains(&DiagCode::InvalidKeyword),
+             "expected InvalidKeyword for: {snippet}"
+         );
+     }
+     let y = BASE.replace(
+         "- match: { exact: { type: video } }",
+-        "- source: secondary\n    match: { exact: { type: video } }",
++        "- source: secondary\n      match: { exact: { type: video } }",
+     );
+     assert!(codes(&y).contains(&DiagCode::InvalidKeyword));
+ }
+ 
+ #[test]
+ fn numbered_group_fields_are_accepted() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'S(\d{2})E(\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'S{g1}E{g2}.mkv' }
+ tracks:
+-  - match: { exact: { type: video } }
++  rules:
++    - match: { exact: { type: video } }
+ "#;
+     assert!(!codes(y).contains(&DiagCode::UnknownTemplateField));
+ }
+ 
+ #[test]
+ fn empty_locator_extensions_flagged() {
+     let y = format!(
+-        "{BASE}  - source:\n      external: {{ path: '.', extensions: [] }}\n    match: {{ exact: {{ type: subtitles }} }}\n"
++        "{BASE}    - source:\n        external: {{ path: '.', extensions: [] }}\n      match: {{ exact: {{ type: subtitles }} }}\n"
+     );
+     let ds = validate(&parse(&y));
+     let d = ds
+         .iter()
+         .find(|d| d.code == DiagCode::EmptyExtensions)
+         .expect("expected EmptyExtensions diagnostic");
+     assert!(d.config_path.ends_with(".source.external.extensions"));
+ }
+ 
+ #[test]
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index a1f5394..f0cea73 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -60,55 +60,57 @@ input:
+   pattern: 'S(?<season>\d{2})E(?<episode>\d{2})'
+   extensions: [mkv, mp4]
+   recursive: true
+ 
+ output:
+   directory: null          # usually supplied as run input
+   filename: keep           # keep | template: "Show - S{season}E{episode}.mkv"
+   on_collision: error      # error | skip | overwrite
+ 
+ tracks:                    # list order = output track order
+-  - match: { exact: { type: video } }
+-
+-  - match: { exact: { type: audio, language: en } }
+-    changes: { default_track: true }
+-
+-  - match: { exact: { type: audio, language: de } }
+-
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
+-    optional: true
+-    changes: { track_name: English forced, default_track: true }
+-
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+-      not:
+-        - substring: { track_name: SDH }
+-        - exact: { flag_hearing_impaired: true }
+-    changes: { track_name: English }
+-
+-  - match:
+-      exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
+-      any:
+-        - substring: { track_name: SDH }
+-        - exact: { flag_hearing_impaired: true }
+-    changes: { track_name: English SDH, flag_hearing_impaired: true }
+-
+-  # analogous forced / plain / SDH rules for language: de omitted for brevity
+-
+-  - source:
+-      external:
+-        path: .              # relative to the primary file's directory
+-        extensions: [srt]
+-        match_to_source: true
+-    match: { exact: { type: subtitles } }
+-    changes: { language: tr, track_name: "Türkçe" }
++  unmatched: drop           # keep | drop; default drop
++  rules:
++    - match: { exact: { type: video } }
++
++    - match: { exact: { type: audio, language: en } }
++      changes: { default_track: true }
++
++    - match: { exact: { type: audio, language: de } }
++
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: true }
++      optional: true
++      changes: { track_name: English forced, default_track: true }
++
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
++        not:
++          - substring: { track_name: SDH }
++          - exact: { flag_hearing_impaired: true }
++      changes: { track_name: English }
++
++    - match:
++        exact: { type: subtitles, codec_kind: srt, language: en, forced_track: false }
++        any:
++          - substring: { track_name: SDH }
++          - exact: { flag_hearing_impaired: true }
++      changes: { track_name: English SDH, flag_hearing_impaired: true }
++
++    # analogous forced / plain / SDH rules for language: de omitted for brevity
++
++    - source:
++        external:
++          path: .              # relative to the primary file's directory
++          extensions: [srt]
++          match_to_source: true
++      match: { exact: { type: subtitles } }
++      changes: { language: tr, track_name: "Türkçe" }
+ 
+ attachments:
+   unmatched: keep            # keep | drop; default keep (dropping fonts silently breaks ASS subs)
+   rules: []                  # select/drop/add rules, same match algebra (4.3)
+ 
+ chapters: keep               # keep | drop | external locator (same mechanism as external tracks)
+ tags:
+   global: drop               # keep | drop
+   track: keep                # keep | drop
+ title: clear                 # keep | clear | template: "..."
+@@ -165,30 +167,32 @@ Two disjoint property sets, both owned by the `capability` module (section 9):
+ Conveniences:
+ 
+ - `language` (matching): accepts ISO 639-2 (`ger`) and BCP-47 (`de`); matched semantically against both `language` and `language_ietf` as reported by mkvmerge. Valid values come from `mkvmerge --list-languages` at runtime.
+ - `codec_kind` (matching): friendly alias mapped to `codec_id` sets, e.g. `srt` -> `S_TEXT/UTF8`, `ass`, `pgs`, `vobsub`, plus common audio/video kinds. Curated in `capability`. Usable only under `exact`; `substring`/`regex` on `codec_kind` is a config-time error (`CodecKindExactOnly`), since a pattern over the curated alias token is ill-defined; pattern-match `codec_id` instead.
+ - `sub_charset`: validated leniently (iconv names are open-ended); passed through to mkvmerge.
+ - **Closed-domain values.** For properties whose value set is closed, an `exact` value outside the domain is `InvalidPropertyValue` (not a silent never-match): `type` and `codec_kind` at config time (against the pinned schema enum and the alias table respectively), `language` at plan time (against `mkvmerge --list-languages`). Open-ended values (`sub_charset`, free-text `track_name`) are exempt.
+ - **Boolean flags, absent = false.** For `exact` matching, a boolean-typed matchable property that a track's `-J` output omits compares equal to `false`. mkvmerge emits the vanity flags (`flag_hearing_impaired`, `flag_visual_impaired`, `flag_commentary`, `flag_original`) only when set, and Matroska defines them false-when-absent; so `exact: { flag_hearing_impaired: false }` matches a track that never set the flag, mirroring mkvmerge's own semantics rather than requiring the `not: [ exact: { flag: true } ]` idiom.
+ 
+ ### 4.5 Track rules
+ 
++`tracks` is a `{ unmatched, rules }` block, not a bare rule list: `unmatched` (`keep | drop`, default `drop`) is the policy for PRIMARY-file tracks no rule matches; `rules` carries the ordered list below.
++
+ ```
+ rule := {
+   source?:   primary (default) | { external: locator }
+   match:     expr                 # required
+   optional?: bool (default false) # exactly the zero-candidate case; two candidates remain an error
+   changes?:  { settable: value, ... }
+ }
+ ```
+ 
+-List order in `tracks` defines the output track order (`--track-order`).
++List order in `tracks.rules` defines the output track order (`--track-order`).
+ 
+ ### 4.6 External locator
+ 
+ ```
+ locator := {
+   path:             string        # relative to the primary file's directory, or absolute
+   recursive?:       bool (default false)
+   extensions:       [string]      # validated against mkvmerge --list-types
+   match_to_source?: true          # sugar for match_pattern: '{match}'
+   match_pattern?:   template      # mutually exclusive with match_to_source

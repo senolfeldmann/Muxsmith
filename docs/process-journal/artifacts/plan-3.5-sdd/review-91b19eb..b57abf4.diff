@@ -1,0 +1,278 @@
+# Review package: 91b19eb..HEAD
+
+## Commits
+b57abf4 feat(planner,command): tracks.unmatched keep passes primary tracks through (D20)
+
+## Files changed
+ crates/muxsmith-core/src/command.rs   |  6 +++++
+ crates/muxsmith-core/src/planner.rs   |  9 +++++++
+ crates/muxsmith-core/tests/command.rs | 45 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 60 insertions(+)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/command.rs b/crates/muxsmith-core/src/command.rs
+index b746fa6..1212898 100644
+--- a/crates/muxsmith-core/src/command.rs
++++ b/crates/muxsmith-core/src/command.rs
+@@ -176,20 +176,26 @@ fn push_group_attachments(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
+             argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
+         }
+         PrimaryAttachments::DropAll => argv.push("--no-attachments".to_string()),
+     }
+ }
+ 
+ // Track selection for one group, categories in fixed order (spec 4.9 item
+ // 2d): assigned ids of that category in this group, ascending, if any;
+ // otherwise the category's `--no-*` flag.
+ fn push_track_selection(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
++    // tracks.unmatched: keep -> pass all PRIMARY tracks through (no selection
++    // flags); mkvmerge keeps every track by default. Donor groups still get
++    // their normal per-category selection.
++    if plan.keep_unmatched && source == plan.source.as_path() {
++        return;
++    }
+     for cat in &CATEGORIES {
+         let mut ids: Vec<u64> = plan
+             .assignments
+             .iter()
+             .filter(|a| a.source.as_path() == source && a.track_kind.as_deref() == Some(cat.kind))
+             .filter_map(|a| a.track_id)
+             .collect();
+         ids.sort_unstable();
+ 
+         if ids.is_empty() {
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 82063cb..eb689b4 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -136,20 +136,25 @@ pub struct Plan {
+     /// spec 4.5).
+     pub assignments: Vec<Assignment>,
+     /// Resolved attachment disposition (spec 4.9).
+     pub attachments: AttachmentPlan,
+     /// Resolved chapters disposition (spec 4.9).
+     pub chapters: ChapterSource,
+     /// Resolved tag flags (spec 4.9).
+     pub tags: TagFlags,
+     /// Resolved output title (spec 4.9).
+     pub title: TitleAction,
++    /// When true (`tracks.unmatched: keep`), the primary's unmatched tracks
++    /// pass through: `command` emits no track-selection flags for the primary
++    /// group. Donor groups are unaffected. Default construction is `false`
++    /// (drop).
++    pub keep_unmatched: bool,
+ }
+ 
+ /// Per-file result: the plan (if any) and every diagnostic about the file.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct FileReport {
+     /// The primary source file.
+     pub source: PathBuf,
+     /// The identifier matched from its basename.
+     pub identifier: String,
+     /// The plan, or `None` if any diagnostic is error-severity (spec 5.1).
+@@ -526,20 +531,24 @@ fn resolve_file(
+     );
+ 
+     let plan = output.map(|output| Plan {
+         source: primary.path.clone(),
+         output,
+         assignments,
+         attachments,
+         chapters,
+         tags,
+         title,
++        keep_unmatched: matches!(
++            profile.tracks.unmatched,
++            crate::profile::model::KeepDrop::Keep
++        ),
+     });
+ 
+     FileReport {
+         source: primary.path.clone(),
+         identifier: primary.identifier.whole.clone(),
+         plan,
+         diagnostics,
+     }
+ }
+ 
+diff --git a/crates/muxsmith-core/tests/command.rs b/crates/muxsmith-core/tests/command.rs
+index 01e29e3..bbf3516 100644
+--- a/crates/muxsmith-core/tests/command.rs
++++ b/crates/muxsmith-core/tests/command.rs
+@@ -18,20 +18,21 @@ fn change(property: &str, value: Scalar) -> AppliedChange {
+         property: property.to_string(),
+         value,
+     }
+ }
+ 
+ #[test]
+ fn global_and_single_video_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
++        keep_unmatched: false,
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+             changes: vec![],
+         }],
+         attachments: AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+@@ -60,25 +61,65 @@ fn global_and_single_video_group() {
+             ")",
+             "--track-order",
+             "0:0",
+         ]
+         .into_iter()
+         .map(String::from)
+         .collect::<Vec<_>>()
+     );
+ }
+ 
++#[test]
++fn keep_unmatched_suppresses_primary_selection_flags() {
++    let plan = Plan {
++        source: p("/m/show.mkv"),
++        output: p("/out/show.mkv"),
++        keep_unmatched: true,
++        assignments: vec![Assignment {
++            rule_index: 0,
++            source: p("/m/show.mkv"),
++            track_id: Some(1),
++            track_kind: Some("audio".into()),
++            changes: vec![change("default_track", Scalar::Bool(true))],
++        }],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    };
++    let argv = muxsmith_core::command::command(&plan);
++    assert!(
++        !argv.iter().any(|a| a == "--no-video"
++            || a == "--no-subtitles"
++            || a == "--no-buttons"
++            || a == "--audio-tracks"),
++        "keep must emit no primary selection flags, got {argv:?}"
++    );
++    assert!(
++        argv.windows(2)
++            .any(|w| w[0] == "--default-track-flag" && w[1] == "1:1")
++    );
++    assert!(argv.iter().any(|a| a == "--track-order"));
++}
++
+ #[test]
+ fn unmatched_donor_rule_opens_no_input_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
++        keep_unmatched: false,
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+                 source: p("/m/e.mkv"),
+                 track_id: Some(0),
+                 track_kind: Some("video".into()),
+                 changes: vec![],
+             },
+             Assignment {
+                 rule_index: 1,
+@@ -111,20 +152,21 @@ fn unmatched_donor_rule_opens_no_input_group() {
+         .position(|a| a == "--track-order")
+         .map(|i| argv[i + 1].as_str());
+     assert_eq!(track_order, Some("0:0"));
+ }
+ 
+ #[test]
+ fn per_track_properties_and_multi_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
++        keep_unmatched: false,
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+                 source: p("/m/e.mkv"),
+                 track_id: Some(0),
+                 track_kind: Some("video".into()),
+                 changes: vec![],
+             },
+             Assignment {
+                 rule_index: 1,
+@@ -197,20 +239,21 @@ fn per_track_properties_and_multi_group() {
+         .map(String::from)
+         .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn boolean_and_string_value_encoding() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
++        keep_unmatched: false,
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+             changes: vec![
+                 change("forced_track", Scalar::Bool(false)),
+                 change("language", Scalar::Str("en".into())),
+             ],
+         }],
+@@ -252,20 +295,21 @@ fn boolean_and_string_value_encoding() {
+     );
+ }
+ 
+ // A single-group plan: one primary video track, no donor. Used by the
+ // attachment/global-flag tests below where a second group is not needed to
+ // demonstrate the behavior.
+ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
+     Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
++        keep_unmatched: false,
+         assignments: vec![Assignment {
+             rule_index: 0,
+             source: p("/m/e.mkv"),
+             track_id: Some(0),
+             track_kind: Some("video".into()),
+             changes: vec![],
+         }],
+         attachments,
+         chapters: ChapterSource::Keep,
+         tags: TagFlags {
+@@ -276,20 +320,21 @@ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
+     }
+ }
+ 
+ // A two-group plan: primary video track plus a donor subtitle track, so
+ // "every group" assertions (chapters, tags) are actually exercised across
+ // both the primary and a donor input group.
+ fn multi_group_plan(attachments: AttachmentPlan, chapters: ChapterSource, tags: TagFlags) -> Plan {
+     Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
++        keep_unmatched: false,
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+                 source: p("/m/e.mkv"),
+                 track_id: Some(0),
+                 track_kind: Some("video".into()),
+                 changes: vec![],
+             },
+             Assignment {
+                 rule_index: 1,
