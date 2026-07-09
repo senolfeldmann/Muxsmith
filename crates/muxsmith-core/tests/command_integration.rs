@@ -10,6 +10,10 @@
 //! - `live_mkvmerge_accepts_planned_command`: spawns real mkvmerge on the
 //!   argv a tiny real plan produces, gated on `Mkvmerge::locate()` (mirrors
 //!   `identify_live.rs` / `mkvmerge_runtime.rs`'s self-skip pattern).
+//! - `live_keep_unmatched_orders_only_listed_track` (Plan 3.5 Task 3):
+//!   confirms the D20 assumption against real mkvmerge rather than from
+//!   memory (SI-3): under `keep_unmatched`, a primary track kept but absent
+//!   from `--track-order` lands after the listed ones, in source order.
 //!
 //! The parenthesized `( file )` input-group syntax `command.rs` emits for
 //! every input source (spec 4.9 item 2f) was confirmed by hand against the
@@ -33,9 +37,12 @@ use std::process::Command;
 use muxsmith_core::capability::runtime::{LanguageIndex, Mkvmerge};
 use muxsmith_core::command::command;
 use muxsmith_core::identify::{
-    Identification, Identify, IdentifyCache, IdentifyError, LiveIdentifier,
+    Identification, Identify, IdentifyCache, IdentifyError, LiveIdentifier, PropValue, Track,
 };
-use muxsmith_core::planner::{RunInputs, plan_batch};
+use muxsmith_core::planner::{
+    Assignment, AttachmentPlan, ChapterSource, Plan, PrimaryAttachments, RunInputs, TagFlags,
+    TitleAction, plan_batch,
+};
 use muxsmith_core::profile::load::{Format, from_str};
 
 // ---------------------------------------------------------------------------
@@ -275,4 +282,156 @@ fn live_mkvmerge_accepts_planned_command() {
     assert!(out_id.is_identifiable());
     assert_eq!(out_id.tracks.len(), 1);
     assert_eq!(out_id.tracks[0].kind, "subtitles");
+}
+
+// ---------------------------------------------------------------------------
+// Live acceptance: the D20 assumption (Plan 3.5 Task 3, SI-3). Confirmed
+// against real mkvmerge v100 (see this test's construction), not taken from
+// memory: under `keep_unmatched`, a primary track that mkvmerge keeps but
+// that has no `--track-order` entry lands, in the output, after every
+// explicitly-ordered track, in its original source-relative position among
+// the other unlisted tracks.
+// ---------------------------------------------------------------------------
+
+/// Looks up a track's `track_name`, panicking if absent (every track in this
+/// test's fixture is named, so a miss means the fixture or the mux step
+/// broke, not a legitimate "no name" case).
+fn track_name(t: &Track) -> String {
+    match t.get("track_name") {
+        Some(PropValue::Str(s)) => s,
+        other => panic!("expected a track_name property, got {other:?}"),
+    }
+}
+
+#[test]
+fn live_keep_unmatched_orders_only_listed_track() {
+    let Some(m) = mkvmerge() else {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let alpha = dir.path().join("alpha.srt");
+    let bravo = dir.path().join("bravo.srt");
+    let charlie = dir.path().join("charlie.srt");
+    std::fs::write(&alpha, "1\n00:00:00,000 --> 00:00:01,000\nALPHA\n").unwrap();
+    std::fs::write(&bravo, "1\n00:00:00,000 --> 00:00:01,000\nBRAVO\n").unwrap();
+    std::fs::write(&charlie, "1\n00:00:00,000 --> 00:00:01,000\nCHARLIE\n").unwrap();
+
+    // A 3-track source: three single-track SRTs merged as separate
+    // (non-grouped) input files, each carrying a distinguishing
+    // `--track-name` so the output can be matched back to its origin.
+    // mkvmerge assigns sequential track ids in argument order for
+    // single-track sources like these (confirmed below, not assumed).
+    let source = dir.path().join("source.mkv");
+    let status = Command::new(m.path())
+        .args(["-q", "-o"])
+        .arg(&source)
+        .args(["--track-name", "0:ALPHA"])
+        .arg(&alpha)
+        .args(["--track-name", "0:BRAVO"])
+        .arg(&bravo)
+        .args(["--track-name", "0:CHARLIE"])
+        .arg(&charlie)
+        .status()
+        .expect("spawn mkvmerge to build the 3-track fixture source");
+    assert!(status.success(), "mkvmerge failed to build the source");
+
+    let src_json = m
+        .identify_json(&source)
+        .expect("identify the fixture source");
+    let src_id = Identification::from_json(&src_json).expect("parse source identification JSON");
+    let mut src_tracks = src_id.tracks;
+    src_tracks.sort_by_key(|t| t.id);
+    assert_eq!(
+        src_tracks.len(),
+        3,
+        "fixture must carry exactly 3 tracks, got {src_tracks:?}"
+    );
+
+    // "The second track" (task brief), in source order (ascending id): BRAVO.
+    // The unlisted remainder, in source order: ALPHA, then CHARLIE.
+    let ordered = &src_tracks[1];
+    let unlisted = [&src_tracks[0], &src_tracks[2]];
+    assert_eq!(
+        track_name(ordered),
+        "BRAVO",
+        "fixture sanity: id 1 is BRAVO"
+    );
+    assert_eq!(
+        unlisted.map(track_name),
+        ["ALPHA".to_string(), "CHARLIE".to_string()],
+        "fixture sanity: ids 0 and 2 are ALPHA and CHARLIE"
+    );
+
+    let out_dir = dir.path().join("out");
+    std::fs::create_dir_all(&out_dir).unwrap();
+    let output = out_dir.join("out.mkv");
+
+    // `keep_unmatched: true`, one assignment ordering only the second track
+    // (BRAVO). ALPHA and CHARLIE are kept -- `keep` emits no primary
+    // selection flags -- but never appear in any assignment, hence never in
+    // `--track-order`.
+    let plan = Plan {
+        source: source.clone(),
+        output: output.clone(),
+        keep_unmatched: true,
+        assignments: vec![Assignment {
+            rule_index: 0,
+            source: source.clone(),
+            track_id: Some(ordered.id),
+            track_kind: Some(ordered.kind.clone()),
+            changes: vec![],
+        }],
+        attachments: AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        },
+        chapters: ChapterSource::Keep,
+        tags: TagFlags {
+            global_keep: true,
+            track_keep: true,
+        },
+        title: TitleAction::Keep,
+    };
+
+    let argv = command(&plan);
+    let status = Command::new(m.path())
+        .args(&argv)
+        .status()
+        .expect("spawn mkvmerge on the planned command");
+    assert!(
+        status.success(),
+        "mkvmerge rejected the planned argv: {argv:?}"
+    );
+    assert!(output.exists(), "output file was not created");
+
+    let out_json = m
+        .identify_json(&output)
+        .expect("re-identify the muxed output");
+    let out_id = Identification::from_json(&out_json).expect("parse re-identification JSON");
+    let mut out_tracks = out_id.tracks;
+    out_tracks.sort_by_key(|t| t.id);
+
+    // (a) all source tracks are present (kept), even though only one was in
+    // `--track-order`.
+    assert_eq!(
+        out_tracks.len(),
+        3,
+        "keep_unmatched must keep every source track, got {out_tracks:?}"
+    );
+
+    // (b) the D20 assumption: the explicitly-ordered track (BRAVO) precedes
+    // the unlisted ones, which retain their source-relative order (ALPHA
+    // before CHARLIE).
+    let out_names: Vec<String> = out_tracks.iter().map(track_name).collect();
+    assert_eq!(
+        out_names,
+        vec![
+            "BRAVO".to_string(),
+            "ALPHA".to_string(),
+            "CHARLIE".to_string()
+        ],
+        "unmatched-kept tracks must follow the ordered track, in source order"
+    );
 }
