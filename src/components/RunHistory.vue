@@ -30,7 +30,11 @@ const selectedJobIndex = ref<number | null>(null);
 const jobLog = ref<JobLogRecord | null>(null);
 const jobLogLoading = ref(false);
 const jobLogError = ref<IpcError | null>(null);
-const exportBusy = ref(false);
+// One busy flag per export action: save's native dialog can stay open for
+// as long as the user likes and must not disable the unrelated copy
+// button, and copy's own async gap needs its own double-click guard.
+const copyBusy = ref(false);
+const saveBusy = ref(false);
 const exportFailed = ref(false);
 
 async function refresh() {
@@ -83,38 +87,47 @@ function logText(record: JobLogRecord): string {
 }
 
 async function copyLog() {
-  if (!jobLog.value) {
+  if (!jobLog.value || copyBusy.value) {
     return;
   }
   exportFailed.value = false;
+  copyBusy.value = true;
   try {
     await writeText(logText(jobLog.value));
   } catch {
     exportFailed.value = true;
+  } finally {
+    copyBusy.value = false;
   }
 }
 
 async function saveLog() {
-  if (!jobLog.value || selectedRunId.value === null || selectedJobIndex.value === null) {
+  // Captured before the dialog gap: the native save dialog can stay open
+  // indefinitely, and the user may select a different job meanwhile --
+  // what gets written must be the log that was shown when Save was
+  // clicked, matching the suggested filename built from the same ids.
+  const record = jobLog.value;
+  const runId = selectedRunId.value;
+  const jobIndex = selectedJobIndex.value;
+  if (!record || runId === null || jobIndex === null || saveBusy.value) {
     return;
   }
   exportFailed.value = false;
-  exportBusy.value = true;
+  saveBusy.value = true;
   try {
-    const suggested = `${selectedRunId.value}-job-${selectedJobIndex.value}.log`;
     const path = await save({
-      defaultPath: suggested,
+      defaultPath: `${runId}-job-${jobIndex}.log`,
       filters: [
         { name: fluent.$t("jobs-history-export-filter-name"), extensions: ["log", "txt"] },
       ],
     });
     if (path) {
-      await writeTextFile(path, logText(jobLog.value));
+      await writeTextFile(path, logText(record));
     }
   } catch {
     exportFailed.value = true;
   } finally {
-    exportBusy.value = false;
+    saveBusy.value = false;
   }
 }
 
@@ -233,7 +246,8 @@ defineExpose({ refresh });
           <button
             type="button"
             data-testid="jobs-history-copy"
-            :disabled="exportBusy"
+            :disabled="copyBusy"
+            :aria-busy="copyBusy"
             :title="$t('jobs-history-copy-tooltip')"
             @click="copyLog"
           >
@@ -242,8 +256,8 @@ defineExpose({ refresh });
           <button
             type="button"
             data-testid="jobs-history-save"
-            :disabled="exportBusy"
-            :aria-busy="exportBusy"
+            :disabled="saveBusy"
+            :aria-busy="saveBusy"
             :title="$t('jobs-history-save-tooltip')"
             @click="saveLog"
           >

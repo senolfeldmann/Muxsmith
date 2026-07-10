@@ -20,6 +20,19 @@ const props = defineProps<{
 
 const selected = ref<number | "all">("all");
 
+// A new run must not inherit the previous run's per-job filter (its index
+// may not even exist in the new batch, silently blanking the pane).
+// JobsView replaces its `jobs` array reference exactly once per run
+// dispatch (`jobs.value = []`) and only mutates it afterwards, so a
+// non-deep watch on the prop reference is a precise new-run signal -- no
+// extra prop or event needed.
+watch(
+  () => props.jobs,
+  () => {
+    selected.value = "all";
+  },
+);
+
 const filtered = computed(() =>
   selected.value === "all" ? props.lines : props.lines.filter((l) => l.index === selected.value),
 );

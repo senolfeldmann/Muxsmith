@@ -412,6 +412,11 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 /// so `fs:allow-write-text-file` alone (`capabilities/default.json`) is
 /// sufficient -- no static path allowlist needed, and the frontend can
 /// never write anywhere the user did not just pick via the OS dialog.
+/// Chosen over a bespoke `#[tauri::command]` write for the same reason:
+/// the plugin route inherits Tauri's own "this path came from a real save
+/// dialog" trust chain end to end, where a custom command would accept any
+/// frontend-supplied path and have to hand-roll that provenance check
+/// itself.
 ///
 /// # Panics
 ///
