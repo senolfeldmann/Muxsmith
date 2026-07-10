@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Pinning policy (2026-07-10): actions pinned to release commit SHAs
+# (movable tags are a supply-chain surface), runner images pinned to
+# explicit versions (no surprise -latest bumps). Renovate/Dependabot
+# update SHA pins natively once enabled (go-public).
+# ubuntu-26.04 is a preview image (Şenol's call, newest line).
+
 jobs:
   test:
     strategy:
@@ -14,16 +20,19 @@ jobs:
       # (macOS bills 10x, Windows 2x); PRs, tags and manual dispatch
       # run the full matrix. Revert to a static 3-OS list on going public.
       matrix:
-        os: ${{ fromJSON((github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest", "macos-latest"]') }}
+        os: ${{ fromJSON((github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) && '["ubuntu-26.04"]' || '["ubuntu-26.04", "windows-2025", "macos-15"]') }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Toolchain comes from rust-toolchain.toml (pinned version incl.
+      # rustfmt/clippy components); rustup on the runner auto-installs it.
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       # Linux-only: branch pushes are Linux-only anyway (minute economy);
       # gated integration tests self-skip on other platforms.
+      # mkvtoolnix version floats with the distro; pinning it is in the
+      # backlog (Şenol 2026-07-10).
       - name: Install mkvtoolnix (gated integration tests)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mkvtoolnix
@@ -34,9 +43,9 @@ jobs:
   deny:
     # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on
     # Linux always, independent of the test matrix trim.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
         with:
           command: check
