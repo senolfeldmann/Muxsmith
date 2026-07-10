@@ -250,16 +250,26 @@ fn parse_version_pair(raw: &str) -> Result<(u64, u64), RuntimeError> {
 /// Platform-standard mkvmerge install locations (D28, spec 8.2), probed as
 /// the last rung of [`Mkvmerge::detect`] after an override and PATH both
 /// come up empty. Verified against mkvtoolnix's own packaging
-/// (`~/Downloads/mkvtoolnix/packaging/`), not memory; only locations an
-/// actual mkvtoolnix installer, package, or its own install docs place a
-/// binary in are listed. Checked and explicitly excluded:
-/// - Homebrew (`/opt/homebrew/bin`): no Homebrew formula exists anywhere in
-///   mkvtoolnix's own source tree (Homebrew packaging for it lives in the
-///   separate `homebrew-core` repo), so it cannot be verified from this
-///   source and is dropped.
+/// (`~/Downloads/mkvtoolnix/packaging/`) where a location is claimed to be
+/// an mkvtoolnix installer/package default; the one exception is Homebrew
+/// on macOS (see below), verified against Homebrew's own documentation
+/// instead, since Homebrew's mkvtoolnix formula lives in the separate
+/// `homebrew-core` repo, outside mkvtoolnix's own source tree.
+///
+/// - **Homebrew (macOS, `/opt/homebrew/bin`).** Homebrew's own installation
+///   docs (<https://docs.brew.sh/Installation>) pin `/opt/homebrew` as the
+///   default prefix on Apple Silicon (`/usr/local` on Intel, already listed
+///   below). Sharpens why this rung matters specifically for a bundled
+///   Tauri app, beyond the general override/PATH/candidate ladder: a GUI
+///   app launched from Finder (or Spotlight, the Dock, etc.) does not
+///   inherit the invoking shell's PATH the way a terminal-launched process
+///   does, so [`Mkvmerge::locate`]'s PATH probe -- which covers a
+///   Homebrew-on-Intel install via `/usr/local/bin` being conventionally on
+///   PATH -- does not reliably cover an Apple-Silicon Homebrew install at
+///   all for this app; this candidate rung is what closes that gap.
 /// - Flatpak (`/var/lib/flatpak/exports/bin/org.bunkus.mkvtoolnix-gui`):
 ///   `packaging/` ships no Flatpak manifest either; that app ID also names
-///   the GUI, not a standalone `mkvmerge` CLI binary.
+///   the GUI, not a standalone `mkvmerge` CLI binary. Still excluded.
 fn platform_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
@@ -288,6 +298,7 @@ fn platform_candidates() -> Vec<PathBuf> {
         candidates.push(PathBuf::from(
             "/Applications/MKVToolNix.app/Contents/MacOS/mkvmerge",
         ));
+        candidates.push(PathBuf::from("/opt/homebrew/bin/mkvmerge"));
         candidates.push(PathBuf::from("/usr/local/bin/mkvmerge"));
     }
 
@@ -492,6 +503,7 @@ Klingon               | tlh            |                |   \n";
             assert!(candidates.contains(&PathBuf::from(
                 "/Applications/MKVToolNix.app/Contents/MacOS/mkvmerge"
             )));
+            assert!(candidates.contains(&PathBuf::from("/opt/homebrew/bin/mkvmerge")));
             assert!(candidates.contains(&PathBuf::from("/usr/local/bin/mkvmerge")));
         }
         #[cfg(target_os = "windows")]
