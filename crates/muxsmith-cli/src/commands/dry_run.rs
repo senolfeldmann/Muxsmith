@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
-use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
+use muxsmith_core::planner::{RunInputs, plan_batch};
 use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::profile::{lint, load, validate};
-use muxsmith_core::report::Diagnostic;
+use muxsmith_core::report::json::{batch_document, config_only_document};
 
 use crate::commands::{diag_exit_code, print_batch_human};
 use crate::i18n::Renderer;
@@ -45,7 +45,7 @@ pub fn run(
             // mkvmerge-not-found branch below builds (mirrors validate.rs's
             // `Err(d) => vec![d]` fold); human mode is unchanged.
             if json {
-                println!("{}", config_only_json(&[d], None, renderer));
+                println!("{}", config_only_document(&[d], None, renderer));
             } else {
                 println!("{}", renderer.diagnostic(&d));
             }
@@ -67,7 +67,10 @@ pub fn run(
             // to stay a strict superset of `validate` even on this path, so
             // those diagnostics are surfaced here rather than dropped.
             if json {
-                println!("{}", config_only_json(&config_diags, Some(false), renderer));
+                println!(
+                    "{}",
+                    config_only_document(&config_diags, Some(false), renderer)
+                );
             } else {
                 for d in &config_diags {
                     println!("{}", renderer.diagnostic(d));
@@ -87,7 +90,10 @@ pub fn run(
             // binary WAS found, only the query failed; human mode is
             // unchanged (stderr only).
             if json {
-                println!("{}", config_only_json(&config_diags, Some(true), renderer));
+                println!(
+                    "{}",
+                    config_only_document(&config_diags, Some(true), renderer)
+                );
             } else {
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
             }
@@ -108,7 +114,7 @@ pub fn run(
     let batch = plan_batch(&profile, &run, &mut ident, &lang);
 
     if json {
-        println!("{}", batch_json(&config_diags, &batch, renderer));
+        println!("{}", batch_document(&config_diags, &batch, renderer));
     } else {
         for d in &config_diags {
             println!("{}", renderer.diagnostic(d));
@@ -116,82 +122,4 @@ pub fn run(
         print_batch_human(&batch, renderer);
     }
     diag_exit_code(&config_diags, &batch)
-}
-
-/// Builds the `--json` report (spec 5.2): the raw `Batch` plus the
-/// config-time diagnostics, with a `rendered` message string attached to
-/// every diagnostic (config-time, batch-level, and per-file alike).
-///
-/// `pub(crate)`: `run --json` (D15) reuses this verbatim as the base of its
-/// own document, extending it with `jobs`/`summary`.
-pub(crate) fn batch_json(
-    config_diags: &[Diagnostic],
-    batch: &Batch,
-    renderer: &Renderer,
-) -> serde_json::Value {
-    let files: Vec<serde_json::Value> = batch
-        .files
-        .iter()
-        .map(|f| {
-            serde_json::json!({
-                "source": f.source,
-                "identifier": f.identifier,
-                "plan": f.plan,
-                "diagnostics": rendered_diags(&f.diagnostics, renderer),
-            })
-        })
-        .collect();
-    serde_json::json!({
-        "config_diagnostics": rendered_diags(config_diags, renderer),
-        "files": files,
-        "batch_diagnostics": rendered_diags(&batch.batch_diagnostics, renderer),
-        "suggestions": batch.suggestions,
-    })
-}
-
-/// Builds the `--json` report for a path where planning never ran (spec
-/// 5.5): `files`/`batch_diagnostics`/`suggestions` stay empty, but whatever
-/// config-time diagnostics were collected are still rendered here, keeping
-/// this a valid JSON document (not plain text on stderr) and dry-run a
-/// superset of `validate` even on these paths.
-///
-/// `mkvmerge_found` flags, for JSON consumers, whether mkvmerge's presence
-/// was actually established: `Some(false)` on the mkvmerge-not-found path
-/// (the lookup ran and failed, and the JSON consumer cannot otherwise
-/// distinguish this from any other error-severity report); `Some(true)` on
-/// the mkvmerge-query-failed path (the binary was found, only the
-/// subsequent query failed); `None` (the key is absent from the document)
-/// on a profile-load failure, where the lookup never ran at all and
-/// asserting either value would claim a fact never established.
-///
-/// `pub(crate)`: `run --json` (D15) reuses this for its own equivalent
-/// paths, which need the identical superset-of-validate guarantee.
-pub(crate) fn config_only_json(
-    config_diags: &[Diagnostic],
-    mkvmerge_found: Option<bool>,
-    renderer: &Renderer,
-) -> serde_json::Value {
-    let mut doc = serde_json::json!({
-        "config_diagnostics": rendered_diags(config_diags, renderer),
-        "files": [],
-        "batch_diagnostics": [],
-        "suggestions": [],
-    });
-    if let Some(found) = mkvmerge_found {
-        doc["mkvmerge_found"] = serde_json::json!(found);
-    }
-    doc
-}
-
-/// Maps each diagnostic to its JSON value with a `rendered` field injected
-/// (mirrors `validate.rs`'s `--json` rendering).
-fn rendered_diags(diags: &[Diagnostic], renderer: &Renderer) -> Vec<serde_json::Value> {
-    diags
-        .iter()
-        .map(|d| {
-            let mut v = serde_json::to_value(d).unwrap();
-            v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
-            v
-        })
-        .collect()
 }
