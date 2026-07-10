@@ -45,6 +45,13 @@ const ipcErrorParams = ref<Record<string, string>>({});
 
 const busy = computed(() => validating.value || dryRunning.value);
 
+// Fix (D23): "the UI additionally disables Run while active" -- App
+// forwards JobsView's own runActive state here (this view has no other
+// way to know a run is active; App is the sole broker between the two
+// views). Optional/defaulted so this view still type-checks and behaves
+// correctly standalone, matching JobsView's own `pendingRun?:` precedent.
+const props = withDefaults(defineProps<{ runActive?: boolean }>(), { runActive: false });
+
 const emit = defineEmits<{ "start-run": [payload: RunRequest] }>();
 
 onMounted(async () => {
@@ -224,11 +231,16 @@ const diagnosticCounts = computed(() => {
 const hasErrors = computed(() => diagnosticCounts.value.error > 0);
 
 /** The Fluent key explaining why Run is disabled, or `null` when it isn't.
- * Only the two conditions the brief names (errors, mkvmerge missing) plus
- * the functional precondition of having a validated report to run at all
- * -- `start_run` re-plans and dry-runs internally regardless (spec 5.5),
- * so this view never requires an explicit dry-run click first. */
+ * The two conditions the T10 brief names (errors, mkvmerge missing), the
+ * functional precondition of having a validated report to run at all --
+ * `start_run` re-plans and dry-runs internally regardless (spec 5.5), so
+ * this view never requires an explicit dry-run click first -- plus the D23
+ * fix: a run already active elsewhere in the app (Jobs view, via
+ * `runActive`) checked first, since it overrides every other reason. */
 const runDisabledReason = computed<string | null>(() => {
+  if (props.runActive) {
+    return "batch-run-tooltip-run-active";
+  }
   if (!selectedProfile.value || !report.value) {
     return "batch-run-tooltip-no-profile";
   }

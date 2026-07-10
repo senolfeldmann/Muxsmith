@@ -7,7 +7,9 @@
 // non-null value, invokes `start_run` then emits `consumed` so App clears
 // its ref. `PendingRun` is declared here regardless of whether App.vue
 // already passes it -- the two sides reconcile trivially since this file
-// owns its whole contents.
+// owns its whole contents. Also emits `update:runActive` (fix, D23: "the
+// UI additionally disables Run while active") whenever this view's own
+// `runActive` ref changes, so App can forward it to BatchView's Run gate.
 //
 // Event-ordering contract (`run.rs::start_run`'s own doc, binding): both
 // `muxsmith://job-event` and `muxsmith://run-finished` listeners MUST be
@@ -45,7 +47,7 @@ interface RunRequest {
 // missing prop exactly like an explicit `null` (`if (!req) return;`), so
 // T10's eventual `:pending-run` binding needs no further change here.
 const props = defineProps<{ pendingRun?: RunRequest | null }>();
-const emit = defineEmits<{ consumed: [] }>();
+const emit = defineEmits<{ consumed: []; "update:runActive": [active: boolean] }>();
 
 // The DOM cap applies to the combined live-output feed LiveLog.vue filters
 // locally (Step 2: "DOM-capped at 5000 lines - the full log is in the
@@ -153,12 +155,33 @@ watch(
       return;
     }
     await ensureListeners();
-    jobs.value = [];
-    logLines.value = [];
-    finishedSummary.value = null;
     startError.value = null;
     actionError.value = null;
-    runActive.value = true;
+
+    // Fix (D23 divergence): only reset the live-run display when this view
+    // does not already believe a run is active. Resetting unconditionally
+    // here used to wipe a currently-active run's rows the instant a SECOND
+    // start_run landed (e.g. a stray double-dispatch) and got rejected
+    // with run-already-active -- the catch branch then flipped runActive
+    // to false too, disabling cancel while the first run kept executing
+    // completely invisibly. `runActive` is this view's own single source
+    // of truth for "a run is active" (set true only on a successful start,
+    // cleared only by onRunFinished or a failed *fresh* start below), so
+    // checking it first is self-consistent. The reset itself must still
+    // run BEFORE calling startRun, not after: a soft-outcome run (zero
+    // jobs planned, etc.) emits muxsmith://run-finished synchronously
+    // inside the Rust command, before this command's own promise resolves
+    // (run.rs's documented event-ordering contract) -- resetting AFTER a
+    // successful await would clobber whatever onRunFinished just wrote for
+    // that very run.
+    const startingFresh = !runActive.value;
+    if (startingFresh) {
+      jobs.value = [];
+      logLines.value = [];
+      finishedSummary.value = null;
+      runActive.value = true;
+    }
+
     try {
       const started = await startRun({
         profile: req.profile,
@@ -169,13 +192,22 @@ watch(
       ensureJobsLength(started.total_jobs);
     } catch (e) {
       startError.value = e as IpcError;
-      runActive.value = false;
+      if (startingFresh) {
+        runActive.value = false;
+      }
     } finally {
       emit("consumed");
     }
   },
   { immediate: true },
 );
+
+// Fix (D23): surface run-active state upward so BatchView can disable Run
+// while a run is active ("the UI additionally disables Run while active",
+// D23's own sentence) -- a watcher rather than an emit at each `runActive`
+// assignment site, so every mutation (the watcher above, onRunFinished)
+// is covered without having to remember to emit at each one.
+watch(runActive, (value) => emit("update:runActive", value), { immediate: true });
 
 async function onCancelBatch() {
   actionError.value = null;

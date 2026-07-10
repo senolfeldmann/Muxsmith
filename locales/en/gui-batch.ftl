@@ -51,3 +51,7 @@ batch-run-tooltip = Start this batch: mux every resolved file with mkvmerge.
 batch-run-tooltip-no-profile = Choose and validate a profile before running.
 batch-run-tooltip-errors = Fix every error-severity diagnostic before running.
 batch-run-tooltip-mkvmerge-missing = mkvmerge is not available; fix detection in Settings before running.
+# D23 ("the UI additionally disables Run while active", fix): a batch is
+# already running elsewhere in the app (App.vue forwards JobsView's own
+# runActive state down as this view's `runActive` prop).
+batch-run-tooltip-run-active = A batch is already running. Wait for it to finish, or switch to the Jobs view to cancel it.

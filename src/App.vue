@@ -26,6 +26,13 @@ const settingsDialog = ref<InstanceType<typeof SettingsDialog> | null>(null);
 // shared state either view reads back).
 const pendingRun = ref<RunRequest | null>(null);
 
+// Fix (D23): forwarded from JobsView's `update:runActive` emit so
+// BatchView's Run gate can disable Run while a run is active ("the UI
+// additionally disables Run while active", D23's own sentence) -- App is
+// the natural owner since it already brokers pendingRun between the two
+// views and neither view can see the other directly.
+const jobsRunActive = ref(false);
+
 function onStartRun(request: RunRequest) {
   pendingRun.value = request;
   activeView.value = "jobs";
@@ -97,12 +104,14 @@ onMounted(checkMkvmerge);
            this scale. -->
       <BatchView
         v-show="activeView === 'batch'"
+        :run-active="jobsRunActive"
         @start-run="onStartRun"
       />
       <JobsView
         v-show="activeView === 'jobs'"
         :pending-run="pendingRun"
         @consumed="pendingRun = null"
+        @update:run-active="jobsRunActive = $event"
       />
     </main>
     <SettingsDialog ref="settingsDialog" />
