@@ -13,7 +13,15 @@ import tseslint from "typescript-eslint";
 // rule with no other vue-i18n config present).
 export default tseslint.config(
   {
-    ignores: ["dist/**", "src-tauri/**", "node_modules/**", "target/**"],
+    // .worktrees/: SDD worktree checkouts (main checkout only) carry their
+    // own target/ with rustdoc-generated JS that eslint must never see.
+    ignores: [
+      "dist/**",
+      "src-tauri/**",
+      "node_modules/**",
+      "target/**",
+      ".worktrees/**",
+    ],
   },
   // typescript-eslint's base config sets `languageOptions.parser` with no
   // `files` restriction, so it must come before the Vue-specific blocks
