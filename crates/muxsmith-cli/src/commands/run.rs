@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::command::command;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
-use muxsmith_core::executor::queue::{JobEvent, QueueOpts, run_queue};
+use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
 use muxsmith_core::executor::spawn::LiveSpawner;
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
 use muxsmith_core::planner::{RunInputs, plan_batch};
@@ -193,6 +193,12 @@ pub fn run(
     };
     let opts = QueueOpts { jobs, fail_fast };
     let cancel = Arc::new(AtomicBool::new(false));
+    // D25: the CLI has no per-job cancel UI, so QueueControl wraps `cancel`
+    // as its batch flag (the same `Arc`, shared, not a copy) and leaves
+    // every per-job flag unused; existing SIGINT = batch-cancel semantics
+    // are unchanged, since `cancel` itself is still what the ctrlc handler
+    // below flips and what the exit-code check further down reads.
+    let ctl = QueueControl::new(specs.len(), Arc::clone(&cancel));
 
     // Single-level SIGINT (D16): first Ctrl-C requests graceful cancel
     // (queue kills in-flight, partials deleted, summary printed, exit 130);
@@ -213,8 +219,8 @@ pub fn run(
     // when that thread's closure returns, ending the `for event in rx` loop
     // below deterministically (no explicit `drop` needed on this side).
     let outcomes = std::thread::scope(|scope| {
-        let queue_cancel = Arc::clone(&cancel);
-        let handle = scope.spawn(move || run_queue(&specs, &spawner, opts, &queue_cancel, &tx));
+        let queue_ctl = Arc::clone(&ctl);
+        let handle = scope.spawn(move || run_queue(&specs, &spawner, opts, &queue_ctl, &tx));
 
         let mut milestones = MilestoneState::new(outputs);
         for event in rx {

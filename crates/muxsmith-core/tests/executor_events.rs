@@ -4,7 +4,6 @@
 //! an implementation detail a refactor may silently drift.
 
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 
 use muxsmith_core::executor::job::{JobOutcome, JobProgress, JobSpec, JobState, run_job};
 use muxsmith_core::executor::queue::JobEvent;
@@ -96,10 +95,10 @@ fn output_line_captures_every_non_tick_line_verbatim() {
         ],
         Some(0),
     );
-    let cancel = AtomicBool::new(false);
+    let cancelled = || false;
     let mut collected = Vec::new();
 
-    run_job(&fake, &spec, &cancel, &mut |p| collected.push(p));
+    run_job(&fake, &spec, &cancelled, &mut |p| collected.push(p));
 
     assert_eq!(
         collected,

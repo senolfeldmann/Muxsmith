@@ -2,6 +2,7 @@
 //! bounded std worker pool, streaming a [`JobEvent`] per state change, and
 //! honoring soft fail-fast (D14) and cooperative cancellation (D16).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
@@ -77,30 +78,100 @@ pub struct QueueOpts {
     pub fail_fast: bool,
 }
 
-/// How often the watcher thread polls the caller's cancellation flag.
+/// How often the watcher thread polls the batch-cancel flag.
 const CANCEL_POLL: Duration = Duration::from_millis(50);
 
+/// Batch- and per-job cancellation control (D25). Wraps a single shared
+/// batch-cancel flag (D16: today's SIGINT semantics, e.g. the CLI's ctrlc
+/// handler) alongside one flag per spec index, so a caller can cancel
+/// either the whole batch or a single job by its index into the `specs`
+/// slice passed to [`run_queue`]. The map of currently in-flight
+/// [`Killer`]s, keyed by that same index, is what lets [`Self::cancel_job`]
+/// kill an in-flight job synchronously, without waiting for the watcher's
+/// next poll.
+pub struct QueueControl {
+    batch: Arc<AtomicBool>,
+    jobs: Vec<AtomicBool>,
+    killers: Mutex<HashMap<usize, Killer>>,
+}
+
+impl QueueControl {
+    /// Builds a fresh control for a batch of `spec_count` jobs, wrapping
+    /// `batch` (the caller's own batch-cancel flag - e.g. the CLI's ctrlc
+    /// handler shares this same `Arc`, so existing batch-cancel wiring is
+    /// unchanged) with one additional per-job flag per spec.
+    pub fn new(spec_count: usize, batch: Arc<AtomicBool>) -> Arc<QueueControl> {
+        Arc::new(QueueControl {
+            batch,
+            jobs: (0..spec_count).map(|_| AtomicBool::new(false)).collect(),
+            killers: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// Requests batch cancellation (D16, unchanged): the watcher thread
+    /// stops dequeuing and kills every currently registered in-flight job.
+    pub fn cancel_all(&self) {
+        self.batch.store(true, Ordering::SeqCst);
+    }
+
+    /// Requests cancellation of a single job by its spec `index` (D25):
+    /// sets that job's flag, then, if a [`Killer`] is currently registered
+    /// for `index` (the job is in flight), invokes it immediately rather
+    /// than waiting for the watcher's next poll. A queued job (not yet
+    /// dequeued) has no registered killer; setting its flag alone is
+    /// enough, since the worker consults [`Self::job_cancelled`] before
+    /// spawning (`run_job`'s pre-spawn check). An `index` outside the
+    /// batch's spec count is a no-op.
+    pub fn cancel_job(&self, index: usize) {
+        if let Some(flag) = self.jobs.get(index) {
+            flag.store(true, Ordering::SeqCst);
+        }
+        if let Some(killer) = self.killers.lock().unwrap().get(&index) {
+            killer();
+        }
+    }
+
+    /// Whether job `index` is cancelled, either because the whole batch was
+    /// ([`Self::cancel_all`]) or because that job specifically was
+    /// ([`Self::cancel_job`]). Passed to [`run_job`] as its `cancelled`
+    /// closure.
+    pub fn job_cancelled(&self, index: usize) -> bool {
+        self.batch.load(Ordering::SeqCst)
+            || self
+                .jobs
+                .get(index)
+                .is_some_and(|flag| flag.load(Ordering::SeqCst))
+    }
+}
+
 /// Runs `specs` FIFO over a bounded std worker pool. Returns one outcome
-/// per spec, index-aligned. `cancel` (set by the CLI's SIGINT handler)
-/// stops dequeuing AND kills in-flight jobs via their Killers; their
-/// partials are deleted by `run_job`, queued specs become Cancelled.
+/// per spec, index-aligned. `ctl` (D25) carries both the batch-cancel flag
+/// (e.g. the CLI's SIGINT handler) and a per-job cancel flag for each spec
+/// index (e.g. a GUI's per-row cancel): batch cancellation stops dequeuing
+/// AND kills every in-flight job via its registered [`Killer`]; per-job
+/// cancellation ([`QueueControl::cancel_job`]) kills only that job if it is
+/// in flight, or, if the spec has not yet been dequeued, is caught the
+/// moment a worker picks it up, by `run_job`'s pre-spawn check.
 ///
-/// Specs that are never dequeued emit no events (no Started - they never
-/// started); their Cancelled outcomes appear only in the returned vector.
-/// Event send failures are ignored (receiver gone = caller stopped
-/// listening).
+/// Specs never dequeued because of BATCH cancellation emit no events (no
+/// Started - they never started); their Cancelled outcomes appear only in
+/// the returned vector (D16, unchanged). A spec cancelled PER-JOB before a
+/// worker dequeues it is an explicit deviation from that silence (D25): it
+/// still emits `Finished { outcome: Cancelled }` (never `Started`), because
+/// a GUI needs the row-level confirmation that its cancel click took
+/// effect, even for a job that never actually started. Event send failures
+/// are ignored (receiver gone = caller stopped listening).
 pub fn run_queue(
     specs: &[JobSpec],
     spawner: &(dyn Spawn + Sync),
     opts: QueueOpts,
-    cancel: &Arc<AtomicBool>,
+    ctl: &Arc<QueueControl>,
     events: &Sender<JobEvent>,
 ) -> Vec<JobOutcome> {
     let workers = worker_count(opts.jobs, specs.len());
     let next = AtomicUsize::new(0);
     let stop = AtomicBool::new(false);
     let done = AtomicBool::new(false);
-    let killers: Mutex<Vec<Option<Killer>>> = Mutex::new((0..workers).map(|_| None).collect());
     let outcomes: Mutex<Vec<Option<JobOutcome>>> =
         Mutex::new((0..specs.len()).map(|_| None).collect());
 
@@ -108,21 +179,22 @@ pub fn run_queue(
         let next = &next;
         let stop = &stop;
         let done = &done;
-        let killers = &killers;
         let outcomes = &outcomes;
 
-        // Watcher: polls `cancel`; on cancellation flips stop-dequeuing,
-        // kills every in-flight job through its registered Killer, and
-        // exits. Also exits (without killing) once all workers are done,
-        // so the scope can close on a natural finish.
+        // Watcher: polls the batch flag; on batch cancellation flips
+        // stop-dequeuing, kills every in-flight job through its registered
+        // Killer, and exits. Also exits (without killing) once all workers
+        // are done, so the scope can close on a natural finish. Per-job
+        // cancellation needs no watcher involvement:
+        // QueueControl::cancel_job kills its target synchronously.
         scope.spawn(move || {
             loop {
                 if done.load(Ordering::SeqCst) {
                     return;
                 }
-                if cancel.load(Ordering::SeqCst) {
+                if ctl.batch.load(Ordering::SeqCst) {
                     stop.store(true, Ordering::SeqCst);
-                    for killer in killers.lock().unwrap().iter().flatten() {
+                    for killer in ctl.killers.lock().unwrap().values() {
                         killer();
                     }
                     return;
@@ -132,10 +204,10 @@ pub fn run_queue(
         });
 
         let handles: Vec<_> = (0..workers)
-            .map(|slot| {
+            .map(|_| {
                 scope.spawn(move || {
                     loop {
-                        if stop.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst) {
+                        if stop.load(Ordering::SeqCst) || ctl.batch.load(Ordering::SeqCst) {
                             return;
                         }
                         let index = next.fetch_add(1, Ordering::SeqCst);
@@ -143,15 +215,24 @@ pub fn run_queue(
                             return;
                         }
                         let spec = &specs[index];
-                        let _ = events.send(JobEvent::Started {
-                            index,
-                            output: spec.output.clone(),
-                        });
+
+                        // A job already cancelled per-job at dequeue time
+                        // never gets a Started event (D25 deviation - see
+                        // this function's rustdoc); run_job's own
+                        // pre-spawn check still runs below and produces
+                        // its Cancelled outcome without touching the
+                        // spawner or the filesystem.
+                        if !ctl.job_cancelled(index) {
+                            let _ = events.send(JobEvent::Started {
+                                index,
+                                output: spec.output.clone(),
+                            });
+                        }
 
                         let registering = RegisteringSpawner {
                             inner: spawner,
-                            killers,
-                            slot,
+                            killers: &ctl.killers,
+                            index,
                         };
                         let mut on_progress = |progress: JobProgress| {
                             let event = match progress {
@@ -164,8 +245,13 @@ pub fn run_queue(
                             };
                             let _ = events.send(event);
                         };
-                        let outcome = run_job(&registering, spec, cancel, &mut on_progress);
-                        killers.lock().unwrap()[slot] = None;
+                        let outcome = run_job(
+                            &registering,
+                            spec,
+                            &|| ctl.job_cancelled(index),
+                            &mut on_progress,
+                        );
+                        ctl.killers.lock().unwrap().remove(&index);
 
                         if outcome.state == JobState::Failed && opts.fail_fast {
                             stop.store(true, Ordering::SeqCst);
@@ -214,20 +300,24 @@ fn worker_count(jobs: usize, spec_count: usize) -> usize {
     jobs.max(1).min(spec_count.max(1))
 }
 
-/// Wraps the caller's spawner so each successful spawn registers the new
-/// job's [`Killer`] into this worker's registry slot before `run_job`
-/// starts streaming, giving the watcher a handle to in-flight jobs it does
-/// not own.
+/// Wraps the caller's spawner so a successful spawn registers the new job's
+/// [`Killer`] into the control's registry under its own spec `index` (D25)
+/// before `run_job` starts streaming, giving [`QueueControl::cancel_job`]
+/// and the watcher (batch cancel) a handle to an in-flight job neither owns.
+/// The worker loop removes the entry once `run_job` returns.
 struct RegisteringSpawner<'a> {
     inner: &'a (dyn Spawn + Sync),
-    killers: &'a Mutex<Vec<Option<Killer>>>,
-    slot: usize,
+    killers: &'a Mutex<HashMap<usize, Killer>>,
+    index: usize,
 }
 
 impl Spawn for RegisteringSpawner<'_> {
     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
         let job = self.inner.spawn(argv)?;
-        self.killers.lock().unwrap()[self.slot] = Some(job.killer());
+        self.killers
+            .lock()
+            .unwrap()
+            .insert(self.index, job.killer());
         Ok(job)
     }
 }
@@ -260,14 +350,14 @@ mod tests {
             spec(2, dir.path().join("c.mkv")),
         ];
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 1,
             fail_fast: false,
         };
 
-        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
         drop(tx);
         let events: Vec<JobEvent> = rx.iter().collect();
 
@@ -352,14 +442,14 @@ mod tests {
             inner: &fake,
             barrier: Arc::new(Barrier::new(2)),
         };
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 2,
             fail_fast: false,
         };
 
-        let outcomes = run_queue(&specs, &spawner, opts, &cancel, &tx);
+        let outcomes = run_queue(&specs, &spawner, opts, &ctl, &tx);
         drop(tx);
         let _events: Vec<JobEvent> = rx.iter().collect();
 
@@ -383,14 +473,14 @@ mod tests {
             spec(2, dir.path().join("c.mkv")),
         ];
         let fake = FakeSpawner::script(vec!["#GUI#error boom".to_string()], Some(2));
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 1,
             fail_fast: true,
         };
 
-        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
         drop(tx);
         let events: Vec<JobEvent> = rx.iter().collect();
 
@@ -466,14 +556,14 @@ mod tests {
                 (vec!["#GUI#progress 100%".to_string()], Some(0)),
             ],
         };
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 1,
             fail_fast: false,
         };
 
-        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
         drop(tx);
         let _events: Vec<JobEvent> = rx.iter().collect();
 
@@ -509,14 +599,14 @@ mod tests {
                 (vec!["#GUI#error boom".to_string()], Some(2)),
             ],
         };
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 2,
             fail_fast: false,
         };
 
-        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
         drop(tx);
         let _events: Vec<JobEvent> = rx.iter().collect();
 
@@ -626,7 +716,7 @@ mod tests {
             kills: Arc::clone(&kills),
             ready: ready_tx,
         };
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 1,
@@ -634,14 +724,14 @@ mod tests {
         };
 
         let outcomes = std::thread::scope(|scope| {
-            let handle = scope.spawn(|| run_queue(&specs, &fake, opts, &cancel, &tx));
+            let handle = scope.spawn(|| run_queue(&specs, &fake, opts, &ctl, &tx));
             // recv_timeout is a hang-to-failure converter, not a race
             // window: in a correct queue the signal always arrives; the
             // ceiling only makes a regression fail instead of deadlock.
             ready_rx
                 .recv_timeout(Duration::from_secs(10))
                 .expect("first job never reached its read loop");
-            cancel.store(true, Ordering::SeqCst);
+            ctl.cancel_all();
             handle.join().expect("run_queue thread panicked")
         });
         drop(tx);
@@ -668,6 +758,145 @@ mod tests {
             "only the in-flight job may start once cancelled"
         );
         assert!(kills.load(Ordering::SeqCst) >= 1, "killer must be invoked");
+    }
+
+    /// D25 behavior 1 ("skip queued"): a job cancelled per-job before a
+    /// worker ever dequeues it must still finish `Cancelled` and still emit
+    /// `Finished` - unlike the never-dequeued-under-batch-cancel silence
+    /// (D16), it must NOT emit `Started`, since a GUI needs the row-level
+    /// confirmation that its cancel click took effect.
+    #[test]
+    fn cancel_job_before_dequeue_skips_start_but_still_reports_finished() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![
+            spec(0, dir.path().join("a.mkv")),
+            spec(1, dir.path().join("b.mkv")),
+            spec(2, dir.path().join("c.mkv")),
+        ];
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        ctl.cancel_job(2);
+        let (tx, rx) = mpsc::channel();
+        let opts = QueueOpts {
+            jobs: 1,
+            fail_fast: false,
+        };
+
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
+        drop(tx);
+        let events: Vec<JobEvent> = rx.iter().collect();
+
+        assert_eq!(outcomes[0].state, JobState::Ok);
+        assert_eq!(outcomes[1].state, JobState::Ok);
+        assert_eq!(outcomes[2].state, JobState::Cancelled);
+
+        let started: Vec<usize> = events
+            .iter()
+            .filter_map(|e| match e {
+                JobEvent::Started { index, .. } => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(started, vec![0, 1], "job 2 must never emit Started");
+
+        let finished_2_cancelled = events.iter().any(|e| {
+            matches!(
+                e,
+                JobEvent::Finished { index: 2, outcome } if outcome.state == JobState::Cancelled
+            )
+        });
+        assert!(
+            finished_2_cancelled,
+            "job 2 must still emit Finished{{Cancelled}} for GUI confirmation"
+        );
+        assert_eq!(
+            fake.spawned().len(),
+            2,
+            "the cancelled job must never spawn"
+        );
+    }
+
+    /// A [`Spawn`] used by [`cancel_job_kills_exactly_that_job_others_continue`]:
+    /// spec index 0 gates on a [`Gate`] like [`GatedFakeSpawner`]'s job (so
+    /// the test can synchronize on it being genuinely in flight before
+    /// cancelling it); every other index spawns a quick scripted success,
+    /// so the rest of the batch is unaffected by killing index 0
+    /// specifically.
+    struct SelectiveGateSpawner {
+        kills: Arc<AtomicUsize>,
+        ready: Sender<()>,
+    }
+
+    impl Spawn for SelectiveGateSpawner {
+        fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
+            let index: usize = argv[0].parse().expect("test spec index encoded in argv[0]");
+            if index == 0 {
+                Ok(Box::new(GatedJob {
+                    gate: Arc::new(Gate::new()),
+                    kills: Arc::clone(&self.kills),
+                    ready: self.ready.clone(),
+                }))
+            } else {
+                Ok(Box::new(ScriptedJob {
+                    lines: vec!["#GUI#progress 100%".to_string()],
+                    cursor: 0,
+                    exit: Some(0),
+                }))
+            }
+        }
+    }
+
+    /// D25 behavior 2 ("kill in-flight"): [`QueueControl::cancel_job`] on an
+    /// in-flight job kills exactly that job and only that job; a
+    /// concurrently running job and a still-queued job are unaffected and
+    /// the batch continues (unlike batch cancel, D16), and the killed job's
+    /// partial output is deleted (D17).
+    #[test]
+    fn cancel_job_kills_exactly_that_job_others_continue() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![
+            spec(0, dir.path().join("a.mkv")),
+            spec(1, dir.path().join("b.mkv")),
+            spec(2, dir.path().join("c.mkv")),
+        ];
+        std::fs::write(&specs[0].output, b"partial").unwrap();
+
+        let kills = Arc::new(AtomicUsize::new(0));
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let fake = SelectiveGateSpawner {
+            kills: Arc::clone(&kills),
+            ready: ready_tx,
+        };
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        let (tx, rx) = mpsc::channel();
+        let opts = QueueOpts {
+            jobs: 2,
+            fail_fast: false,
+        };
+
+        let outcomes = std::thread::scope(|scope| {
+            let handle = scope.spawn(|| run_queue(&specs, &fake, opts, &ctl, &tx));
+            ready_rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("gated job never reached its read loop");
+            ctl.cancel_job(0);
+            handle.join().expect("run_queue thread panicked")
+        });
+        drop(tx);
+        let _events: Vec<JobEvent> = rx.iter().collect();
+
+        assert_eq!(outcomes[0].state, JobState::Cancelled);
+        assert_eq!(outcomes[1].state, JobState::Ok);
+        assert_eq!(outcomes[2].state, JobState::Ok);
+        assert!(
+            !specs[0].output.exists(),
+            "the killed job's partial must be deleted (D17)"
+        );
+        assert_eq!(
+            kills.load(Ordering::SeqCst),
+            1,
+            "exactly one kill, for the targeted job only"
+        );
     }
 
     // A tiny batch with a wildly oversized `--jobs` must not spawn one OS
@@ -700,14 +929,14 @@ mod tests {
         let tracker = ConcurrencyTracker::new();
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0))
             .with_concurrency_tracker(Arc::clone(&tracker));
-        let cancel = Arc::new(AtomicBool::new(false));
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
         let (tx, rx) = mpsc::channel();
         let opts = QueueOpts {
             jobs: 100_000,
             fail_fast: false,
         };
 
-        let outcomes = run_queue(&specs, &fake, opts, &cancel, &tx);
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
         drop(tx);
         let _events: Vec<JobEvent> = rx.iter().collect();
 

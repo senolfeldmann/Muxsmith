@@ -5,7 +5,6 @@
 //! deliberately diverging from mkvtoolnix-gui's opt-in default-off behavior.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -72,10 +71,17 @@ pub enum JobProgress {
     OutputLine(String),
 }
 
-/// Runs one job to completion: ensures the output's parent dir exists
-/// (D13), spawns, streams lines through the gui-mode parser, maps the exit
-/// code (0 ok / 1 warning, output kept / 2 or abnormal failed, partial
-/// deleted / killed while `cancel` is set = cancelled, partial deleted).
+/// Runs one job to completion: checks for pre-spawn cancellation first
+/// (D25 - nothing is touched: no parent dir created, no spawn, no delete),
+/// otherwise ensures the output's parent dir exists (D13), spawns, streams
+/// lines through the gui-mode parser, and maps the exit code (0 ok / 1
+/// warning, output kept / 2 or abnormal failed, partial deleted / killed
+/// while `cancelled()` reports true = cancelled, partial deleted).
+///
+/// `cancelled` is a closure re-evaluated at each check point rather than a
+/// single flag read once (D25): this lets a caller like the queue check one
+/// specific job's own cancel state by index, instead of only a single
+/// shared batch flag.
 ///
 /// Drains `next_line` to EOF before calling `wait` (never the reverse): the
 /// live `RunningJob::wait` holds the child mutex across a blocking waitpid,
@@ -84,10 +90,24 @@ pub enum JobProgress {
 pub fn run_job(
     spawner: &dyn Spawn,
     spec: &JobSpec,
-    cancel: &AtomicBool,
+    cancelled: &dyn Fn() -> bool,
     on_progress: &mut dyn FnMut(JobProgress),
 ) -> JobOutcome {
     let start = Instant::now();
+
+    if cancelled() {
+        // Cancelled before this job ever ran: like a spawn failure, no
+        // process means no partial exists, and D25 additionally requires
+        // that a pre-spawn cancel delete nothing at all - a pre-existing
+        // output from an earlier run must survive untouched.
+        return JobOutcome {
+            state: JobState::Cancelled,
+            exit_code: None,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            duration_ms: start.elapsed().as_millis() as u64,
+        };
+    }
 
     if let Some(parent) = spec.output.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -135,7 +155,7 @@ pub fn run_job(
     let state = match exit_code {
         Some(0) => JobState::Ok,
         Some(1) => JobState::Warning,
-        None if cancel.load(Ordering::SeqCst) => JobState::Cancelled,
+        None if cancelled() => JobState::Cancelled,
         _ => JobState::Failed,
     };
 
@@ -157,12 +177,12 @@ fn finish(
     state: JobState,
     exit_code: Option<i32>,
     warnings: Vec<String>,
-    errors: Vec<String>,
+    mut errors: Vec<String>,
     output: &Path,
     start: Instant,
 ) -> JobOutcome {
     if matches!(state, JobState::Failed | JobState::Cancelled) {
-        delete_partial(output);
+        delete_partial(output, &mut errors);
     }
     JobOutcome {
         state,
@@ -173,15 +193,26 @@ fn finish(
     }
 }
 
-/// Best-effort removal of a partial output; `NotFound` (nothing was ever
-/// written) and any other error are both ignored, since core has no channel
-/// to surface a delete failure back through `JobOutcome`.
-fn delete_partial(output: &Path) {
-    let _ = std::fs::remove_file(output);
+/// Best-effort removal of a partial output. `NotFound` (nothing was ever
+/// written) is expected and silently ignored. Any other failure is
+/// surfaced into `errors` as `delete_partial_failed: <io error>`: the
+/// deliberate exception to core staying prose-free (spec 6/7), a
+/// third-party I/O detail passed through verbatim rather than invented core
+/// prose, since core otherwise has no channel back to the caller for a
+/// delete failure on a mux that itself ran to completion (or was
+/// cancelled).
+fn delete_partial(output: &Path, errors: &mut Vec<String>) {
+    if let Err(e) = std::fs::remove_file(output)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        errors.push(format!("delete_partial_failed: {e}"));
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
     use crate::executor::spawn::{FakeSpawner, RunningJob};
 
@@ -212,9 +243,9 @@ mod tests {
         std::fs::write(&output, b"muxed").unwrap();
         let spec = spec(output);
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
-        let cancel = AtomicBool::new(false);
+        let cancelled = || false;
 
-        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+        let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
 
         assert_eq!(outcome.state, JobState::Ok);
         assert_eq!(outcome.exit_code, Some(0));
@@ -232,9 +263,9 @@ mod tests {
             ],
             Some(1),
         );
-        let cancel = AtomicBool::new(false);
+        let cancelled = || false;
 
-        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+        let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
 
         assert_eq!(outcome.state, JobState::Warning);
         assert_eq!(outcome.exit_code, Some(1));
@@ -254,9 +285,9 @@ mod tests {
             vec!["#GUI#error The file 'missing.srt' could not be opened for reading.".to_string()],
             Some(2),
         );
-        let cancel = AtomicBool::new(false);
+        let cancelled = || false;
 
-        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+        let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
 
         assert_eq!(outcome.state, JobState::Failed);
         assert_eq!(outcome.exit_code, Some(2));
@@ -270,9 +301,16 @@ mod tests {
         std::fs::write(&output, b"partial").unwrap();
         let spec = spec(output);
         let fake = FakeSpawner::script(vec!["#GUI#progress 50%".to_string()], None);
-        let cancel = AtomicBool::new(true);
+        // Not cancelled yet at the pre-spawn check (so the process actually
+        // runs); becomes cancelled only afterward, mirroring the real
+        // timeline of a job that starts, then gets killed mid-flight
+        // (`Cell::replace` returns the old value, so the first call - the
+        // pre-spawn check - reads `false`, and every call from then on -
+        // the post-`wait()` check - reads `true`).
+        let cancelled_after_spawn = Cell::new(false);
+        let cancelled = || cancelled_after_spawn.replace(true);
 
-        let outcome = run_job(&fake, &spec, &cancel, &mut |_| {});
+        let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
 
         assert_eq!(outcome.state, JobState::Cancelled);
         assert_eq!(outcome.exit_code, None);
@@ -291,10 +329,10 @@ mod tests {
             ],
             Some(0),
         );
-        let cancel = AtomicBool::new(false);
+        let cancelled = || false;
         let mut collected = Vec::new();
 
-        run_job(&fake, &spec, &cancel, &mut |p| collected.push(p));
+        run_job(&fake, &spec, &cancelled, &mut |p| collected.push(p));
 
         assert_eq!(
             collected,
@@ -312,9 +350,9 @@ mod tests {
         let output = dir.path().join("out.mkv");
         std::fs::write(&output, b"valid output from a prior run").unwrap();
         let spec = spec(output);
-        let cancel = AtomicBool::new(false);
+        let cancelled = || false;
 
-        let outcome = run_job(&FailingSpawner, &spec, &cancel, &mut |_| {});
+        let outcome = run_job(&FailingSpawner, &spec, &cancelled, &mut |_| {});
 
         assert_eq!(outcome.state, JobState::Failed);
         assert_eq!(outcome.exit_code, None);
@@ -331,10 +369,72 @@ mod tests {
         let output = dir.path().join("nested/sub/out.mkv");
         let spec = spec(output);
         let fake = FakeSpawner::script(Vec::new(), Some(0));
-        let cancel = AtomicBool::new(false);
+        let cancelled = || false;
 
-        run_job(&fake, &spec, &cancel, &mut |_| {});
+        run_job(&fake, &spec, &cancelled, &mut |_| {});
 
         assert!(spec.output.parent().unwrap().is_dir());
+    }
+
+    /// D25 pre-spawn check (HANDOFF backlog item): a job whose `cancelled`
+    /// closure already reports true before `run_job` ever calls the
+    /// spawner must become `Cancelled` without spawning, without creating
+    /// the output's parent dir, and - critically - without deleting
+    /// anything (a pre-existing output from an earlier run must survive,
+    /// exactly like the spawn-failure case above).
+    #[test]
+    fn pre_spawn_cancellation_skips_spawn_and_deletes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.mkv");
+        std::fs::write(&output, b"valid output from a prior run").unwrap();
+        let spec = spec(output);
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+        let cancelled = || true;
+
+        let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Cancelled);
+        assert_eq!(outcome.exit_code, None);
+        assert!(outcome.errors.is_empty());
+        assert!(
+            fake.spawned().is_empty(),
+            "the spawner must never be called once already cancelled"
+        );
+        assert!(
+            spec.output.exists(),
+            "pre-spawn cancel must delete nothing (D25)"
+        );
+    }
+
+    /// D25 delete_partial error surfacing (HANDOFF backlog item): a
+    /// `remove_file` failure other than `NotFound` is pushed into
+    /// `outcome.errors` as a `delete_partial_failed: <detail>` third-party
+    /// passthrough, the one deliberate exception to core staying
+    /// prose-free. A directory at the output path is a portable, no-perms
+    /// way to force `remove_file` to fail with a non-`NotFound` error on
+    /// every OS this runs on.
+    #[test]
+    fn delete_partial_failure_surfaces_into_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.mkv");
+        std::fs::create_dir(&output).unwrap();
+        let spec = spec(output);
+        let fake = FakeSpawner::script(
+            vec!["#GUI#error The file 'missing.srt' could not be opened for reading.".to_string()],
+            Some(2),
+        );
+        let cancelled = || false;
+
+        let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Failed);
+        assert!(
+            outcome
+                .errors
+                .iter()
+                .any(|e| e.starts_with("delete_partial_failed: ")),
+            "expected a delete_partial_failed entry, got: {:?}",
+            outcome.errors
+        );
     }
 }
