@@ -1,12 +1,18 @@
-//! The shell's IPC error contract (D23, spec 8.4): every command returns
-//! `Result<_, IpcError>`. `IpcError` carries a stable, kebab-case `code`
-//! plus structured `params` -- no prose. This mirrors core's own
-//! diagnostic-code philosophy (`muxsmith_core::report::DiagCode`, spec 5.2)
-//! at the shell layer: the frontend looks `code` up in its own Fluent
-//! catalog and interpolates `params` (spec 8.4), exactly as it does for a
-//! `Diagnostic`'s `code`/`params` inside a report document. The one
-//! accepted exception (spec 8.4): a third-party error's own message text,
-//! passed through verbatim as a `detail` param.
+//! The shell's IPC error contract (D23, spec 7/8.4): every `#[tauri::command]`
+//! that can fail returns `Result<_, IpcError>` instead of a string. `IpcError`
+//! carries a stable, kebab-case `code` plus structured `params` -- no prose.
+//! This mirrors core's own diagnostic-code philosophy
+//! (`muxsmith_core::report::DiagCode`, spec 5.2) at the shell layer: the
+//! frontend looks `code` up in its own Fluent catalog and interpolates
+//! `params` (spec 8.4), exactly as it does for a `Diagnostic`'s `code`/
+//! `params` inside a report document. Distinct from a core
+//! [`muxsmith_core::report::Diagnostic`] (which describes a profile/plan
+//! problem): an `IpcError` describes an IPC-protocol-level failure the
+//! caller cannot proceed past (a state conflict, a bad argument, an
+//! unreadable path) rather than plan content, which the shell's `Ok`
+//! payloads carry as data instead (spec 7). The one accepted exception
+//! (spec 8.4): a third-party error's own message text, passed through
+//! verbatim as a `detail` param.
 
 use std::collections::HashMap;
 
@@ -23,15 +29,16 @@ use crate::settings::SettingsError;
 /// promise's payload.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct IpcError {
-    /// A stable, kebab-case identifier for the failure condition, in the
-    /// same style as `DiagCode::key()` so the whole app's error-code
-    /// vocabulary stays uniform between core diagnostics and shell-level
-    /// command failures.
+    /// A stable, kebab-case identifier for the failure condition (a Fluent
+    /// message id), in the same style as `DiagCode::key()` so the whole
+    /// app's error-code vocabulary stays uniform between core diagnostics
+    /// and shell-level command failures.
     pub code: String,
-    /// Structured values for the frontend's message template; e.g.
-    /// `detail` carries a passed-through third-party error string (the one
-    /// prose exception, spec 8.4), `found`/`minimum` carry a too-old
-    /// mkvmerge version pair.
+    /// Structured values a renderer interpolates into the message template
+    /// selected by `code`; e.g. `detail` carries a passed-through
+    /// third-party error string (the one prose exception, spec 8.4),
+    /// `found`/`minimum` carry a too-old mkvmerge version pair, `run_id`/
+    /// `index` identify a run-lifecycle target.
     pub params: HashMap<String, String>,
 }
 
@@ -44,8 +51,16 @@ impl IpcError {
         }
     }
 
+    /// Builds an [`IpcError`] with no params. Same as [`IpcError::new`],
+    /// kept as its own name alongside it: the read-only/settings commands
+    /// call `new`, the run-lifecycle commands call `code` -- both
+    /// constructors survive the merge so neither call site needs touching.
+    pub fn code(code: impl Into<String>) -> IpcError {
+        IpcError::new(code)
+    }
+
     /// Attaches one param, builder-style, overwriting any prior value for
-    /// `key`.
+    /// `key`. Mirrors [`muxsmith_core::report::Diagnostic::with`].
     pub fn with(mut self, key: impl Into<String>, value: impl Into<String>) -> IpcError {
         self.params.insert(key.into(), value.into());
         self
@@ -211,5 +226,30 @@ mod tests {
     fn with_overwrites_a_prior_value_for_the_same_key() {
         let err = IpcError::new("x").with("k", "a").with("k", "b");
         assert_eq!(err.params["k"], "b");
+    }
+
+    #[test]
+    fn code_builds_with_empty_params() {
+        let e = IpcError::code("run-already-active");
+        assert_eq!(e.code, "run-already-active");
+        assert!(e.params.is_empty());
+    }
+
+    #[test]
+    fn with_attaches_and_overwrites_params() {
+        let e = IpcError::code("job-log-not-found")
+            .with("run_id", "20260710-153612Z")
+            .with("index", "0")
+            .with("index", "1");
+        assert_eq!(e.params["run_id"], "20260710-153612Z");
+        assert_eq!(e.params["index"], "1");
+    }
+
+    #[test]
+    fn serializes_as_code_and_params() {
+        let e = IpcError::code("invalid-run-id").with("run_id", "../etc");
+        let json = serde_json::to_value(&e).unwrap();
+        assert_eq!(json["code"], "invalid-run-id");
+        assert_eq!(json["params"]["run_id"], "../etc");
     }
 }

@@ -3,12 +3,13 @@
 //! planning/execution engine the CLI uses; no muxing or planning logic
 //! lives here (D23: "commands + job event stream, no logic").
 //!
-//! This task (T7, D23/D27/D28) adds the read-only IPC surface --
-//! `validate_profile`, `dry_run`, `identify`, `detect_mkvmerge` -- plus
-//! app-settings persistence (`get_settings`/`set_settings`). Run-lifecycle
-//! commands (`start_run`, `cancel_run`, `cancel_job`, `list_runs`,
-//! `get_job_log`) are a separate, parallel task (T8) that extends
-//! [`AppState`] with its own run-tracking fields.
+//! Two tasks contribute to this shell, sharing one [`AppState`]: T7
+//! (D23/D27/D28) adds the read-only IPC surface -- `validate_profile`,
+//! `dry_run`, `identify`, `detect_mkvmerge` -- plus app-settings
+//! persistence (`get_settings`/`set_settings`); T8 (D23/D31) adds the run
+//! lifecycle (`start_run`/`cancel_run`/`cancel_job`/`list_runs`/
+//! `get_job_log`, the `muxsmith://job-event`/`muxsmith://run-finished`
+//! window events, and the close-with-active-run confirmation dialog).
 //!
 //! Not `#![deny(missing_docs)]`: `src-tauri` is a bin-shaped crate (the
 //! `[lib]` target exists only so Tauri's mobile entry point can call into
@@ -16,9 +17,12 @@
 //! documented.
 
 mod error;
+mod run;
 mod settings;
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 
 use muxsmith_core::capability::runtime::{MIN_SUPPORTED, Mkvmerge};
 use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier};
@@ -29,6 +33,7 @@ use serde::Serialize;
 use tauri::State;
 
 use error::IpcError;
+use run::RunSlot;
 use settings::AppSettings;
 
 /// Satisfies [`report::json::config_only_document`]/[`report::json::batch_document`]'s
@@ -49,24 +54,38 @@ impl report::json::DiagnosticRenderer for ShellRenderer {
     }
 }
 
-/// Tauri-managed application state (D23). Resolves the settings file path
-/// once at construction ([`settings::settings_path`]) instead of on every
-/// command call. T8 (run lifecycle, a parallel task per the Plan 5
-/// dependency graph) extends this struct with its own run-tracking fields
-/// when the two tasks merge; this task defines only what the read-only
-/// commands and settings persistence need.
+/// Tauri-managed application state (D23), unified across both tasks that
+/// contribute IPC commands to this shell: T7's settings persistence and
+/// T8's run lifecycle. There is exactly one `AppState` value, `.manage`d
+/// once in [`run`] -- Tauri resolves `State<AppState>` for every command
+/// regardless of which task's module declares it, so the fields cannot be
+/// split across two managed structs.
 pub struct AppState {
-    /// The resolved settings file path; `None` if the platform config
-    /// directory itself could not be resolved (e.g. no `HOME`), in which
-    /// case every settings-touching command fails with
+    /// The resolved settings file path (T7, D27); `None` if the platform
+    /// config directory itself could not be resolved (e.g. no `HOME`), in
+    /// which case every settings-touching command fails with
     /// `settings-dir-unavailable`.
     settings_path: Option<PathBuf>,
+    /// The run-lifecycle single-run slot (T8, D23): at most one run may be
+    /// active at a time; this is the source of truth `start_run`/
+    /// `cancel_run`/`cancel_job`/[`run::on_close_requested`] all read or
+    /// write through.
+    active: Mutex<Option<RunSlot>>,
+    /// D31 quit-after-finished (T8): set when the user confirms the
+    /// close-with-active-run dialog; consumed (exactly once, via `swap`)
+    /// by whichever completion path finishes last -- the runner's
+    /// teardown, a soft outcome's synchronous finish, or the dialog
+    /// callback itself when the run already tore down while the dialog
+    /// was open.
+    quit_after_finished: AtomicBool,
 }
 
 impl Default for AppState {
     fn default() -> AppState {
         AppState {
             settings_path: settings::settings_path(),
+            active: Mutex::new(None),
+            quit_after_finished: AtomicBool::new(false),
         }
     }
 }
@@ -369,9 +388,14 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 
 /// Builds and runs the Tauri application: registers the `dialog` and
 /// `clipboard-manager` plugins (capabilities in `capabilities/default.json`
-/// gate what each grants), manages [`AppState`], registers this task's
-/// read-only IPC commands, and launches the main window from
-/// `tauri.conf.json`.
+/// gate what each grants to the *frontend*; the shell's own Rust-side
+/// dialog use in [`run::on_close_requested`] bypasses the IPC permission
+/// layer and needs no capability entry), manages the single unified
+/// [`AppState`], registers both tasks' IPC commands under ONE
+/// `invoke_handler` (Tauri resolves `State<AppState>` once per managed
+/// type, so the read-only/settings commands and the run-lifecycle commands
+/// must share the same registration), wires the D31 close-with-active-run
+/// confirmation, and launches the main window from `tauri.conf.json`.
 ///
 /// # Panics
 ///
@@ -391,7 +415,13 @@ pub fn run() {
             detect_mkvmerge,
             get_settings,
             set_settings,
+            run::start_run,
+            run::cancel_run,
+            run::cancel_job,
+            run::list_runs,
+            run::get_job_log,
         ])
+        .on_window_event(run::on_close_requested)
         .run(tauri::generate_context!())
         .expect("error while running muxsmith-gui");
 }
@@ -743,6 +773,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState {
             settings_path: Some(dir.path().join("settings.json")),
+            ..AppState::default()
         };
         let settings = state.load_settings().expect("load");
         assert_eq!(settings, AppSettings::default());
@@ -753,6 +784,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState {
             settings_path: Some(dir.path().join("settings.json")),
+            ..AppState::default()
         };
         let updated = AppSettings {
             default_jobs: 3,
@@ -769,6 +801,7 @@ mod tests {
     fn settings_commands_fail_distinctly_when_config_dir_is_unavailable() {
         let state = AppState {
             settings_path: None,
+            ..AppState::default()
         };
         let err = state.load_settings().unwrap_err();
         assert_eq!(err.code, "settings-dir-unavailable");
