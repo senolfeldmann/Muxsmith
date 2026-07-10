@@ -6,4 +6,4 @@ members = ["crates/muxsmith-core", "crates/muxsmith-cli", "crates/xtask", "src-t
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/senolf/muxsmith"
+repository = "https://github.com/senolfeldmann/Muxsmith"
