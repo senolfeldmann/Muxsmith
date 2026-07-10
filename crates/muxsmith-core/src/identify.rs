@@ -280,6 +280,10 @@ impl std::fmt::Display for IdentifyError {
                 write!(f, "mkvmerge failed: exit {code}: {stderr}")
             }
             IdentifyError::Runtime(RuntimeError::Parse(e)) => write!(f, "mkvmerge failed: {e}"),
+            IdentifyError::Runtime(RuntimeError::TooOld { found, minimum }) => write!(
+                f,
+                "mkvmerge failed: version {found} is older than the minimum supported {minimum}"
+            ),
             IdentifyError::Json(e) => write!(f, "invalid identification JSON: {e}"),
             IdentifyError::Stat(e) => write!(f, "cannot read file: {e}"),
         }
