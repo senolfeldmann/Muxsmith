@@ -1,0 +1,1158 @@
+# Review package: 65d7065..6e763a7
+
+## Commits
+6e763a7 feat(gui): jobs view - live queue, per-job/batch cancel, history + log export
+
+## Files changed
+ Cargo.lock                          |   1 +
+ locales/en/gui-jobs.ftl             |  69 ++++++++
+ package.json                        |   1 +
+ pnpm-lock.yaml                      |  10 ++
+ src-tauri/Cargo.toml                |   1 +
+ src-tauri/capabilities/default.json |   6 +-
+ src-tauri/src/lib.rs                |  13 +-
+ src/components/JobRow.vue           |  73 +++++++++
+ src/components/LiveLog.vue          |  98 ++++++++++++
+ src/components/RunHistory.vue       | 262 +++++++++++++++++++++++++++++++
+ src/jobRowState.ts                  |  55 +++++++
+ src/views/JobsView.vue              | 304 +++++++++++++++++++++++++++++++++++-
+ 12 files changed, 886 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index 3e59b24..f3a0244 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2148,20 +2148,21 @@ name = "muxsmith-gui"
+ version = "0.1.0"
+ dependencies = [
+  "dirs",
+  "muxsmith-core",
+  "serde",
+  "serde_json",
+  "tauri",
+  "tauri-build",
+  "tauri-plugin-clipboard-manager",
+  "tauri-plugin-dialog",
++ "tauri-plugin-fs",
+  "tauri-plugin-os",
+  "tempfile",
+ ]
+ 
+ [[package]]
+ name = "ndk"
+ version = "0.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4"
+ dependencies = [
+diff --git a/locales/en/gui-jobs.ftl b/locales/en/gui-jobs.ftl
+new file mode 100644
+index 0000000..a920e5d
+--- /dev/null
++++ b/locales/en/gui-jobs.ftl
+@@ -0,0 +1,69 @@
++# T11: Jobs view (spec 8.2 view 3, D30) - live queue, cancel, history, log
++# export. Keyed by component area (jobs-batch-*/jobs-row-*/jobs-log-*/
++# jobs-history-*), mirroring gui-settings.ftl's per-view prefix convention.
++
++## Batch header + run summary
++
++jobs-batch-progress = { $finished } / { $total } jobs finished
++jobs-cancel-batch-label = Cancel batch
++jobs-cancel-batch-tooltip = Cancel every queued and in-flight job in this run.
++jobs-summary-line = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
++jobs-joblog-incomplete = The run's log could not be fully written to disk; some job records may be missing.
++jobs-joblog-unavailable = The run's log could not be written to disk; this run will not appear in history.
++jobs-no-run = No run is active. Start a run from the Batch view.
++
++## Job table (JobRow.vue)
++
++jobs-table-caption = Jobs in the current run
++jobs-col-output = Output
++jobs-col-state = State
++jobs-col-progress = Progress
++jobs-col-actions = Actions
++jobs-row-output-pending = Job { $index }
++jobs-row-progress-label = Progress for job { $index }
++jobs-row-cancel-label = Cancel
++jobs-row-cancel-tooltip = Cancel this job.
++jobs-row-warning-count = { $count ->
++    [one] 1 warning
++   *[other] { $count } warnings
++}
++jobs-state-queued = Queued
++jobs-state-running = Running
++jobs-state-ok = Done
++jobs-state-warning = Done with warnings
++jobs-state-failed = Failed
++jobs-state-cancelled = Cancelled
++
++## Live log (LiveLog.vue)
++
++jobs-log-region-label = Live job output
++jobs-log-filter-label = Show output for
++jobs-log-filter-all = All jobs
++
++## Run history + log export (RunHistory.vue, D30 gap closure)
++
++jobs-history-heading = Run history
++jobs-history-refresh = Refresh
++jobs-history-refresh-tooltip = Reload the list of past runs from disk.
++jobs-history-empty = No past runs found.
++jobs-history-run-label = { $startedAt } - { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
++jobs-history-jobs-caption = Jobs in this run
++jobs-history-view-log = View log
++jobs-history-log-region-label = Job log
++jobs-history-log-loading = Loading job log...
++jobs-history-copy-log = Copy log
++jobs-history-copy-tooltip = Copy this job's full log to the clipboard.
++jobs-history-save-log = Save as...
++jobs-history-save-tooltip = Save this job's full log to a file.
++jobs-history-export-failed = The log could not be copied or saved.
++jobs-history-export-filter-name = Log files
++
++## Shell-level IPC error codes (src-tauri/src/run.rs::IpcError codes; keyed
++## directly on IpcError.code, same convention as gui-common.ftl's
++## mkvmerge-*/settings-* block).
++
++run-already-active = A run is already active.
++no-active-run = No run is currently active.
++invalid-run-id = "{ $run_id }" is not a valid run id.
++job-log-unavailable = The run log location could not be determined on this system.
++job-log-not-found = No log was found for job { $index } of run { $run_id }.
+diff --git a/package.json b/package.json
+index fef4c27..7342b42 100644
+--- a/package.json
++++ b/package.json
+@@ -8,20 +8,21 @@
+     "dev": "vite",
+     "build": "vue-tsc --noEmit && vite build",
+     "preview": "vite preview",
+     "lint": "eslint ."
+   },
+   "dependencies": {
+     "@fluent/bundle": "0.19.1",
+     "@tauri-apps/api": "2.11.1",
+     "@tauri-apps/plugin-clipboard-manager": "2.3.2",
+     "@tauri-apps/plugin-dialog": "2.7.1",
++    "@tauri-apps/plugin-fs": "2.5.1",
+     "@tauri-apps/plugin-os": "2.3.2",
+     "fluent-vue": "3.8.2",
+     "vue": "3.5.39"
+   },
+   "devDependencies": {
+     "@intlify/eslint-plugin-vue-i18n": "4.5.1",
+     "@tauri-apps/cli": "2.11.4",
+     "@vitejs/plugin-vue": "6.0.7",
+     "eslint": "10.6.0",
+     "eslint-plugin-vue": "10.9.2",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 46eeeac..a08bd09 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -13,20 +13,23 @@ importers:
+         version: 0.19.1
+       '@tauri-apps/api':
+         specifier: 2.11.1
+         version: 2.11.1
+       '@tauri-apps/plugin-clipboard-manager':
+         specifier: 2.3.2
+         version: 2.3.2
+       '@tauri-apps/plugin-dialog':
+         specifier: 2.7.1
+         version: 2.7.1
++      '@tauri-apps/plugin-fs':
++        specifier: 2.5.1
++        version: 2.5.1
+       '@tauri-apps/plugin-os':
+         specifier: 2.3.2
+         version: 2.3.2
+       fluent-vue:
+         specifier: 3.8.2
+         version: 3.8.2(@fluent/bundle@0.19.1)(vue@3.5.39(typescript@6.0.3))
+       vue:
+         specifier: 3.5.39
+         version: 3.5.39(typescript@6.0.3)
+     devDependencies:
+@@ -379,20 +382,23 @@ packages:
+     resolution: {integrity: sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ==}
+     engines: {node: '>= 10'}
+     hasBin: true
+ 
+   '@tauri-apps/plugin-clipboard-manager@2.3.2':
+     resolution: {integrity: sha512-CUlb5Hqi2oZbcZf4VUyUH53XWPPdtpw43EUpCza5HWZJwxEoDowFzNUDt1tRUXA8Uq+XPn17Ysfptip33sG4eQ==}
+ 
+   '@tauri-apps/plugin-dialog@2.7.1':
+     resolution: {integrity: sha512-OK1UBXYt+ojcmxMktzzuyonYIFta8CmAASpX+CA+DTGK24KlHjhYI6x2iOJ/TjZF4N7/ACK1oFmEOjIY9IhzOQ==}
+ 
++  '@tauri-apps/plugin-fs@2.5.1':
++    resolution: {integrity: sha512-9Lz+Jopp6QyeEWhlpkMx4R/+P9HgR+AVAI4vOZhlT8Xaymtz8iVI/Ov984/XTqgJz/5gz5NretqPB/XEMS3NhQ==}
++
+   '@tauri-apps/plugin-os@2.3.2':
+     resolution: {integrity: sha512-n+nXWeuSeF9wcEsSPmRnBEGrRgOy6jjkSU+UVCOV8YUGKb2erhDOxis7IqRXiRVHhY8XMKks00BJ0OAdkpf6+A==}
+ 
+   '@tybys/wasm-util@0.10.3':
+     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
+ 
+   '@types/esrecurse@4.3.1':
+     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
+ 
+   '@types/estree@1.0.9':
+@@ -1503,20 +1509,24 @@ snapshots:
+       '@tauri-apps/cli-win32-x64-msvc': 2.11.4
+ 
+   '@tauri-apps/plugin-clipboard-manager@2.3.2':
+     dependencies:
+       '@tauri-apps/api': 2.11.1
+ 
+   '@tauri-apps/plugin-dialog@2.7.1':
+     dependencies:
+       '@tauri-apps/api': 2.11.1
+ 
++  '@tauri-apps/plugin-fs@2.5.1':
++    dependencies:
++      '@tauri-apps/api': 2.11.1
++
+   '@tauri-apps/plugin-os@2.3.2':
+     dependencies:
+       '@tauri-apps/api': 2.11.1
+ 
+   '@tybys/wasm-util@0.10.3':
+     dependencies:
+       tslib: 2.8.1
+     optional: true
+ 
+   '@types/esrecurse@4.3.1': {}
+diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
+index 99a8269..b45890f 100644
+--- a/src-tauri/Cargo.toml
++++ b/src-tauri/Cargo.toml
+@@ -17,14 +17,15 @@ path = "src/main.rs"
+ tauri-build = { version = "2.6.3", features = [] }
+ 
+ [dependencies]
+ dirs = "6.0.0"
+ muxsmith-core = { path = "../crates/muxsmith-core" }
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ tauri = "2.11.5"
+ tauri-plugin-clipboard-manager = "2.3.2"
+ tauri-plugin-dialog = "2.7.1"
++tauri-plugin-fs = "2.5.1"
+ tauri-plugin-os = "2.3.2"
+ 
+ [dev-dependencies]
+ tempfile = "3.27.0"
+diff --git a/src-tauri/capabilities/default.json b/src-tauri/capabilities/default.json
+index 8cc12f1..5f489aa 100644
+--- a/src-tauri/capabilities/default.json
++++ b/src-tauri/capabilities/default.json
+@@ -1,13 +1,15 @@
+ {
+   "$schema": "../gen/schemas/desktop-schema.json",
+   "identifier": "default",
+-  "description": "Capability for the main window: file/folder pickers, clipboard-copy, and OS platform detection (T9 first-run guidance), the minimum the GUI needs beyond Tauri's core defaults. Extend deliberately as GUI features land.",
++  "description": "Capability for the main window: file/folder pickers, clipboard-copy, OS platform detection (T9 first-run guidance), and job-log export (T11, D30 gap closure: save-dialog picks a path, fs writes the text there -- no static fs scope needed, the dialog plugin adds the picked path to the fs scope itself), the minimum the GUI needs beyond Tauri's core defaults. Extend deliberately as GUI features land.",
+   "windows": ["main"],
+   "permissions": [
+     "core:default",
+     "core:event:default",
+     "dialog:allow-open",
++    "dialog:allow-save",
+     "clipboard-manager:allow-write-text",
+-    "os:default"
++    "os:default",
++    "fs:allow-write-text-file"
+   ]
+ }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 8c8c61b..57d7b56 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -380,45 +380,56 @@ fn get_settings(state: State<AppState>) -> Result<AppSettings, IpcError> {
+ 
+ /// `set_settings` IPC command (D27). Writes the full settings object the
+ /// frontend hands over; [`settings::save`] caps `recent_profiles` at write
+ /// time regardless of what the caller sent.
+ #[tauri::command]
+ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), IpcError> {
+     state.save_settings(&settings)
+ }
+ 
+ /// Builds and runs the Tauri application: registers the `dialog`,
+-/// `clipboard-manager`, and `os` plugins (capabilities in
++/// `clipboard-manager`, `os`, and `fs` plugins (capabilities in
+ /// `capabilities/default.json` gate what each grants to the *frontend*; the
+ /// shell's own Rust-side dialog use in [`run::on_close_requested`] bypasses
+ /// the IPC permission layer and needs no capability entry), manages the
+ /// single unified [`AppState`], registers both tasks' IPC commands under
+ /// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
+ /// type, so the read-only/settings commands and the run-lifecycle commands
+ /// must share the same registration), wires the D31 close-with-active-run
+ /// confirmation, and launches the main window from `tauri.conf.json`.
+ ///
+ /// The `os` plugin (T9, D28) is here rather than in `@tauri-apps/api`
+ /// (which this task's brief names): Tauri 2 moved OS/platform detection
+ /// out of the core API into this separate plugin (`@tauri-apps/plugin-os`
+ /// on the frontend side), so `FirstRun.vue`'s per-OS guidance needs it
+ /// registered like `dialog`/`clipboard-manager` are.
+ ///
++/// The `fs` plugin (T11, D30 gap closure: export a finished job's log as
++/// text) is the write half of the history view's save-as flow -- the
++/// `dialog` plugin's own `save()` only returns a user-picked path, it never
++/// writes bytes. Paired deliberately with `dialog`, not `fs:default`: a
++/// `save()` call adds its picked path to the fs plugin's own scope for the
++/// rest of that session (Tauri's documented combo for this exact pattern),
++/// so `fs:allow-write-text-file` alone (`capabilities/default.json`) is
++/// sufficient -- no static path allowlist needed, and the frontend can
++/// never write anywhere the user did not just pick via the OS dialog.
++///
+ /// # Panics
+ ///
+ /// Panics if the Tauri runtime fails to launch. This mirrors the Tauri
+ /// scaffold default: a launch failure here means the webview/window
+ /// backend is unusable, which has no meaningful recovery.
+ #[cfg_attr(mobile, tauri::mobile_entry_point)]
+ pub fn run() {
+     tauri::Builder::default()
+         .plugin(tauri_plugin_dialog::init())
++        .plugin(tauri_plugin_fs::init())
+         .plugin(tauri_plugin_clipboard_manager::init())
+         .plugin(tauri_plugin_os::init())
+         .manage(AppState::default())
+         .invoke_handler(tauri::generate_handler![
+             validate_profile,
+             dry_run,
+             identify,
+             detect_mkvmerge,
+             get_settings,
+             set_settings,
+diff --git a/src/components/JobRow.vue b/src/components/JobRow.vue
+new file mode 100644
+index 0000000..768a35b
+--- /dev/null
++++ b/src/components/JobRow.vue
+@@ -0,0 +1,73 @@
++<script setup lang="ts">
++// One job's queue row (T11 Step 1, spec 8.2 view 3): output filename,
++// state chip, progress, per-row cancel. Purely presentational -- all state
++// transitions happen in JobsView.vue's event handlers; this component only
++// renders `job` and asks its parent to cancel via the `cancel` emit.
++import { computed } from "vue";
++import type { JobRowData } from "../jobRowState";
++import { jobStateKey } from "../jobRowState";
++
++const props = defineProps<{ job: JobRowData }>();
++const emit = defineEmits<{ cancel: [index: number] }>();
++
++const stateKey = computed(() => {
++  const state = props.job.state;
++  if (state.kind === "queued") {
++    return "jobs-state-queued";
++  }
++  if (state.kind === "started" || state.kind === "progress") {
++    return "jobs-state-running";
++  }
++  return jobStateKey(state.outcome.state);
++});
++
++// `undefined` renders a native indeterminate <progress> (no known percent
++// yet: queued/started); a "finished" row is drawn full regardless of the
++// terminal outcome (ok/warning/failed/cancelled -- the state chip already
++// carries that distinction, D29's "role=progressbar ... or native
++// <progress>").
++const progressValue = computed<number | undefined>(() => {
++  const state = props.job.state;
++  if (state.kind === "progress") {
++    return state.percent;
++  }
++  if (state.kind === "finished") {
++    return 100;
++  }
++  return undefined;
++});
++
++const isTerminal = computed(() => props.job.state.kind === "finished");
++</script>
++
++<template>
++  <tr
++    data-testid="job-row"
++    :data-index="job.index"
++  >
++    <td>{{ job.output ?? $t("jobs-row-output-pending", { index: job.index }) }}</td>
++    <td>
++      <span>{{ $t(stateKey) }}</span>
++      <span v-if="job.warningCount > 0">{{ $t("jobs-row-warning-count", { count: job.warningCount }) }}</span>
++    </td>
++    <td>
++      <progress
++        :value="progressValue"
++        max="100"
++        data-testid="job-progress"
++        :aria-label="$t('jobs-row-progress-label', { index: job.index })"
++      />
++    </td>
++    <td>
++      <button
++        type="button"
++        data-testid="job-cancel"
++        :disabled="isTerminal"
++        :title="$t('jobs-row-cancel-tooltip')"
++        @click="emit('cancel', job.index)"
++      >
++        {{ $t("jobs-row-cancel-label") }}
++      </button>
++    </td>
++  </tr>
++</template>
+diff --git a/src/components/LiveLog.vue b/src/components/LiveLog.vue
+new file mode 100644
+index 0000000..a41d93e
+--- /dev/null
++++ b/src/components/LiveLog.vue
+@@ -0,0 +1,98 @@
++<script setup lang="ts">
++// Live output pane (T11 Step 2, D29 "the live log pane is role=log"): fed
++// by `job-event`'s `output` variant (verbatim mkvmerge lines, tags
++// included -- D24), DOM-capped by the caller at 5000 entries (the full log
++// is always in the persisted job file, D26/D30 -- this pane is a live tail,
++// not the record of truth). Auto-scrolls to the newest line unless the
++// user has scrolled up to read earlier output.
++import { computed, nextTick, ref, watch } from "vue";
++import type { JobRowData } from "../jobRowState";
++
++interface LogLine {
++  index: number;
++  line: string;
++}
++
++const props = defineProps<{
++  jobs: JobRowData[];
++  lines: LogLine[];
++}>();
++
++const selected = ref<number | "all">("all");
++
++const filtered = computed(() =>
++  selected.value === "all" ? props.lines : props.lines.filter((l) => l.index === selected.value),
++);
++
++const logEl = ref<HTMLElement | null>(null);
++// Sticky-bottom auto-scroll: true whenever the pane is scrolled at (or
++// near) its bottom edge, so a fresh line keeps the view pinned there; a
++// user who scrolls up to read history clears it, and new lines then land
++// without yanking the view away from what they are reading.
++const stickToBottom = ref(true);
++
++function onScroll() {
++  const el = logEl.value;
++  if (!el) {
++    return;
++  }
++  stickToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 16;
++}
++
++watch(filtered, async () => {
++  if (!stickToBottom.value) {
++    return;
++  }
++  await nextTick();
++  const el = logEl.value;
++  if (el) {
++    el.scrollTop = el.scrollHeight;
++  }
++});
++</script>
++
++<template>
++  <div data-testid="live-log-panel">
++    <label for="live-log-filter">{{ $t("jobs-log-filter-label") }}</label>
++    <select
++      id="live-log-filter"
++      v-model="selected"
++      data-testid="live-log-filter"
++    >
++      <option value="all">
++        {{ $t("jobs-log-filter-all") }}
++      </option>
++      <option
++        v-for="job in jobs"
++        :key="job.index"
++        :value="job.index"
++      >
++        {{ job.output ?? $t("jobs-row-output-pending", { index: job.index }) }}
++      </option>
++    </select>
++    <div
++      ref="logEl"
++      role="log"
++      :aria-label="$t('jobs-log-region-label')"
++      data-testid="live-log"
++      class="live-log"
++      @scroll="onScroll"
++    >
++      <div
++        v-for="(entry, i) in filtered"
++        :key="i"
++      >
++        {{ entry.line }}
++      </div>
++    </div>
++  </div>
++</template>
++
++<style scoped>
++/* Functionally required, not decorative: role="log" auto-scroll only means
++   something if the pane is a bounded, scrollable box. */
++.live-log {
++  max-height: 16rem;
++  overflow-y: auto;
++}
++</style>
+diff --git a/src/components/RunHistory.vue b/src/components/RunHistory.vue
+new file mode 100644
+index 0000000..9416474
+--- /dev/null
++++ b/src/components/RunHistory.vue
+@@ -0,0 +1,262 @@
++<script setup lang="ts">
++// Run history + log export (T11 Step 4, D30 gap closure: mkvtoolnix-gui
++// can open a finished job's log as text; this is Muxsmith's equivalent).
++// `list_runs` renders newest-first (already sorted server-side, D26);
++// selecting a run shows its persisted `summary.json` jobs; selecting a job
++// fetches its full `job-<index>.json` via `get_job_log` and offers
++// copy-to-clipboard and save-as-file.
++//
++// `RunMeta.summary` cannot express `joblog_status: "incomplete"` (that
++// nuance exists only in the live `run-finished` event JobsView.vue itself
++// renders) -- this view shows exactly what `summary.json` has, per the
++// binding contract, and invents nothing beyond it.
++import { computed, onMounted, ref } from "vue";
++import { useFluent } from "fluent-vue";
++import { writeText } from "@tauri-apps/plugin-clipboard-manager";
++import { save } from "@tauri-apps/plugin-dialog";
++import { writeTextFile } from "@tauri-apps/plugin-fs";
++import { getJobLog, listRuns } from "../ipc";
++import type { IpcError, JobLogRecord, RunMeta } from "../ipc";
++import { jobStateKey } from "../jobRowState";
++
++const fluent = useFluent();
++
++const runs = ref<RunMeta[]>([]);
++const loading = ref(false);
++const loadError = ref<IpcError | null>(null);
++
++const selectedRunId = ref<string | null>(null);
++const selectedJobIndex = ref<number | null>(null);
++const jobLog = ref<JobLogRecord | null>(null);
++const jobLogLoading = ref(false);
++const jobLogError = ref<IpcError | null>(null);
++const exportBusy = ref(false);
++const exportFailed = ref(false);
++
++async function refresh() {
++  loading.value = true;
++  loadError.value = null;
++  try {
++    runs.value = await listRuns();
++  } catch (e) {
++    loadError.value = e as IpcError;
++  } finally {
++    loading.value = false;
++  }
++}
++
++onMounted(refresh);
++
++const selectedRun = computed(
++  () => runs.value.find((r) => r.run_id === selectedRunId.value) ?? null,
++);
++
++function selectRun(runId: string) {
++  selectedRunId.value = runId;
++  selectedJobIndex.value = null;
++  jobLog.value = null;
++  jobLogError.value = null;
++  exportFailed.value = false;
++}
++
++async function selectJob(index: number) {
++  const runId = selectedRunId.value;
++  if (!runId) {
++    return;
++  }
++  selectedJobIndex.value = index;
++  jobLog.value = null;
++  jobLogError.value = null;
++  exportFailed.value = false;
++  jobLogLoading.value = true;
++  try {
++    jobLog.value = await getJobLog(runId, index);
++  } catch (e) {
++    jobLogError.value = e as IpcError;
++  } finally {
++    jobLogLoading.value = false;
++  }
++}
++
++function logText(record: JobLogRecord): string {
++  return record.lines.join("\n");
++}
++
++async function copyLog() {
++  if (!jobLog.value) {
++    return;
++  }
++  exportFailed.value = false;
++  try {
++    await writeText(logText(jobLog.value));
++  } catch {
++    exportFailed.value = true;
++  }
++}
++
++async function saveLog() {
++  if (!jobLog.value || selectedRunId.value === null || selectedJobIndex.value === null) {
++    return;
++  }
++  exportFailed.value = false;
++  exportBusy.value = true;
++  try {
++    const suggested = `${selectedRunId.value}-job-${selectedJobIndex.value}.log`;
++    const path = await save({
++      defaultPath: suggested,
++      filters: [
++        { name: fluent.$t("jobs-history-export-filter-name"), extensions: ["log", "txt"] },
++      ],
++    });
++    if (path) {
++      await writeTextFile(path, logText(jobLog.value));
++    }
++  } catch {
++    exportFailed.value = true;
++  } finally {
++    exportBusy.value = false;
++  }
++}
++
++defineExpose({ refresh });
++</script>
++
++<template>
++  <section data-testid="jobs-history">
++    <h3>{{ $t("jobs-history-heading") }}</h3>
++    <button
++      type="button"
++      data-testid="jobs-history-refresh"
++      :disabled="loading"
++      :aria-busy="loading"
++      :title="$t('jobs-history-refresh-tooltip')"
++      @click="refresh"
++    >
++      {{ $t("jobs-history-refresh") }}
++    </button>
++
++    <p
++      v-if="loadError"
++      role="alert"
++    >
++      {{ $t(loadError.code, loadError.params) }}
++    </p>
++    <p v-else-if="!loading && runs.length === 0">
++      {{ $t("jobs-history-empty") }}
++    </p>
++    <ul
++      v-else
++      data-testid="jobs-history-list"
++    >
++      <li
++        v-for="run in runs"
++        :key="run.run_id"
++      >
++        <button
++          type="button"
++          data-testid="jobs-history-run"
++          :data-run-id="run.run_id"
++          :aria-current="run.run_id === selectedRunId ? 'true' : undefined"
++          @click="selectRun(run.run_id)"
++        >
++          {{
++            $t("jobs-history-run-label", {
++              startedAt: run.started_at,
++              ok: run.summary.summary.ok,
++              warning: run.summary.summary.warning,
++              failed: run.summary.summary.failed,
++              cancelled: run.summary.summary.cancelled,
++            })
++          }}
++        </button>
++      </li>
++    </ul>
++
++    <div
++      v-if="selectedRun"
++      data-testid="jobs-history-detail"
++    >
++      <table>
++        <caption>
++          {{ $t("jobs-history-jobs-caption") }}
++        </caption>
++        <thead>
++          <tr>
++            <th scope="col">
++              {{ $t("jobs-col-output") }}
++            </th>
++            <th scope="col">
++              {{ $t("jobs-col-state") }}
++            </th>
++            <th scope="col">
++              {{ $t("jobs-col-actions") }}
++            </th>
++          </tr>
++        </thead>
++        <tbody>
++          <tr
++            v-for="job in selectedRun.summary.jobs"
++            :key="job.index"
++          >
++            <td>{{ job.output }}</td>
++            <td>{{ $t(jobStateKey(job.state)) }}</td>
++            <td>
++              <button
++                type="button"
++                data-testid="jobs-history-job"
++                :data-index="job.index"
++                @click="selectJob(job.index)"
++              >
++                {{ $t("jobs-history-view-log") }}
++              </button>
++            </td>
++          </tr>
++        </tbody>
++      </table>
++
++      <div
++        v-if="selectedJobIndex !== null"
++        data-testid="jobs-history-log"
++      >
++        <p v-if="jobLogLoading">
++          {{ $t("jobs-history-log-loading") }}
++        </p>
++        <p
++          v-else-if="jobLogError"
++          role="alert"
++        >
++          {{ $t(jobLogError.code, jobLogError.params) }}
++        </p>
++        <template v-else-if="jobLog">
++          <h4>{{ $t("jobs-history-log-region-label") }}</h4>
++          <pre data-testid="jobs-history-log-text">{{ logText(jobLog) }}</pre>
++          <button
++            type="button"
++            data-testid="jobs-history-copy"
++            :disabled="exportBusy"
++            :title="$t('jobs-history-copy-tooltip')"
++            @click="copyLog"
++          >
++            {{ $t("jobs-history-copy-log") }}
++          </button>
++          <button
++            type="button"
++            data-testid="jobs-history-save"
++            :disabled="exportBusy"
++            :aria-busy="exportBusy"
++            :title="$t('jobs-history-save-tooltip')"
++            @click="saveLog"
++          >
++            {{ $t("jobs-history-save-log") }}
++          </button>
++          <p
++            v-if="exportFailed"
++            role="alert"
++          >
++            {{ $t("jobs-history-export-failed") }}
++          </p>
++        </template>
++      </div>
++    </div>
++  </section>
++</template>
+diff --git a/src/jobRowState.ts b/src/jobRowState.ts
+new file mode 100644
+index 0000000..0bccc99
+--- /dev/null
++++ b/src/jobRowState.ts
+@@ -0,0 +1,55 @@
++/**
++ * Shared job-row model for the Jobs view (T11, spec 8.2 view 3): the local
++ * per-index state `JobsView.vue` accumulates from the live `job-event`
++ * stream and reconciles from `run-finished`, plus the terminal-state ->
++ * Fluent-key mapping both `JobRow.vue` (live rows) and `RunHistory.vue`
++ * (persisted `RunJobEntry`s from a past run's `summary.json`) need.
++ */
++import type { JobOutcome, JobState } from "./ipc";
++
++/**
++ * One row's live state. Starts `"queued"` (no event yet for this index --
++ * covers both "not dequeued yet" and a batch-cancelled job that is skipped
++ * silently and never emits anything live, D16/D25); `"started"`/
++ * `"progress"` track the live stream; `"finished"` is set either from a
++ * live `finished` event or, for a row that received no live events at all,
++ * reconciled directly from the `run-finished` document (the only source
++ * for that case).
++ */
++export type JobRowLiveState =
++  | { kind: "queued" }
++  | { kind: "started" }
++  | { kind: "progress"; percent: number }
++  | { kind: "finished"; outcome: JobOutcome };
++
++export interface JobRowData {
++  index: number;
++  /** The job's rendered output path; unknown until its `started` event (or
++   * the run's finished document) reports it. */
++  output: string | null;
++  state: JobRowLiveState;
++  /** Live-updated from `warning` events as they arrive; overwritten with
++   * the authoritative count once the row reaches `"finished"`. */
++  warningCount: number;
++}
++
++export function emptyRow(index: number): JobRowData {
++  return { index, output: null, state: { kind: "queued" }, warningCount: 0 };
++}
++
++/** Maps a terminal `JobState` (the Rust enum's four values) to its
++ * gui-jobs.ftl state-chip key. Shared between `JobRow.vue` (live rows,
++ * once `state.kind === "finished"`) and `RunHistory.vue` (a persisted
++ * `RunJobEntry`, always terminal). */
++export function jobStateKey(state: JobState): string {
++  switch (state) {
++    case "ok":
++      return "jobs-state-ok";
++    case "warning":
++      return "jobs-state-warning";
++    case "failed":
++      return "jobs-state-failed";
++    case "cancelled":
++      return "jobs-state-cancelled";
++  }
++}
+diff --git a/src/views/JobsView.vue b/src/views/JobsView.vue
+index 8d5b732..deaf4c7 100644
+--- a/src/views/JobsView.vue
++++ b/src/views/JobsView.vue
+@@ -1,12 +1,308 @@
+ <script setup lang="ts">
+-// Placeholder for Task 11 (Jobs view, spec 8.2 view 3). T9's scope is
+-// only to prove the view-switch mounts a real component per view; the
+-// live queue, cancel, history, and log export UI land in T11, which
+-// replaces this file's content.
++// Jobs view (T11, spec 8.2 view 3, D30): live queue, per-job/batch cancel,
++// run-finished summary, and run history + log export.
++//
++// Wave-5 contract (binding, controller-defined): receives `pending-run`
++// from App.vue (owned by the parallel Batch-view task, T10) and, on every
++// non-null value, invokes `start_run` then emits `consumed` so App clears
++// its ref. `PendingRun` is declared here regardless of whether App.vue
++// already passes it -- the two sides reconcile trivially since this file
++// owns its whole contents.
++//
++// Event-ordering contract (`run.rs::start_run`'s own doc, binding): both
++// `muxsmith://job-event` and `muxsmith://run-finished` listeners MUST be
++// registered -- and, since `listen()` itself is async, actually confirmed
++// registered -- before `start_run` is invoked. A soft outcome (profile
++// load failure, missing mkvmerge, zero planned jobs) emits
++// `muxsmith://run-finished` synchronously inside the Rust command, before
++// its own promise resolves; `ensureListeners()` is awaited first on every
++// dispatch to close that race.
++import { computed, onMounted, onUnmounted, ref, watch } from "vue";
++import { listen } from "@tauri-apps/api/event";
++import type { UnlistenFn } from "@tauri-apps/api/event";
++import JobRow from "../components/JobRow.vue";
++import LiveLog from "../components/LiveLog.vue";
++import RunHistory from "../components/RunHistory.vue";
++import { cancelJob, cancelRun, startRun, JOB_EVENT_CHANNEL, RUN_FINISHED_CHANNEL } from "../ipc";
++import type { IpcError, JobEvent, RunFinishedEvent } from "../ipc";
++import { emptyRow } from "../jobRowState";
++import type { JobRowData } from "../jobRowState";
++
++/** Mirrors the Wave-5 contract's `RunRequest` shape (App.vue/BatchView.vue,
++ * T10): the parameters a Batch-view "Run" click hands over. */
++interface RunRequest {
++  profile: string;
++  source: string | null;
++  output: string | null;
++  jobs: number | null;
++}
++
++// Optional (`pendingRun?:`), not a bare required prop: App.vue is the
++// PARALLEL task's file (T10) and does not pass `pending-run` yet on this
++// branch's current placeholder wiring (`<JobsView v-else />`, no props) --
++// this view must still type-check and behave correctly (no pending run) as
++// a standalone unit until that wiring lands. The watcher below treats a
++// missing prop exactly like an explicit `null` (`if (!req) return;`), so
++// T10's eventual `:pending-run` binding needs no further change here.
++const props = defineProps<{ pendingRun?: RunRequest | null }>();
++const emit = defineEmits<{ consumed: [] }>();
++
++// The DOM cap applies to the combined live-output feed LiveLog.vue filters
++// locally (Step 2: "DOM-capped at 5000 lines - the full log is in the
++// file"): the persisted job-<index>.json record has every line regardless.
++const LOG_LINE_CAP = 5000;
++
++const jobs = ref<JobRowData[]>([]);
++const runActive = ref(false);
++const startError = ref<IpcError | null>(null);
++const actionError = ref<IpcError | null>(null);
++const finishedSummary = ref<RunFinishedEvent | null>(null);
++const logLines = ref<{ index: number; line: string }[]>([]);
++
++const runHistoryRef = ref<InstanceType<typeof RunHistory> | null>(null);
++
++function ensureJobsLength(n: number) {
++  while (jobs.value.length < n) {
++    jobs.value.push(emptyRow(jobs.value.length));
++  }
++}
++
++function onJobEvent(event: JobEvent) {
++  ensureJobsLength(event.index + 1);
++  const row = jobs.value[event.index];
++  switch (event.event) {
++    case "started":
++      row.output = event.output;
++      row.state = { kind: "started" };
++      break;
++    case "progress":
++      row.state = { kind: "progress", percent: event.percent };
++      break;
++    case "warning":
++      row.warningCount += 1;
++      break;
++    case "error":
++      // Surfaced via the eventual `finished` outcome's `errors` and via
++      // LiveLog (every line, including tagged ones, also arrives as its
++      // own verbatim `output` event, D24) -- no separate row field beyond
++      // the warning-count badge the brief asks for.
++      break;
++    case "finished":
++      row.state = { kind: "finished", outcome: event.outcome };
++      row.warningCount = event.outcome.warnings.length;
++      break;
++    case "output":
++      logLines.value.push({ index: event.index, line: event.line });
++      if (logLines.value.length > LOG_LINE_CAP) {
++        logLines.value.splice(0, logLines.value.length - LOG_LINE_CAP);
++      }
++      break;
++  }
++}
++
++function onRunFinished(event: RunFinishedEvent) {
++  // Authoritative reconciliation (Step 3): every index in the document is
++  // written from it directly, regardless of what live events already said
++  // -- the only source for a job that emitted nothing live at all (a
++  // batch-cancelled job never dequeued, D16).
++  ensureJobsLength(event.jobs.length);
++  for (const entry of event.jobs) {
++    jobs.value[entry.index] = {
++      index: entry.index,
++      output: entry.output,
++      state: { kind: "finished", outcome: entry },
++      warningCount: entry.warnings.length,
++    };
++  }
++  finishedSummary.value = event;
++  runActive.value = false;
++  runHistoryRef.value?.refresh();
++}
++
++let listenersReady: Promise<[UnlistenFn, UnlistenFn]> | null = null;
++let unlistenJobEvent: UnlistenFn | null = null;
++let unlistenRunFinished: UnlistenFn | null = null;
++
++function ensureListeners(): Promise<[UnlistenFn, UnlistenFn]> {
++  if (!listenersReady) {
++    listenersReady = Promise.all([
++      listen<JobEvent>(JOB_EVENT_CHANNEL, (e) => onJobEvent(e.payload)),
++      listen<RunFinishedEvent>(RUN_FINISHED_CHANNEL, (e) => onRunFinished(e.payload)),
++    ]);
++    void listenersReady.then(([un1, un2]) => {
++      unlistenJobEvent = un1;
++      unlistenRunFinished = un2;
++    });
++  }
++  return listenersReady;
++}
++
++onMounted(() => {
++  void ensureListeners();
++});
++
++onUnmounted(() => {
++  unlistenJobEvent?.();
++  unlistenRunFinished?.();
++});
++
++watch(
++  () => props.pendingRun,
++  async (req) => {
++    if (!req) {
++      return;
++    }
++    await ensureListeners();
++    jobs.value = [];
++    logLines.value = [];
++    finishedSummary.value = null;
++    startError.value = null;
++    actionError.value = null;
++    runActive.value = true;
++    try {
++      const started = await startRun({
++        profile: req.profile,
++        source: req.source ?? undefined,
++        output: req.output ?? undefined,
++        jobs: req.jobs ?? undefined,
++      });
++      ensureJobsLength(started.total_jobs);
++    } catch (e) {
++      startError.value = e as IpcError;
++      runActive.value = false;
++    } finally {
++      emit("consumed");
++    }
++  },
++  { immediate: true },
++);
++
++async function onCancelBatch() {
++  actionError.value = null;
++  try {
++    await cancelRun();
++  } catch (e) {
++    actionError.value = e as IpcError;
++  }
++}
++
++async function onCancelJob(index: number) {
++  actionError.value = null;
++  try {
++    await cancelJob(index);
++  } catch (e) {
++    actionError.value = e as IpcError;
++  }
++}
++
++const finishedCount = computed(
++  () => jobs.value.filter((j) => j.state.kind === "finished").length,
++);
++
++const joblogNoteKey = computed(() => {
++  switch (finishedSummary.value?.joblog_status) {
++    case "incomplete":
++      return "jobs-joblog-incomplete";
++    case "unavailable":
++      return "jobs-joblog-unavailable";
++    default:
++      return null;
++  }
++});
+ </script>
+ 
+ <template>
+   <section data-testid="view-jobs">
+     <h2>{{ $t("nav-jobs") }}</h2>
++
++    <p
++      v-if="startError"
++      role="alert"
++    >
++      {{ $t(startError.code, startError.params) }}
++    </p>
++    <p
++      v-if="actionError"
++      role="alert"
++    >
++      {{ $t(actionError.code, actionError.params) }}
++    </p>
++
++    <template v-if="jobs.length > 0 || runActive || finishedSummary">
++      <section data-testid="jobs-batch-header">
++        <p>{{ $t("jobs-batch-progress", { finished: finishedCount, total: jobs.length }) }}</p>
++        <button
++          type="button"
++          data-testid="cancel-batch"
++          :disabled="!runActive"
++          :title="$t('jobs-cancel-batch-tooltip')"
++          @click="onCancelBatch"
++        >
++          {{ $t("jobs-cancel-batch-label") }}
++        </button>
++      </section>
++
++      <table data-testid="jobs-table">
++        <caption>
++          {{ $t("jobs-table-caption") }}
++        </caption>
++        <thead>
++          <tr>
++            <th scope="col">
++              {{ $t("jobs-col-output") }}
++            </th>
++            <th scope="col">
++              {{ $t("jobs-col-state") }}
++            </th>
++            <th scope="col">
++              {{ $t("jobs-col-progress") }}
++            </th>
++            <th scope="col">
++              {{ $t("jobs-col-actions") }}
++            </th>
++          </tr>
++        </thead>
++        <tbody>
++          <JobRow
++            v-for="job in jobs"
++            :key="job.index"
++            :job="job"
++            @cancel="onCancelJob"
++          />
++        </tbody>
++      </table>
++
++      <LiveLog
++        :jobs="jobs"
++        :lines="logLines"
++      />
++
++      <p
++        aria-live="polite"
++        data-testid="jobs-run-summary"
++      >
++        <template v-if="finishedSummary">
++          {{
++            $t("jobs-summary-line", {
++              ok: finishedSummary.summary.ok,
++              warning: finishedSummary.summary.warning,
++              failed: finishedSummary.summary.failed,
++              cancelled: finishedSummary.summary.cancelled,
++            })
++          }}
++          <template v-if="joblogNoteKey">
++            {{ $t(joblogNoteKey) }}
++          </template>
++        </template>
++      </p>
++    </template>
++    <p
++      v-else
++      data-testid="jobs-empty"
++    >
++      {{ $t("jobs-no-run") }}
++    </p>
++
++    <RunHistory ref="runHistoryRef" />
+   </section>
+ </template>

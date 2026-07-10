@@ -1,0 +1,297 @@
+# Review package: 3f66a4e..a7c76ae
+
+## Commits
+a7c76ae feat(cli): SIGINT cancels the batch via ctrlc, exit 130 (D16)
+
+## Files changed
+ Cargo.lock                              | 66 +++++++++++++++++++++++++++++++++
+ crates/muxsmith-cli/Cargo.toml          |  1 +
+ crates/muxsmith-cli/src/commands/run.rs | 20 +++++++---
+ 3 files changed, 82 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index f60c8ac..e0d3972 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -81,37 +81,52 @@ name = "autocfg"
+ version = "1.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+ 
+ [[package]]
+ name = "bitflags"
+ version = "2.13.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
+ 
++[[package]]
++name = "block2"
++version = "0.6.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5"
++dependencies = [
++ "objc2",
++]
++
+ [[package]]
+ name = "bstr"
+ version = "1.12.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "5cee35f73844aa3014bb606320a6c1f010249dbdf43342fe54b5a4f6a8ed4b79"
+ dependencies = [
+  "memchr",
+  "regex-automata",
+  "serde_core",
+ ]
+ 
+ [[package]]
+ name = "cfg-if"
+ version = "1.0.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+ 
++[[package]]
++name = "cfg_aliases"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
++
+ [[package]]
+ name = "clap"
+ version = "4.6.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1ddb117e43bbf7dacf0a4190fef4d345b9bad68dfc649cb349e7d17d28428e51"
+ dependencies = [
+  "clap_builder",
+  "clap_derive",
+ ]
+ 
+@@ -144,26 +159,49 @@ name = "clap_lex"
+ version = "1.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+ 
+ [[package]]
+ name = "colorchoice"
+ version = "1.0.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
+ 
++[[package]]
++name = "ctrlc"
++version = "3.5.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e0b1fab2ae45819af2d0731d60f2afe17227ebb1a1538a236da84c93e9a60162"
++dependencies = [
++ "dispatch2",
++ "nix",
++ "windows-sys",
++]
++
+ [[package]]
+ name = "difflib"
+ version = "0.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+ 
++[[package]]
++name = "dispatch2"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
++dependencies = [
++ "bitflags",
++ "block2",
++ "libc",
++ "objc2",
++]
++
+ [[package]]
+ name = "displaydoc"
+ version = "0.2.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1ac70aa55017e108007fbaf5aa0f54b021c98f92ff8af59d42eda9da96e3dd4f"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+  "syn",
+ ]
+@@ -333,20 +371,21 @@ name = "memchr"
+ version = "2.8.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
+ 
+ [[package]]
+ name = "muxsmith-cli"
+ version = "0.1.0"
+ dependencies = [
+  "assert_cmd",
+  "clap",
++ "ctrlc",
+  "fluent-bundle",
+  "muxsmith-core",
+  "predicates",
+  "schemars",
+  "serde_json",
+  "sys-locale",
+  "tempfile",
+  "unic-langid",
+ ]
+ 
+@@ -357,35 +396,62 @@ dependencies = [
+  "language-tags",
+  "regex",
+  "schemars",
+  "serde",
+  "serde_json",
+  "serde_path_to_error",
+  "tempfile",
+  "yaml_serde",
+ ]
+ 
++[[package]]
++name = "nix"
++version = "0.31.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
++dependencies = [
++ "bitflags",
++ "cfg-if",
++ "cfg_aliases",
++ "libc",
++]
++
+ [[package]]
+ name = "normalize-line-endings"
+ version = "0.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+ 
+ [[package]]
+ name = "num-traits"
+ version = "0.2.19"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+ dependencies = [
+  "autocfg",
+ ]
+ 
++[[package]]
++name = "objc2"
++version = "0.6.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3a12a8ed07aefc768292f076dc3ac8c48f3781c8f2d5851dd3d98950e8c5a89f"
++dependencies = [
++ "objc2-encode",
++]
++
++[[package]]
++name = "objc2-encode"
++version = "4.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
++
+ [[package]]
+ name = "once_cell"
+ version = "1.21.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+ 
+ [[package]]
+ name = "once_cell_polyfill"
+ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+diff --git a/crates/muxsmith-cli/Cargo.toml b/crates/muxsmith-cli/Cargo.toml
+index fde2f0f..912aff5 100644
+--- a/crates/muxsmith-cli/Cargo.toml
++++ b/crates/muxsmith-cli/Cargo.toml
+@@ -4,20 +4,21 @@ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ publish = false
+ 
+ [[bin]]
+ name = "muxsmith"
+ path = "src/main.rs"
+ 
+ [dependencies]
+ clap = { version = "4.6.1", features = ["derive"] }
++ctrlc = "3"
+ fluent-bundle = "0.16.0"
+ muxsmith-core = { path = "../muxsmith-core" }
+ schemars = "1.2.1"
+ serde_json = "1.0.150"
+ sys-locale = "0.3.2"
+ unic-langid = "0.9.6"
+ 
+ [dev-dependencies]
+ assert_cmd = "2.2.2"
+ predicates = "3.1.4"
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index 68f0797..a054761 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -26,23 +26,24 @@ use crate::i18n::Renderer;
+ /// job, the first time progress reaches or passes it; the printed
+ /// `$percent` is the threshold itself (not the raw reported value), so a
+ /// single `Progress` event that jumps past several thresholds at once (a
+ /// coarse-grained mkvmerge report) still renders one line per threshold
+ /// crossed, in ascending order.
+ const MILESTONES: [u8; 3] = [25, 50, 75];
+ 
+ /// Runs `muxsmith run`. Returns the mkvmerge-style exit code: worst-of fold
+ /// of every planning diagnostic and every job outcome (0 clean / 1 worst is
+ /// a warning / 2 worst is an error), overridden to 130 if the cancellation
+-/// flag ended the batch. That flag is a plain, never-flipped
+-/// `Arc<AtomicBool>` in this task's scope (SIGINT wiring lands separately),
+-/// so the 130 branch is structurally present but currently unreachable.
++/// flag ended the batch (D16). A `ctrlc` handler installed just before the
++/// queue runs flips that flag on the first SIGINT (the queue kills
++/// in-flight jobs, partials are deleted, the summary still prints) and
++/// force-exits on a second SIGINT during cleanup.
+ ///
+ /// Spec 5.5 level 3: identical to `dry-run` through `plan_batch` (re-plans
+ /// from scratch immediately before executing, never reuses a stale
+ /// dry-run), printing that planning report in exactly dry-run's human
+ /// format first. If nothing plans cleanly enough to mux, the batch is
+ /// folded and the function returns exactly like `dry-run` would, without
+ /// ever touching the queue.
+ #[allow(clippy::too_many_arguments)]
+ pub fn run(
+     profile_path: &Path,
+@@ -176,23 +177,32 @@ pub fn run(
+         .collect();
+     // `outputs` is moved into `MilestoneState` below (human mode only needs
+     // it there); json mode needs its own copy to pair with `outcomes` once
+     // the queue finishes, so it is cloned once, up front, regardless of
+     // mode (cheap: one string per job).
+     let json_outputs = outputs.clone();
+     let spawner = LiveSpawner {
+         mkvmerge: mkv.path().into(),
+     };
+     let opts = QueueOpts { jobs, fail_fast };
+-    // Plain flag (Task 10 wires SIGINT onto this); it never flips in this
+-    // task's scope.
+     let cancel = Arc::new(AtomicBool::new(false));
++
++    // Single-level SIGINT (D16): first Ctrl-C requests graceful cancel
++    // (queue kills in-flight, partials deleted, summary printed, exit 130);
++    // a second Ctrl-C during cleanup force-exits immediately.
++    let handler_cancel = Arc::clone(&cancel);
++    let _ = ctrlc::set_handler(move || {
++        if handler_cancel.swap(true, Ordering::SeqCst) {
++            std::process::exit(130);
++        }
++    });
++
+     let (tx, rx) = mpsc::channel();
+ 
+     // `run_queue` blocks until the whole batch finishes, so it runs on its
+     // own scoped thread; this (the calling) thread drains `rx` concurrently,
+     // rendering milestone lines as jobs progress rather than only after the
+     // batch completes. The queue thread owns the only `Sender`, so it drops
+     // when that thread's closure returns, ending the `for event in rx` loop
+     // below deterministically (no explicit `drop` needed on this side).
+     let outcomes = std::thread::scope(|scope| {
+         let queue_cancel = Arc::clone(&cancel);

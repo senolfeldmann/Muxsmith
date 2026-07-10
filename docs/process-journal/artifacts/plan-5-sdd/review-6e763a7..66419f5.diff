@@ -1,0 +1,216 @@
+# Review package: 6e763a7..66419f5
+
+## Commits
+66419f5 fix(gui): per-action export busy flags, live-log filter reset, fs rationale
+
+## Files changed
+ src-tauri/src/lib.rs          |  5 +++++
+ src/components/LiveLog.vue    | 13 +++++++++++++
+ src/components/RunHistory.vue | 36 +++++++++++++++++++++++++-----------
+ 3 files changed, 43 insertions(+), 11 deletions(-)
+
+## Diff
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 57d7b56..c9e45ae 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -405,20 +405,25 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
+ ///
+ /// The `fs` plugin (T11, D30 gap closure: export a finished job's log as
+ /// text) is the write half of the history view's save-as flow -- the
+ /// `dialog` plugin's own `save()` only returns a user-picked path, it never
+ /// writes bytes. Paired deliberately with `dialog`, not `fs:default`: a
+ /// `save()` call adds its picked path to the fs plugin's own scope for the
+ /// rest of that session (Tauri's documented combo for this exact pattern),
+ /// so `fs:allow-write-text-file` alone (`capabilities/default.json`) is
+ /// sufficient -- no static path allowlist needed, and the frontend can
+ /// never write anywhere the user did not just pick via the OS dialog.
++/// Chosen over a bespoke `#[tauri::command]` write for the same reason:
++/// the plugin route inherits Tauri's own "this path came from a real save
++/// dialog" trust chain end to end, where a custom command would accept any
++/// frontend-supplied path and have to hand-roll that provenance check
++/// itself.
+ ///
+ /// # Panics
+ ///
+ /// Panics if the Tauri runtime fails to launch. This mirrors the Tauri
+ /// scaffold default: a launch failure here means the webview/window
+ /// backend is unusable, which has no meaningful recovery.
+ #[cfg_attr(mobile, tauri::mobile_entry_point)]
+ pub fn run() {
+     tauri::Builder::default()
+         .plugin(tauri_plugin_dialog::init())
+diff --git a/src/components/LiveLog.vue b/src/components/LiveLog.vue
+index a41d93e..7817745 100644
+--- a/src/components/LiveLog.vue
++++ b/src/components/LiveLog.vue
+@@ -13,20 +13,33 @@ interface LogLine {
+   line: string;
+ }
+ 
+ const props = defineProps<{
+   jobs: JobRowData[];
+   lines: LogLine[];
+ }>();
+ 
+ const selected = ref<number | "all">("all");
+ 
++// A new run must not inherit the previous run's per-job filter (its index
++// may not even exist in the new batch, silently blanking the pane).
++// JobsView replaces its `jobs` array reference exactly once per run
++// dispatch (`jobs.value = []`) and only mutates it afterwards, so a
++// non-deep watch on the prop reference is a precise new-run signal -- no
++// extra prop or event needed.
++watch(
++  () => props.jobs,
++  () => {
++    selected.value = "all";
++  },
++);
++
+ const filtered = computed(() =>
+   selected.value === "all" ? props.lines : props.lines.filter((l) => l.index === selected.value),
+ );
+ 
+ const logEl = ref<HTMLElement | null>(null);
+ // Sticky-bottom auto-scroll: true whenever the pane is scrolled at (or
+ // near) its bottom edge, so a fresh line keeps the view pinned there; a
+ // user who scrolls up to read history clears it, and new lines then land
+ // without yanking the view away from what they are reading.
+ const stickToBottom = ref(true);
+diff --git a/src/components/RunHistory.vue b/src/components/RunHistory.vue
+index 9416474..f0b560e 100644
+--- a/src/components/RunHistory.vue
++++ b/src/components/RunHistory.vue
+@@ -23,21 +23,25 @@ const fluent = useFluent();
+ 
+ const runs = ref<RunMeta[]>([]);
+ const loading = ref(false);
+ const loadError = ref<IpcError | null>(null);
+ 
+ const selectedRunId = ref<string | null>(null);
+ const selectedJobIndex = ref<number | null>(null);
+ const jobLog = ref<JobLogRecord | null>(null);
+ const jobLogLoading = ref(false);
+ const jobLogError = ref<IpcError | null>(null);
+-const exportBusy = ref(false);
++// One busy flag per export action: save's native dialog can stay open for
++// as long as the user likes and must not disable the unrelated copy
++// button, and copy's own async gap needs its own double-click guard.
++const copyBusy = ref(false);
++const saveBusy = ref(false);
+ const exportFailed = ref(false);
+ 
+ async function refresh() {
+   loading.value = true;
+   loadError.value = null;
+   try {
+     runs.value = await listRuns();
+   } catch (e) {
+     loadError.value = e as IpcError;
+   } finally {
+@@ -76,52 +80,61 @@ async function selectJob(index: number) {
+   } finally {
+     jobLogLoading.value = false;
+   }
+ }
+ 
+ function logText(record: JobLogRecord): string {
+   return record.lines.join("\n");
+ }
+ 
+ async function copyLog() {
+-  if (!jobLog.value) {
++  if (!jobLog.value || copyBusy.value) {
+     return;
+   }
+   exportFailed.value = false;
++  copyBusy.value = true;
+   try {
+     await writeText(logText(jobLog.value));
+   } catch {
+     exportFailed.value = true;
++  } finally {
++    copyBusy.value = false;
+   }
+ }
+ 
+ async function saveLog() {
+-  if (!jobLog.value || selectedRunId.value === null || selectedJobIndex.value === null) {
++  // Captured before the dialog gap: the native save dialog can stay open
++  // indefinitely, and the user may select a different job meanwhile --
++  // what gets written must be the log that was shown when Save was
++  // clicked, matching the suggested filename built from the same ids.
++  const record = jobLog.value;
++  const runId = selectedRunId.value;
++  const jobIndex = selectedJobIndex.value;
++  if (!record || runId === null || jobIndex === null || saveBusy.value) {
+     return;
+   }
+   exportFailed.value = false;
+-  exportBusy.value = true;
++  saveBusy.value = true;
+   try {
+-    const suggested = `${selectedRunId.value}-job-${selectedJobIndex.value}.log`;
+     const path = await save({
+-      defaultPath: suggested,
++      defaultPath: `${runId}-job-${jobIndex}.log`,
+       filters: [
+         { name: fluent.$t("jobs-history-export-filter-name"), extensions: ["log", "txt"] },
+       ],
+     });
+     if (path) {
+-      await writeTextFile(path, logText(jobLog.value));
++      await writeTextFile(path, logText(record));
+     }
+   } catch {
+     exportFailed.value = true;
+   } finally {
+-    exportBusy.value = false;
++    saveBusy.value = false;
+   }
+ }
+ 
+ defineExpose({ refresh });
+ </script>
+ 
+ <template>
+   <section data-testid="jobs-history">
+     <h3>{{ $t("jobs-history-heading") }}</h3>
+     <button
+@@ -226,31 +239,32 @@ defineExpose({ refresh });
+           role="alert"
+         >
+           {{ $t(jobLogError.code, jobLogError.params) }}
+         </p>
+         <template v-else-if="jobLog">
+           <h4>{{ $t("jobs-history-log-region-label") }}</h4>
+           <pre data-testid="jobs-history-log-text">{{ logText(jobLog) }}</pre>
+           <button
+             type="button"
+             data-testid="jobs-history-copy"
+-            :disabled="exportBusy"
++            :disabled="copyBusy"
++            :aria-busy="copyBusy"
+             :title="$t('jobs-history-copy-tooltip')"
+             @click="copyLog"
+           >
+             {{ $t("jobs-history-copy-log") }}
+           </button>
+           <button
+             type="button"
+             data-testid="jobs-history-save"
+-            :disabled="exportBusy"
+-            :aria-busy="exportBusy"
++            :disabled="saveBusy"
++            :aria-busy="saveBusy"
+             :title="$t('jobs-history-save-tooltip')"
+             @click="saveLog"
+           >
+             {{ $t("jobs-history-save-log") }}
+           </button>
+           <p
+             v-if="exportFailed"
+             role="alert"
+           >
+             {{ $t("jobs-history-export-failed") }}

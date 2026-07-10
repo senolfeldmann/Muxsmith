@@ -1,0 +1,246 @@
+# Review package: 5ea0929..e06bda0
+
+## Commits
+e06bda0 fix(core): close D25 lost-cancellation race in the mid-spawn window
+
+## Files changed
+ crates/muxsmith-core/src/executor/job.rs   |  21 ++++--
+ crates/muxsmith-core/src/executor/queue.rs | 101 +++++++++++++++++++++++++++--
+ 2 files changed, 114 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/executor/job.rs b/crates/muxsmith-core/src/executor/job.rs
+index 70a8859..a0a2910 100644
+--- a/crates/muxsmith-core/src/executor/job.rs
++++ b/crates/muxsmith-core/src/executor/job.rs
+@@ -380,37 +380,50 @@ mod tests {
+     /// closure already reports true before `run_job` ever calls the
+     /// spawner must become `Cancelled` without spawning, without creating
+     /// the output's parent dir, and - critically - without deleting
+     /// anything (a pre-existing output from an earlier run must survive,
+     /// exactly like the spawn-failure case above).
+     #[test]
+     fn pre_spawn_cancellation_skips_spawn_and_deletes_nothing() {
+         let dir = tempfile::tempdir().unwrap();
+         let output = dir.path().join("out.mkv");
+         std::fs::write(&output, b"valid output from a prior run").unwrap();
++        let nested = spec(dir.path().join("never/created/out.mkv"));
+         let spec = spec(output);
+         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+         let cancelled = || true;
+ 
+         let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
+ 
+         assert_eq!(outcome.state, JobState::Cancelled);
+         assert_eq!(outcome.exit_code, None);
+         assert!(outcome.errors.is_empty());
+-        assert!(
+-            fake.spawned().is_empty(),
+-            "the spawner must never be called once already cancelled"
+-        );
+         assert!(
+             spec.output.exists(),
+             "pre-spawn cancel must delete nothing (D25)"
+         );
++
++        // Zero filesystem touch, pinned directly: with a nested output
++        // whose parent does not exist, a pre-spawn cancel must not even
++        // create that parent directory (create_dir_all sits after the
++        // check).
++        let outcome = run_job(&fake, &nested, &cancelled, &mut |_| {});
++
++        assert_eq!(outcome.state, JobState::Cancelled);
++        assert!(
++            !nested.output.parent().unwrap().exists(),
++            "pre-spawn cancel must not create the output's parent dir"
++        );
++        assert!(
++            fake.spawned().is_empty(),
++            "the spawner must never be called once already cancelled"
++        );
+     }
+ 
+     /// D25 delete_partial error surfacing (HANDOFF backlog item): a
+     /// `remove_file` failure other than `NotFound` is pushed into
+     /// `outcome.errors` as a `delete_partial_failed: <detail>` third-party
+     /// passthrough, the one deliberate exception to core staying
+     /// prose-free. A directory at the output path is a portable, no-perms
+     /// way to force `remove_file` to fail with a non-`NotFound` error on
+     /// every OS this runs on.
+     #[test]
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 349dbea..1d1dbb5 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -224,21 +224,21 @@ pub fn run_queue(
+                         // spawner or the filesystem.
+                         if !ctl.job_cancelled(index) {
+                             let _ = events.send(JobEvent::Started {
+                                 index,
+                                 output: spec.output.clone(),
+                             });
+                         }
+ 
+                         let registering = RegisteringSpawner {
+                             inner: spawner,
+-                            killers: &ctl.killers,
++                            ctl,
+                             index,
+                         };
+                         let mut on_progress = |progress: JobProgress| {
+                             let event = match progress {
+                                 JobProgress::Percent(percent) => {
+                                     JobEvent::Progress { index, percent }
+                                 }
+                                 JobProgress::WarningLine(text) => JobEvent::Warning { index, text },
+                                 JobProgress::ErrorLine(text) => JobEvent::Error { index, text },
+                                 JobProgress::OutputLine(line) => JobEvent::Output { index, line },
+@@ -300,31 +300,46 @@ fn worker_count(jobs: usize, spec_count: usize) -> usize {
+     jobs.max(1).min(spec_count.max(1))
+ }
+ 
+ /// Wraps the caller's spawner so a successful spawn registers the new job's
+ /// [`Killer`] into the control's registry under its own spec `index` (D25)
+ /// before `run_job` starts streaming, giving [`QueueControl::cancel_job`]
+ /// and the watcher (batch cancel) a handle to an in-flight job neither owns.
+ /// The worker loop removes the entry once `run_job` returns.
+ struct RegisteringSpawner<'a> {
+     inner: &'a (dyn Spawn + Sync),
+-    killers: &'a Mutex<HashMap<usize, Killer>>,
++    ctl: &'a QueueControl,
+     index: usize,
+ }
+ 
+ impl Spawn for RegisteringSpawner<'_> {
+     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
+         let job = self.inner.spawn(argv)?;
+-        self.killers
++        let killer = job.killer();
++        self.ctl
++            .killers
+             .lock()
+             .unwrap()
+-            .insert(self.index, job.killer());
++            .insert(self.index, Arc::clone(&killer));
++        // Closes the D25 lost-cancellation window: a cancel_job landing
++        // between run_job's pre-spawn check and the insert above found no
++        // killer to invoke, and a normally-exiting process never reaches
++        // the `None if cancelled()` arm - the request would be silently
++        // dropped. Re-check now that the killer is registered and kill the
++        // fresh process ourselves if so. The ordering makes the window
++        // airtight: a cancel_job earlier than this check is seen via the
++        // flag here; one later than it finds the killer in the map. A
++        // double invocation (both paths firing) is harmless - Killer is
++        // idempotent and best-effort by contract (spawn.rs).
++        if self.ctl.job_cancelled(self.index) {
++            killer();
++        }
+         Ok(job)
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use std::sync::mpsc;
+     use std::sync::{Barrier, Condvar};
+ 
+@@ -892,20 +907,98 @@ mod tests {
+             !specs[0].output.exists(),
+             "the killed job's partial must be deleted (D17)"
+         );
+         assert_eq!(
+             kills.load(Ordering::SeqCst),
+             1,
+             "exactly one kill, for the targeted job only"
+         );
+     }
+ 
++    /// Wraps a [`FakeSpawner`] so `spawn` parks in the exact D25 race
++    /// window: after `run_job`'s pre-spawn check has passed (`run_job`
++    /// only calls `spawn` at all once that check returned false) and
++    /// before [`RegisteringSpawner`] can insert the killer (insertion
++    /// happens only after this returns). It signals the test over `ready`,
++    /// then blocks until `release` fires, so the test can call
++    /// [`QueueControl::cancel_job`] inside the window deterministically -
++    /// no sleeps, no timing bets.
++    struct MidSpawnGateSpawner<'a> {
++        inner: &'a FakeSpawner,
++        ready: Sender<()>,
++        release: Mutex<mpsc::Receiver<()>>,
++    }
++
++    impl Spawn for MidSpawnGateSpawner<'_> {
++        fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
++            let job = self.inner.spawn(argv)?;
++            let _ = self.ready.send(());
++            let _ = self.release.lock().unwrap().recv();
++            Ok(job)
++        }
++    }
++
++    /// D25 lost-cancellation race: `cancel_job` fired while the process is
++    /// mid-spawn (pre-spawn check already passed, killer not yet
++    /// registered) finds no killer to invoke; without a post-registration
++    /// re-check the flag alone changes nothing, because the process exits
++    /// normally (`Some(0)`) and the `None if cancelled()` arm never fires -
++    /// the cancel request would be silently dropped and the job would
++    /// complete `Ok`. The fix re-checks `job_cancelled` in
++    /// [`RegisteringSpawner::spawn`] right after inserting the killer and
++    /// kills the fresh process itself if set.
++    #[test]
++    fn cancel_job_during_spawn_window_is_not_lost() {
++        let dir = tempfile::tempdir().unwrap();
++        let specs = vec![spec(0, dir.path().join("a.mkv"))];
++        std::fs::write(&specs[0].output, b"partial").unwrap();
++        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
++        let (ready_tx, ready_rx) = mpsc::channel();
++        let (release_tx, release_rx) = mpsc::channel();
++        let spawner = MidSpawnGateSpawner {
++            inner: &fake,
++            ready: ready_tx,
++            release: Mutex::new(release_rx),
++        };
++        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
++        let (tx, rx) = mpsc::channel();
++        let opts = QueueOpts {
++            jobs: 1,
++            fail_fast: false,
++        };
++
++        let outcomes = std::thread::scope(|scope| {
++            let handle = scope.spawn(|| run_queue(&specs, &spawner, opts, &ctl, &tx));
++            ready_rx
++                .recv_timeout(Duration::from_secs(10))
++                .expect("spawn never reached the race window");
++            // The killer for job 0 is provably not registered yet (the
++            // spawner is still parked inside spawn), so this cancel_job
++            // finds nothing to kill - the exact lost-cancellation window.
++            ctl.cancel_job(0);
++            release_tx.send(()).expect("run_queue thread hung up early");
++            handle.join().expect("run_queue thread panicked")
++        });
++        drop(tx);
++        let _events: Vec<JobEvent> = rx.iter().collect();
++
++        assert_eq!(
++            outcomes[0].state,
++            JobState::Cancelled,
++            "a cancel_job landing mid-spawn must not be silently dropped"
++        );
++        assert!(
++            !specs[0].output.exists(),
++            "the killed job's partial must be deleted (D17)"
++        );
++    }
++
+     // A tiny batch with a wildly oversized `--jobs` must not spawn one OS
+     // thread per requested worker: `worker_count` is the extracted, pure cap
+     // decision (no threads involved), unit-tested directly here.
+ 
+     #[test]
+     fn worker_count_is_capped_at_spec_count() {
+         assert_eq!(worker_count(100_000, 2), 2);
+         assert_eq!(worker_count(1, 2), 1);
+         assert_eq!(
+             worker_count(0, 2),

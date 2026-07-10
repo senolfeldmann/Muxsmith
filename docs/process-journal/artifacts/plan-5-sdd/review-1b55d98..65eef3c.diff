@@ -1,0 +1,1602 @@
+# Review package: 1b55d98..65eef3c
+
+## Commits
+65eef3c test: shared support module (FakeIdent, lang) and tempdir-leak fix (D18)
+
+## Files changed
+ crates/muxsmith-core/tests/command_integration.rs |  34 +-----
+ crates/muxsmith-core/tests/planner_resolution.rs  | 130 ++++++++--------------
+ crates/muxsmith-core/tests/suggestions.rs         |  48 +++-----
+ crates/muxsmith-core/tests/support/mod.rs         |  39 +++++++
+ 4 files changed, 107 insertions(+), 144 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/tests/command_integration.rs b/crates/muxsmith-core/tests/command_integration.rs
+index 1091895..2a86329 100644
+--- a/crates/muxsmith-core/tests/command_integration.rs
++++ b/crates/muxsmith-core/tests/command_integration.rs
+@@ -27,34 +27,34 @@
+ //! headers", e.g. AVI/MP4 -- MKV likewise). A single-file group is the
+ //! degenerate n=1 case, which the same manual page states is equivalent to
+ //! prefixing the file with `=` (disables VOB-sibling auto-detection): a
+ //! harmless no-op for a non-VOB source. Manually running
+ //! `mkvmerge -o out.mkv --audio-tracks 0 ... ( a.mkv ) --subtitle-tracks 0 ... ( b.mkv ) --track-order 0:0,1:0`
+ //! against two real single-track MKVs produced exit 0 and the correctly
+ //! combined two-track output, confirming the existing `command.rs` argv
+ //! shape needs no change for Task 12.
+ 
+ use std::collections::HashMap;
+-use std::path::Path;
+ use std::process::Command;
+ 
+-use muxsmith_core::capability::runtime::{LanguageIndex, Mkvmerge};
++use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::command::command;
+-use muxsmith_core::identify::{
+-    Identification, Identify, IdentifyCache, IdentifyError, LiveIdentifier, PropValue, Track,
+-};
++use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier, PropValue, Track};
+ use muxsmith_core::planner::{
+     Assignment, AttachmentPlan, ChapterSource, Plan, PrimaryAttachments, RunInputs, TagFlags,
+     TitleAction, plan_batch,
+ };
+ use muxsmith_core::profile::load::{Format, from_str};
+ 
++mod support;
++use support::{FakeIdent, lang};
++
+ // ---------------------------------------------------------------------------
+ // Pure golden: the spec 4.1 reference example, end to end.
+ // ---------------------------------------------------------------------------
+ 
+ // The full reference profile (spec 4.1, completed with the German subtitle
+ // trio the spec elides "for brevity"; see fixtures/reference.yaml's own
+ // history). Ten rules in profile order: video, audio en, audio de, subtitle
+ // en forced/plain/SDH, subtitle de forced/plain/SDH, external Turkish
+ // subtitle donor.
+ const REFERENCE_PROFILE: &str = include_str!("fixtures/reference.yaml");
+@@ -66,44 +66,20 @@ const REFERENCE_PROFILE: &str = include_str!("fixtures/reference.yaml");
+ // rules, and track 5 (subtitle, en, not forced, flag_hearing_impaired) is
+ // excluded from the plain rule's `not` clause and falls to the SDH rule.
+ const REFERENCE_PRIMARY: &str = include_str!("fixtures/identify/reference-primary.json");
+ 
+ // The external Turkish-subtitle donor: one subtitle track, matched by the
+ // reference profile's final rule (`exact: { type: subtitles }`, no further
+ // constraint) regardless of its own language/name, since that rule's
+ // `changes` overwrite both anyway.
+ const REFERENCE_DONOR: &str = include_str!("fixtures/identify/reference-donor.json");
+ 
+-// A fake identifier backed by fixture JSON keyed on file name (mirrors
+-// `planner_resolution.rs`'s `FakeIdent`).
+-struct FakeIdent {
+-    by_name: HashMap<String, Identification>,
+-}
+-
+-impl Identify for FakeIdent {
+-    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+-        let name = path.file_name().unwrap().to_str().unwrap();
+-        self.by_name
+-            .get(name)
+-            .cloned()
+-            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
+-    }
+-}
+-
+-fn lang() -> LanguageIndex {
+-    LanguageIndex::from_rows(&[
+-        ["English", "eng", "eng", "en"],
+-        ["German", "ger", "ger", "de"],
+-        ["Turkish", "tur", "tur", "tr"],
+-    ])
+-}
+-
+ #[test]
+ fn reference_example_end_to_end() {
+     let dir = tempfile::tempdir().unwrap();
+     // The primary must match `input.pattern` (`S(?<season>\d{2})E(?<episode>\d{2})`)
+     // and the external locator's `match_to_source` donor must share its
+     // `{match}` identifier ("S01E01") as a basename substring (spec 4.6).
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.srt"), b"x").unwrap();
+ 
+     let profile = from_str(REFERENCE_PROFILE, Format::Yaml).unwrap();
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 460916b..f76ca41 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1,98 +1,76 @@
+ use std::collections::HashMap;
+-use std::path::Path;
+ 
+-use muxsmith_core::capability::runtime::LanguageIndex;
+-use muxsmith_core::identify::{Identification, Identify, IdentifyError};
++use muxsmith_core::identify::Identification;
+ use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::match_expr::Scalar;
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::report::{DiagCode, Severity};
+ 
+-// A fake identifier backed by fixture JSON keyed on file name.
+-struct FakeIdent {
+-    by_name: HashMap<String, Identification>,
+-}
+-impl Identify for FakeIdent {
+-    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+-        let name = path.file_name().unwrap().to_str().unwrap();
+-        self.by_name
+-            .get(name)
+-            .cloned()
+-            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
+-    }
+-}
+-
+-fn lang() -> LanguageIndex {
+-    LanguageIndex::from_rows(&[
+-        ["English", "eng", "eng", "en"],
+-        ["German", "ger", "ger", "de"],
+-        ["Turkish", "tur", "tur", "tr"],
+-    ])
+-}
++mod support;
++use support::{FakeIdent, lang};
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+ // Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
+ // id2 "cover.jpg"), the fixture the brief's attachment-rule test cases use.
+ const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
+ 
+ fn plan_one(
+     profile_yaml: &str,
+     file_name: &str,
+     ident_json: &str,
+-) -> muxsmith_core::planner::Batch {
++) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join(file_name), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         file_name.to_string(),
+         Identification::from_json(ident_json).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+-    batch
++    (batch, dir)
+ }
+ 
+ const P_VIDEO_AUDIO: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+     - match: { exact: { type: audio, language: en } }
+ "#;
+ 
+ #[test]
+ fn resolves_each_rule_to_one_track() {
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     assert_eq!(batch.files.len(), 1);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.assignments.len(), 2);
+     assert_eq!(plan.assignments[0].track_id, Some(0));
+     assert_eq!(plan.assignments[1].track_id, Some(1));
+ }
+ 
+ // Task 4: Plan/Assignment resolution-field defaults (Tasks 5-8 fill real
+ // resolution; this only asserts the wiring is defaulted correctly).
+ #[test]
+ fn plan_and_assignment_carry_resolution_field_defaults() {
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments,
+         muxsmith_core::planner::AttachmentPlan {
+             primary: muxsmith_core::planner::PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         }
+     );
+@@ -116,21 +94,21 @@ fn changes_resolve_to_applied_changes_in_property_order() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+       changes:
+         language: tr
+         track_name: X
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.assignments[0].changes,
+         vec![
+             AppliedChange {
+                 property: "language".into(),
+                 value: Scalar::Str("tr".into()),
+             },
+@@ -149,21 +127,21 @@ tracks:
+ fn invalid_changes_language_is_plan_time_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+       changes:
+         language: notalanguage
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue
+                 && d.config_path == "tracks[0].changes.language"),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+@@ -176,21 +154,21 @@ tracks:
+ fn changes_language_non_string_value_is_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+       changes:
+         language: true
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue
+                 && d.config_path == "tracks[0].changes.language"),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+@@ -204,111 +182,111 @@ tracks:
+ fn changes_language_pt_br_regional_tag_is_not_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+       changes:
+         language: pt-BR
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         !fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
+ #[test]
+ fn ambiguous_rule_when_two_tracks_match() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::AmbiguousRule)
+     );
+ }
+ 
+ #[test]
+ fn missing_track_when_no_match_and_not_optional() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: de } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::MissingTrack)
+     );
+ }
+ 
+ #[test]
+ fn optional_absent_track_is_no_error() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+     - match: { exact: { type: audio, language: de } }
+       optional: true
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.assignments[1].track_id, None);
+ }
+ 
+ #[test]
+ fn overlapping_rules_when_two_rules_claim_one_track() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+     - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::OverlappingRules)
+     );
+ }
+ 
+ #[test]
+ fn keep_filename_renders_mkv_output() {
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     let plan = batch.files[0].plan.as_ref().unwrap();
+     assert!(
+         plan.output
+             .file_name()
+             .unwrap()
+             .to_str()
+             .unwrap()
+             .ends_with(".mkv")
+     );
+     assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv");
+@@ -317,73 +295,73 @@ fn keep_filename_renders_mkv_output() {
+ #[test]
+ fn keep_filename_on_mp4_source_replaces_extension_with_mkv() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mp4] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+     - match: { exact: { type: audio, language: en } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mp4", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mp4", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv");
+ }
+ 
+ // keep is file_stem + ".mkv" unconditionally (spec 4.8): it must never check
+ // whether the stem already looks like it ends in ".mkv" before appending --
+ // that conditional belongs to the template arm only. A source whose stem
+ // already ends in ".mkv" (a double extension, e.g. re-fed prior output) is
+ // the case that tells the two apart: the keep arm keeps the stem intact and
+ // still appends, the (wrong) shared-conditional version instead truncates
+ // one ".mkv" off.
+ #[test]
+ fn keep_filename_does_not_apply_the_templates_conditional_append() {
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv.mkv", SERIES);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Show.S01E01.mkv.mkv");
+ }
+ 
+ #[test]
+ fn template_filename_appends_mkv_when_missing() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'Custom' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Custom.mkv");
+ }
+ 
+ #[test]
+ fn template_filename_already_ending_in_mkv_is_not_doubled() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: 'Custom.mkv' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.output.file_name().unwrap(), "Custom.mkv");
+ }
+ 
+ #[test]
+ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+@@ -391,21 +369,20 @@ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     // Empty fixture map: FakeIdent::identify errors for every path.
+     let mut ident = FakeIdent {
+         by_name: HashMap::new(),
+     };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::UnidentifiableSource)
+         .unwrap_or_else(|| panic!("expected UnidentifiableSource, got: {:?}", fr.diagnostics));
+     assert!(
+         !d.params.get("detail").unwrap_or(&String::new()).is_empty(),
+@@ -443,21 +420,20 @@ tracks:
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     // Only the primary identifies; the donor has no fixture, so it fails.
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     // A present-but-unidentifiable donor is a hard error even though the
+     // rule is optional: optional only covers zero matches, not a broken file.
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::UnidentifiableSource),
+         "diags: {:?}",
+@@ -470,21 +446,21 @@ tracks:
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
+ #[test]
+ fn unrecognized_container_yields_unsupported_source_not_missing_track() {
+     let json = r#"{ "container": { "recognized": false, "supported": true },
+                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                     "tracks": [] }"#;
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let count = fr
+         .diagnostics
+         .iter()
+         .filter(|d| d.code == DiagCode::UnsupportedSource)
+         .count();
+     assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
+     assert!(
+         !fr.diagnostics
+@@ -493,21 +469,21 @@ fn unrecognized_container_yields_unsupported_source_not_missing_track() {
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
+ #[test]
+ fn unsupported_container_yields_unsupported_source_not_missing_track() {
+     let json = r#"{ "container": { "recognized": true, "supported": false },
+                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                     "tracks": [] }"#;
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let count = fr
+         .diagnostics
+         .iter()
+         .filter(|d| d.code == DiagCode::UnsupportedSource)
+         .count();
+     assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
+     assert!(
+         !fr.diagnostics
+@@ -518,21 +494,21 @@ fn unsupported_container_yields_unsupported_source_not_missing_track() {
+     );
+ }
+ 
+ #[test]
+ fn recognized_supported_zero_tracks_stays_missing_track_not_unsupported_source() {
+     // D21 decision #5: a recognized+supported container with zero tracks is
+     // NOT UnsupportedSource; it stays a per-rule MissingTrack case.
+     let json = r#"{ "container": { "recognized": true, "supported": true },
+                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                     "tracks": [] }"#;
+-    let batch = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
++    let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         !fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::UnsupportedSource),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+     assert!(
+@@ -582,21 +558,20 @@ tracks:
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     by_name.insert(
+         "Donor.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(root);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::SourceOverwrite),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+@@ -652,21 +627,20 @@ tracks:
+     by_name.insert(
+         "Show.S01E02.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     by_name.insert(
+         "Donor.S01E02.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(root);
+ 
+     // A never resolves B's donor itself, but its rendered output equals it -
+     // a batch-wide SourceOverwrite, invisible to a check scoped to A's own
+     // resolved donors.
+     let a = batch
+         .files
+         .iter()
+         .find(|f| f.source.ends_with("Show.S01E01.mkv"))
+         .unwrap();
+     assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+@@ -683,21 +657,21 @@ tracks:
+ fn empty_rendered_name_when_template_renders_to_dot() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '.' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+@@ -706,21 +680,21 @@ tracks:
+ fn empty_rendered_name_when_template_renders_to_empty_string() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+@@ -736,21 +710,21 @@ tracks:
+ fn empty_rendered_name_when_template_renders_to_literal_mkv() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '.mkv' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+@@ -765,38 +739,38 @@ tracks:
+ fn empty_rendered_name_when_template_field_renders_empty_before_literal_mkv() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+ output:
+   filename: { template: '{x}.mkv' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::EmptyRenderedName),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
+ // Two primaries whose profile renders both to a fixed literal name (no
+ // {match} field), in a sibling `out/` directory so pre-existing files in it
+ // are never rediscovered as extra primaries (input.recursive defaults true,
+ // scoped to `run.source` only). `policy` is threaded through as the run
+ // override; `None` exercises the profile default (`error`).
+-fn plan_two_same_output(policy: Option<CollisionPolicy>) -> Batch {
++fn plan_two_same_output(policy: Option<CollisionPolicy>) -> (Batch, tempfile::TempDir) {
+     let root = tempfile::tempdir().unwrap();
+     let src_dir = root.path().join("src");
+     let out_dir = root.path().join("out");
+     std::fs::create_dir_all(&src_dir).unwrap();
+     std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(src_dir.join("Show.S01E02.mkv"), b"x").unwrap();
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+@@ -815,36 +789,35 @@ tracks:
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     by_name.insert(
+         "Show.S01E02.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(root);
+-    batch
++    (batch, root)
+ }
+ 
+ #[test]
+ fn two_planned_outputs_to_same_path_are_always_output_collision_error() {
+     // Decision #3: an internally inconsistent batch is always an error,
+     // independent of on_collision -- neither skip nor overwrite can pick a
+     // winner between two plans claiming the same path.
+     for policy in [
+         None,
+         Some(CollisionPolicy::Error),
+         Some(CollisionPolicy::Overwrite),
+         Some(CollisionPolicy::Skip),
+     ] {
+-        let batch = plan_two_same_output(policy);
++        let (batch, _dir) = plan_two_same_output(policy);
+         assert_eq!(batch.files.len(), 2, "policy {policy:?}");
+         for fr in &batch.files {
+             assert!(
+                 fr.plan.is_none(),
+                 "policy {policy:?}: diags: {:?}",
+                 fr.diagnostics
+             );
+             let d = fr
+                 .diagnostics
+                 .iter()
+@@ -856,21 +829,21 @@ fn two_planned_outputs_to_same_path_are_always_output_collision_error() {
+                     )
+                 });
+             assert_eq!(d.severity, Severity::Error, "policy {policy:?}: {d:?}");
+         }
+     }
+ }
+ 
+ // A single primary whose "keep" output name already exists on disk (a file
+ // that is not itself a batch input; sibling out/ dir keeps it out of
+ // discovery's recursive scan of src/).
+-fn plan_one_with_existing_output(policy: CollisionPolicy) -> Batch {
++fn plan_one_with_existing_output(policy: CollisionPolicy) -> (Batch, tempfile::TempDir) {
+     let root = tempfile::tempdir().unwrap();
+     let src_dir = root.path().join("src");
+     let out_dir = root.path().join("out");
+     std::fs::create_dir_all(&src_dir).unwrap();
+     std::fs::create_dir_all(&out_dir).unwrap();
+     std::fs::write(src_dir.join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(out_dir.join("Show.S01E01.mkv"), b"pre-existing").unwrap();
+ 
+     let profile = from_str(P_VIDEO_AUDIO, Format::Yaml).unwrap();
+     let run = RunInputs {
+@@ -878,55 +851,54 @@ fn plan_one_with_existing_output(policy: CollisionPolicy) -> Batch {
+         output: Some(out_dir),
+         on_collision: Some(policy),
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(root);
+-    batch
++    (batch, root)
+ }
+ 
+ #[test]
+ fn on_disk_collision_under_skip_is_warning_and_drops_plan() {
+-    let batch = plan_one_with_existing_output(CollisionPolicy::Skip);
++    let (batch, _dir) = plan_one_with_existing_output(CollisionPolicy::Skip);
+     let fr = &batch.files[0];
+     // Bug E: "skip" means the output is not produced, even though the
+     // diagnostic itself is only a warning.
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::OutputCollision)
+         .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+     assert_eq!(d.severity, Severity::Warning);
+ }
+ 
+ #[test]
+ fn on_disk_collision_under_overwrite_is_info_and_keeps_plan() {
+-    let batch = plan_one_with_existing_output(CollisionPolicy::Overwrite);
++    let (batch, _dir) = plan_one_with_existing_output(CollisionPolicy::Overwrite);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::OutputCollision)
+         .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+     assert_eq!(d.severity, Severity::Info);
+ }
+ 
+ #[test]
+ fn on_disk_collision_under_error_is_error_and_drops_plan() {
+-    let batch = plan_one_with_existing_output(CollisionPolicy::Error);
++    let (batch, _dir) = plan_one_with_existing_output(CollisionPolicy::Error);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::OutputCollision)
+         .unwrap_or_else(|| panic!("expected OutputCollision, got: {:?}", fr.diagnostics));
+     assert_eq!(d.severity, Severity::Error);
+ }
+ 
+@@ -934,59 +906,59 @@ fn on_disk_collision_under_error_is_error_and_drops_plan() {
+ #[test]
+ fn title_clear_resolves_to_clear() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: clear
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
+ }
+ 
+ // Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
+ // resolution path (not just the Task-4 hardcoded default).
+ #[test]
+ fn title_keep_resolves_to_keep() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: keep
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
+ }
+ 
+ // Task 6: a title template renders via the same literal-mode engine as the
+ // filename template; `{season}` is a raw capture (no filter applied).
+ #[test]
+ fn title_template_renders_raw_capture_into_set() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: { template: 'Show S{season}' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S03E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S03E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.title,
+         muxsmith_core::planner::TitleAction::Set("Show S03".into())
+     );
+ }
+ 
+ // Task 6: title has no path-separator/empty-name invariants (unlike
+@@ -995,21 +967,21 @@ tracks:
+ #[test]
+ fn title_template_rendering_empty_is_a_legitimate_set() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+ title: { template: '{x}' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.title,
+         muxsmith_core::planner::TitleAction::Set(String::new())
+     );
+ }
+ 
+ // Task 6: `source_stem` is available to a title template, exactly as it is
+@@ -1018,21 +990,21 @@ tracks:
+ #[test]
+ fn title_template_supports_source_stem_field() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: { template: '{source_stem}' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.title,
+         muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
+     );
+ }
+ 
+ // Task 6: `tags: { global: drop, track: keep }` resolves to the matching
+@@ -1040,21 +1012,21 @@ tracks:
+ #[test]
+ fn tags_global_drop_track_keep_resolves_to_flags() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tags: { global: drop, track: keep }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.tags,
+         muxsmith_core::planner::TagFlags {
+             global_keep: false,
+             track_keep: true,
+         }
+     );
+@@ -1062,21 +1034,21 @@ tracks:
+ 
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: notalanguage } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     assert!(
+         batch
+             .batch_diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+         "batch diags: {:?}",
+         batch.batch_diagnostics
+     );
+ }
+ 
+@@ -1084,41 +1056,41 @@ tracks:
+ #[test]
+ fn chapters_drop_keyword_resolves_to_drop() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: drop
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Drop);
+ }
+ 
+ // Task 7: `chapters: keep` resolves to `ChapterSource::Keep` (also the
+ // default already covered by Task 4's tests, but exercised explicitly here
+ // since Task 7 is what makes the keyword branch real).
+ #[test]
+ fn chapters_keep_keyword_resolves_to_keep() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: keep
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
+ }
+ 
+ // Task 7: an external chapters locator with exactly one matching donor
+ // resolves to `ChapterSource::External(<that path>)`. A chapters file is
+ // never run through Identify (it is XML/simple, not an mkvmerge source), so
+ // the fixture map only needs the primary.
+@@ -1143,21 +1115,20 @@ tracks:
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+     let expected = dir.path().join("Show.S01E01.xml");
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.chapters,
+         muxsmith_core::planner::ChapterSource::External(expected)
+     );
+ }
+ 
+@@ -1183,21 +1154,20 @@ tracks:
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::MissingExternal)
+         .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
+     assert_eq!(d.config_path, "chapters.external");
+ }
+@@ -1225,21 +1195,20 @@ tracks:
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::AmbiguousExternal)
+         .unwrap_or_else(|| panic!("expected AmbiguousExternal, got: {:?}", fr.diagnostics));
+     assert_eq!(d.config_path, "chapters.external");
+     assert_eq!(d.params.get("count").map(String::as_str), Some("2"));
+@@ -1253,21 +1222,21 @@ fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: drop
+   rules:
+     - select: { substring: { file_name: .ttf } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::Subset(vec![0])
+     );
+ }
+ 
+ // Task 8: no rules at all, `unmatched: keep` -> every attachment falls
+@@ -1276,21 +1245,21 @@ attachments:
+ fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: keep
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::KeepAll
+     );
+ }
+ 
+ // Task 8: no rules at all, `unmatched: drop` -> every attachment falls
+@@ -1299,21 +1268,21 @@ attachments:
+ fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: drop
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::DropAll
+     );
+ }
+ 
+ // Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
+@@ -1324,21 +1293,21 @@ fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: keep
+   rules:
+     - drop: { substring: { file_name: cover } }
+ "#;
+-    let batch = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::Subset(vec![0, 1])
+     );
+ }
+ 
+ // Task 8 (D12): an `add` locator attaches ALL files it matches, not just one;
+@@ -1366,21 +1335,20 @@ attachments:
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+     let expected = vec![dir.path().join("a.ttf"), dir.path().join("b.ttf")];
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.attachments.add_files, expected);
+ }
+ 
+ // Task 8 (D12): two `add` rules that both match the same file attach it
+ // exactly once (dedup by path, first-seen order).
+ #[test]
+@@ -1406,21 +1374,20 @@ attachments:
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+     let expected = vec![dir.path().join("font.ttf")];
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(plan.attachments.add_files, expected);
+ }
+ 
+ // Task 8 (D12): an `add` locator matching zero files is a WARNING
+ // `MissingExternal` at `attachments.rules[i].add`, an auxiliary payload that
+ // must not suppress the plan (unlike a track rule's or chapters' external
+@@ -1445,21 +1412,20 @@ attachments:
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert!(plan.attachments.add_files.is_empty());
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::MissingExternal)
+         .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
+diff --git a/crates/muxsmith-core/tests/suggestions.rs b/crates/muxsmith-core/tests/suggestions.rs
+index 4742564..05bc674 100644
+--- a/crates/muxsmith-core/tests/suggestions.rs
++++ b/crates/muxsmith-core/tests/suggestions.rs
+@@ -1,72 +1,55 @@
+ use std::collections::HashMap;
+-use std::path::Path;
+ 
+ use serde::Deserialize;
+ 
+-use muxsmith_core::capability::runtime::LanguageIndex;
+-use muxsmith_core::identify::{Identification, Identify, IdentifyError};
++use muxsmith_core::identify::Identification;
+ use muxsmith_core::planner::{Batch, RunInputs, StructuredEdit, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
+ use muxsmith_core::report::DiagCode;
+ 
+-struct FakeIdent {
+-    by_name: HashMap<String, Identification>,
+-}
+-impl Identify for FakeIdent {
+-    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+-        let name = path.file_name().unwrap().to_str().unwrap();
+-        self.by_name
+-            .get(name)
+-            .cloned()
+-            .ok_or_else(|| IdentifyError::Json("no fixture".into()))
+-    }
+-}
+-
+-fn lang() -> LanguageIndex {
+-    LanguageIndex::from_rows(&[["English", "eng", "eng", "en"]])
+-}
++mod support;
++use support::{FakeIdent, lang};
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+ 
+ const P_AMBIGUOUS: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+ 
+-fn plan(profile_yaml: &str) -> muxsmith_core::planner::Batch {
++fn plan(profile_yaml: &str) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+-    batch
++    (batch, dir)
+ }
+ 
+ #[test]
+ fn ambiguous_rule_gets_a_validated_suggestion() {
+-    let batch = plan(P_AMBIGUOUS);
++    let (batch, _dir) = plan(P_AMBIGUOUS);
+     assert!(
+         batch.files[0]
+             .diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::AmbiguousRule)
+     );
+     assert!(!batch.suggestions.is_empty(), "expected suggestions");
+     assert!(
+         batch
+             .suggestions
+@@ -77,24 +60,24 @@ fn ambiguous_rule_gets_a_validated_suggestion() {
+         batch
+             .suggestions
+             .iter()
+             .all(|s| s.config_path.starts_with("tracks[0]"))
+     );
+     assert!(batch.suggestions.len() <= 3);
+ }
+ 
+ #[test]
+ fn every_suggestion_survives_the_next_dry_run() {
+-    let batch = plan(P_AMBIGUOUS);
++    let (batch, _dir) = plan(P_AMBIGUOUS);
+     for s in &batch.suggestions {
+         let edited = apply_edit_to_first_rule(&s.edit);
+-        let re = plan(&edited);
++        let (re, _dir) = plan(&edited);
+         assert!(
+             !re.files[0]
+                 .diagnostics
+                 .iter()
+                 .any(|d| d.code == DiagCode::AmbiguousRule),
+             "suggestion {:?} did not resolve the ambiguity",
+             s.edit
+         );
+         assert!(
+             !re.files[0]
+@@ -124,40 +107,39 @@ fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
+             "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - substring: {{ track_name: {value} }}"
+         ),
+     };
+     format!(
+         "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
+     )
+ }
+ 
+ // Plans an arbitrary set of named fixture files (name -> -J JSON), unlike
+ // `plan()` which is wired to the single-file SERIES fixture.
+-fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> Batch {
++fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> (Batch, tempfile::TempDir) {
+     let dir = tempfile::tempdir().unwrap();
+     let mut by_name = HashMap::new();
+     for (name, json) in files {
+         std::fs::write(dir.path().join(name), b"x").unwrap();
+         by_name.insert(
+             (*name).to_string(),
+             Identification::from_json(json).unwrap(),
+         );
+     }
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+-    std::mem::forget(dir);
+-    batch
++    (batch, dir)
+ }
+ 
+ // --- (a) with_rule_match must not clobber an existing constraint (bug C) ---
+ 
+ const P_NO_CLOBBER: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles }, substring: { track_name: Foo } }
+@@ -202,21 +184,21 @@ const GUARDED_FOO: &str = r#"
+     { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
+         "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+         "language": "eng", "language_ietf": "en", "track_name": "Foo Only" } },
+     { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
+         "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+         "language": "eng", "language_ietf": "en", "track_name": "Director Extended" } }
+   ]
+ }
+ "#;
+ 
+-fn no_clobber_batch() -> Batch {
++fn no_clobber_batch() -> (Batch, tempfile::TempDir) {
+     plan_multi(
+         P_NO_CLOBBER,
+         &[
+             ("Show.S01E01.mkv", AMBIGUOUS_FOO),
+             ("Show.S01E02.mkv", GUARDED_FOO),
+         ],
+     )
+ }
+ 
+ // Rebuild the edited profile YAML the same way a literal/naive splice of the
+@@ -241,21 +223,21 @@ fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
+             "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - substring: {{ track_name: {value} }}"
+         ),
+     };
+     format!(
+         "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
+     )
+ }
+ 
+ #[test]
+ fn with_rule_match_never_widens_an_existing_substring_constraint() {
+-    let batch = no_clobber_batch();
++    let (batch, _dir) = no_clobber_batch();
+     assert!(
+         batch.files[0]
+             .diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::AmbiguousRule),
+         "expected file 1 to be ambiguous under the baseline profile"
+     );
+     assert!(!batch.suggestions.is_empty(), "expected suggestions");
+ 
+     // The specific clobber vector (bug C): overwriting the existing
+@@ -274,21 +256,21 @@ fn with_rule_match_never_widens_an_existing_substring_constraint() {
+             .iter()
+             .map(|s| &s.edit)
+             .collect::<Vec<_>>()
+     );
+ 
+     // Every suggestion that IS emitted must, once applied, still resolve
+     // file 2 to its original track (id 1, "Foo Only"), never the "Director"
+     // decoy (id 2) -- the behavioral form of "never widens."
+     for s in &batch.suggestions {
+         let edited = apply_edit_to_no_clobber_rule(&s.edit);
+-        let re = plan_multi(
++        let (re, _dir) = plan_multi(
+             &edited,
+             &[
+                 ("Show.S01E01.mkv", AMBIGUOUS_FOO),
+                 ("Show.S01E02.mkv", GUARDED_FOO),
+             ],
+         );
+         assert!(
+             !re.files[0]
+                 .diagnostics
+                 .iter()
+@@ -335,21 +317,21 @@ const COLON_TRACK_NAMES: &str = r#"
+ "#;
+ 
+ #[derive(Deserialize)]
+ struct MatchFragmentDoc {
+     #[serde(rename = "match")]
+     match_expr: MatchExpr,
+ }
+ 
+ #[test]
+ fn yaml_fragment_round_trips_a_value_containing_a_colon() {
+-    let batch = plan_multi(P_COLON_AMBIGUOUS, &[("Show.S01E01.mkv", COLON_TRACK_NAMES)]);
++    let (batch, _dir) = plan_multi(P_COLON_AMBIGUOUS, &[("Show.S01E01.mkv", COLON_TRACK_NAMES)]);
+ 
+     let target = batch
+         .suggestions
+         .iter()
+         .find(|s| {
+             matches!(
+                 &s.edit,
+                 StructuredEdit::AddExact { property, value }
+                     if property == "track_name" && value == "Chapter 1: Intro"
+             )
+@@ -375,21 +357,21 @@ fn yaml_fragment_round_trips_a_value_containing_a_colon() {
+ }
+ 
+ // --- (c) the cap-3 truncation must be logged, not silent (D6) ---
+ 
+ #[test]
+ fn suggestion_cap_truncation_is_logged_not_silent() {
+     // P_AMBIGUOUS's two conflicting subtitle tracks (English forced /
+     // English SDH) differ across enough matchable properties and track_name
+     // tokens that well over 3 candidates are accepted for tracks[0]; the cap
+     // truncates the emitted list to 3 and must record the rest.
+-    let batch = plan(P_AMBIGUOUS);
++    let (batch, _dir) = plan(P_AMBIGUOUS);
+ 
+     let cap_diag = batch
+         .batch_diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::SuggestionsCapped)
+         .expect("expected a logged suggestion cap for tracks[0]'s conflict");
+     assert_eq!(cap_diag.config_path, "tracks[0].match");
+     let dropped: usize = cap_diag
+         .params
+         .get("dropped")
+diff --git a/crates/muxsmith-core/tests/support/mod.rs b/crates/muxsmith-core/tests/support/mod.rs
+new file mode 100644
+index 0000000..92e4698
+--- /dev/null
++++ b/crates/muxsmith-core/tests/support/mod.rs
+@@ -0,0 +1,39 @@
++//! Shared test helpers for muxsmith-core's integration test suites.
++//!
++//! A `tests/` SUBDIRECTORY module (`tests/support/mod.rs`), not a
++//! `tests/*.rs` file: Cargo's test-target autodiscovery only globs
++//! `tests/*.rs`, so this file is never compiled as its own test binary. Each
++//! consumer test file pulls it in with `mod support;`.
++
++use std::collections::HashMap;
++use std::path::Path;
++
++use muxsmith_core::capability::runtime::LanguageIndex;
++use muxsmith_core::identify::{Identification, Identify, IdentifyError};
++
++/// A fake identifier backed by fixture JSON keyed on file name.
++#[allow(dead_code)]
++pub struct FakeIdent {
++    pub by_name: HashMap<String, Identification>,
++}
++
++impl Identify for FakeIdent {
++    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
++        let name = path.file_name().unwrap().to_str().unwrap();
++        self.by_name
++            .get(name)
++            .cloned()
++            .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
++    }
++}
++
++/// The standard three-language (English/German/Turkish) index shared by the
++/// planner/suggestions/command-integration suites.
++#[allow(dead_code)]
++pub fn lang() -> LanguageIndex {
++    LanguageIndex::from_rows(&[
++        ["English", "eng", "eng", "en"],
++        ["German", "ger", "ger", "de"],
++        ["Turkish", "tur", "tur", "tr"],
++    ])
++}

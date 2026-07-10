@@ -1,0 +1,794 @@
+# Review package: e06bda0..7da714d
+
+## Commits
+7da714d feat(core+cli): persisted per-job JSON logs under platform data dir (D26)
+
+## Files changed
+ Cargo.lock                                  |   2 +
+ crates/muxsmith-cli/src/commands/run.rs     |  60 +++++++-
+ crates/muxsmith-cli/tests/run_cli.rs        |   4 +
+ crates/muxsmith-cli/tests/run_live.rs       |  10 +-
+ crates/muxsmith-core/Cargo.toml             |   2 +
+ crates/muxsmith-core/src/executor/joblog.rs | 230 ++++++++++++++++++++++++++++
+ crates/muxsmith-core/src/executor/mod.rs    |   1 +
+ crates/muxsmith-core/tests/joblog.rs        | 205 +++++++++++++++++++++++++
+ locales/en/cli.ftl                          |   2 +
+ 9 files changed, 507 insertions(+), 9 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index d2142f9..7d26fc9 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2124,27 +2124,29 @@ dependencies = [
+  "serde_json",
+  "sys-locale",
+  "tempfile",
+  "unic-langid",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-core"
+ version = "0.1.0"
+ dependencies = [
++ "dirs",
+  "language-tags",
+  "regex",
+  "schemars 1.2.1",
+  "serde",
+  "serde_json",
+  "serde_path_to_error",
+  "tempfile",
++ "time",
+  "yaml_serde",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-gui"
+ version = "0.1.0"
+ dependencies = [
+  "serde",
+  "serde_json",
+  "tauri",
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index 8539056..abbeded 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -4,20 +4,21 @@
+ //! diagnostic and job severities into the process exit code (D15).
+ 
+ use std::path::{Path, PathBuf};
+ use std::sync::Arc;
+ use std::sync::atomic::{AtomicBool, Ordering};
+ use std::sync::mpsc;
+ 
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::command::command;
+ use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
++use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
+ use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
+ use muxsmith_core::executor::spawn::LiveSpawner;
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
+ 
+ use crate::commands::{diag_exit_code, print_batch_human};
+ use crate::i18n::Renderer;
+@@ -203,70 +204,113 @@ pub fn run(
+     // Single-level SIGINT (D16): first Ctrl-C requests graceful cancel
+     // (queue kills in-flight, partials deleted, summary printed, exit 130);
+     // a second Ctrl-C during cleanup force-exits immediately.
+     let handler_cancel = Arc::clone(&cancel);
+     let _ = ctrlc::set_handler(move || {
+         if handler_cancel.swap(true, Ordering::SeqCst) {
+             std::process::exit(130);
+         }
+     });
+ 
++    // D26: persisted job logs. Created before the queue runs so `on_event`
++    // can tee every event as it arrives (see the drain loop below); a
++    // creation failure never aborts the run (see `create_logger`'s doc).
++    let mut logger = create_logger(renderer, &specs);
++
+     let (tx, rx) = mpsc::channel();
+ 
+     // `run_queue` blocks until the whole batch finishes, so it runs on its
+     // own scoped thread; this (the calling) thread drains `rx` concurrently,
+     // rendering milestone lines as jobs progress rather than only after the
+     // batch completes. The queue thread owns the only `Sender`, so it drops
+     // when that thread's closure returns, ending the `for event in rx` loop
+     // below deterministically (no explicit `drop` needed on this side).
+     let outcomes = std::thread::scope(|scope| {
+         let queue_ctl = Arc::clone(&ctl);
+         let handle = scope.spawn(move || run_queue(&specs, &spawner, opts, &queue_ctl, &tx));
+ 
+         let mut milestones = MilestoneState::new(outputs);
+         for event in rx {
++            // Persistence is unconditional (spec 6, D26): tee every event
++            // into the log writer regardless of `--json`, mirroring how
++            // milestone rendering is the only thing `--json` suppresses.
++            if let Some(logger) = logger.as_mut() {
++                logger.on_event(&event);
++            }
+             if json {
+                 // --json suppresses human progress lines; Task 9 builds the
+                 // final document from the returned outcomes instead.
+                 continue;
+             }
+             for line in milestones.render(&event, total, renderer) {
+                 println!("{}", line);
+             }
+         }
+ 
+         handle.join().expect("queue worker thread panicked")
+     });
+ 
++    let document = run_document(
++        batch_document(&config_diags, &batch, renderer),
++        &outcomes,
++        &json_outputs,
++    );
++
+     if !json {
+         println!("{}", render_summary(&outcomes, renderer));
+     } else {
+-        println!(
+-            "{}",
+-            run_document(
+-                batch_document(&config_diags, &batch, renderer),
+-                &outcomes,
+-                &json_outputs,
+-            )
+-        );
++        println!("{}", document);
++    }
++
++    if let Some(logger) = logger {
++        match logger.finish(&document) {
++            Ok(dir) if !json => println!(
++                "{}",
++                renderer.msg("run-joblog-written", &[("dir", &dir.display().to_string())])
++            ),
++            Ok(_) => {}
++            Err(_) => eprintln!("{}", renderer.msg("run-joblog-unavailable", &[])),
++        }
+     }
+ 
+     if cancel.load(Ordering::SeqCst) {
+         return 130;
+     }
+ 
+     std::cmp::max(
+         diag_exit_code(&config_diags, &batch),
+         job_exit_code(&outcomes),
+     )
+ }
+ 
++/// Creates this run's [`RunLogger`] (D26): resolves the runs root (the
++/// `MUXSMITH_RUNS_ROOT` env var if set -- tests point this at a tempdir so
++/// they never write into the real platform data dir; [`default_runs_root`]
++/// otherwise), then [`RunLogger::create`]s the run's log directory under it.
++/// Either step failing (no resolvable data dir, or `create` itself erroring
++/// -- permissions, disk full, ...) renders `run-joblog-unavailable` to
++/// stderr and returns `None`: persistence is best-effort from the CLI's
++/// perspective, a mux run never dies for a log dir.
++fn create_logger(renderer: &Renderer, specs: &[JobSpec]) -> Option<RunLogger> {
++    let runs_root = std::env::var_os("MUXSMITH_RUNS_ROOT")
++        .map(PathBuf::from)
++        .or_else(default_runs_root);
++    let logger = runs_root.and_then(|root| {
++        let run_id = make_run_id(std::time::SystemTime::now());
++        RunLogger::create(&root, &run_id, specs).ok()
++    });
++    if logger.is_none() {
++        eprintln!("{}", renderer.msg("run-joblog-unavailable", &[]));
++    }
++    logger
++}
++
+ /// The queue's own worst-of fold (spec 8.1, D15): 2 if any job `Failed`, 1
+ /// if the worst outcome is `Warning`, else 0. Combined with
+ /// [`diag_exit_code`] via `max` for the process's final exit code.
+ fn job_exit_code(outcomes: &[JobOutcome]) -> i32 {
+     if outcomes.iter().any(|o| o.state == JobState::Failed) {
+         2
+     } else if outcomes.iter().any(|o| o.state == JobState::Warning) {
+         1
+     } else {
+         0
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index 1190e5b..b76e538 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -167,20 +167,24 @@ fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
+     let output_dir = dir.path().join("out");
+ 
+     let out = muxsmith()
+         .args(["run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .args(["--output"])
+         .arg(&output_dir)
+         .arg("--json")
++        // Task 6 (D26): a real mux reaches the queue and would otherwise
++        // persist job logs into the real platform data dir; point it at a
++        // tempdir instead.
++        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
+         .output()
+         .unwrap();
+ 
+     assert!(
+         out.status.success(),
+         "exit: {:?}, stderr: {}",
+         out.status.code(),
+         String::from_utf8_lossy(&out.stderr)
+     );
+     let stdout = String::from_utf8_lossy(&out.stdout);
+diff --git a/crates/muxsmith-cli/tests/run_live.rs b/crates/muxsmith-cli/tests/run_live.rs
+index 79eb95e..de2b04f 100644
+--- a/crates/muxsmith-cli/tests/run_live.rs
++++ b/crates/muxsmith-cli/tests/run_live.rs
+@@ -100,20 +100,24 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
+     fs::write(&profile, PROFILE).unwrap();
+     let output_dir = dir.path().join("out");
+ 
+     let out = muxsmith()
+         .args(["run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(&source_dir)
+         .args(["--output"])
+         .arg(&output_dir)
++        // Task 6 (D26): a real mux reaches the queue and would otherwise
++        // persist job logs into the real platform data dir; point it at a
++        // tempdir instead.
++        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
+         .output()
+         .unwrap();
+ 
+     assert!(
+         out.status.success(),
+         "exit: {:?}, stdout: {}, stderr: {}",
+         out.status.code(),
+         String::from_utf8_lossy(&out.stdout),
+         String::from_utf8_lossy(&out.stderr)
+     );
+@@ -160,28 +164,32 @@ fn live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched(
+     let dir = tempfile::tempdir().unwrap();
+     let source_dir = dir.path().join("source");
+     fs::create_dir_all(&source_dir).unwrap();
+     build_source_mkv(&source_dir, "Show.S01E01.mkv");
+     build_source_mkv(&source_dir, "Show.S01E02.mkv");
+ 
+     let profile = dir.path().join("p.yaml");
+     fs::write(&profile, PROFILE).unwrap();
+     let output_dir = dir.path().join("out");
+ 
++    // Task 6 (D26): the setup run below reaches the queue and would
++    // otherwise persist job logs into the real platform data dir; point
++    // both invocations at a tempdir instead.
+     let run_args = |on_collision: Option<&str>| {
+         let mut cmd = muxsmith();
+         cmd.args(["run"])
+             .arg(&profile)
+             .args(["--source"])
+             .arg(&source_dir)
+             .args(["--output"])
+-            .arg(&output_dir);
++            .arg(&output_dir)
++            .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"));
+         if let Some(policy) = on_collision {
+             cmd.args(["--on-collision", policy]);
+         }
+         cmd
+     };
+ 
+     let first = run_args(None).output().unwrap();
+     assert!(
+         first.status.success(),
+         "setup run failed, stdout: {}, stderr: {}",
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 592e307..1846540 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -1,18 +1,20 @@
+ [package]
+ name = "muxsmith-core"
+ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ publish = false
+ 
+ [dependencies]
++dirs = "6.0.0"
+ language-tags = "0.3.2"
+ regex = "1.12.4"
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ serde_path_to_error = "0.1.20"
++time = { version = "0.3.53", features = ["formatting"] }
+ yaml_serde = "0.10.4"
+ 
+ [dev-dependencies]
+ tempfile = "3.27.0"
+diff --git a/crates/muxsmith-core/src/executor/joblog.rs b/crates/muxsmith-core/src/executor/joblog.rs
+new file mode 100644
+index 0000000..01b8bfc
+--- /dev/null
++++ b/crates/muxsmith-core/src/executor/joblog.rs
+@@ -0,0 +1,230 @@
++//! Persisted job logs (spec 6, D26): `RunLogger` writes one `job-<index>.json`
++//! per job, incrementally as [`JobEvent`]s arrive, plus a `summary.json` (the
++//! `report::json::run_document`, taken verbatim) once the batch finishes,
++//! under `<platform-data-dir>/muxsmith/runs/<run-id>/`.
++//!
++//! **Single-threaded by design.** A [`RunLogger`] carries no synchronization
++//! (no `Mutex`) because it is meant to be driven from exactly one thread: the
++//! caller's own event-drain loop (the CLI's `run` command drains its
++//! `mpsc::Receiver<JobEvent>` on a single thread today; a future GUI surface
++//! must do the same). Spec 6 requires persistence to be unconditional for
++//! every surface that runs jobs, so every such drain loop must tee its events
++//! through one `RunLogger` via [`RunLogger::on_event`] -- there is no
++//! supported way to share one `RunLogger` across threads instead.
++
++use std::collections::HashMap;
++use std::fs;
++use std::io;
++use std::path::{Path, PathBuf};
++
++use serde::Serialize;
++use time::OffsetDateTime;
++use time::format_description::{BorrowedFormatItem, Component, modifier};
++
++use super::job::{JobSpec, JobState};
++use super::queue::JobEvent;
++
++/// Hand-built format description for [`make_run_id`]'s "YYYYMMDD-HHMMSSZ"
++/// (UTC) stamp: `Component` values plus literals, assembled directly rather
++/// than through the `format_description!` macro or runtime string parsing,
++/// since only the `formatting` cargo feature is pinned (not `macros` or
++/// `parsing`).
++const RUN_ID_FORMAT: &[BorrowedFormatItem<'_>] = &[
++    BorrowedFormatItem::Component(Component::CalendarYearFullStandardRange(
++        modifier::CalendarYearFullStandardRange::default(),
++    )),
++    BorrowedFormatItem::Component(Component::MonthNumerical(
++        modifier::MonthNumerical::default(),
++    )),
++    BorrowedFormatItem::Component(Component::Day(modifier::Day::default())),
++    BorrowedFormatItem::StringLiteral("-"),
++    BorrowedFormatItem::Component(Component::Hour24(modifier::Hour24::default())),
++    BorrowedFormatItem::Component(Component::Minute(modifier::Minute::default())),
++    BorrowedFormatItem::Component(Component::Second(modifier::Second::default())),
++    BorrowedFormatItem::StringLiteral("Z"),
++];
++
++/// The D26 default location: `dirs::data_dir()?/muxsmith/runs`. `None` when
++/// the platform data dir itself cannot be resolved (e.g. no `HOME`); callers
++/// treat that exactly like a [`RunLogger::create`] failure (spec 6: a mux run
++/// never dies for a log dir).
++pub fn default_runs_root() -> Option<PathBuf> {
++    dirs::data_dir().map(|dir| dir.join("muxsmith").join("runs"))
++}
++
++/// Formats `now` as a UTC run-id stamp, `"YYYYMMDD-HHMMSSZ"`. Takes the
++/// timestamp as a parameter rather than calling `SystemTime::now()`
++/// internally, so the caller (`SystemTime::now()` in production) can pass a
++/// fixed value in tests.
++pub fn make_run_id(now: std::time::SystemTime) -> String {
++    OffsetDateTime::from(now)
++        .format(RUN_ID_FORMAT)
++        .expect("RUN_ID_FORMAT is a fixed, well-formed descriptor; formatting a valid OffsetDateTime never fails")
++}
++
++/// Formats the current UTC instant as RFC3339, for a job record's
++/// `started_at`/`finished_at` fields.
++fn now_rfc3339() -> String {
++    OffsetDateTime::now_utc()
++        .format(&time::format_description::well_known::Rfc3339)
++        .expect("Rfc3339 formatting of the current UTC time never fails")
++}
++
++/// Per-job state accumulated across events until `Finished` writes it out.
++/// `argv`/`output` are seeded from the [`JobSpec`] at [`RunLogger::create`]
++/// time (a spec that later receives zero events, e.g. never dequeued under
++/// batch cancellation, D16, simply keeps its accumulator unwritten -- see
++/// [`RunLogger::finish`]'s doc).
++struct JobAccumulator {
++    argv: Vec<String>,
++    output: PathBuf,
++    lines: Vec<String>,
++    started_at: Option<String>,
++}
++
++/// One `job-<index>.json` record (D26 shape); assembled from a finished
++/// job's [`JobAccumulator`] plus its terminal outcome fields, carried
++/// directly on `JobEvent::Finished`.
++#[derive(Serialize)]
++struct JobRecord<'a> {
++    index: usize,
++    output: String,
++    argv: &'a [String],
++    state: JobState,
++    exit_code: Option<i32>,
++    warnings: &'a [String],
++    errors: &'a [String],
++    duration_ms: u64,
++    lines: &'a [String],
++    started_at: Option<String>,
++    finished_at: String,
++}
++
++/// Accumulates one run's job logs from a stream of [`JobEvent`]s and writes
++/// them to disk (D26). See the module doc for the single-threaded-writer
++/// invariant.
++pub struct RunLogger {
++    dir: PathBuf,
++    jobs: HashMap<usize, JobAccumulator>,
++}
++
++impl RunLogger {
++    /// Creates the run's log directory under `runs_root`, named `run_id`
++    /// (`mkdir -p runs_root` first, then the leaf directory itself). A
++    /// leaf-name collision (a directory of that name already exists, e.g. a
++    /// prior run with the same-second `run_id`) appends a numeric suffix:
++    /// `<run_id>-2`, then `<run_id>-3`, and so on, until an unused name is
++    /// found.
++    ///
++    /// `specs` seeds one [`JobAccumulator`] per index (its `argv`/`output`),
++    /// so a job's identity is known even if it never receives a single
++    /// event before the batch ends.
++    pub fn create(runs_root: &Path, run_id: &str, specs: &[JobSpec]) -> io::Result<RunLogger> {
++        fs::create_dir_all(runs_root)?;
++
++        let mut dir = runs_root.join(run_id);
++        let mut suffix = 1u32;
++        loop {
++            match fs::create_dir(&dir) {
++                Ok(()) => break,
++                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
++                    suffix += 1;
++                    dir = runs_root.join(format!("{run_id}-{suffix}"));
++                }
++                Err(e) => return Err(e),
++            }
++        }
++
++        let jobs = specs
++            .iter()
++            .enumerate()
++            .map(|(index, spec)| {
++                (
++                    index,
++                    JobAccumulator {
++                        argv: spec.argv.clone(),
++                        output: spec.output.clone(),
++                        lines: Vec::new(),
++                        started_at: None,
++                    },
++                )
++            })
++            .collect();
++
++        Ok(RunLogger { dir, jobs })
++    }
++
++    /// The run's actual log directory (post-collision-suffix).
++    pub fn dir(&self) -> &Path {
++        &self.dir
++    }
++
++    /// Feeds one [`JobEvent`] into the logger: `Started` records the start
++    /// timestamp, `Output` appends the raw line (D24: every non-progress-tick
++    /// line, verbatim; core attaches no meaning to it), `Finished` writes
++    /// `job-<index>.json` and drops that job's accumulator. Every other
++    /// variant (`Progress`/`Warning`/`Error`) is a no-op here: `Progress` is
++    /// transient and `Warning`/`Error` text already reaches the record two
++    /// other ways (verbatim inside `lines`, and structured in the `Finished`
++    /// outcome's own `warnings`/`errors`).
++    ///
++    /// A job that never receives `Finished` at all (never dequeued under a
++    /// batch cancel, D16 -- it emits no events whatsoever) never gets a
++    /// `job-<index>.json`; only `summary.json` ([`Self::finish`]) covers it,
++    /// via the `run_document`'s own `jobs` array (index-aligned to every
++    /// outcome, unconditionally).
++    ///
++    /// A write failure (e.g. disk full) is swallowed rather than surfaced:
++    /// `on_event` returns nothing (mirrors the queue's own "event send
++    /// failures are ignored" contract) and the run itself is never at risk
++    /// over a log write.
++    pub fn on_event(&mut self, ev: &JobEvent) {
++        match ev {
++            JobEvent::Started { index, .. } => {
++                if let Some(job) = self.jobs.get_mut(index) {
++                    job.started_at = Some(now_rfc3339());
++                }
++            }
++            JobEvent::Output { index, line } => {
++                if let Some(job) = self.jobs.get_mut(index) {
++                    job.lines.push(line.clone());
++                }
++            }
++            JobEvent::Finished { index, outcome } => {
++                if let Some(job) = self.jobs.remove(index) {
++                    let record = JobRecord {
++                        index: *index,
++                        output: job.output.display().to_string(),
++                        argv: &job.argv,
++                        state: outcome.state,
++                        exit_code: outcome.exit_code,
++                        warnings: &outcome.warnings,
++                        errors: &outcome.errors,
++                        duration_ms: outcome.duration_ms,
++                        lines: &job.lines,
++                        started_at: job.started_at,
++                        finished_at: now_rfc3339(),
++                    };
++                    let path = self.dir.join(format!("job-{index}.json"));
++                    if let Ok(bytes) = serde_json::to_vec_pretty(&record) {
++                        let _ = fs::write(path, bytes);
++                    }
++                }
++            }
++            JobEvent::Progress { .. } | JobEvent::Warning { .. } | JobEvent::Error { .. } => {}
++        }
++    }
++
++    /// Writes `run_document` (the T2 `report::json::run_document`, passed in
++    /// verbatim -- this module never rebuilds it) to `summary.json` and
++    /// returns the run's log directory. Consumes `self`: once a run has
++    /// finished, its accumulators (any left over from jobs that never
++    /// received `Finished`, see [`Self::on_event`]) are simply dropped.
++    pub fn finish(self, run_document: &serde_json::Value) -> io::Result<PathBuf> {
++        fs::write(
++            self.dir.join("summary.json"),
++            serde_json::to_vec_pretty(run_document)?,
++        )?;
++        Ok(self.dir)
++    }
++}
+diff --git a/crates/muxsmith-core/src/executor/mod.rs b/crates/muxsmith-core/src/executor/mod.rs
+index dcb6ca7..198d33e 100644
+--- a/crates/muxsmith-core/src/executor/mod.rs
++++ b/crates/muxsmith-core/src/executor/mod.rs
+@@ -1,7 +1,8 @@
+ //! Process execution (spec 6, D13): spawning mkvmerge behind a testable
+ //! seam, per-job state, and the FIFO queue. Prose-free like the rest of
+ //! core; all human text lives in the CLI's Fluent catalogs.
+ 
+ pub mod job;
++pub mod joblog;
+ pub mod queue;
+ pub mod spawn;
+diff --git a/crates/muxsmith-core/tests/joblog.rs b/crates/muxsmith-core/tests/joblog.rs
+new file mode 100644
+index 0000000..4022a22
+--- /dev/null
++++ b/crates/muxsmith-core/tests/joblog.rs
+@@ -0,0 +1,205 @@
++//! Persisted job logs (`executor::joblog`, D26, Task 6): `RunLogger` writes
++//! one `job-<index>.json` per job (incrementally, as events arrive) plus a
++//! `summary.json` (the T2 `run_document`, taken verbatim) when the run
++//! finishes. All tests use a tempdir as `runs_root`, never the real platform
++//! data dir.
++
++use std::path::PathBuf;
++use std::time::{Duration, SystemTime};
++
++use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
++use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
++use muxsmith_core::executor::queue::JobEvent;
++
++fn spec(argv: &[&str], output: &str) -> JobSpec {
++    JobSpec {
++        argv: argv.iter().map(|s| s.to_string()).collect(),
++        output: PathBuf::from(output),
++    }
++}
++
++fn outcome(state: JobState, exit_code: Option<i32>) -> JobOutcome {
++    JobOutcome {
++        state,
++        exit_code,
++        warnings: Vec::new(),
++        errors: Vec::new(),
++        duration_ms: 42,
++    }
++}
++
++/// `make_run_id` (UTC "YYYYMMDD-HHMMSSZ" via the `time` crate, from an
++/// injected `SystemTime` rather than an internal `now()` call, so it is
++/// deterministic here): the Unix epoch itself, and an offset from it that
++/// exercises zero-padding on every single-digit component.
++#[test]
++fn make_run_id_formats_utc_as_compact_stamp() {
++    assert_eq!(make_run_id(SystemTime::UNIX_EPOCH), "19700101-000000Z");
++    assert_eq!(
++        make_run_id(SystemTime::UNIX_EPOCH + Duration::new(3723, 0)),
++        "19700101-010203Z",
++        "1h2m3s after the epoch must zero-pad every component"
++    );
++}
++
++/// `default_runs_root` (D26 location): `dirs::data_dir()?/muxsmith/runs`.
++/// Lenient on `dirs::data_dir()` itself returning `None` (sandboxed CI with
++/// no resolvable data dir), but whenever it resolves, the suffix must be
++/// exactly `muxsmith/runs`.
++#[test]
++fn default_runs_root_appends_muxsmith_runs() {
++    if let Some(root) = default_runs_root() {
++        assert!(
++            root.ends_with(PathBuf::from("muxsmith").join("runs")),
++            "expected a muxsmith/runs suffix, got: {root:?}"
++        );
++    }
++}
++
++/// Step 1, case 1: `create` -> `on_event(Started/Output/Finished)` ->
++/// `finish` yields exactly `job-0.json` + `summary.json`, with the full
++/// field set the brief specifies.
++#[test]
++fn full_lifecycle_writes_job_and_summary_files() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    let specs = vec![spec(&["--output", "out.mkv", "a.srt"], "out.mkv")];
++
++    let mut logger = RunLogger::create(&runs_root, "20260710-120000Z", &specs).unwrap();
++    logger.on_event(&JobEvent::Started {
++        index: 0,
++        output: PathBuf::from("out.mkv"),
++    });
++    logger.on_event(&JobEvent::Output {
++        index: 0,
++        line: "#GUI#progress 100%".to_string(),
++    });
++    logger.on_event(&JobEvent::Output {
++        index: 0,
++        line: "some real output line".to_string(),
++    });
++    logger.on_event(&JobEvent::Finished {
++        index: 0,
++        outcome: outcome(JobState::Ok, Some(0)),
++    });
++
++    let run_document = serde_json::json!({ "jobs": [], "summary": {} });
++    let written_dir = logger.finish(&run_document).unwrap();
++
++    let mut entries: Vec<String> = std::fs::read_dir(&written_dir)
++        .unwrap()
++        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
++        .collect();
++    entries.sort();
++    assert_eq!(
++        entries,
++        vec!["job-0.json".to_string(), "summary.json".to_string()],
++        "exactly these two files, nothing else"
++    );
++
++    let job: serde_json::Value =
++        serde_json::from_str(&std::fs::read_to_string(written_dir.join("job-0.json")).unwrap())
++            .unwrap();
++    assert_eq!(job["index"], 0);
++    assert_eq!(job["output"], "out.mkv");
++    assert_eq!(
++        job["argv"],
++        serde_json::json!(["--output", "out.mkv", "a.srt"])
++    );
++    assert_eq!(job["state"], "ok");
++    assert_eq!(job["exit_code"], 0);
++    assert_eq!(job["warnings"], serde_json::json!([]));
++    assert_eq!(job["errors"], serde_json::json!([]));
++    assert_eq!(job["duration_ms"], 42);
++    assert_eq!(
++        job["lines"],
++        serde_json::json!(["#GUI#progress 100%", "some real output line"]),
++        "lines accumulate every raw Output line verbatim, progress ticks included \
++         (D24: core attaches no meaning to the text; only run.rs's milestone \
++         renderer treats #GUI#progress specially)"
++    );
++    assert!(job["started_at"].is_string(), "job: {job}");
++    assert!(job["finished_at"].is_string(), "job: {job}");
++
++    let summary: serde_json::Value =
++        serde_json::from_str(&std::fs::read_to_string(written_dir.join("summary.json")).unwrap())
++            .unwrap();
++    assert_eq!(
++        summary, run_document,
++        "summary.json is the T2 run_document, written verbatim"
++    );
++}
++
++/// Step 1, case 2: a collision on `runs_root/<run_id>` (pre-created) makes
++/// `create` fall back to `<run_id>-2`; a further collision on that falls
++/// back to `<run_id>-3`.
++#[test]
++fn collision_appends_a_numeric_suffix() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    std::fs::create_dir_all(runs_root.join("20260710-120000Z")).unwrap();
++
++    let logger = RunLogger::create(&runs_root, "20260710-120000Z", &[]).unwrap();
++    assert_eq!(logger.dir(), runs_root.join("20260710-120000Z-2"));
++
++    std::fs::create_dir_all(runs_root.join("20260710-120000Z-2")).unwrap();
++    let logger2 = RunLogger::create(&runs_root, "20260710-120000Z", &[]).unwrap();
++    assert_eq!(logger2.dir(), runs_root.join("20260710-120000Z-3"));
++}
++
++/// Step 1, case 3 (D25 skipped-job case): a job cancelled per-job before
++/// dequeue emits `Finished{Cancelled}` WITHOUT a prior `Started`. The writer
++/// must still produce a `job-<index>.json` record for it, with an empty
++/// `lines` array and a `null` (absent) `started_at`.
++#[test]
++fn skipped_job_without_started_still_writes_a_record_with_empty_lines() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    let specs = vec![spec(&["a.mkv"], "a.mkv"), spec(&["b.mkv"], "b.mkv")];
++
++    let mut logger = RunLogger::create(&runs_root, "run", &specs).unwrap();
++    // Job 1 is skipped per-job before ever being dequeued (D25): no Started,
++    // no Output, straight to Finished{Cancelled}.
++    logger.on_event(&JobEvent::Finished {
++        index: 1,
++        outcome: outcome(JobState::Cancelled, None),
++    });
++    let written_dir = logger.finish(&serde_json::json!({})).unwrap();
++
++    let job: serde_json::Value =
++        serde_json::from_str(&std::fs::read_to_string(written_dir.join("job-1.json")).unwrap())
++            .unwrap();
++    assert_eq!(job["state"], "cancelled");
++    assert_eq!(job["lines"], serde_json::json!([]));
++    assert!(
++        job["started_at"].is_null(),
++        "a job that never started must not claim a started_at, got: {job}"
++    );
++    assert!(
++        !written_dir.join("job-0.json").exists(),
++        "job 0 never received any event (never dequeued under a hypothetical \
++         batch cancel) and must not get a file; only the run_document \
++         (summary.json) covers it"
++    );
++}
++
++/// A job that is never dequeued under BATCH cancellation (D16, unchanged)
++/// gets no events at all -- not even `Finished` (its outcome appears only in
++/// the queue's returned vector, never as an event). The writer must not
++/// write a file for it: `on_event` simply never fires for that index.
++#[test]
++fn a_job_with_zero_events_never_gets_a_file() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    let specs = vec![spec(&["a.mkv"], "a.mkv")];
++
++    let logger = RunLogger::create(&runs_root, "run", &specs).unwrap();
++    let written_dir = logger.finish(&serde_json::json!({})).unwrap();
++
++    let entries: Vec<_> = std::fs::read_dir(&written_dir).unwrap().collect();
++    assert_eq!(
++        entries.len(),
++        1,
++        "only summary.json; no job file for a spec that received no events at all"
++    );
++}
+diff --git a/locales/en/cli.ftl b/locales/en/cli.ftl
+index 980f4ad..f1a770a 100644
+--- a/locales/en/cli.ftl
++++ b/locales/en/cli.ftl
+@@ -15,10 +15,12 @@ run-job-start = [{ $index }/{ $total }] { $output } ... start
+ run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
+ run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }
+ run-job-ok = [{ $index }/{ $total }] { $output } ... ok ({ $seconds }s)
+ run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count ->
+     [one] 1 warning
+    *[other] { $count } warnings
+ }, { $seconds }s)
+ run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
+ run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
+ run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
++run-joblog-unavailable = Job logs could not be written for this run; continuing without persisted logs.
++run-joblog-written = Job logs written to { $dir }

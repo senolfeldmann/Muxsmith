@@ -1,0 +1,1265 @@
+# Review package: 7ce88db..65d7065
+
+## Commits
+65d7065 feat(gui): app shell, Fluent wiring, first-run detection, settings dialog
+
+## Files changed
+ Cargo.lock                          |  35 ++++++
+ eslint.config.js                    |  16 ++-
+ locales/en/gui-common.ftl           |  41 +++++++
+ locales/en/gui-settings.ftl         |  14 +++
+ package.json                        |   1 +
+ pnpm-lock.yaml                      |  10 ++
+ src-tauri/Cargo.toml                |   1 +
+ src-tauri/capabilities/default.json |   5 +-
+ src-tauri/src/lib.rs                |  21 ++--
+ src/App.vue                         |  84 ++++++++++++-
+ src/components/SettingsDialog.vue   | 175 +++++++++++++++++++++++++++
+ src/i18n/index.ts                   |  79 +++++++++++++
+ src/ipc.ts                          | 229 ++++++++++++++++++++++++++++++++++++
+ src/main.ts                         |  38 +++---
+ src/views/BatchView.vue             |  12 ++
+ src/views/FirstRun.vue              | 139 ++++++++++++++++++++++
+ src/views/JobsView.vue              |  12 ++
+ 17 files changed, 883 insertions(+), 29 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index 4098e10..3e59b24 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2148,20 +2148,21 @@ name = "muxsmith-gui"
+ version = "0.1.0"
+ dependencies = [
+  "dirs",
+  "muxsmith-core",
+  "serde",
+  "serde_json",
+  "tauri",
+  "tauri-build",
+  "tauri-plugin-clipboard-manager",
+  "tauri-plugin-dialog",
++ "tauri-plugin-os",
+  "tempfile",
+ ]
+ 
+ [[package]]
+ name = "ndk"
+ version = "0.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4"
+ dependencies = [
+  "bitflags 2.13.0",
+@@ -2460,20 +2461,36 @@ name = "once_cell_polyfill"
+ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+ 
+ [[package]]
+ name = "option-ext"
+ version = "0.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+ 
++[[package]]
++name = "os_info"
++version = "3.15.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9cf20a545b305cf1da722b236b5155c9bb35f1d5ceb28c048bd96ca842f41b5b"
++dependencies = [
++ "android_system_properties",
++ "log",
++ "nix",
++ "objc2",
++ "objc2-foundation",
++ "objc2-ui-kit",
++ "serde",
++ "windows-sys 0.61.2",
++]
++
+ [[package]]
+ name = "os_pipe"
+ version = "1.2.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
+ dependencies = [
+  "libc",
+  "windows-sys 0.61.2",
+ ]
+ 
+@@ -3711,20 +3728,38 @@ dependencies = [
+  "serde_json",
+  "serde_repr",
+  "tauri",
+  "tauri-plugin",
+  "tauri-utils",
+  "thiserror 2.0.18",
+  "toml 1.1.2+spec-1.1.0",
+  "url",
+ ]
+ 
++[[package]]
++name = "tauri-plugin-os"
++version = "2.3.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d8f08346c8deb39e96f86973da0e2d76cbb933d7ac9b750f6dc4daf955a6f997"
++dependencies = [
++ "gethostname",
++ "log",
++ "os_info",
++ "serde",
++ "serde_json",
++ "serialize-to-javascript",
++ "sys-locale",
++ "tauri",
++ "tauri-plugin",
++ "thiserror 2.0.18",
++]
++
+ [[package]]
+ name = "tauri-runtime"
+ version = "2.11.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b0b4bc95aed361b0019067d189a1174a603d460d0f6c72606512d59fc9c12ec8"
+ dependencies = [
+  "cookie",
+  "dpi",
+  "gtk",
+  "http",
+diff --git a/eslint.config.js b/eslint.config.js
+index d408496..1f92948 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -37,14 +37,28 @@ export default tseslint.config(
+         parser: tseslint.parser,
+       },
+     },
+   },
+   {
+     files: ["**/*.vue"],
+     plugins: {
+       "@intlify/vue-i18n": vueI18n,
+     },
+     rules: {
+-      "@intlify/vue-i18n/no-raw-text": "error",
++      // `attributes` defaults to none checked (the rule only scans text
++      // nodes out of the box); D29 requires accessible names/tooltips to
++      // come from Fluent too, so a STATIC (non-`:`-bound) title/aria-label/
++      // placeholder/alt is flagged like any other raw string. A `:title=`/
++      // `:aria-label=` binding (the correct form, used throughout this
++      // codebase) is a directive and outside this rule's reach regardless
++      // -- this option only closes the "forgot to bind it" gap.
++      "@intlify/vue-i18n/no-raw-text": [
++        "error",
++        {
++          attributes: {
++            "/.*/": ["title", "aria-label", "placeholder", "alt"],
++          },
++        },
++      ],
+     },
+   },
+ );
+diff --git a/locales/en/gui-common.ftl b/locales/en/gui-common.ftl
+index 8d63922..da4e5a8 100644
+--- a/locales/en/gui-common.ftl
++++ b/locales/en/gui-common.ftl
+@@ -4,10 +4,51 @@ app-title = Muxsmith
+ # Consumed by the Rust shell at build time (include_str lookup in
+ # src-tauri/src/run.rs); keep these entries single-line simple messages
+ # (no attributes, no multiline continuations) -- the shell's lookup is a
+ # line parser, not a Fluent parser, and a unit test pins each key.
+ # Wording per D31's mkvtoolnix-gui reference (main_window.cpp,
+ # beforeCloseCheckRunningJobs).
+ close-abort-title = Abort running jobs
+ close-abort-message = There is currently a job running. Do you really want to abort all currently running jobs and quit?
+ close-abort-confirm = Abort jobs and quit
+ close-abort-dismiss = Cancel
++
++# T9: app shell navigation (single window, two views + first-run + settings,
++# spec 8.2). aria-current="page" on the active tab is set in the template,
++# not encoded here.
++nav-label = Main navigation
++nav-batch = Batch
++nav-jobs = Jobs
++settings-open-label = Settings
++settings-open-tooltip = Open application settings (mkvmerge path, default jobs, language).
++browse-button = Browse...
++browse-button-tooltip = Choose the file with a file picker.
++
++# T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
++# Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
++# selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
++# raw code when a message exists here, and falls back to the code string
++# itself only when a key is genuinely missing.
++mkvmerge-not-found = mkvmerge was not found.
++mkvmerge-too-old = The mkvmerge found ({ $found }) is older than the required minimum version { $minimum }.
++mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
++mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
++settings-dir-unavailable = The application settings location could not be determined on this system.
++settings-io-failed = Application settings could not be read or written: { $detail }
++settings-parse-failed = The application settings file is corrupt: { $detail }
++internal-task-failed = An internal error occurred: { $detail }
++
++# T9: first-run mkvmerge detection (D28).
++firstrun-detecting = Looking for mkvmerge...
++firstrun-missing-heading = mkvmerge was not found
++firstrun-too-old-heading = mkvmerge is too old
++firstrun-detect-failed-heading = mkvmerge detection failed
++firstrun-guidance-windows = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at mkvmerge.exe below (typically under %ProgramFiles%\MKVToolNix\mkvmerge.exe).
++firstrun-guidance-macos = Install MKVToolNix from mkvtoolnix.download into /Applications, then retry, or point Muxsmith directly at the mkvmerge binary below (typically /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge or /usr/local/bin/mkvmerge).
++firstrun-guidance-linux = Install the mkvtoolnix package from your distribution (e.g. apt, dnf, pacman), then retry, or point Muxsmith directly at the mkvmerge binary below (typically /usr/bin/mkvmerge or /usr/local/bin/mkvmerge).
++firstrun-guidance-fallback = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at the mkvmerge binary below.
++firstrun-picker-label = mkvmerge executable path
++firstrun-picker-hint = Enter or browse to the mkvmerge executable if it is not installed in a standard location.
++firstrun-use-path = Use this path
++firstrun-use-path-tooltip = Save this mkvmerge path and detect it again.
++firstrun-retry = Retry detection
++firstrun-retry-tooltip = Detect mkvmerge again without changing the configured path.
+diff --git a/locales/en/gui-settings.ftl b/locales/en/gui-settings.ftl
+new file mode 100644
+index 0000000..0b4b110
+--- /dev/null
++++ b/locales/en/gui-settings.ftl
+@@ -0,0 +1,14 @@
++# T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
++# parallel jobs, UI locale).
++settings-title = Settings
++settings-mkvmerge-path-label = mkvmerge path override
++settings-mkvmerge-path-hint = Leave empty to use the automatically detected mkvmerge (PATH or the standard install location for your operating system).
++settings-default-jobs-label = Default parallel jobs
++settings-default-jobs-hint = How many mkvmerge processes to run at the same time during a run. 1 runs jobs one after another.
++settings-locale-label = Language
++settings-locale-hint = Only English ships in this version; more languages can be added later without changing this setting's meaning.
++settings-locale-option-en = English
++settings-save = Save
++settings-save-tooltip = Save these settings.
++settings-cancel = Cancel
++settings-cancel-tooltip = Discard changes and close.
+diff --git a/package.json b/package.json
+index 978add5..fef4c27 100644
+--- a/package.json
++++ b/package.json
+@@ -8,20 +8,21 @@
+     "dev": "vite",
+     "build": "vue-tsc --noEmit && vite build",
+     "preview": "vite preview",
+     "lint": "eslint ."
+   },
+   "dependencies": {
+     "@fluent/bundle": "0.19.1",
+     "@tauri-apps/api": "2.11.1",
+     "@tauri-apps/plugin-clipboard-manager": "2.3.2",
+     "@tauri-apps/plugin-dialog": "2.7.1",
++    "@tauri-apps/plugin-os": "2.3.2",
+     "fluent-vue": "3.8.2",
+     "vue": "3.5.39"
+   },
+   "devDependencies": {
+     "@intlify/eslint-plugin-vue-i18n": "4.5.1",
+     "@tauri-apps/cli": "2.11.4",
+     "@vitejs/plugin-vue": "6.0.7",
+     "eslint": "10.6.0",
+     "eslint-plugin-vue": "10.9.2",
+     "typescript": "6.0.3",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index c5cafdd..46eeeac 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -13,20 +13,23 @@ importers:
+         version: 0.19.1
+       '@tauri-apps/api':
+         specifier: 2.11.1
+         version: 2.11.1
+       '@tauri-apps/plugin-clipboard-manager':
+         specifier: 2.3.2
+         version: 2.3.2
+       '@tauri-apps/plugin-dialog':
+         specifier: 2.7.1
+         version: 2.7.1
++      '@tauri-apps/plugin-os':
++        specifier: 2.3.2
++        version: 2.3.2
+       fluent-vue:
+         specifier: 3.8.2
+         version: 3.8.2(@fluent/bundle@0.19.1)(vue@3.5.39(typescript@6.0.3))
+       vue:
+         specifier: 3.5.39
+         version: 3.5.39(typescript@6.0.3)
+     devDependencies:
+       '@intlify/eslint-plugin-vue-i18n':
+         specifier: 4.5.1
+         version: 4.5.1(eslint@10.6.0)(jsonc-eslint-parser@3.1.0)(vue-eslint-parser@10.4.1(eslint@10.6.0))(yaml-eslint-parser@2.1.0)
+@@ -376,20 +379,23 @@ packages:
+     resolution: {integrity: sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ==}
+     engines: {node: '>= 10'}
+     hasBin: true
+ 
+   '@tauri-apps/plugin-clipboard-manager@2.3.2':
+     resolution: {integrity: sha512-CUlb5Hqi2oZbcZf4VUyUH53XWPPdtpw43EUpCza5HWZJwxEoDowFzNUDt1tRUXA8Uq+XPn17Ysfptip33sG4eQ==}
+ 
+   '@tauri-apps/plugin-dialog@2.7.1':
+     resolution: {integrity: sha512-OK1UBXYt+ojcmxMktzzuyonYIFta8CmAASpX+CA+DTGK24KlHjhYI6x2iOJ/TjZF4N7/ACK1oFmEOjIY9IhzOQ==}
+ 
++  '@tauri-apps/plugin-os@2.3.2':
++    resolution: {integrity: sha512-n+nXWeuSeF9wcEsSPmRnBEGrRgOy6jjkSU+UVCOV8YUGKb2erhDOxis7IqRXiRVHhY8XMKks00BJ0OAdkpf6+A==}
++
+   '@tybys/wasm-util@0.10.3':
+     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
+ 
+   '@types/esrecurse@4.3.1':
+     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
+ 
+   '@types/estree@1.0.9':
+     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+ 
+   '@types/json-schema@7.0.15':
+@@ -1497,20 +1503,24 @@ snapshots:
+       '@tauri-apps/cli-win32-x64-msvc': 2.11.4
+ 
+   '@tauri-apps/plugin-clipboard-manager@2.3.2':
+     dependencies:
+       '@tauri-apps/api': 2.11.1
+ 
+   '@tauri-apps/plugin-dialog@2.7.1':
+     dependencies:
+       '@tauri-apps/api': 2.11.1
+ 
++  '@tauri-apps/plugin-os@2.3.2':
++    dependencies:
++      '@tauri-apps/api': 2.11.1
++
+   '@tybys/wasm-util@0.10.3':
+     dependencies:
+       tslib: 2.8.1
+     optional: true
+ 
+   '@types/esrecurse@4.3.1': {}
+ 
+   '@types/estree@1.0.9': {}
+ 
+   '@types/json-schema@7.0.15': {}
+diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
+index c471ccd..99a8269 100644
+--- a/src-tauri/Cargo.toml
++++ b/src-tauri/Cargo.toml
+@@ -17,13 +17,14 @@ path = "src/main.rs"
+ tauri-build = { version = "2.6.3", features = [] }
+ 
+ [dependencies]
+ dirs = "6.0.0"
+ muxsmith-core = { path = "../crates/muxsmith-core" }
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ tauri = "2.11.5"
+ tauri-plugin-clipboard-manager = "2.3.2"
+ tauri-plugin-dialog = "2.7.1"
++tauri-plugin-os = "2.3.2"
+ 
+ [dev-dependencies]
+ tempfile = "3.27.0"
+diff --git a/src-tauri/capabilities/default.json b/src-tauri/capabilities/default.json
+index 7765870..8cc12f1 100644
+--- a/src-tauri/capabilities/default.json
++++ b/src-tauri/capabilities/default.json
+@@ -1,12 +1,13 @@
+ {
+   "$schema": "../gen/schemas/desktop-schema.json",
+   "identifier": "default",
+-  "description": "Capability for the main window: file/folder pickers and clipboard-copy, the minimum the GUI needs beyond Tauri's core defaults. Extend deliberately as GUI features land.",
++  "description": "Capability for the main window: file/folder pickers, clipboard-copy, and OS platform detection (T9 first-run guidance), the minimum the GUI needs beyond Tauri's core defaults. Extend deliberately as GUI features land.",
+   "windows": ["main"],
+   "permissions": [
+     "core:default",
+     "core:event:default",
+     "dialog:allow-open",
+-    "clipboard-manager:allow-write-text"
++    "clipboard-manager:allow-write-text",
++    "os:default"
+   ]
+ }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index befb730..8c8c61b 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -379,41 +379,48 @@ fn get_settings(state: State<AppState>) -> Result<AppSettings, IpcError> {
+ }
+ 
+ /// `set_settings` IPC command (D27). Writes the full settings object the
+ /// frontend hands over; [`settings::save`] caps `recent_profiles` at write
+ /// time regardless of what the caller sent.
+ #[tauri::command]
+ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), IpcError> {
+     state.save_settings(&settings)
+ }
+ 
+-/// Builds and runs the Tauri application: registers the `dialog` and
+-/// `clipboard-manager` plugins (capabilities in `capabilities/default.json`
+-/// gate what each grants to the *frontend*; the shell's own Rust-side
+-/// dialog use in [`run::on_close_requested`] bypasses the IPC permission
+-/// layer and needs no capability entry), manages the single unified
+-/// [`AppState`], registers both tasks' IPC commands under ONE
+-/// `invoke_handler` (Tauri resolves `State<AppState>` once per managed
++/// Builds and runs the Tauri application: registers the `dialog`,
++/// `clipboard-manager`, and `os` plugins (capabilities in
++/// `capabilities/default.json` gate what each grants to the *frontend*; the
++/// shell's own Rust-side dialog use in [`run::on_close_requested`] bypasses
++/// the IPC permission layer and needs no capability entry), manages the
++/// single unified [`AppState`], registers both tasks' IPC commands under
++/// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
+ /// type, so the read-only/settings commands and the run-lifecycle commands
+ /// must share the same registration), wires the D31 close-with-active-run
+ /// confirmation, and launches the main window from `tauri.conf.json`.
+ ///
++/// The `os` plugin (T9, D28) is here rather than in `@tauri-apps/api`
++/// (which this task's brief names): Tauri 2 moved OS/platform detection
++/// out of the core API into this separate plugin (`@tauri-apps/plugin-os`
++/// on the frontend side), so `FirstRun.vue`'s per-OS guidance needs it
++/// registered like `dialog`/`clipboard-manager` are.
++///
+ /// # Panics
+ ///
+ /// Panics if the Tauri runtime fails to launch. This mirrors the Tauri
+ /// scaffold default: a launch failure here means the webview/window
+ /// backend is unusable, which has no meaningful recovery.
+ #[cfg_attr(mobile, tauri::mobile_entry_point)]
+ pub fn run() {
+     tauri::Builder::default()
+         .plugin(tauri_plugin_dialog::init())
+         .plugin(tauri_plugin_clipboard_manager::init())
++        .plugin(tauri_plugin_os::init())
+         .manage(AppState::default())
+         .invoke_handler(tauri::generate_handler![
+             validate_profile,
+             dry_run,
+             identify,
+             detect_mkvmerge,
+             get_settings,
+             set_settings,
+             run::start_run,
+             run::cancel_run,
+diff --git a/src/App.vue b/src/App.vue
+index d5d9d87..3ae9ca1 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -1,10 +1,84 @@
+ <script setup lang="ts">
+-// Placeholder root component (Task 4 scope: prove the Tauri + Vue + Fluent
+-// pipe end to end). Real screens land in later tasks.
++import { onMounted, ref } from "vue";
++import BatchView from "./views/BatchView.vue";
++import JobsView from "./views/JobsView.vue";
++import FirstRun from "./views/FirstRun.vue";
++import SettingsDialog from "./components/SettingsDialog.vue";
++import { detectMkvmerge } from "./ipc";
++import type { IpcError } from "./ipc";
++
++type View = "batch" | "jobs";
++
++// Startup gate (D28, T9 brief): probe mkvmerge exactly once on mount. A
++// clean result unlocks the shell; a missing/too-old one mounts FirstRun
++// instead, which owns its own retry loop and clears `blockedError` itself
++// once a fresh detect succeeds (see its `resolved` emit) -- checkMkvmerge
++// never runs a second time.
++const checking = ref(true);
++const blockedError = ref<IpcError | null>(null);
++const activeView = ref<View>("batch");
++const settingsDialog = ref<InstanceType<typeof SettingsDialog> | null>(null);
++
++async function checkMkvmerge() {
++  try {
++    await detectMkvmerge();
++    blockedError.value = null;
++  } catch (e) {
++    blockedError.value = e as IpcError;
++  } finally {
++    checking.value = false;
++  }
++}
++
++onMounted(checkMkvmerge);
+ </script>
+ 
+ <template>
+-  <main>
+-    <h1>{{ $t("app-title") }}</h1>
+-  </main>
++  <p
++    v-if="checking"
++    aria-live="polite"
++  >
++    {{ $t("firstrun-detecting") }}
++  </p>
++  <FirstRun
++    v-else-if="blockedError"
++    :error="blockedError"
++    @resolved="blockedError = null"
++  />
++  <template v-else>
++    <header>
++      <h1>{{ $t("app-title") }}</h1>
++    </header>
++    <nav :aria-label="$t('nav-label')">
++      <button
++        type="button"
++        data-testid="nav-batch"
++        :aria-current="activeView === 'batch' ? 'page' : undefined"
++        @click="activeView = 'batch'"
++      >
++        {{ $t("nav-batch") }}
++      </button>
++      <button
++        type="button"
++        data-testid="nav-jobs"
++        :aria-current="activeView === 'jobs' ? 'page' : undefined"
++        @click="activeView = 'jobs'"
++      >
++        {{ $t("nav-jobs") }}
++      </button>
++      <button
++        type="button"
++        data-testid="open-settings"
++        :title="$t('settings-open-tooltip')"
++        @click="settingsDialog?.open()"
++      >
++        {{ $t("settings-open-label") }}
++      </button>
++    </nav>
++    <main>
++      <BatchView v-if="activeView === 'batch'" />
++      <JobsView v-else />
++    </main>
++    <SettingsDialog ref="settingsDialog" />
++  </template>
+ </template>
+diff --git a/src/components/SettingsDialog.vue b/src/components/SettingsDialog.vue
+new file mode 100644
+index 0000000..9c03fbf
+--- /dev/null
++++ b/src/components/SettingsDialog.vue
+@@ -0,0 +1,175 @@
++<script setup lang="ts">
++import { reactive, ref } from "vue";
++import { open as openDialog } from "@tauri-apps/plugin-dialog";
++import { getSettings, setSettings } from "../ipc";
++import type { AppSettings, IpcError } from "../ipc";
++
++// D27 settings dialog: native <dialog>, opened imperatively via
++// `defineExpose`'s `open()` (App.vue holds a template ref and calls it
++// from the shell's own Settings button). Deliberately not `method="dialog"`
++// on the <form>: saving needs an async IPC round trip to complete (and the
++// dialog to stay open on failure), which a plain `method="dialog"` submit
++// cannot express -- it closes synchronously regardless of outcome.
++const dialogEl = ref<HTMLDialogElement | null>(null);
++const busy = ref(false);
++const errorCode = ref<string | null>(null);
++const errorParams = ref<Record<string, string>>({});
++
++const form = reactive({
++  mkvmergePath: "",
++  defaultJobs: 1,
++  locale: "en",
++});
++
++function defaultAppSettings(): AppSettings {
++  return {
++    mkvmerge_path: null,
++    default_jobs: 1,
++    locale: null,
++    recent_profiles: [],
++    dir_memory: {},
++  };
++}
++
++let baseline: AppSettings = defaultAppSettings();
++
++async function open() {
++  errorCode.value = null;
++  try {
++    baseline = await getSettings();
++  } catch (e) {
++    const err = e as IpcError;
++    errorCode.value = err.code;
++    errorParams.value = err.params;
++    baseline = defaultAppSettings();
++  }
++  form.mkvmergePath = baseline.mkvmerge_path ?? "";
++  form.defaultJobs = baseline.default_jobs;
++  form.locale = baseline.locale ?? "en";
++  dialogEl.value?.showModal();
++}
++
++function close() {
++  dialogEl.value?.close();
++}
++
++async function browse() {
++  const picked = await openDialog({ multiple: false, directory: false });
++  if (typeof picked === "string") {
++    form.mkvmergePath = picked;
++  }
++}
++
++async function save() {
++  busy.value = true;
++  errorCode.value = null;
++  try {
++    const next: AppSettings = {
++      ...baseline,
++      mkvmerge_path: form.mkvmergePath.trim() === "" ? null : form.mkvmergePath.trim(),
++      default_jobs: Math.max(1, Math.trunc(form.defaultJobs) || 1),
++      locale: form.locale,
++    };
++    await setSettings(next);
++    baseline = next;
++    dialogEl.value?.close();
++  } catch (e) {
++    const err = e as IpcError;
++    errorCode.value = err.code;
++    errorParams.value = err.params;
++  } finally {
++    busy.value = false;
++  }
++}
++
++defineExpose({ open });
++</script>
++
++<template>
++  <dialog
++    ref="dialogEl"
++    data-testid="settings-dialog"
++    aria-labelledby="settings-title"
++  >
++    <form @submit.prevent="save">
++      <h2 id="settings-title">
++        {{ $t("settings-title") }}
++      </h2>
++
++      <p
++        v-if="errorCode"
++        role="alert"
++      >
++        {{ $t(errorCode, errorParams) }}
++      </p>
++
++      <div>
++        <label for="settings-mkvmerge-path">{{ $t("settings-mkvmerge-path-label") }}</label>
++        <input
++          id="settings-mkvmerge-path"
++          v-model="form.mkvmergePath"
++          type="text"
++          aria-describedby="settings-mkvmerge-path-hint"
++        >
++        <p id="settings-mkvmerge-path-hint">
++          {{ $t("settings-mkvmerge-path-hint") }}
++        </p>
++        <button
++          type="button"
++          :title="$t('browse-button-tooltip')"
++          @click="browse"
++        >
++          {{ $t("browse-button") }}
++        </button>
++      </div>
++
++      <div>
++        <label for="settings-default-jobs">{{ $t("settings-default-jobs-label") }}</label>
++        <input
++          id="settings-default-jobs"
++          v-model.number="form.defaultJobs"
++          type="number"
++          min="1"
++          step="1"
++          aria-describedby="settings-default-jobs-hint"
++        >
++        <p id="settings-default-jobs-hint">
++          {{ $t("settings-default-jobs-hint") }}
++        </p>
++      </div>
++
++      <div>
++        <label for="settings-locale">{{ $t("settings-locale-label") }}</label>
++        <select
++          id="settings-locale"
++          v-model="form.locale"
++          aria-describedby="settings-locale-hint"
++        >
++          <option value="en">
++            {{ $t("settings-locale-option-en") }}
++          </option>
++        </select>
++        <p id="settings-locale-hint">
++          {{ $t("settings-locale-hint") }}
++        </p>
++      </div>
++
++      <button
++        type="submit"
++        :disabled="busy"
++        :aria-busy="busy"
++        :title="$t('settings-save-tooltip')"
++      >
++        {{ $t("settings-save") }}
++      </button>
++      <button
++        type="button"
++        :disabled="busy"
++        :title="$t('settings-cancel-tooltip')"
++        @click="close"
++      >
++        {{ $t("settings-cancel") }}
++      </button>
++    </form>
++  </dialog>
++</template>
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+new file mode 100644
+index 0000000..f5ca958
+--- /dev/null
++++ b/src/i18n/index.ts
+@@ -0,0 +1,79 @@
++import { FluentBundle, FluentResource } from "@fluent/bundle";
++
++/**
++ * Catalog source of truth (spec 8.4): `locales/<locale>/{gui-*,diagnostics}.ftl`,
++ * the same tree the CLI embeds at build time
++ * (`crates/muxsmith-cli/src/i18n.rs`). `cli.ftl` is deliberately excluded:
++ * it is CLI-only vocabulary the frontend never renders.
++ *
++ * Globbed by locale directory rather than a hardcoded "en" import list, so
++ * a v1.x locale addition is pure `.ftl` content under a new
++ * `locales/<tag>/` directory; this loader needs no change (spec 11: "the
++ * mechanism ships complete; adding a locale is content work, not a
++ * refactor"). It also means a later view task's own `gui-<view>.ftl`
++ * (T10's `gui-batch.ftl`, T11's `gui-jobs.ftl`) is picked up automatically,
++ * with no edit here either.
++ */
++const catalogSources = import.meta.glob(
++  ["../../locales/*/gui-*.ftl", "../../locales/*/diagnostics.ftl"],
++  { query: "?raw", import: "default", eager: true },
++);
++
++const LOCALE_DIR = /\/locales\/([^/]+)\//;
++
++function catalogsForLocale(locale: string): string[] {
++  return Object.keys(catalogSources)
++    .filter((path) => LOCALE_DIR.exec(path)?.[1] === locale)
++    .sort()
++    .map((path) => catalogSources[path]);
++}
++
++function buildBundle(locale: string): FluentBundle | null {
++  const sources = catalogsForLocale(locale);
++  if (sources.length === 0) {
++    return null;
++  }
++  const bundle = new FluentBundle(locale);
++  for (const source of sources) {
++    const errors = bundle.addResource(new FluentResource(source));
++    for (const error of errors) {
++      // A catalog parse/collision problem is a build-time bug, not a
++      // reason to crash the app; surfaced for visibility, mirroring the
++      // CLI's own missing-key fallback (never silently hide a problem).
++      console.warn(`[i18n] catalog error in locale "${locale}":`, error);
++    }
++  }
++  return bundle;
++}
++
++/**
++ * Builds the fallback chain fluent-vue negotiates every message against
++ * (spec 8.4: "falls back to English per message"): the requested/system
++ * locale first, then "en" unconditionally. fluent-vue documents `bundles`
++ * as "current negotiated fallback chain of languages" -- a message missing
++ * from the first bundle falls through to the next, so this is real
++ * per-message fallback, not just a startup default.
++ *
++ * v1 ships English content only (non-goal 11), so `catalogsForLocale`
++ * currently only ever resolves "en" and this always returns a single
++ * bundle; the chain shape is what makes a later locale addition pure
++ * content instead of a loader change.
++ */
++export function buildBundles(locale: string | null | undefined): FluentBundle[] {
++  const requested = [locale, "en"].filter(
++    (tag): tag is string => typeof tag === "string" && tag.length > 0,
++  );
++  const seen = new Set<string>();
++  const bundles: FluentBundle[] = [];
++  for (const tag of requested) {
++    if (seen.has(tag)) {
++      continue;
++    }
++    seen.add(tag);
++    const bundle = buildBundle(tag);
++    if (bundle) {
++      bundles.push(bundle);
++    }
++  }
++  return bundles;
++}
+diff --git a/src/ipc.ts b/src/ipc.ts
+new file mode 100644
+index 0000000..b1cf832
+--- /dev/null
++++ b/src/ipc.ts
+@@ -0,0 +1,229 @@
++/**
++ * Typed IPC wrappers (D23): one thin function per Rust `#[tauri::command]`
++ * in `src-tauri/src/lib.rs`/`src-tauri/src/run.rs`, with argument/return
++ * types mirroring the Rust structs field-for-field. Deliberately dumb: no
++ * retries, no caching, no error translation -- `IpcError` rejects exactly
++ * as the shell sends it, and callers render it through their own Fluent
++ * bundle (spec 8.4). T9 itself only calls `detectMkvmerge`/`getSettings`/
++ * `setSettings`; the rest exist so T10 (`validateProfile`, `dryRun`) and
++ * T11 (the run lifecycle, `listRuns`, `getJobLog`) do not each redefine
++ * this layer.
++ */
++import { invoke } from "@tauri-apps/api/core";
++
++/** Mirrors `src-tauri/src/error.rs::IpcError`; the shape every rejected
++ * command promise carries. */
++export interface IpcError {
++  code: string;
++  params: Record<string, string>;
++}
++
++/** Mirrors `src-tauri/src/settings.rs::DirMemory`. */
++export interface DirMemory {
++  source?: string;
++  output?: string;
++}
++
++/** Mirrors `src-tauri/src/settings.rs::AppSettings`. */
++export interface AppSettings {
++  mkvmerge_path: string | null;
++  default_jobs: number;
++  locale: string | null;
++  recent_profiles: string[];
++  dir_memory: Record<string, DirMemory>;
++}
++
++/** Mirrors `src-tauri/src/lib.rs::MkvmergeInfo` (D28). */
++export interface MkvmergeInfo {
++  path: string;
++  version: string;
++  meets_minimum: boolean;
++}
++
++/**
++ * A core diagnostic as rendered into a report document (spec 5.2, 7):
++ * mirrors `muxsmith_core::report::Diagnostic` plus the `"rendered"` field
++ * every `report::json` document function injects (the shell's own
++ * passthrough renderer just echoes `code`, never real prose -- the
++ * frontend renders `code`/`params` through its own Fluent bundle instead
++ * of trusting this field).
++ */
++export interface Diagnostic {
++  code: string;
++  severity: "error" | "warning" | "info";
++  config_path: string;
++  file?: string;
++  params: Record<string, string>;
++  suggestion_ref?: number;
++  rendered: string;
++}
++
++/**
++ * A `validate_profile`/`dry_run` report document (spec 5.2, 5.5, 7):
++ * mirrors `muxsmith_core::report::json::{config_only_document,
++ * batch_document}`. `files[].plan`/`suggestions` carry the planner's own
++ * `FilePlan`/`Suggestion` shapes, which no T9 code reads and so are left
++ * structurally opaque here rather than half-mirrored; T10 (the Batch
++ * view, the actual consumer of file-level plan data) is where that shape
++ * earns a real type.
++ */
++export interface ReportDocument {
++  config_diagnostics: Diagnostic[];
++  files: ReportFile[];
++  batch_diagnostics: Diagnostic[];
++  suggestions: unknown[];
++  mkvmerge_found?: boolean;
++}
++
++export interface ReportFile {
++  source: string;
++  identifier: string;
++  plan: unknown | null;
++  diagnostics: Diagnostic[];
++}
++
++/** Mirrors `src-tauri/src/lib.rs::identify_document`'s JSON shape. */
++export interface IdentifyDocument {
++  file_name: string;
++  identification_format_version: number;
++  identifiable: boolean;
++  tracks: { id: number; type: string; codec: string }[];
++}
++
++/** Mirrors `src-tauri/src/run.rs::StartedRun`. */
++export interface StartedRun {
++  run_id: string;
++  total_jobs: number;
++  run_dir: string | null;
++}
++
++/** Mirrors `muxsmith_core::executor::job::JobState`. */
++export type JobState = "ok" | "warning" | "failed" | "cancelled";
++
++/** Mirrors `muxsmith_core::executor::job::JobOutcome`. */
++export interface JobOutcome {
++  state: JobState;
++  exit_code: number | null;
++  warnings: string[];
++  errors: string[];
++  duration_ms: number;
++}
++
++/** One `run_document` job entry: `JobOutcome` plus `index`/`output` (D15). */
++export interface RunJobEntry extends JobOutcome {
++  index: number;
++  output: string;
++}
++
++/** A `run`-shaped report document: `ReportDocument` plus `run`'s own D15
++ * additions (`report::json::run_document`). */
++export interface RunDocument extends ReportDocument {
++  jobs: RunJobEntry[];
++  summary: { ok: number; warning: number; failed: number; cancelled: number };
++}
++
++/** Mirrors `src-tauri/src/run.rs::RunMeta`. */
++export interface RunMeta {
++  run_id: string;
++  started_at: string;
++  summary: RunDocument;
++}
++
++/** Mirrors `src-tauri/src/run.rs::JoblogStatus`. */
++export type JoblogStatus = "complete" | "incomplete" | "unavailable";
++
++/** The `muxsmith://run-finished` window event payload
++ * (`run.rs::emit_run_finished`): a `RunDocument` with `joblog_status`
++ * spliced in. */
++export interface RunFinishedEvent extends RunDocument {
++  joblog_status: JoblogStatus;
++}
++
++/** Mirrors `muxsmith_core::executor::queue::JobEvent`
++ * (`#[serde(tag = "event", rename_all = "snake_case")]`). */
++export type JobEvent =
++  | { event: "started"; index: number; output: string }
++  | { event: "progress"; index: number; percent: number }
++  | { event: "warning"; index: number; text: string }
++  | { event: "error"; index: number; text: string }
++  | { event: "finished"; index: number; outcome: JobOutcome }
++  | { event: "output"; index: number; line: string };
++
++/** Window event channel names the run lifecycle emits on (D23); T11 listens
++ * on both before invoking `startRun` (`run.rs::start_run`'s documented
++ * event-ordering contract). */
++export const JOB_EVENT_CHANNEL = "muxsmith://job-event";
++export const RUN_FINISHED_CHANNEL = "muxsmith://run-finished";
++
++/** One persisted `job-<index>.json` record (D26), mirrors
++ * `executor::joblog::JobRecord`. */
++export interface JobLogRecord {
++  index: number;
++  output: string;
++  argv: string[];
++  state: JobState;
++  exit_code: number | null;
++  warnings: string[];
++  errors: string[];
++  duration_ms: number;
++  lines: string[];
++  started_at: string | null;
++  finished_at: string;
++}
++
++// --- read-only + settings commands (T7) -------------------------------
++
++export function validateProfile(path: string): Promise<ReportDocument> {
++  return invoke<ReportDocument>("validate_profile", { path });
++}
++
++export function dryRun(
++  profile: string,
++  source?: string,
++  output?: string,
++): Promise<ReportDocument> {
++  return invoke<ReportDocument>("dry_run", { profile, source, output });
++}
++
++export function identify(file: string): Promise<IdentifyDocument> {
++  return invoke<IdentifyDocument>("identify", { file });
++}
++
++export function detectMkvmerge(): Promise<MkvmergeInfo> {
++  return invoke<MkvmergeInfo>("detect_mkvmerge");
++}
++
++export function getSettings(): Promise<AppSettings> {
++  return invoke<AppSettings>("get_settings");
++}
++
++export function setSettings(settings: AppSettings): Promise<void> {
++  return invoke<void>("set_settings", { settings });
++}
++
++// --- run lifecycle commands (T8) ---------------------------------------
++
++export function startRun(params: {
++  profile: string;
++  source?: string;
++  output?: string;
++  jobs?: number;
++}): Promise<StartedRun> {
++  return invoke<StartedRun>("start_run", params);
++}
++
++export function cancelRun(): Promise<void> {
++  return invoke<void>("cancel_run");
++}
++
++export function cancelJob(index: number): Promise<void> {
++  return invoke<void>("cancel_job", { index });
++}
++
++export function listRuns(): Promise<RunMeta[]> {
++  return invoke<RunMeta[]>("list_runs");
++}
++
++export function getJobLog(runId: string, index: number): Promise<JobLogRecord> {
++  return invoke<JobLogRecord>("get_job_log", { runId, index });
++}
+diff --git a/src/main.ts b/src/main.ts
+index 298c4af..510a7ba 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,20 +1,30 @@
+ import { createApp } from "vue";
+ import { createFluentVue } from "fluent-vue";
+-import { FluentBundle, FluentResource } from "@fluent/bundle";
+ import App from "./App.vue";
++import { buildBundles } from "./i18n";
++import { getSettings } from "./ipc";
+ 
+-// Fluent catalog loaded as a raw string (Vite `?raw`) rather than through
+-// vue-i18n's JSON/YAML message-catalog loader: Muxsmith standardizes on
+-// Fluent (.ftl) everywhere, CLI side included (see
+-// `crates/muxsmith-cli/src/i18n.rs`), so the GUI reads the same format
+-// instead of introducing a second one.
+-import guiCommonFtl from "../locales/en/gui-common.ftl?raw";
++/**
++ * Resolves the locale before the app ever mounts (spec 8.4: "system locale
++ * with manual override in app settings ... falls back to English per
++ * message"), so the very first paint already uses the right catalog chain
++ * instead of flashing English and re-rendering. `get_settings` failing
++ * (e.g. no resolvable platform config dir) is not a startup blocker --
++ * `buildBundles` already falls back to "en" for any locale it cannot
++ * resolve, exactly as it would for an unset setting.
++ */
++async function resolveLocale(): Promise<string | null> {
++  try {
++    return (await getSettings()).locale ?? navigator.language;
++  } catch {
++    return navigator.language;
++  }
++}
+ 
+-const bundle = new FluentBundle("en");
+-bundle.addResource(new FluentResource(guiCommonFtl));
++async function bootstrap() {
++  const locale = await resolveLocale();
++  const fluent = createFluentVue({ bundles: buildBundles(locale) });
++  createApp(App).use(fluent).mount("#app");
++}
+ 
+-const fluent = createFluentVue({
+-  bundles: [bundle],
+-});
+-
+-createApp(App).use(fluent).mount("#app");
++void bootstrap();
+diff --git a/src/views/BatchView.vue b/src/views/BatchView.vue
+new file mode 100644
+index 0000000..0cb74af
+--- /dev/null
++++ b/src/views/BatchView.vue
+@@ -0,0 +1,12 @@
++<script setup lang="ts">
++// Placeholder for Task 10 (Batch view, spec 8.2 view 2). T9's scope is
++// only to prove the view-switch mounts a real component per view; the
++// profile picker, dry-run report, and suggestions UI land in T10, which
++// replaces this file's content.
++</script>
++
++<template>
++  <section data-testid="view-batch">
++    <h2>{{ $t("nav-batch") }}</h2>
++  </section>
++</template>
+diff --git a/src/views/FirstRun.vue b/src/views/FirstRun.vue
+new file mode 100644
+index 0000000..c2f5132
+--- /dev/null
++++ b/src/views/FirstRun.vue
+@@ -0,0 +1,139 @@
++<script setup lang="ts">
++import { computed, onMounted, ref } from "vue";
++import { platform } from "@tauri-apps/plugin-os";
++import { open as openDialog } from "@tauri-apps/plugin-dialog";
++import { detectMkvmerge, getSettings, setSettings } from "../ipc";
++import type { IpcError } from "../ipc";
++
++// D28: mkvmerge missing/too-old full-screen guidance. `error` is the
++// failure App.vue's own startup probe hit; this component owns every
++// retry after that (re-detect, and re-detect-after-setting-a-path) and
++// only reports back up once ITS OWN detect succeeds (`resolved`), so the
++// parent never needs to re-probe redundantly.
++const props = defineProps<{ error: IpcError }>();
++const emit = defineEmits<{ resolved: [] }>();
++
++const currentError = ref<IpcError>(props.error);
++const manualPath = ref("");
++const busy = ref(false);
++
++function guidanceKeyFor(p: string): string {
++  switch (p) {
++    case "windows":
++      return "firstrun-guidance-windows";
++    case "macos":
++      return "firstrun-guidance-macos";
++    case "linux":
++      return "firstrun-guidance-linux";
++    default:
++      return "firstrun-guidance-fallback";
++  }
++}
++
++// platform() is fixed at compile time (Tauri's own doc), so this needs no
++// reactivity of its own.
++const guidanceKey = guidanceKeyFor(platform());
++
++const headingKey = computed(() => {
++  switch (currentError.value.code) {
++    case "mkvmerge-not-found":
++      return "firstrun-missing-heading";
++    case "mkvmerge-too-old":
++      return "firstrun-too-old-heading";
++    default:
++      return "firstrun-detect-failed-heading";
++  }
++});
++
++onMounted(async () => {
++  try {
++    const settings = await getSettings();
++    manualPath.value = settings.mkvmerge_path ?? "";
++  } catch {
++    // Settings unreadable: the picker just starts empty. This screen's
++    // job is mkvmerge detection, not settings diagnostics.
++  }
++});
++
++async function browse() {
++  const picked = await openDialog({ multiple: false, directory: false });
++  if (typeof picked === "string") {
++    manualPath.value = picked;
++  }
++}
++
++/** `save`: write `manualPath` as the settings override, then re-detect
++ * (D28's "manual path picker ... writing set_settings then re-detect").
++ * `!save` ("Retry detection"): re-detect only, against whatever override
++ * (if any) is already persisted -- covers the "I just installed
++ * mkvtoolnix into a standard location" case with no path to set. */
++async function attempt(save: boolean) {
++  busy.value = true;
++  try {
++    if (save) {
++      const settings = await getSettings();
++      await setSettings({
++        ...settings,
++        mkvmerge_path: manualPath.value.trim() === "" ? null : manualPath.value.trim(),
++      });
++    }
++    await detectMkvmerge();
++    emit("resolved");
++  } catch (e) {
++    currentError.value = e as IpcError;
++  } finally {
++    busy.value = false;
++  }
++}
++</script>
++
++<template>
++  <main data-testid="first-run">
++    <div aria-live="polite">
++      <h1>{{ $t(headingKey) }}</h1>
++      <p>{{ $t(currentError.code, currentError.params) }}</p>
++    </div>
++
++    <p>{{ $t(guidanceKey) }}</p>
++
++    <form @submit.prevent="attempt(true)">
++      <div>
++        <label for="firstrun-path">{{ $t("firstrun-picker-label") }}</label>
++        <input
++          id="firstrun-path"
++          v-model="manualPath"
++          type="text"
++          aria-describedby="firstrun-path-hint"
++        >
++        <p id="firstrun-path-hint">
++          {{ $t("firstrun-picker-hint") }}
++        </p>
++        <button
++          type="button"
++          :title="$t('browse-button-tooltip')"
++          @click="browse"
++        >
++          {{ $t("browse-button") }}
++        </button>
++      </div>
++
++      <button
++        type="submit"
++        :disabled="busy || manualPath.trim() === ''"
++        :aria-busy="busy"
++        :title="$t('firstrun-use-path-tooltip')"
++      >
++        {{ $t("firstrun-use-path") }}
++      </button>
++      <button
++        type="button"
++        :disabled="busy"
++        :aria-busy="busy"
++        :title="$t('firstrun-retry-tooltip')"
++        @click="attempt(false)"
++      >
++        {{ $t("firstrun-retry") }}
++      </button>
++    </form>
++  </main>
++</template>
+diff --git a/src/views/JobsView.vue b/src/views/JobsView.vue
+new file mode 100644
+index 0000000..8d5b732
+--- /dev/null
++++ b/src/views/JobsView.vue
+@@ -0,0 +1,12 @@
++<script setup lang="ts">
++// Placeholder for Task 11 (Jobs view, spec 8.2 view 3). T9's scope is
++// only to prove the view-switch mounts a real component per view; the
++// live queue, cancel, history, and log export UI land in T11, which
++// replaces this file's content.
++</script>
++
++<template>
++  <section data-testid="view-jobs">
++    <h2>{{ $t("nav-jobs") }}</h2>
++  </section>
++</template>

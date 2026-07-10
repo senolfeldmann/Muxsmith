@@ -1,0 +1,89 @@
+# Review package: 1b76fd6..638eda2
+
+## Commits
+638eda2 fix(gui): cap client-side recents at MRU limit; keep both views mounted
+
+## Files changed
+ src/App.vue             | 11 +++++++++--
+ src/views/BatchView.vue | 12 +++++++++++-
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/src/App.vue b/src/App.vue
+index 5620bee..bda76ce 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -81,23 +81,30 @@ onMounted(checkMkvmerge);
+       <button
+         type="button"
+         data-testid="open-settings"
+         :title="$t('settings-open-tooltip')"
+         @click="settingsDialog?.open()"
+       >
+         {{ $t("settings-open-label") }}
+       </button>
+     </nav>
+     <main>
++      <!-- v-show, not v-if: both views stay mounted across tab switches, so
++           JobsView's live run listeners (registered in its onMounted, torn
++           down in onUnmounted) survive navigating away mid-run. The hidden
++           view is display:none -- out of the a11y tree, cannot trap focus.
++           Only the first-run gate above (v-if/v-else-if) unmounts the
++           shell; eager-mounting both views at startup costs nothing at
++           this scale. -->
+       <BatchView
+-        v-if="activeView === 'batch'"
++        v-show="activeView === 'batch'"
+         @start-run="onStartRun"
+       />
+       <JobsView
+-        v-else
++        v-show="activeView === 'jobs'"
+         :pending-run="pendingRun"
+         @consumed="pendingRun = null"
+       />
+     </main>
+     <SettingsDialog ref="settingsDialog" />
+   </template>
+ </template>
+diff --git a/src/views/BatchView.vue b/src/views/BatchView.vue
+index 83bc14f..c848ca1 100644
+--- a/src/views/BatchView.vue
++++ b/src/views/BatchView.vue
+@@ -60,25 +60,35 @@ onMounted(async () => {
+  * result (mirrors SettingsDialog's baseline pattern): this view owns
+  * `recent_profiles`/`dir_memory` but must never clobber
+  * `mkvmerge_path`/`default_jobs`/`locale`, which SettingsDialog owns. */
+ async function updateSettings(mutate: (current: AppSettings) => AppSettings): Promise<void> {
+   const current = await getSettings();
+   const next = mutate(current);
+   await setSettings(next);
+   settings.value = next;
+ }
+ 
++/** Mirrors `src-tauri/src/settings.rs::RECENT_PROFILES_CAP` (D27). The
++ * Rust side truncates only inside `save()`, so without this client-side
++ * cap the *rendered* MRU list would grow past the limit within one
++ * session (self-healing only on restart); truncating in the mutation
++ * keeps `settings.value` identical to what was actually persisted. */
++const RECENT_PROFILES_CAP = 10;
++
+ async function rememberRecentProfile(path: string): Promise<void> {
+   try {
+     await updateSettings((current) => ({
+       ...current,
+-      recent_profiles: [path, ...current.recent_profiles.filter((p) => p !== path)],
++      recent_profiles: [path, ...current.recent_profiles.filter((p) => p !== path)].slice(
++        0,
++        RECENT_PROFILES_CAP,
++      ),
+     }));
+   } catch (e) {
+     // Background bookkeeping only; a failed recents write never blocks
+     // picking or validating the profile itself.
+     console.warn("[batch] failed to persist recent profile:", e);
+   }
+ }
+ 
+ async function persistDir(kind: "source" | "output", value: string): Promise<void> {
+   if (!selectedProfile.value) {

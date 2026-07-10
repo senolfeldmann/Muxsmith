@@ -1,0 +1,651 @@
+# Review package: e0a0b70..54ff874
+
+## Commits
+54ff874 fix(core+gui): cache detect's version pair; settings read off the webview thread; close T7 test gaps
+
+## Files changed
+ crates/muxsmith-core/src/capability/runtime.rs |  41 ++++++-
+ crates/muxsmith-core/tests/mkvmerge_runtime.rs |  82 ++++++++++++++
+ src-tauri/src/error.rs                         |  30 +++++
+ src-tauri/src/lib.rs                           | 151 +++++++++++++++++++++----
+ 4 files changed, 274 insertions(+), 30 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/capability/runtime.rs b/crates/muxsmith-core/src/capability/runtime.rs
+index 970176a..dba9c0e 100644
+--- a/crates/muxsmith-core/src/capability/runtime.rs
++++ b/crates/muxsmith-core/src/capability/runtime.rs
+@@ -5,20 +5,32 @@
+ //! halves are covered by an integration test gated on a real mkvmerge.
+ 
+ use std::collections::BTreeMap;
+ use std::path::{Path, PathBuf};
+ use std::process::Command;
+ 
+ /// A resolved handle to the local mkvmerge executable.
+ #[derive(Debug, Clone)]
+ pub struct Mkvmerge {
+     path: PathBuf,
++    /// The `(major, minor)` pair already parsed by [`Mkvmerge::detect`]'s
++    /// floor check (`enforce_floor`), cached so a caller that follows
++    /// `detect` with [`Mkvmerge::version_pair`] -- the GUI's
++    /// `detect_mkvmerge` command does exactly that, on every startup --
++    /// does not spawn `mkvmerge --version` a second time for a value the
++    /// ladder already obtained. `None` on handles from [`Mkvmerge::at`]
++    /// and [`Mkvmerge::locate`], whose behavior is unchanged: they never
++    /// enforce the floor, so `version_pair` spawns per call there. The
++    /// cache is a snapshot from detection time; a caller that needs to
++    /// re-probe a possibly-replaced binary uses `at(path)` for a fresh,
++    /// uncached handle.
++    cached_version_pair: Option<(u64, u64)>,
+ }
+ 
+ /// Failure of a runtime mkvmerge query. Data only; call sites map these to
+ /// diagnostics (core stays prose-free).
+ #[derive(Debug, Clone)]
+ pub enum RuntimeError {
+     /// No mkvmerge executable could be located (PATH and override both failed).
+     NotFound,
+     /// The process could not be spawned; the string is the OS error.
+     Spawn(String),
+@@ -60,32 +72,36 @@ pub enum RuntimeError {
+ /// prefixed with `tag_`." No schema-affecting entry exists between v82.0
+ /// (which explicitly bumped to schema v19, `NEWS.md` line ~633-634) and
+ /// v86.0, so v86.0 is the release that moved the schema from 19 to 20.
+ pub const MIN_SUPPORTED: (u64, u64) = (86, 0);
+ 
+ impl Mkvmerge {
+     /// Uses the executable at `path` without searching PATH (an app-settings
+     /// or `--mkvmerge` override; spec 8.2). The path is not probed here; the
+     /// first query surfaces a `Spawn`/`NotFound` error if it is wrong.
+     pub fn at(path: impl Into<PathBuf>) -> Mkvmerge {
+-        Mkvmerge { path: path.into() }
++        Mkvmerge {
++            path: path.into(),
++            cached_version_pair: None,
++        }
+     }
+ 
+     /// Locates mkvmerge on PATH by spawning `mkvmerge --version`. Returns
+     /// `NotFound` if the spawn fails with a not-found OS error. Does not
+     /// check the version floor (spec 8.2); the CLI has relied on PATH plus
+     /// the explicit override since Plan 2 and that behavior is unchanged.
+     /// [`Mkvmerge::detect`] adds platform-candidate probing and the floor
+     /// check on top of this, for the GUI's first-run detection (Plan 5).
+     pub fn locate() -> Result<Mkvmerge, RuntimeError> {
+         let m = Mkvmerge {
+             path: PathBuf::from("mkvmerge"),
++            cached_version_pair: None,
+         };
+         match m.version() {
+             Ok(_) => Ok(m),
+             Err(RuntimeError::Spawn(_)) => Err(RuntimeError::NotFound),
+             Err(e) => Err(e),
+         }
+     }
+ 
+     /// Detection ladder for first-run/GUI use (spec 8.2, D28): an explicit
+     /// `override_path` (if given) is authoritative, probed with
+@@ -141,22 +157,30 @@ impl Mkvmerge {
+         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+     }
+ 
+     /// The raw first line of `mkvmerge --version`.
+     pub fn version(&self) -> Result<String, RuntimeError> {
+         let out = self.run(&["--version"])?;
+         Ok(out.lines().next().unwrap_or("").trim().to_string())
+     }
+ 
+     /// The `(major, minor)` version pair parsed from [`Mkvmerge::version`]
+-    /// (D28), for comparison against [`MIN_SUPPORTED`].
++    /// (D28), for comparison against [`MIN_SUPPORTED`]. On a handle
++    /// returned by [`Mkvmerge::detect`], answers from the pair its floor
++    /// check already parsed, spawning nothing (see the field doc on
++    /// `cached_version_pair` for the exact contract); on an
++    /// [`Mkvmerge::at`]/[`Mkvmerge::locate`] handle, spawns `--version`
++    /// per call, unchanged.
+     pub fn version_pair(&self) -> Result<(u64, u64), RuntimeError> {
++        if let Some(pair) = self.cached_version_pair {
++            return Ok(pair);
++        }
+         parse_version_pair(&self.version()?)
+     }
+ 
+     /// Lowercase source-file extensions the local mkvmerge accepts, from
+     /// `--list-types`, deduped and sorted (spec 4.2 validation input).
+     pub fn list_types(&self) -> Result<Vec<String>, RuntimeError> {
+         Ok(parse_list_types(&self.run(&["--list-types"])?))
+     }
+ 
+     /// The language normalization index from `--list-languages` (spec 4.4).
+@@ -170,33 +194,38 @@ impl Mkvmerge {
+     /// invocation failure, not a "not media" signal.
+     pub fn identify_json(&self, file: &Path) -> Result<String, RuntimeError> {
+         let file = file.to_str().ok_or_else(|| {
+             RuntimeError::Parse("non-UTF-8 path cannot be passed to mkvmerge".into())
+         })?;
+         self.run(&["-J", file])
+     }
+ }
+ 
+ /// Checks `m` against [`MIN_SUPPORTED`] (D28): probes `--version` once, and
+-/// either returns `m` unchanged or a `TooOld`/propagated query error. Shared
+-/// by every rung of [`Mkvmerge::detect`]'s ladder so the version query is
+-/// never run twice for the same candidate.
++/// either returns `m` (with the parsed pair cached on it, so a subsequent
++/// [`Mkvmerge::version_pair`] answers without respawning) or a
++/// `TooOld`/propagated query error. Shared by every rung of
++/// [`Mkvmerge::detect`]'s ladder so the version query is never run twice
++/// for the same candidate.
+ fn enforce_floor(m: Mkvmerge) -> Result<Mkvmerge, RuntimeError> {
+     let raw = m.version()?;
+     let pair = parse_version_pair(&raw)?;
+     if pair < MIN_SUPPORTED {
+         return Err(RuntimeError::TooOld {
+             found: raw,
+             minimum: format!("{}.{}", MIN_SUPPORTED.0, MIN_SUPPORTED.1),
+         });
+     }
+-    Ok(m)
++    Ok(Mkvmerge {
++        cached_version_pair: Some(pair),
++        ..m
++    })
+ }
+ 
+ /// Parses the `(major, minor)` pair out of an `mkvmerge --version` first
+ /// line, e.g. `"mkvmerge v100.0.0 ('Message') 64-bit"`. The locally
+ /// installed v100 actually reports the shorter `"mkvmerge v100.0 (...) ..."`
+ /// (no patch component), so only the first dot-separated component after
+ /// the leading `v` is required; a missing second component defaults to 0,
+ /// and any further components (patch, etc.) are ignored.
+ fn parse_version_pair(raw: &str) -> Result<(u64, u64), RuntimeError> {
+     let token = raw
+diff --git a/crates/muxsmith-core/tests/mkvmerge_runtime.rs b/crates/muxsmith-core/tests/mkvmerge_runtime.rs
+index d07f44e..e0c9bb5 100644
+--- a/crates/muxsmith-core/tests/mkvmerge_runtime.rs
++++ b/crates/muxsmith-core/tests/mkvmerge_runtime.rs
+@@ -45,20 +45,70 @@ fn fake_mkvmerge(dir: &std::path::Path, version_line: &str) -> std::path::PathBu
+             Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
+                 std::thread::sleep(std::time::Duration::from_millis(2));
+             }
+             Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
+         }
+     }
+ 
+     script
+ }
+ 
++/// Like [`fake_mkvmerge`], but the script also appends one line to a counter
++/// file on EVERY invocation, so a test can assert exactly how many times the
++/// executable was spawned. The warm-up invocations inside the shared
++/// write+chmod+retry helper inflate the counter, so it is reset to empty
++/// before returning; the count observed by the test starts at zero.
++#[cfg(unix)]
++fn counting_fake_mkvmerge(
++    dir: &std::path::Path,
++    version_line: &str,
++) -> (std::path::PathBuf, std::path::PathBuf) {
++    use std::os::unix::fs::PermissionsExt;
++    let script = dir.join("mkvmerge");
++    let counter = dir.join("spawn-count");
++    std::fs::write(
++        &script,
++        format!(
++            "#!/bin/sh\necho run >> '{}'\nif [ \"$1\" = \"--version\" ]; then\n  echo '{version_line}'\n  exit 0\nfi\nexit 1\n",
++            counter.display()
++        ),
++    )
++    .unwrap();
++    let mut perms = std::fs::metadata(&script).unwrap().permissions();
++    perms.set_mode(0o755);
++    std::fs::set_permissions(&script, perms).unwrap();
++    // Same ExecutableFileBusy warm-up as fake_mkvmerge (see its comment).
++    for attempt in 0.. {
++        match std::process::Command::new(&script)
++            .arg("--version")
++            .output()
++        {
++            Ok(_) => break,
++            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
++                std::thread::sleep(std::time::Duration::from_millis(2));
++            }
++            Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
++        }
++    }
++    // Discard the warm-up invocations so tests count from zero.
++    std::fs::write(&counter, "").unwrap();
++    (script, counter)
++}
++
++#[cfg(unix)]
++fn spawn_count(counter: &std::path::Path) -> usize {
++    std::fs::read_to_string(counter)
++        .unwrap_or_default()
++        .lines()
++        .count()
++}
++
+ #[test]
+ fn version_reports_mkvmerge() {
+     let Some(m) = mkvmerge() else {
+         eprintln!("mkvmerge not found; skipping");
+         return;
+     };
+     let v = m.version().expect("version query");
+     assert!(v.to_lowercase().contains("mkvmerge"), "got: {v}");
+ }
+ 
+@@ -105,20 +155,52 @@ fn detect_reports_too_old_with_found_and_minimum() {
+     let err = Mkvmerge::detect(Some(&override_path)).expect_err("v50 is below the floor");
+     match err {
+         RuntimeError::TooOld { found, minimum } => {
+             assert!(found.contains("v50.0.0"), "found: {found}");
+             assert_eq!(minimum, "86.0");
+         }
+         other => panic!("expected TooOld, got {other:?}"),
+     }
+ }
+ 
++/// A handle returned by `detect` carries the version pair its floor check
++/// (D28) already parsed, so a subsequent `version_pair()` -- exactly what
++/// the GUI's `detect_mkvmerge` command does right after `detect` on every
++/// startup -- answers from the cache instead of spawning `--version` a
++/// second time. An uncached handle (`Mkvmerge::at`) still spawns per call,
++/// unchanged.
++#[test]
++#[cfg(unix)]
++fn detect_caches_version_pair_so_version_pair_spawns_nothing() {
++    let dir = tempfile::tempdir().unwrap();
++    let (script, counter) =
++        counting_fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Counting') 64-bit");
++
++    let detected = Mkvmerge::detect(Some(&script)).expect("detect");
++    assert_eq!(
++        spawn_count(&counter),
++        1,
++        "detect itself spawns exactly once"
++    );
++
++    assert_eq!(detected.version_pair().unwrap(), (123, 4));
++    assert_eq!(
++        spawn_count(&counter),
++        1,
++        "version_pair() after detect must answer from the cache, not respawn"
++    );
++
++    // Contrast: an at() handle has no cache and spawns per call (unchanged).
++    assert_eq!(Mkvmerge::at(&script).version_pair().unwrap(), (123, 4));
++    assert_eq!(spawn_count(&counter), 2);
++}
++
+ /// Gated: `detect(None)` falls through to PATH (like `locate()`) and finds
+ /// the real local mkvmerge, whose version clears `MIN_SUPPORTED`.
+ #[test]
+ fn detect_none_finds_real_mkvmerge_meeting_the_version_floor() {
+     if mkvmerge().is_none() {
+         eprintln!("mkvmerge not found; skipping");
+         return;
+     }
+     let detected = Mkvmerge::detect(None).expect("detect(None) should find PATH mkvmerge");
+     let pair = detected.version_pair().expect("version_pair query");
+diff --git a/src-tauri/src/error.rs b/src-tauri/src/error.rs
+index 7106421..2dc5b27 100644
+--- a/src-tauri/src/error.rs
++++ b/src-tauri/src/error.rs
+@@ -147,20 +147,50 @@ mod tests {
+     fn too_old_is_distinguishable_from_not_found() {
+         let not_found: IpcError = RuntimeError::NotFound.into();
+         let too_old: IpcError = RuntimeError::TooOld {
+             found: "x".into(),
+             minimum: "y".into(),
+         }
+         .into();
+         assert_ne!(not_found.code, too_old.code);
+     }
+ 
++    #[test]
++    fn non_zero_maps_to_query_failed_with_detail_and_exit_code() {
++        let err: IpcError = RuntimeError::NonZero {
++            code: Some(2),
++            stderr: "unsupported option".into(),
++        }
++        .into();
++        assert_eq!(err.code, "mkvmerge-query-failed");
++        assert_eq!(err.params["detail"], "unsupported option");
++        assert_eq!(err.params["code"], "2");
++    }
++
++    #[test]
++    fn non_zero_signal_termination_maps_code_param_to_signal() {
++        let err: IpcError = RuntimeError::NonZero {
++            code: None,
++            stderr: "killed".into(),
++        }
++        .into();
++        assert_eq!(err.code, "mkvmerge-query-failed");
++        assert_eq!(err.params["code"], "signal");
++    }
++
++    #[test]
++    fn parse_failure_maps_to_query_failed_with_detail() {
++        let err: IpcError = RuntimeError::Parse("no version token in \"gibberish\"".into()).into();
++        assert_eq!(err.code, "mkvmerge-query-failed");
++        assert_eq!(err.params["detail"], "no version token in \"gibberish\"");
++    }
++
+     #[test]
+     fn identify_runtime_failure_delegates_to_the_runtime_mapping() {
+         let err: IpcError = IdentifyError::Runtime(RuntimeError::NotFound).into();
+         assert_eq!(err.code, "mkvmerge-not-found");
+     }
+ 
+     #[test]
+     fn identify_json_failure_carries_detail() {
+         let err: IpcError = IdentifyError::Json("EOF while parsing".into()).into();
+         assert_eq!(err.code, "identify-failed");
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index bef20fe..0661c71 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -64,32 +64,38 @@ pub struct AppState {
+ }
+ 
+ impl Default for AppState {
+     fn default() -> AppState {
+         AppState {
+             settings_path: settings::settings_path(),
+         }
+     }
+ }
+ 
++/// Reads current settings from the resolved settings file path, or
++/// [`AppSettings::default`] on a missing file (D27, first run). `path` is
++/// `AppState::settings_path` (or a clone of it, inside a blocking task);
++/// `None` -- the platform config directory itself was unresolvable -- fails
++/// with `settings-dir-unavailable`, any other I/O or parse failure with the
++/// mapped [`settings::SettingsError`]. A free function (not an `AppState`
++/// method) so the async commands can move a cloned path into their
++/// `spawn_blocking` closure and read settings THERE, off the webview
++/// thread, where `State`'s borrow cannot follow.
++fn load_settings_from(path: Option<&Path>) -> Result<AppSettings, IpcError> {
++    let path = path.ok_or_else(|| IpcError::new("settings-dir-unavailable"))?;
++    settings::load(path).map_err(IpcError::from)
++}
++
+ impl AppState {
+-    /// Reads current settings from disk, or [`AppSettings::default`] on a
+-    /// missing file (D27, first run). Fails with `settings-dir-unavailable`
+-    /// if the platform config directory itself is unresolvable, and with a
+-    /// mapped [`settings::SettingsError`] on any other I/O or parse
+-    /// failure.
++    /// [`load_settings_from`] on this state's resolved settings path.
+     fn load_settings(&self) -> Result<AppSettings, IpcError> {
+-        let path = self
+-            .settings_path
+-            .as_deref()
+-            .ok_or_else(|| IpcError::new("settings-dir-unavailable"))?;
+-        settings::load(path).map_err(IpcError::from)
++        load_settings_from(self.settings_path.as_deref())
+     }
+ 
+     /// Writes `settings` to disk (D27; `recent_profiles` capped at write
+     /// time, `settings::save`'s own invariant). Same `settings-dir-unavailable`
+     /// failure mode as [`Self::load_settings`].
+     fn save_settings(&self, settings: &AppSettings) -> Result<(), IpcError> {
+         let path = self
+             .settings_path
+             .as_deref()
+             .ok_or_else(|| IpcError::new("settings-dir-unavailable"))?;
+@@ -263,52 +269,59 @@ fn detect_mkvmerge_body(mkvmerge_override: Option<&Path>) -> Result<MkvmergeInfo
+ /// expected outcome): every "expected" failure -- a missing or malformed
+ /// profile -- is folded into the returned document by
+ /// [`validate_profile_body`] instead.
+ #[tauri::command]
+ async fn validate_profile(path: String) -> Result<serde_json::Value, IpcError> {
+     tauri::async_runtime::spawn_blocking(move || validate_profile_body(Path::new(&path)))
+         .await
+         .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))
+ }
+ 
+-/// `dry_run` IPC command (D23, D28): reads the mkvmerge override from
+-/// settings, then runs [`dry_run_body`] on a blocking task (subprocess
+-/// spawns for mkvmerge probing/identification; never on the webview
+-/// thread). Like `validate_profile`, `Err` here means the blocking task
+-/// itself panicked; every expected outcome is a document.
++/// `dry_run` IPC command (D23, D28): on a blocking task (never on the
++/// webview thread), reads the mkvmerge override from settings and runs
++/// [`dry_run_body`]. The settings read (filesystem I/O) lives INSIDE the
++/// `spawn_blocking` closure with the body itself -- `State`'s borrow
++/// cannot move into the closure, so the resolved settings *path* is cloned
++/// in and loaded there. Like `validate_profile`, the outer `map_err` case
++/// means the blocking task itself panicked; every expected planning
++/// outcome is a document, and a settings failure is the closure's own
++/// [`IpcError`].
+ #[tauri::command]
+ async fn dry_run(
+     state: State<'_, AppState>,
+     profile: String,
+     source: Option<String>,
+     output: Option<String>,
+ ) -> Result<serde_json::Value, IpcError> {
+-    let mkvmerge_override = state.load_settings()?.mkvmerge_path;
++    let settings_path = state.settings_path.clone();
+     tauri::async_runtime::spawn_blocking(move || {
+-        dry_run_body(
++        let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
++        Ok(dry_run_body(
+             Path::new(&profile),
+             source.map(PathBuf::from),
+             output.map(PathBuf::from),
+             mkvmerge_override.as_deref().map(Path::new),
+-        )
++        ))
+     })
+     .await
+-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))
++    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
+ }
+ 
+-/// `identify` IPC command (D23, D28): reads the mkvmerge override from
+-/// settings, then runs [`identify_body`] on a blocking task (spawns
+-/// mkvmerge; never on the webview thread).
++/// `identify` IPC command (D23, D28): on a blocking task (spawns mkvmerge;
++/// never on the webview thread), reads the mkvmerge override from settings
++/// and runs [`identify_body`]. Settings read inside the closure for the
++/// same reason as [`dry_run`].
+ #[tauri::command]
+ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json::Value, IpcError> {
+-    let mkvmerge_override = state.load_settings()?.mkvmerge_path;
++    let settings_path = state.settings_path.clone();
+     tauri::async_runtime::spawn_blocking(move || {
++        let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+         identify_body(
+             Path::new(&file),
+             mkvmerge_override.as_deref().map(Path::new),
+         )
+     })
+     .await
+     .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
+ }
+ 
+ /// `detect_mkvmerge` IPC command (D28). Declared `async` and run on a
+@@ -318,24 +331,27 @@ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json
+ /// `get_settings`/`set_settings` (a local JSON file, effectively
+ /// instantaneous), [`detect_mkvmerge_body`] spawns up to several `mkvmerge
+ /// --version` subprocesses in sequence (the override, then PATH, then
+ /// every platform candidate). Tauri v2 runs a non-`async` command on the
+ /// application's main thread unless `#[tauri::command(async)]` is added, so
+ /// a plain `fn` here would stall the webview for however long that probing
+ /// takes -- exactly the "webview must never block" constraint this task's
+ /// context calls out for `dry_run`/`identify`. This command is called on
+ /// every GUI startup (T9's first-run flow), making that stall guaranteed,
+ /// not just possible.
++///
++/// Settings read inside the closure for the same reason as [`dry_run`].
+ #[tauri::command]
+ async fn detect_mkvmerge(state: State<'_, AppState>) -> Result<MkvmergeInfo, IpcError> {
+-    let mkvmerge_override = state.load_settings()?.mkvmerge_path;
++    let settings_path = state.settings_path.clone();
+     tauri::async_runtime::spawn_blocking(move || {
++        let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+         detect_mkvmerge_body(mkvmerge_override.as_deref().map(Path::new))
+     })
+     .await
+     .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
+ }
+ 
+ /// `get_settings` IPC command (D27). Plain local JSON file I/O, no
+ /// subprocess; kept a non-async, main-thread command like Tauri's own
+ /// trivial-state-access examples.
+ #[tauri::command]
+@@ -413,20 +429,64 @@ mod tests {
+                 Ok(_) => break,
+                 Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
+                     std::thread::sleep(std::time::Duration::from_millis(2));
+                 }
+                 Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
+             }
+         }
+         script
+     }
+ 
++    /// Like [`fake_mkvmerge`], but the script also appends one line to a
++    /// counter file on EVERY invocation (returned alongside the script
++    /// path), so a test can assert exactly how many times the executable
++    /// was spawned. Warm-up invocations are discarded by resetting the
++    /// counter before returning. Mirrors the identical helper in
++    /// `muxsmith-core/tests/mkvmerge_runtime.rs`.
++    #[cfg(unix)]
++    fn counting_fake_mkvmerge(dir: &Path, version_line: &str) -> (PathBuf, PathBuf) {
++        use std::os::unix::fs::PermissionsExt;
++        let script = dir.join("mkvmerge");
++        let counter = dir.join("spawn-count");
++        std::fs::write(
++            &script,
++            format!(
++                "#!/bin/sh\necho run >> '{}'\nif [ \"$1\" = \"--version\" ]; then\n  echo '{version_line}'\n  exit 0\nfi\nexit 1\n",
++                counter.display()
++            ),
++        )
++        .unwrap();
++        let mut perms = std::fs::metadata(&script).unwrap().permissions();
++        perms.set_mode(0o755);
++        std::fs::set_permissions(&script, perms).unwrap();
++        // Same ExecutableFileBusy warm-up as fake_mkvmerge (see its comment).
++        for attempt in 0.. {
++            match Command::new(&script).arg("--version").output() {
++                Ok(_) => break,
++                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
++                    std::thread::sleep(std::time::Duration::from_millis(2));
++                }
++                Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
++            }
++        }
++        std::fs::write(&counter, "").unwrap();
++        (script, counter)
++    }
++
++    #[cfg(unix)]
++    fn spawn_count(counter: &Path) -> usize {
++        std::fs::read_to_string(counter)
++            .unwrap_or_default()
++            .lines()
++            .count()
++    }
++
+     fn real_mkvmerge_available() -> bool {
+         Command::new("mkvmerge")
+             .arg("--version")
+             .output()
+             .map(|o| o.status.success())
+             .unwrap_or(false)
+     }
+ 
+     fn minimal_profile_yaml() -> &'static str {
+         "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
+@@ -494,20 +554,40 @@ mod tests {
+         let profile_path = dir.path().join("p.yaml");
+         std::fs::write(&profile_path, minimal_profile_yaml()).unwrap();
+         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v50.0.0 ('Old') 64-bit");
+ 
+         let doc = dry_run_body(&profile_path, None, None, Some(&override_path));
+         // TooOld folds into the same "not usable" bucket as NotFound (this
+         // module's documented design decision, see dry_run_body's doc).
+         assert_eq!(doc["mkvmerge_found"], serde_json::json!(false));
+     }
+ 
++    /// The "mkvmerge found but querying it failed" branch (a broken
++    /// installation): the fake answers `--version` (so `detect` succeeds)
++    /// but fails `--list-languages`, so planning never runs and the
++    /// config-only document must say `mkvmerge_found: true` -- the binary
++    /// WAS found, distinguishing this from the not-found/too-old branch.
++    #[test]
++    #[cfg(unix)]
++    fn dry_run_body_query_failure_after_successful_detect_sets_mkvmerge_found_true() {
++        let dir = tempfile::tempdir().unwrap();
++        let profile_path = dir.path().join("p.yaml");
++        std::fs::write(&profile_path, minimal_profile_yaml()).unwrap();
++        let override_path = fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Broken') 64-bit");
++
++        let doc = dry_run_body(&profile_path, None, None, Some(&override_path));
++        assert_eq!(doc["mkvmerge_found"], serde_json::json!(true));
++        assert!(doc["files"].as_array().unwrap().is_empty());
++        assert!(doc["batch_diagnostics"].as_array().unwrap().is_empty());
++        assert!(doc["suggestions"].as_array().unwrap().is_empty());
++    }
++
+     #[test]
+     fn dry_run_body_full_success_path_with_real_mkvmerge() {
+         if !real_mkvmerge_available() {
+             eprintln!("mkvmerge not found; skipping");
+             return;
+         }
+         let dir = tempfile::tempdir().unwrap();
+         let wav = concat!(
+             env!("CARGO_MANIFEST_DIR"),
+             "/../crates/muxsmith-core/tests/fixtures/seeds/tone.wav"
+@@ -616,20 +696,43 @@ mod tests {
+     #[cfg(unix)]
+     fn detect_mkvmerge_body_success_reports_version_and_meets_minimum() {
+         let dir = tempfile::tempdir().unwrap();
+         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('New') 64-bit");
+         let info = detect_mkvmerge_body(Some(&override_path)).expect("detect");
+         assert_eq!(info.version, "123.4");
+         assert!(info.meets_minimum);
+         assert_eq!(info.path, override_path.display().to_string());
+     }
+ 
++    /// The whole `detect_mkvmerge` command body -- `Mkvmerge::detect` plus
++    /// the `version_pair()` for `MkvmergeInfo` -- must spawn `mkvmerge
++    /// --version` exactly ONCE: `detect`'s floor check already parsed the
++    /// version, and the returned handle caches the pair (core contract,
++    /// `mkvmerge_runtime.rs`), so this every-GUI-startup path never pays a
++    /// second subprocess.
++    #[test]
++    #[cfg(unix)]
++    fn detect_mkvmerge_body_spawns_version_exactly_once() {
++        let dir = tempfile::tempdir().unwrap();
++        let (script, counter) =
++            counting_fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Counting') 64-bit");
++
++        let info = detect_mkvmerge_body(Some(&script)).expect("detect");
++        assert_eq!(info.version, "123.4");
++        assert!(info.meets_minimum);
++        assert_eq!(
++            spawn_count(&counter),
++            1,
++            "detect_mkvmerge_body must spawn --version exactly once"
++        );
++    }
++
+     #[test]
+     fn detect_mkvmerge_body_finds_the_real_mkvmerge_when_available() {
+         if !real_mkvmerge_available() {
+             eprintln!("mkvmerge not found; skipping");
+             return;
+         }
+         let info = detect_mkvmerge_body(None).expect("detect");
+         assert!(info.meets_minimum, "info: {info:?}");
+     }
+ 

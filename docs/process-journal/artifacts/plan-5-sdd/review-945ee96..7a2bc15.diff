@@ -1,0 +1,1652 @@
+# Review package: 945ee96..7a2bc15
+
+## Commits
+7a2bc15 docs(core): hide ConcurrencyTracker from rustdoc (test instrumentation, pre-go-public)
+a32b159 fix(gui): stop double-Run from hiding an already-active run
+8e3243c fix(gui): guard the runner thread so a queue-worker panic cannot wedge the app
+d9ad2fb fix(gui): start_run honors the mkvmerge override and stops blocking the event loop
+4d00689 chore(gui): dedupe ShellRenderer/IpcError, fix stale i18n keys and docs
+5e76a15 fix(core): add Homebrew Apple Silicon prefix to macOS mkvmerge candidates
+5c504c1 fix(gui): make settings.json writes atomic via write-then-rename
+
+## Files changed
+ BUILDING.md                                    |   6 +-
+ crates/muxsmith-core/src/capability/runtime.rs |  28 +-
+ crates/muxsmith-core/src/executor/spawn.rs     |   4 +
+ locales/en/gui-batch.ftl                       |  15 +-
+ locales/en/gui-common.ftl                      |   9 +
+ src-tauri/src/error.rs                         |  22 +-
+ src-tauri/src/lib.rs                           |   7 +-
+ src-tauri/src/run.rs                           | 513 +++++++++++++++++++++----
+ src-tauri/src/settings.rs                      |  95 ++++-
+ src/App.vue                                    |   9 +
+ src/views/BatchView.vue                        |  24 +-
+ src/views/JobsView.vue                         |  46 ++-
+ 12 files changed, 652 insertions(+), 126 deletions(-)
+
+## Diff
+diff --git a/BUILDING.md b/BUILDING.md
+index 904bac7..e88ce46 100644
+--- a/BUILDING.md
++++ b/BUILDING.md
+@@ -73,16 +73,18 @@ part of the CI gate yet.
+ cargo fmt --all --check
+ cargo clippy --workspace --all-targets -- -D warnings
+ cargo test --workspace
+ cargo deny check
+ ```
+ 
+ ### Frontend checks
+ 
+ ```bash
+ pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
+-pnpm test:e2e         # Playwright e2e suite - not yet implemented (later task)
++pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
++pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
+ ```
+ 
+ CI (`.github/workflows/ci.yml`) runs the same four-part Rust gate plus
+-`pnpm lint` and `pnpm build` on every push/PR; `cargo deny check` runs as an
++`pnpm lint`, `pnpm build`, `pnpm check:i18n`, and `pnpm test:e2e` on every
++push/PR; `cargo deny check` runs as an
+ independent job.
+diff --git a/crates/muxsmith-core/src/capability/runtime.rs b/crates/muxsmith-core/src/capability/runtime.rs
+index dba9c0e..38fa6b5 100644
+--- a/crates/muxsmith-core/src/capability/runtime.rs
++++ b/crates/muxsmith-core/src/capability/runtime.rs
+@@ -243,30 +243,40 @@ fn parse_version_pair(raw: &str) -> Result<(u64, u64), RuntimeError> {
+     let minor = parts
+         .next()
+         .and_then(|s| s.parse::<u64>().ok())
+         .unwrap_or(0);
+     Ok((major, minor))
+ }
+ 
+ /// Platform-standard mkvmerge install locations (D28, spec 8.2), probed as
+ /// the last rung of [`Mkvmerge::detect`] after an override and PATH both
+ /// come up empty. Verified against mkvtoolnix's own packaging
+-/// (`~/Downloads/mkvtoolnix/packaging/`), not memory; only locations an
+-/// actual mkvtoolnix installer, package, or its own install docs place a
+-/// binary in are listed. Checked and explicitly excluded:
+-/// - Homebrew (`/opt/homebrew/bin`): no Homebrew formula exists anywhere in
+-///   mkvtoolnix's own source tree (Homebrew packaging for it lives in the
+-///   separate `homebrew-core` repo), so it cannot be verified from this
+-///   source and is dropped.
++/// (`~/Downloads/mkvtoolnix/packaging/`) where a location is claimed to be
++/// an mkvtoolnix installer/package default; the one exception is Homebrew
++/// on macOS (see below), verified against Homebrew's own documentation
++/// instead, since Homebrew's mkvtoolnix formula lives in the separate
++/// `homebrew-core` repo, outside mkvtoolnix's own source tree.
++///
++/// - **Homebrew (macOS, `/opt/homebrew/bin`).** Homebrew's own installation
++///   docs (<https://docs.brew.sh/Installation>) pin `/opt/homebrew` as the
++///   default prefix on Apple Silicon (`/usr/local` on Intel, already listed
++///   below). Sharpens why this rung matters specifically for a bundled
++///   Tauri app, beyond the general override/PATH/candidate ladder: a GUI
++///   app launched from Finder (or Spotlight, the Dock, etc.) does not
++///   inherit the invoking shell's PATH the way a terminal-launched process
++///   does, so [`Mkvmerge::locate`]'s PATH probe -- which covers a
++///   Homebrew-on-Intel install via `/usr/local/bin` being conventionally on
++///   PATH -- does not reliably cover an Apple-Silicon Homebrew install at
++///   all for this app; this candidate rung is what closes that gap.
+ /// - Flatpak (`/var/lib/flatpak/exports/bin/org.bunkus.mkvtoolnix-gui`):
+ ///   `packaging/` ships no Flatpak manifest either; that app ID also names
+-///   the GUI, not a standalone `mkvmerge` CLI binary.
++///   the GUI, not a standalone `mkvmerge` CLI binary. Still excluded.
+ fn platform_candidates() -> Vec<PathBuf> {
+     let mut candidates = Vec::new();
+ 
+     #[cfg(target_os = "windows")]
+     {
+         // packaging/windows/installer/mkvtoolnix.nsi: PRODUCT_NAME is
+         // "MKVToolNix"; InstallDir is `$PROGRAMFILES64\${PRODUCT_NAME}` for
+         // the 64-bit installer target, `$PROGRAMFILES\${PRODUCT_NAME}` for
+         // the 32-bit one. On a 64-bit process %ProgramFiles% resolves to the
+         // former and %ProgramFiles(x86)% to the latter, so both cover
+@@ -281,20 +291,21 @@ fn platform_candidates() -> Vec<PathBuf> {
+     #[cfg(target_os = "macos")]
+     {
+         // packaging/macos/config.sh: APP_BUNDLE_NAME="MKVToolNix.app" (fixed
+         // name, no version suffix). packaging/macos/build.sh's build_dmg
+         // places the CLI binaries at Contents/MacOS/{mkvmerge,...} inside
+         // that bundle, and its own README.macOS.txt (written by build_dmg,
+         // shipped in the DMG) tells users to copy them to /usr/local/bin.
+         candidates.push(PathBuf::from(
+             "/Applications/MKVToolNix.app/Contents/MacOS/mkvmerge",
+         ));
++        candidates.push(PathBuf::from("/opt/homebrew/bin/mkvmerge"));
+         candidates.push(PathBuf::from("/usr/local/bin/mkvmerge"));
+     }
+ 
+     #[cfg(target_os = "linux")]
+     {
+         // packaging/debian/mkvtoolnix.install and
+         // packaging/centos-fedora-opensuse/mkvtoolnix.spec (%{_bindir}) both
+         // place mkvmerge at /usr/bin. mkvtoolnix's own INSTALL (the
+         // unmodified generic autotools boilerplate: configure.ac has no
+         // AC_PREFIX_DEFAULT override) documents /usr/local as the default
+@@ -485,20 +496,21 @@ Klingon               | tlh            |                |   \n";
+         #[cfg(target_os = "linux")]
+         {
+             assert!(candidates.contains(&PathBuf::from("/usr/bin/mkvmerge")));
+             assert!(candidates.contains(&PathBuf::from("/usr/local/bin/mkvmerge")));
+         }
+         #[cfg(target_os = "macos")]
+         {
+             assert!(candidates.contains(&PathBuf::from(
+                 "/Applications/MKVToolNix.app/Contents/MacOS/mkvmerge"
+             )));
++            assert!(candidates.contains(&PathBuf::from("/opt/homebrew/bin/mkvmerge")));
+             assert!(candidates.contains(&PathBuf::from("/usr/local/bin/mkvmerge")));
+         }
+         #[cfg(target_os = "windows")]
+         {
+             assert!(
+                 candidates
+                     .iter()
+                     .any(|p| p.ends_with("MKVToolNix/mkvmerge.exe")
+                         || p.ends_with("MKVToolNix\\mkvmerge.exe"))
+             );
+diff --git a/crates/muxsmith-core/src/executor/spawn.rs b/crates/muxsmith-core/src/executor/spawn.rs
+index af4b112..3fe835d 100644
+--- a/crates/muxsmith-core/src/executor/spawn.rs
++++ b/crates/muxsmith-core/src/executor/spawn.rs
+@@ -223,20 +223,24 @@ impl RunningJob for FakeJob {
+         let killed = Arc::clone(&self.killed);
+         Arc::new(move || killed.store(true, Ordering::SeqCst))
+     }
+ }
+ 
+ /// Live/max concurrency counter, attached to a [`FakeSpawner`] via
+ /// [`FakeSpawner::with_concurrency_tracker`] (Task 3 test support): `current`
+ /// is incremented in `spawn` and decremented in `wait`, mirroring the window
+ /// during which a real job is in flight, and `max` records the high-water
+ /// mark so a `--jobs N` bound is observable from a test.
++///
++/// Test instrumentation only, not a supported API: hidden from rustdoc
++/// (pre-go-public decision); kept `pub` because cross-crate tests consume it.
++#[doc(hidden)]
+ #[derive(Default)]
+ pub struct ConcurrencyTracker {
+     current: AtomicUsize,
+     max: AtomicUsize,
+ }
+ 
+ impl ConcurrencyTracker {
+     /// A fresh tracker starting at zero concurrent jobs.
+     pub fn new() -> Arc<ConcurrencyTracker> {
+         Arc::new(ConcurrencyTracker::default())
+diff --git a/locales/en/gui-batch.ftl b/locales/en/gui-batch.ftl
+index bf42b14..fd6148f 100644
+--- a/locales/en/gui-batch.ftl
++++ b/locales/en/gui-batch.ftl
+@@ -1,29 +1,34 @@
+ # T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
+-# are show-and-copy only, never applied). `browse-button`/
+-# `browse-button-tooltip` (gui-common.ftl) are reused for the source/output
+-# directory pickers rather than duplicated here.
++# are show-and-copy only, never applied). `browse-button` (gui-common.ftl,
++# the generic "Browse..." label) is reused for the source/output directory
++# pickers, but their tooltip is `batch-browse-dir-tooltip` below, not
++# gui-common.ftl's `browse-button-tooltip` (fix: that one says "Choose the
++# file with a file picker", wrong noun for a directory picker; it stays
++# reserved for genuine file pickers, e.g. FirstRun's/SettingsDialog's
++# mkvmerge-path browse button).
+ 
+ batch-view-heading = Batch
+ 
+ batch-profile-heading = Profile
+ batch-profile-pick = Choose profile...
+ batch-profile-pick-tooltip = Pick a Muxsmith profile YAML file to validate and run.
+ batch-profile-filter-name = Muxsmith profiles
+ batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch.
+ batch-profile-current = Selected profile: { $path }
+ 
+ batch-recents-heading = Recent profiles
+ batch-recents-empty = No recent profiles yet.
+ batch-recents-select-tooltip = Open this profile again.
+ 
+ batch-dirs-heading = Directories
++batch-browse-dir-tooltip = Choose the directory with a folder picker.
+ batch-source-label = Source directory
+ batch-source-hint = Directory scanned for input files. Leave empty to use the profile's own source directory.
+ batch-output-label = Output directory
+ batch-output-hint = Directory the muxed files are written to. Leave empty to use the profile's output directory.
+ 
+ batch-diagnostics-heading = Diagnostics
+ batch-diagnostics-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info notice(s).
+ batch-diagnostic-line = { $severity }: { $message }
+ 
+ batch-dry-run = Dry run
+@@ -39,10 +44,14 @@ batch-suggestions-heading = Suggestions
+ batch-suggestion-header = Suggestion for { $config_path }:
+ batch-suggestion-copy = Copy
+ batch-suggestion-copy-tooltip = Copy this YAML fragment to the clipboard.
+ batch-suggestion-copied = Copied to clipboard.
+ 
+ batch-run = Run
+ batch-run-tooltip = Start this batch: mux every resolved file with mkvmerge.
+ batch-run-tooltip-no-profile = Choose and validate a profile before running.
+ batch-run-tooltip-errors = Fix every error-severity diagnostic before running.
+ batch-run-tooltip-mkvmerge-missing = mkvmerge is not available; fix detection in Settings before running.
++# D23 ("the UI additionally disables Run while active", fix): a batch is
++# already running elsewhere in the app (App.vue forwards JobsView's own
++# runActive state down as this view's `runActive` prop).
++batch-run-tooltip-run-active = A batch is already running. Wait for it to finish, or switch to the Jobs view to cancel it.
+diff --git a/locales/en/gui-common.ftl b/locales/en/gui-common.ftl
+index da4e5a8..9b1cb35 100644
+--- a/locales/en/gui-common.ftl
++++ b/locales/en/gui-common.ftl
+@@ -24,20 +24,29 @@ browse-button = Browse...
+ browse-button-tooltip = Choose the file with a file picker.
+ 
+ # T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
+ # Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
+ # selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
+ # raw code when a message exists here, and falls back to the code string
+ # itself only when a key is genuinely missing.
+ mkvmerge-not-found = mkvmerge was not found.
+ mkvmerge-too-old = The mkvmerge found ({ $found }) is older than the required minimum version { $minimum }.
+ mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
++# identify is registered IPC surface (src-tauri/src/lib.rs::identify) but
++# had no gui-common.ftl entry, unlike every other IpcError code above and
++# below it -- a missing key that fell back to the raw "identify-failed"
++# code string. Wording adapted from cli.ftl's identical-purpose
++# `identify-failed`, not copied verbatim: the CLI message interpolates
++# `{ $file }`, but IpcError::from(IdentifyError) (error.rs) only ever
++# attaches a `detail` param (the underlying JSON-parse/stat error text),
++# never `file` -- a literal copy would reference an unpopulated variable.
++identify-failed = Could not identify the file: { $detail }
+ mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
+ settings-dir-unavailable = The application settings location could not be determined on this system.
+ settings-io-failed = Application settings could not be read or written: { $detail }
+ settings-parse-failed = The application settings file is corrupt: { $detail }
+ internal-task-failed = An internal error occurred: { $detail }
+ 
+ # T9: first-run mkvmerge detection (D28).
+ firstrun-detecting = Looking for mkvmerge...
+ firstrun-missing-heading = mkvmerge was not found
+ firstrun-too-old-heading = mkvmerge is too old
+diff --git a/src-tauri/src/error.rs b/src-tauri/src/error.rs
+index 25df037..bb21766 100644
+--- a/src-tauri/src/error.rs
++++ b/src-tauri/src/error.rs
+@@ -36,36 +36,32 @@ pub struct IpcError {
+     pub code: String,
+     /// Structured values a renderer interpolates into the message template
+     /// selected by `code`; e.g. `detail` carries a passed-through
+     /// third-party error string (the one prose exception, spec 8.4),
+     /// `found`/`minimum` carry a too-old mkvmerge version pair, `run_id`/
+     /// `index` identify a run-lifecycle target.
+     pub params: HashMap<String, String>,
+ }
+ 
+ impl IpcError {
+-    /// Builds a code-only error with no params.
++    /// Builds a code-only error with no params. (Cleanup: this used to have
++    /// a duplicate `code(...)` constructor -- a merge artifact from two
++    /// tasks each naming their own read-only/settings vs. run-lifecycle
++    /// call sites differently -- collapsed into this single constructor;
++    /// every call site now uses this name.)
+     pub fn new(code: impl Into<String>) -> IpcError {
+         IpcError {
+             code: code.into(),
+             params: HashMap::new(),
+         }
+     }
+ 
+-    /// Builds an [`IpcError`] with no params. Same as [`IpcError::new`],
+-    /// kept as its own name alongside it: the read-only/settings commands
+-    /// call `new`, the run-lifecycle commands call `code` -- both
+-    /// constructors survive the merge so neither call site needs touching.
+-    pub fn code(code: impl Into<String>) -> IpcError {
+-        IpcError::new(code)
+-    }
+-
+     /// Attaches one param, builder-style, overwriting any prior value for
+     /// `key`. Mirrors [`muxsmith_core::report::Diagnostic::with`].
+     pub fn with(mut self, key: impl Into<String>, value: impl Into<String>) -> IpcError {
+         self.params.insert(key.into(), value.into());
+         self
+     }
+ }
+ 
+ /// Maps a runtime mkvmerge failure ([`Mkvmerge::detect`]/`locate`/any
+ /// query, `muxsmith_core::capability::runtime`) to an [`IpcError`].
+@@ -222,34 +218,34 @@ mod tests {
+         assert_ne!(io.code, parse.code);
+     }
+ 
+     #[test]
+     fn with_overwrites_a_prior_value_for_the_same_key() {
+         let err = IpcError::new("x").with("k", "a").with("k", "b");
+         assert_eq!(err.params["k"], "b");
+     }
+ 
+     #[test]
+-    fn code_builds_with_empty_params() {
+-        let e = IpcError::code("run-already-active");
++    fn new_builds_with_empty_params() {
++        let e = IpcError::new("run-already-active");
+         assert_eq!(e.code, "run-already-active");
+         assert!(e.params.is_empty());
+     }
+ 
+     #[test]
+     fn with_attaches_and_overwrites_params() {
+-        let e = IpcError::code("job-log-not-found")
++        let e = IpcError::new("job-log-not-found")
+             .with("run_id", "20260710-153612Z")
+             .with("index", "0")
+             .with("index", "1");
+         assert_eq!(e.params["run_id"], "20260710-153612Z");
+         assert_eq!(e.params["index"], "1");
+     }
+ 
+     #[test]
+     fn serializes_as_code_and_params() {
+-        let e = IpcError::code("invalid-run-id").with("run_id", "../etc");
++        let e = IpcError::new("invalid-run-id").with("run_id", "../etc");
+         let json = serde_json::to_value(&e).unwrap();
+         assert_eq!(json["code"], "invalid-run-id");
+         assert_eq!(json["params"]["run_id"], "../etc");
+     }
+ }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index c9e45ae..2a999bf 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -39,21 +39,26 @@ use settings::AppSettings;
+ /// Satisfies [`report::json::config_only_document`]/[`report::json::batch_document`]'s
+ /// mandatory [`report::json::DiagnosticRenderer`] parameter without the
+ /// shell asserting any prose of its own (spec 8.4; this task's "no
+ /// user-facing prose in the shell" constraint). The frontend re-renders
+ /// every diagnostic from its own `code`/`params` through its own Fluent
+ /// bundle -- `locales/` is shared by the CLI (fluent-rs) and the frontend
+ /// (`@fluent/bundle`) alike (spec section 7's directory layout) -- and
+ /// never reads this field, so this renderer echoes the diagnostic's own
+ /// code key rather than composing a translated message the shell has no
+ /// business producing.
+-struct ShellRenderer;
++///
++/// `pub(crate)`: [`run`]'s `start_run` builds the same document shapes for
++/// the run-lifecycle path and used to carry an identical duplicate
++/// definition of this same zero-field unit struct; this is the one
++/// surviving copy.
++pub(crate) struct ShellRenderer;
+ 
+ impl report::json::DiagnosticRenderer for ShellRenderer {
+     fn diagnostic(&self, diagnostic: &report::Diagnostic) -> String {
+         diagnostic.code.key().to_string()
+     }
+ }
+ 
+ /// Tauri-managed application state (D23), unified across both tasks that
+ /// contribute IPC commands to this shell: T7's settings persistence and
+ /// T8's run lifecycle. There is exactly one `AppState` value, `.manage`d
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index 12b503f..baf1a8f 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -38,26 +38,24 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+ 
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::command::command;
+ use muxsmith_core::executor::job::{JobOutcome, JobSpec};
+ use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
+ use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
+ use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::{lint, load, validate};
+-use muxsmith_core::report::Diagnostic;
+-use muxsmith_core::report::json::{
+-    DiagnosticRenderer, batch_document, config_only_document, run_document,
+-};
++use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
+ 
+ use crate::AppState;
++use crate::ShellRenderer;
+ use crate::error::IpcError;
+ 
+ /// What currently occupies [`AppState`]'s single run slot (the struct
+ /// itself, plus its `quit_after_finished` sibling field, live in `lib.rs`
+ /// -- unified there across this task's run-tracking fields and T7's
+ /// settings field). Both variants count as "a run is active" for the D23
+ /// single-run gate; they differ only in what a cancel can reach (see each
+ /// variant). `pub(crate)`: named from `AppState`'s field type in the
+ /// parent module.
+ pub(crate) enum RunSlot {
+@@ -102,21 +100,21 @@ impl<'a> Reservation<'a> {
+     /// Reserves the single-run slot, or fails with `"run-already-active"`
+     /// if either a reservation or a running queue already holds it. The
+     /// mutex is held only for this check-and-insert, never across
+     /// planning. Also discards any stale quit-after-finished request
+     /// (D31): a new run starting supersedes a pending quit -- without
+     /// this, a flag orphaned by e.g. a mid-callback panic would silently
+     /// exit the app after the *next* unrelated run.
+     fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
+         let mut slot = state.active.lock().unwrap();
+         if slot.is_some() {
+-            return Err(IpcError::code("run-already-active"));
++            return Err(IpcError::new("run-already-active"));
+         }
+         state.quit_after_finished.store(false, Ordering::SeqCst);
+         let cancel = Arc::new(AtomicBool::new(false));
+         *slot = Some(RunSlot::Reserved(Arc::clone(&cancel)));
+         Ok(Reservation {
+             state,
+             cancel,
+             committed: false,
+         })
+     }
+@@ -188,95 +186,93 @@ pub struct RunMeta {
+ pub enum JoblogStatus {
+     /// Every job log plus `summary.json` was written.
+     Complete,
+     /// The run directory exists but at least one write into it failed.
+     Incomplete,
+     /// No run directory exists at all (unresolvable runs root, a failed
+     /// [`RunLogger::create`], or a run that never touched the queue).
+     Unavailable,
+ }
+ 
+-/// Starts a run (D23): re-plans `profile`/`source`/`output` from scratch
+-/// (never reusing a stale dry-run, mirroring the CLI's `run` command and
+-/// spec 5.5's re-plan invariant), then drives the resulting jobs to
+-/// completion on a detached thread. Rejects with `"run-already-active"` if
+-/// a run is already in flight (D23 single-run).
++/// The blocking planning pass factored out of [`start_run`] (fix: this used
++/// to run inline on `start_run`'s own thread, which -- before this fix --
++/// was the Tauri command dispatch thread itself, freezing the whole event
++/// loop for the duration; now it runs inside
++/// `tauri::async_runtime::spawn_blocking`, see [`start_run`]'s doc). Pure
++/// and `AppState`-free by construction: it takes only owned/`Send` inputs
++/// and returns an owned outcome, so it never needs to touch
++/// [`AppState::active`] (planning stays lock-free, D23's own invariant)
++/// and is directly unit-testable without any Tauri runtime.
+ ///
+-/// Every branch where planning never reaches a real job queue (profile
+-/// load failure, mkvmerge missing/unqueryable, or a batch that plans zero
+-/// jobs) still returns `Ok`: it synchronously emits
+-/// `muxsmith://run-finished` with the same `run_document` shape a real run
+-/// would (spec 7 -- CLI and GUI share this document shape), `total_jobs:
+-/// 0`, and no `run_dir`. `IpcError` is reserved for the one failure the
+-/// caller must react to differently (the single-run conflict); a planning
+-/// outcome is data, not a shell-level error -- and in practice `start_run`
+-/// is only reachable once T10's Batch view has already shown a clean
+-/// `dry_run`, so these branches are defensive, not the expected path.
++/// **Fix (CRITICAL): honors the settings mkvmerge override.** This used to
++/// resolve mkvmerge via [`Mkvmerge::locate`] (PATH only), unlike every
++/// other mkvmerge-touching command (`dry_run`/`identify`/`detect_mkvmerge`,
++/// all [`Mkvmerge::detect`] with the settings override, D28) -- so a
++/// Windows standard install (never on PATH) or a manual override the user
++/// configured in Settings would pass `detect_mkvmerge` and `dry_run`
++/// cleanly and then have every real run silently soft-fail
++/// (`mkvmerge_found: false`) for a reason invisible from the UI the user
++/// had just seen succeed. `settings_path` is loaded here, inside the
++/// blocking pass, exactly like `dry_run`'s own settings read (its doc:
++/// "the settings read... lives INSIDE the `spawn_blocking` closure with
++/// the body itself").
+ ///
+-/// **Event-ordering contract (frontend requirement).** Listeners for BOTH
+-/// `muxsmith://job-event` and `muxsmith://run-finished` MUST be registered
+-/// *before* invoking `start_run`. On the soft-outcome branches above,
+-/// `muxsmith://run-finished` is emitted synchronously, before this
+-/// command's own `Result` ever returns to the caller; a frontend that
+-/// waits for `start_run` to resolve and only then subscribes misses that
+-/// terminal event entirely (and can race the first job events of a real
+-/// run the same way). Subscribe first, then invoke.
+-#[tauri::command]
+-pub fn start_run(
+-    app: AppHandle,
+-    state: State<AppState>,
++/// `cancel_flag` is the reservation's own batch-cancel flag ([`Reservation::cancel_flag`]),
++/// cloned by the caller *before* this pass starts (a cheap, non-blocking
++/// `Arc` clone) so it can be moved in as an ordinary owned value: a
++/// [`Reservation`] itself cannot cross into `spawn_blocking` (it borrows
++/// `&AppState`, not `'static`), but the flag alone can, and constructing
++/// [`QueueControl`] with it here (rather than back on `start_run`'s own
++/// stack) carries the same D23 invariant this module has always had -- a
++/// cancel/close landing during planning still reaches the eventual queue,
++/// born already-cancelled.
++fn plan_run(
++    settings_path: Option<PathBuf>,
+     profile: String,
+     source: Option<String>,
+     output: Option<String>,
+-    jobs: Option<usize>,
+-) -> Result<StartedRun, IpcError> {
+-    // Reserve the single-run slot, then plan WITHOUT holding the lock
+-    // (module doc: a lock held across planning would freeze the event
+-    // loop). Dropping `reservation` uncommitted -- every soft-outcome
+-    // early return below -- releases the slot again.
+-    let reservation = Reservation::acquire(&state)?;
++    cancel_flag: Arc<AtomicBool>,
++) -> Result<PlanOutcome, IpcError> {
++    let mkvmerge_override = crate::load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+ 
+     let profile_path = PathBuf::from(profile);
+     let profile = match load::from_file(&profile_path) {
+         Ok(p) => p,
+         Err(d) => {
+-            drop(reservation);
+             let doc = run_document(config_only_document(&[d], None, &ShellRenderer), &[], &[]);
+-            return Ok(finish_without_queue(&app, &state, doc));
++            return Ok(PlanOutcome::Soft(doc));
+         }
+     };
+ 
+     let mut config_diags = validate::validate(&profile);
+     config_diags.extend(lint::provable_overlaps(&profile));
+ 
+-    let mkv = match Mkvmerge::locate() {
++    let mkv = match Mkvmerge::detect(mkvmerge_override.as_deref().map(Path::new)) {
+         Ok(m) => m,
+         Err(_) => {
+-            drop(reservation);
+             let doc = run_document(
+                 config_only_document(&config_diags, Some(false), &ShellRenderer),
+                 &[],
+                 &[],
+             );
+-            return Ok(finish_without_queue(&app, &state, doc));
++            return Ok(PlanOutcome::Soft(doc));
+         }
+     };
+     let lang = match mkv.list_languages() {
+         Ok(l) => l,
+         Err(_) => {
+-            drop(reservation);
+             let doc = run_document(
+                 config_only_document(&config_diags, Some(true), &ShellRenderer),
+                 &[],
+                 &[],
+             );
+-            return Ok(finish_without_queue(&app, &state, doc));
++            return Ok(PlanOutcome::Soft(doc));
+         }
+     };
+ 
+     let run_inputs = RunInputs {
+         source: source
+             .map(PathBuf::from)
+             .unwrap_or_else(|| PathBuf::from(".")),
+         output: output.map(PathBuf::from),
+         on_collision: None,
+     };
+@@ -293,68 +289,209 @@ pub fn start_run(
+         .files
+         .iter()
+         .filter_map(|f| f.plan.as_ref())
+         .map(|p| JobSpec {
+             argv: command(p),
+             output: p.output.clone(),
+         })
+         .collect();
+ 
+     if specs.is_empty() {
+-        drop(reservation);
+         let doc = run_document(
+             batch_document(&config_diags, &batch, &ShellRenderer),
+             &[],
+             &[],
+         );
+-        return Ok(finish_without_queue(&app, &state, doc));
++        return Ok(PlanOutcome::Soft(doc));
+     }
+ 
+     let run_id = make_run_id(SystemTime::now());
+-    // The reservation's own flag becomes the queue's batch-cancel flag: a
+-    // cancel_run/window-close that landed while planning ran is carried
+-    // into the queue (born already-cancelled) instead of lost.
+-    let ctl = QueueControl::new(specs.len(), reservation.cancel_flag());
++    let ctl = QueueControl::new(specs.len(), cancel_flag);
+     let logger =
+         resolve_runs_root().and_then(|root| RunLogger::create(&root, &run_id, &specs).ok());
+     let run_dir = logger.as_ref().map(|l| l.dir().display().to_string());
+-    let total_jobs = specs.len();
+-
+-    reservation.commit(Arc::clone(&ctl));
+-
+     let base = batch_document(&config_diags, &batch, &ShellRenderer);
+     let outputs: Vec<String> = specs
+         .iter()
+         .map(|s| s.output.display().to_string())
+         .collect();
+     let mkv_path = mkv.path().to_path_buf();
++
++    Ok(PlanOutcome::Ready(Box::new(ReadyPlan {
++        run_id,
++        specs,
++        ctl,
++        logger,
++        run_dir,
++        base,
++        outputs,
++        mkv_path,
++    })))
++}
++
++/// [`plan_run`]'s result.
++enum PlanOutcome {
++    /// A run that never reaches a real job queue (profile load failure,
++    /// mkvmerge unavailable, or zero planned jobs): the synthesized
++    /// `run_document`, ready for [`finish_without_queue`].
++    Soft(serde_json::Value),
++    /// A real batch, ready to hand to the runner thread. Boxed: `Soft`'s
++    /// `serde_json::Value` is far smaller than this variant's payload, and
++    /// clippy's `large_enum_variant` flags the resulting size gap -- every
++    /// `PlanOutcome` would otherwise be sized for the rare branch instead of
++    /// the common ones.
++    Ready(Box<ReadyPlan>),
++}
++
++/// [`PlanOutcome::Ready`]'s payload. Every field here is exactly what the
++/// pre-fix inline code computed on `start_run`'s own stack before spawning
++/// the runner thread; moving the computation into [`plan_run`] does not
++/// change what is computed, only where.
++struct ReadyPlan {
++    run_id: String,
++    specs: Vec<JobSpec>,
++    ctl: Arc<QueueControl>,
++    logger: Option<RunLogger>,
++    run_dir: Option<String>,
++    base: serde_json::Value,
++    outputs: Vec<String>,
++    mkv_path: PathBuf,
++}
++
++/// Starts a run (D23): re-plans `profile`/`source`/`output` from scratch
++/// (never reusing a stale dry-run, mirroring the CLI's `run` command and
++/// spec 5.5's re-plan invariant), then drives the resulting jobs to
++/// completion on a detached thread. Rejects with `"run-already-active"` if
++/// a run is already in flight (D23 single-run).
++///
++/// **Fix: `async`, planning runs on `spawn_blocking`.** This command used
++/// to be a plain `fn`, so its entire planning pass -- [`plan_run`], which
++/// shells out to mkvmerge once per source file via [`plan_batch`]'s
++/// identification -- ran synchronously on Tauri's command-dispatch thread:
++/// the same thread that also has to service [`on_close_requested`] and
++/// `cancel_run`/`cancel_job`, so a long batch froze the window AND made
++/// cancelling or closing it unreachable for the whole planning pass. Now
++/// only the O(1) reservation acquire/commit and the actual thread spawn run
++/// on the calling thread; [`plan_run`] itself runs inside
++/// `tauri::async_runtime::spawn_blocking`, the same pattern `dry_run`/
++/// `identify`/`detect_mkvmerge` already use (see `detect_mkvmerge`'s doc
++/// for the threading rationale). The [`Reservation`] itself is held across
++/// the `.await` (on `start_run`'s own stack, not moved into the blocking
++/// closure -- it borrows `&AppState` and is not `'static`), so the
++/// single-run gate is unchanged: a concurrent `start_run` is still
++/// rejected synchronously, before any thread-pool round trip.
++///
++/// Every branch where planning never reaches a real job queue (profile
++/// load failure, mkvmerge missing/unqueryable, or a batch that plans zero
++/// jobs) still returns `Ok`: it emits `muxsmith://run-finished` with the
++/// same `run_document` shape a real run would (spec 7 -- CLI and GUI share
++/// this document shape), `total_jobs: 0`, and no `run_dir`. `IpcError` is
++/// reserved for failures the caller must react to differently: the
++/// single-run conflict, and (unchanged from every other settings-reading
++/// command) a settings I/O/parse failure; a planning outcome itself is
++/// data, not a shell-level error -- and in practice `start_run` is only
++/// reachable once T10's Batch view has already shown a clean `dry_run`, so
++/// these branches are defensive, not the expected path.
++///
++/// **Event-ordering contract (frontend requirement), unchanged in shape.**
++/// Listeners for BOTH `muxsmith://job-event` and `muxsmith://run-finished`
++/// MUST be registered *before* invoking `start_run`. On the soft-outcome
++/// branches above, `muxsmith://run-finished` is still emitted before this
++/// command's own `Result` reaches the caller -- the emit now happens after
++/// an `.await` point rather than fully synchronously, but that distinction
++/// is invisible to the frontend: a promise resolution is always
++/// "afterwards" from its point of view, and nothing else can observe the
++/// command's internal await. A frontend that waits for `start_run` to
++/// resolve and only then subscribes still misses that terminal event
++/// entirely (and can still race the first job events of a real run the
++/// same way). Subscribe first, then invoke.
++#[tauri::command]
++pub async fn start_run(
++    app: AppHandle,
++    state: State<'_, AppState>,
++    profile: String,
++    source: Option<String>,
++    output: Option<String>,
++    jobs: Option<usize>,
++) -> Result<StartedRun, IpcError> {
++    // Reserve the single-run slot synchronously, on the calling thread,
++    // BEFORE spawn_blocking -- module doc: a lock held across planning
++    // would freeze the event loop, but this is just the O(1)
++    // check-and-insert, not planning itself. Held across the .await below;
++    // dropping it uncommitted (every soft-outcome/error early return)
++    // releases the slot again.
++    let reservation = Reservation::acquire(&state)?;
++    let settings_path = state.settings_path.clone();
++    let cancel_flag = reservation.cancel_flag();
++
++    let outcome = tauri::async_runtime::spawn_blocking(move || {
++        plan_run(settings_path, profile, source, output, cancel_flag)
++    })
++    .await
++    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?;
++
++    let outcome = match outcome {
++        Ok(outcome) => outcome,
++        Err(e) => {
++            drop(reservation);
++            return Err(e);
++        }
++    };
++
++    let ReadyPlan {
++        run_id,
++        specs,
++        ctl,
++        logger,
++        run_dir,
++        base,
++        outputs,
++        mkv_path,
++    } = match outcome {
++        PlanOutcome::Soft(doc) => {
++            drop(reservation);
++            return Ok(finish_without_queue(&app, &state, doc));
++        }
++        PlanOutcome::Ready(ready) => *ready,
++    };
++
++    let total_jobs = specs.len();
++    reservation.commit(Arc::clone(&ctl));
++
+     let jobs = jobs.unwrap_or(1);
+     let app_bg = app.clone();
+ 
+     std::thread::spawn(move || {
++        let managed_state = app_bg.state::<AppState>();
++        let exit_app = app_bg.clone();
++        // Armed for the whole runner-thread body (fix): if `run_batch`'s
++        // `handle.join().expect(...)` below ever panics (a `run_queue`
++        // worker panic), this still clears the slot and honors a pending
++        // quit on unwind -- see TeardownGuard's own doc. Teardown is
++        // complete only once this drops (kills landed, joblog finalized,
++        // terminal event emitted, or the panic path above): never earlier,
++        // or a confirmed quit could kill the process before summary.json
++        // is written.
++        let _teardown = TeardownGuard::new(&managed_state, move |code| exit_app.exit(code));
++
+         let spawner = LiveSpawner { mkvmerge: mkv_path };
+         let opts = QueueOpts {
+             jobs,
+             fail_fast: false,
+         };
+         let (outcomes, logger) = run_batch(&specs, &spawner, opts, &ctl, logger, |event| {
+             let _ = app_bg.emit("muxsmith://job-event", event);
+         });
+ 
+         let document = run_document(base, &outcomes, &outputs);
+         let status = finalize_joblog(logger, &document);
+         emit_run_finished(&app_bg, document, status);
+-        // Teardown is complete only now (kills landed, joblog finalized,
+-        // terminal event emitted): clear the slot and honor a pending
+-        // quit-after-finished (D31) -- never earlier, or a confirmed quit
+-        // could kill the process before summary.json is written.
+-        finish_teardown(&app_bg.state::<AppState>(), |code| app_bg.exit(code));
+     });
+ 
+     Ok(StartedRun {
+         run_id,
+         total_jobs,
+         run_dir,
+     })
+ }
+ 
+ /// Cancels the whole active run (D23, [`QueueControl::cancel_all`]).
+@@ -538,20 +675,54 @@ fn quit_if_requested(state: &AppState, exit: impl FnOnce(i32)) {
+ /// reacts to `muxsmith://run-finished` by instantly invoking `start_run`
+ /// can race this clear by microseconds and get a spurious
+ /// `"run-already-active"`; that is recoverable (retry), whereas exiting
+ /// before `summary.json` is written would lose the run's history (the
+ /// exact loss D26/D31 exist to prevent).
+ fn finish_teardown(state: &AppState, exit: impl FnOnce(i32)) {
+     *state.active.lock().unwrap() = None;
+     quit_if_requested(state, exit);
+ }
+ 
++/// RAII guard around the whole runner-thread body (fix). A `run_queue`
++/// worker panic used to propagate straight out through [`run_batch`]'s
++/// `handle.join().expect(...)` and terminate the runner thread before
++/// [`finish_teardown`] ever ran: the active-run slot stayed `Running`
++/// forever (every later `start_run` permanently rejected with
++/// `"run-already-active"`), and a quit confirmed while that panic was in
++/// flight could never fire (nothing left to consume it), making the window
++/// unclosable on top of already being wedged. Constructing this guard at
++/// the top of the runner thread and letting it fall out of scope at the
++/// bottom makes [`finish_teardown`] run exactly once no matter how the
++/// closure ends -- normal completion or an unwind -- so this guard is the
++/// thread's ONLY call site for it.
++struct TeardownGuard<'a, F: FnOnce(i32)> {
++    state: &'a AppState,
++    exit: Option<F>,
++}
++
++impl<'a, F: FnOnce(i32)> TeardownGuard<'a, F> {
++    fn new(state: &'a AppState, exit: F) -> TeardownGuard<'a, F> {
++        TeardownGuard {
++            state,
++            exit: Some(exit),
++        }
++    }
++}
++
++impl<F: FnOnce(i32)> Drop for TeardownGuard<'_, F> {
++    fn drop(&mut self) {
++        if let Some(exit) = self.exit.take() {
++            finish_teardown(self.state, exit);
++        }
++    }
++}
++
+ /// Synchronously finishes a [`start_run`] call that never touched the
+ /// queue (profile load failure, mkvmerge unavailable, or a batch that
+ /// planned zero jobs): emits `muxsmith://run-finished` with `document`
+ /// (already the full `run_document` shape) and a `joblog_status` of
+ /// [`JoblogStatus::Unavailable`] (D26: nothing ran, so no run directory
+ /// exists), and returns the [`StartedRun`] `start_run` itself returns --
+ /// `total_jobs: 0`, no `run_dir`. The caller drops its [`Reservation`]
+ /// before calling this, releasing the single-run slot; the
+ /// [`quit_if_requested`] at the end is this path's teardown-completion
+ /// hook (D31): a quit confirmed while planning ran still exits even
+@@ -680,39 +851,39 @@ fn resolve_runs_root() -> Option<PathBuf> {
+ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
+     match state.active.lock().unwrap().as_ref() {
+         Some(RunSlot::Reserved(cancel)) => {
+             cancel.store(true, Ordering::SeqCst);
+             Ok(())
+         }
+         Some(RunSlot::Running(run)) => {
+             run.ctl.cancel_all();
+             Ok(())
+         }
+-        None => Err(IpcError::code("no-active-run")),
++        None => Err(IpcError::new("no-active-run")),
+     }
+ }
+ 
+ /// [`cancel_job`]'s testable body. During [`RunSlot::Reserved`] the job
+ /// set does not exist yet, so a per-job cancel has no target: it is
+ /// accepted as a no-op, mirroring [`QueueControl::cancel_job`]'s own
+ /// out-of-range no-op semantics. The window is unreachable from a
+ /// well-behaved frontend anyway -- job indices only become known once
+ /// `start_run` returns, and by then the slot is `Running` (commit happens
+ /// before `start_run` returns).
+ fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
+     match state.active.lock().unwrap().as_ref() {
+         Some(RunSlot::Reserved(_)) => Ok(()),
+         Some(RunSlot::Running(run)) => {
+             run.ctl.cancel_job(index);
+             Ok(())
+         }
+-        None => Err(IpcError::code("no-active-run")),
++        None => Err(IpcError::new("no-active-run")),
+     }
+ }
+ 
+ fn list_runs_in(runs_root: Option<&Path>) -> Vec<RunMeta> {
+     let Some(root) = runs_root else {
+         return Vec::new();
+     };
+     let Ok(entries) = fs::read_dir(root) else {
+         return Vec::new();
+     };
+@@ -759,26 +930,26 @@ fn started_at_from_run_id(run_id: &str) -> Option<String> {
+         &prefix[13..15],
+     ))
+ }
+ 
+ fn get_job_log_in(
+     runs_root: Option<&Path>,
+     run_id: &str,
+     index: usize,
+ ) -> Result<serde_json::Value, IpcError> {
+     if !valid_run_id(run_id) {
+-        return Err(IpcError::code("invalid-run-id").with("run_id", run_id));
++        return Err(IpcError::new("invalid-run-id").with("run_id", run_id));
+     }
+-    let root = runs_root.ok_or_else(|| IpcError::code("job-log-unavailable"))?;
++    let root = runs_root.ok_or_else(|| IpcError::new("job-log-unavailable"))?;
+     let path = root.join(run_id).join(format!("job-{index}.json"));
+     let not_found = || {
+-        IpcError::code("job-log-not-found")
++        IpcError::new("job-log-not-found")
+             .with("run_id", run_id)
+             .with("index", index.to_string())
+     };
+     let text = fs::read_to_string(&path).map_err(|_| not_found())?;
+     serde_json::from_str(&text).map_err(|_| not_found())
+ }
+ 
+ /// Guards path traversal (D26): a valid `run_id` is a single plain path
+ /// component -- no separators, no `':'` (a Windows drive prefix like `"C:"`
+ /// is a root-replacing component under `PathBuf::join` there, and `':'`
+@@ -786,40 +957,26 @@ fn get_job_log_in(
+ /// checked before it is ever joined onto the runs root.
+ fn valid_run_id(run_id: &str) -> bool {
+     !run_id.is_empty()
+         && run_id != "."
+         && run_id != ".."
+         && !run_id.contains('/')
+         && !run_id.contains('\\')
+         && !run_id.contains(':')
+ }
+ 
+-/// Minimal [`DiagnosticRenderer`] the shell hands to `batch_document`/
+-/// `config_only_document` (both require one): every diagnostic's
+-/// `"rendered"` field carries its own stable `code` key rather than
+-/// localized prose. The frontend never reads this field -- it renders each
+-/// diagnostic from its own `code`+`params` through its own Fluent catalog
+-/// (spec 7/8.4's GUI-side split, T9/T10's territory) -- so this passthrough
+-/// is correct data, simply not prose.
+-struct ShellRenderer;
+-
+-impl DiagnosticRenderer for ShellRenderer {
+-    fn diagnostic(&self, diagnostic: &Diagnostic) -> String {
+-        diagnostic.code.key().to_string()
+-    }
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use muxsmith_core::executor::spawn::FakeSpawner;
+-    use muxsmith_core::report::DiagCode;
++    use muxsmith_core::report::json::DiagnosticRenderer;
++    use muxsmith_core::report::{DiagCode, Diagnostic};
+ 
+     fn spec(dir: &Path, name: &str) -> JobSpec {
+         JobSpec {
+             argv: vec!["x".to_string()],
+             output: dir.join(name),
+         }
+     }
+ 
+     fn opts() -> QueueOpts {
+         QueueOpts {
+@@ -831,20 +988,156 @@ mod tests {
+     fn ctl(spec_count: usize) -> Arc<QueueControl> {
+         QueueControl::new(spec_count, Arc::new(AtomicBool::new(false)))
+     }
+ 
+     fn running(control: &Arc<QueueControl>) -> RunSlot {
+         RunSlot::Running(ActiveRun {
+             ctl: Arc::clone(control),
+         })
+     }
+ 
++    fn minimal_profile_yaml() -> &'static str {
++        "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
++    }
++
++    /// A fake `mkvmerge` that answers `--version` with a fixed line, fails
++    /// every other invocation, and appends one line to a counter file on
++    /// EVERY invocation -- so a test can assert exactly how many times it
++    /// was spawned. Mirrors `muxsmith-gui`'s own `lib.rs::counting_fake_mkvmerge`
++    /// and `muxsmith-core`'s identical `tests/mkvmerge_runtime.rs` helper;
++    /// this module needs its own copy since none of those live in a
++    /// dependency this crate's test target can reach.
++    #[cfg(unix)]
++    fn counting_fake_mkvmerge(dir: &Path, version_line: &str) -> (PathBuf, PathBuf) {
++        use std::os::unix::fs::PermissionsExt;
++        let script = dir.join("mkvmerge");
++        let counter = dir.join("spawn-count");
++        fs::write(
++            &script,
++            format!(
++                "#!/bin/sh\necho run >> '{}'\nif [ \"$1\" = \"--version\" ]; then\n  echo '{version_line}'\n  exit 0\nfi\nexit 1\n",
++                counter.display()
++            ),
++        )
++        .unwrap();
++        let mut perms = fs::metadata(&script).unwrap().permissions();
++        perms.set_mode(0o755);
++        fs::set_permissions(&script, perms).unwrap();
++        // A freshly written+chmod'd script can transiently answer
++        // ExecutableFileBusy under parallel test load (identical warm-up to
++        // lib.rs's own helper).
++        for attempt in 0.. {
++            match std::process::Command::new(&script)
++                .arg("--version")
++                .output()
++            {
++                Ok(_) => break,
++                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
++                    std::thread::sleep(std::time::Duration::from_millis(2));
++                }
++                Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
++            }
++        }
++        fs::write(&counter, "").unwrap();
++        (script, counter)
++    }
++
++    #[cfg(unix)]
++    fn spawn_count(counter: &Path) -> usize {
++        fs::read_to_string(counter)
++            .unwrap_or_default()
++            .lines()
++            .count()
++    }
++
++    // -- plan_run: CRITICAL fix, honors the settings mkvmerge override --------
++
++    /// The CRITICAL bug this wave fixes: `start_run`'s planning pass used to
++    /// resolve mkvmerge via `Mkvmerge::locate()` (PATH only), silently
++    /// ignoring `AppSettings::mkvmerge_path` -- unlike `dry_run`/`identify`/
++    /// `detect_mkvmerge`, which all honor it via `Mkvmerge::detect`. A fake
++    /// mkvmerge that only answers `--version` (never `--list-languages`),
++    /// placed at a path NOT on PATH and wired in purely through a settings
++    /// file, must be the binary `plan_run` actually spawns -- proven by its
++    /// own invocation counter -- even though a REAL, fully working mkvmerge
++    /// is present on this test machine's PATH. Under the pre-fix
++    /// `locate()`-only resolution this test would silently exercise the
++    /// real PATH mkvmerge instead (spawn_count staying 0 for the fake) and
++    /// most likely plan a real batch, masking exactly the bug in question.
++    #[test]
++    #[cfg(unix)]
++    fn plan_run_honors_the_settings_mkvmerge_override_not_just_path() {
++        let dir = tempfile::tempdir().unwrap();
++        let settings_path = dir.path().join("settings.json");
++        let (script, counter) =
++            counting_fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Fake') 64-bit");
++        crate::settings::save(
++            &settings_path,
++            &crate::settings::AppSettings {
++                mkvmerge_path: Some(script.display().to_string()),
++                ..crate::settings::AppSettings::default()
++            },
++        )
++        .expect("save settings");
++
++        let profile_path = dir.path().join("p.yaml");
++        fs::write(&profile_path, minimal_profile_yaml()).unwrap();
++
++        let outcome = plan_run(
++            Some(settings_path),
++            profile_path.display().to_string(),
++            None,
++            None,
++            Arc::new(AtomicBool::new(false)),
++        )
++        .expect("settings load must succeed");
++
++        match outcome {
++            PlanOutcome::Soft(doc) => {
++                // The fake answers --version (so Mkvmerge::detect resolves
++                // it and clears the floor check) but not --list-languages,
++                // so the query fails next -- the same "found but broken"
++                // branch dry_run_body's own test exercises. Getting HERE
++                // (rather than a real Ready batch built from the system
++                // mkvmerge) is itself proof the override was consulted.
++                assert_eq!(doc["mkvmerge_found"], serde_json::json!(true), "doc: {doc}");
++            }
++            PlanOutcome::Ready(_) => {
++                panic!("expected a soft outcome from the deliberately broken fake mkvmerge")
++            }
++        }
++        assert!(
++            spawn_count(&counter) >= 1,
++            "the override binary at {script:?} must actually have been spawned"
++        );
++    }
++
++    #[test]
++    fn plan_run_propagates_a_settings_load_failure_as_an_ipc_error() {
++        let dir = tempfile::tempdir().unwrap();
++        let settings_path = dir.path().join("settings.json");
++        fs::write(&settings_path, b"{ not json").unwrap();
++
++        let outcome = plan_run(
++            Some(settings_path),
++            dir.path().join("p.yaml").display().to_string(),
++            None,
++            None,
++            Arc::new(AtomicBool::new(false)),
++        );
++
++        match outcome {
++            Err(e) => assert_eq!(e.code, "settings-parse-failed"),
++            Ok(_) => panic!("expected a settings-parse-failed IpcError"),
++        }
++    }
++
+     // -- Reservation: single-run invariant across the planning window ---------
+ 
+     /// The reviewer-mandated mid-planning rejection: a second start_run
+     /// arriving while the first is still planning (slot Reserved, no
+     /// queue yet) must get run-already-active. The reservation stands in
+     /// for the whole planning pass here: start_run's body between acquire
+     /// and commit/drop is a straight-line sequence with no other slot
+     /// access, so holding the reservation IS the mid-planning state.
+     #[test]
+     fn second_start_is_rejected_while_the_first_is_mid_planning() {
+@@ -983,20 +1276,76 @@ mod tests {
+         let control = ctl(1);
+         *state.active.lock().unwrap() = Some(running(&control));
+ 
+         let mut exits = 0;
+         finish_teardown(&state, |_| exits += 1);
+ 
+         assert!(state.active.lock().unwrap().is_none());
+         assert_eq!(exits, 0, "a normal run end never exits the app");
+     }
+ 
++    // -- TeardownGuard: runner-thread panic must not wedge the app ------------
++
++    /// The fix under test: a panic inside the runner thread's body (the
++    /// real trigger is `run_batch`'s `handle.join().expect(...)` when the
++    /// `run_queue` worker itself panics) must still clear the slot and
++    /// honor a pending quit -- otherwise the app is wedged
++    /// ("run-already-active" forever) and, if a quit was mid-flight,
++    /// unclosable on top of that.
++    #[test]
++    fn teardown_guard_clears_the_slot_and_exits_on_unwind_when_quit_was_pending() {
++        let state = AppState::default();
++        let control = ctl(1);
++        *state.active.lock().unwrap() = Some(running(&control));
++        state.quit_after_finished.store(true, Ordering::SeqCst);
++
++        let exits: Arc<std::sync::Mutex<Vec<i32>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
++        let exits_cl = Arc::clone(&exits);
++        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++            let _guard =
++                TeardownGuard::new(&state, move |code| exits_cl.lock().unwrap().push(code));
++            panic!("simulated run_queue worker panic");
++        }));
++
++        assert!(
++            result.is_err(),
++            "the panic must still unwind past this point"
++        );
++        assert!(
++            state.active.lock().unwrap().is_none(),
++            "the slot must be cleared even though the body panicked"
++        );
++        assert_eq!(
++            *exits.lock().unwrap(),
++            vec![0],
++            "a pending quit must still exit after an unwind"
++        );
++    }
++
++    /// The normal (non-panicking) path: the guard's drop at ordinary scope
++    /// exit is what runs `finish_teardown` now (no separate explicit call
++    /// in `start_run`'s runner thread any more), exactly once.
++    #[test]
++    fn teardown_guard_runs_teardown_exactly_once_on_a_clean_finish() {
++        let state = AppState::default();
++        let control = ctl(1);
++        *state.active.lock().unwrap() = Some(running(&control));
++
++        let mut exits = 0;
++        {
++            let _guard = TeardownGuard::new(&state, |_| exits += 1);
++        }
++
++        assert!(state.active.lock().unwrap().is_none());
++        assert_eq!(exits, 0, "no quit was pending; teardown must not exit");
++    }
++
+     // -- run_batch: joblog dir populated -------------------------------------
+ 
+     #[test]
+     fn run_batch_writes_job_log_files() {
+         let runs_root = tempfile::tempdir().unwrap();
+         let out_dir = tempfile::tempdir().unwrap();
+         let specs = vec![spec(out_dir.path(), "a.mkv")];
+         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+         let control = ctl(specs.len());
+         let logger = RunLogger::create(runs_root.path(), "20260710-000000Z", &specs).unwrap();
+diff --git a/src-tauri/src/settings.rs b/src-tauri/src/settings.rs
+index 1fa713f..316604b 100644
+--- a/src-tauri/src/settings.rs
++++ b/src-tauri/src/settings.rs
+@@ -125,29 +125,59 @@ pub fn load(path: &Path) -> Result<AppSettings, SettingsError> {
+     };
+     serde_json::from_str(&text).map_err(|e| SettingsError::Parse(e.to_string()))
+ }
+ 
+ /// Writes `settings` to `path` as pretty JSON, creating the parent
+ /// directory if needed. `recent_profiles` is capped to
+ /// [`RECENT_PROFILES_CAP`] entries at write time (a defensive invariant on
+ /// the persisted file itself, independent of what the caller handed in),
+ /// keeping the first `RECENT_PROFILES_CAP` entries under the newest-first
+ /// convention documented on the field.
++///
++/// **Atomic publish (fix).** Writing straight to `path` left a torn,
++/// unparseable file behind if the process died mid-write (crash, power
++/// loss, kill) -- and `load`'s [`SettingsError::Parse`] on that torn file
++/// is exactly what a naive first-run recovery flow would loop on forever,
++/// since the file exists and simply never parses. Instead: the bytes are
++/// written to a same-directory temp file first, then [`fs::rename`]
++/// publishes it onto `path` -- same-filesystem rename is atomic on Linux,
++/// macOS, and Windows, so any reader of `path` always sees either the
++/// previous complete file or the new complete one, never a partial write.
++/// `fs::rename` is the ONLY thing that ever touches the final name. On a
++/// failed rename the temp file is removed rather than left behind (its
++/// error is deliberately swallowed: the publish failure is what gets
++/// reported, a second failure while cleaning up after it would not be more
++/// actionable).
+ pub fn save(path: &Path, settings: &AppSettings) -> Result<(), SettingsError> {
+-    if let Some(parent) = path.parent() {
+-        fs::create_dir_all(parent).map_err(|e| SettingsError::Io(e.to_string()))?;
+-    }
++    let parent = match path.parent() {
++        Some(parent) => {
++            fs::create_dir_all(parent).map_err(|e| SettingsError::Io(e.to_string()))?;
++            parent
++        }
++        None => Path::new("."),
++    };
+     let mut capped = settings.clone();
+     capped.recent_profiles.truncate(RECENT_PROFILES_CAP);
+     let bytes =
+         serde_json::to_vec_pretty(&capped).map_err(|e| SettingsError::Parse(e.to_string()))?;
+-    fs::write(path, bytes).map_err(|e| SettingsError::Io(e.to_string()))
++
++    let file_name = path
++        .file_name()
++        .map(|n| n.to_string_lossy().into_owned())
++        .unwrap_or_else(|| "settings".to_string());
++    let tmp_path = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
++
++    fs::write(&tmp_path, &bytes).map_err(|e| SettingsError::Io(e.to_string()))?;
++    fs::rename(&tmp_path, path).map_err(|e| {
++        let _ = fs::remove_file(&tmp_path);
++        SettingsError::Io(e.to_string())
++    })
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     #[test]
+     fn load_missing_file_returns_defaults() {
+         let dir = tempfile::tempdir().unwrap();
+         let path = dir.path().join("settings.json");
+@@ -219,20 +249,77 @@ mod tests {
+         let dir = tempfile::tempdir().unwrap();
+         let path = dir.path().join("settings.json");
+         fs::write(&path, b"{ not json").unwrap();
+ 
+         match load(&path) {
+             Err(SettingsError::Parse(detail)) => assert!(!detail.is_empty()),
+             other => panic!("expected Parse error, got {other:?}"),
+         }
+     }
+ 
++    #[test]
++    fn save_leaves_no_temp_file_behind_after_a_successful_write() {
++        // Regression guard for the atomic-write fix (write-to-temp, then
++        // rename onto the final path, the only publish point): after a
++        // successful save the directory holds exactly the final
++        // settings.json, no temp sibling.
++        let dir = tempfile::tempdir().unwrap();
++        let path = dir.path().join("settings.json");
++
++        save(&path, &AppSettings::default()).expect("save");
++
++        let entries: Vec<String> = fs::read_dir(dir.path())
++            .unwrap()
++            .filter_map(|e| e.ok())
++            .map(|e| e.file_name().to_string_lossy().into_owned())
++            .collect();
++        assert_eq!(
++            entries,
++            vec!["settings.json".to_string()],
++            "only the final settings.json may remain visible; no temp file leftover"
++        );
++    }
++
++    #[test]
++    fn save_cleans_up_its_temp_file_when_the_publish_rename_fails() {
++        // A directory at the FINAL path (not a file) forces fs::rename to
++        // fail (EISDIR/ENOTDIR depending on OS) -- root-safe, unlike a
++        // permission-bit trick, mirroring executor::job's/run.rs's own
++        // delete_partial/finalize_joblog test pattern. Asserts both halves
++        // of "rename is the only publish point": the pre-existing directory
++        // at the final name is untouched (the write never touched it), and
++        // the temp file the atomic write staged its bytes in does not leak
++        // -- a naive atomic-write implementation that skips cleanup on a
++        // failed publish would otherwise accumulate temp files forever.
++        let dir = tempfile::tempdir().unwrap();
++        let path = dir.path().join("settings.json");
++        fs::create_dir(&path).unwrap();
++
++        let result = save(&path, &AppSettings::default());
++        assert!(result.is_err(), "a directory at the final path must fail");
++        assert!(
++            path.is_dir(),
++            "the pre-existing directory must be untouched"
++        );
++
++        let leftovers: Vec<String> = fs::read_dir(dir.path())
++            .unwrap()
++            .filter_map(|e| e.ok())
++            .map(|e| e.file_name().to_string_lossy().into_owned())
++            .filter(|name| name != "settings.json")
++            .collect();
++        assert!(
++            leftovers.is_empty(),
++            "no temp file may survive a failed publish, found: {leftovers:?}"
++        );
++    }
++
+     #[test]
+     fn settings_path_lives_under_a_muxsmith_subdirectory() {
+         if let Some(path) = settings_path() {
+             assert!(
+                 path.ends_with("muxsmith/settings.json") || {
+                     // Windows path separator.
+                     path.to_string_lossy().ends_with("muxsmith\\settings.json")
+                 }
+             );
+         }
+diff --git a/src/App.vue b/src/App.vue
+index bda76ce..eef803f 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -19,20 +19,27 @@ const blockedError = ref<IpcError | null>(null);
+ const activeView = ref<View>("batch");
+ const settingsDialog = ref<InstanceType<typeof SettingsDialog> | null>(null);
+ 
+ // Plan 5 wave-5 shell contract (T10 brief): BatchView's `start-run` emit
+ // hands over the picked profile/dirs/jobs; App just stores it and switches
+ // to Jobs, which owns actually calling `startRun` (T11) and clears this
+ // via `consumed` once it has (`pendingRun` is a one-shot handoff, not
+ // shared state either view reads back).
+ const pendingRun = ref<RunRequest | null>(null);
+ 
++// Fix (D23): forwarded from JobsView's `update:runActive` emit so
++// BatchView's Run gate can disable Run while a run is active ("the UI
++// additionally disables Run while active", D23's own sentence) -- App is
++// the natural owner since it already brokers pendingRun between the two
++// views and neither view can see the other directly.
++const jobsRunActive = ref(false);
++
+ function onStartRun(request: RunRequest) {
+   pendingRun.value = request;
+   activeView.value = "jobs";
+ }
+ 
+ async function checkMkvmerge() {
+   try {
+     await detectMkvmerge();
+     blockedError.value = null;
+   } catch (e) {
+@@ -90,21 +97,23 @@ onMounted(checkMkvmerge);
+     <main>
+       <!-- v-show, not v-if: both views stay mounted across tab switches, so
+            JobsView's live run listeners (registered in its onMounted, torn
+            down in onUnmounted) survive navigating away mid-run. The hidden
+            view is display:none -- out of the a11y tree, cannot trap focus.
+            Only the first-run gate above (v-if/v-else-if) unmounts the
+            shell; eager-mounting both views at startup costs nothing at
+            this scale. -->
+       <BatchView
+         v-show="activeView === 'batch'"
++        :run-active="jobsRunActive"
+         @start-run="onStartRun"
+       />
+       <JobsView
+         v-show="activeView === 'jobs'"
+         :pending-run="pendingRun"
+         @consumed="pendingRun = null"
++        @update:run-active="jobsRunActive = $event"
+       />
+     </main>
+     <SettingsDialog ref="settingsDialog" />
+   </template>
+ </template>
+diff --git a/src/views/BatchView.vue b/src/views/BatchView.vue
+index c848ca1..a4abbd1 100644
+--- a/src/views/BatchView.vue
++++ b/src/views/BatchView.vue
+@@ -38,20 +38,27 @@ const selectedProfile = ref<string | null>(null);
+ const sourceDir = ref("");
+ const outputDir = ref("");
+ const report = ref<ReportDocument | null>(null);
+ const validating = ref(false);
+ const dryRunning = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+ const ipcErrorParams = ref<Record<string, string>>({});
+ 
+ const busy = computed(() => validating.value || dryRunning.value);
+ 
++// Fix (D23): "the UI additionally disables Run while active" -- App
++// forwards JobsView's own runActive state here (this view has no other
++// way to know a run is active; App is the sole broker between the two
++// views). Optional/defaulted so this view still type-checks and behaves
++// correctly standalone, matching JobsView's own `pendingRun?:` precedent.
++const props = withDefaults(defineProps<{ runActive?: boolean }>(), { runActive: false });
++
+ const emit = defineEmits<{ "start-run": [payload: RunRequest] }>();
+ 
+ onMounted(async () => {
+   try {
+     settings.value = await getSettings();
+   } catch {
+     // Non-fatal, mirrors FirstRun's identical tolerance (T9): recents and
+     // directory memory just start empty, the view stays fully usable.
+   }
+ });
+@@ -217,25 +224,30 @@ const allDiagnostics = computed<Diagnostic[]>(() =>
+ const diagnosticCounts = computed(() => {
+   const counts = { error: 0, warning: 0, info: 0 };
+   for (const d of allDiagnostics.value) {
+     counts[d.severity] += 1;
+   }
+   return counts;
+ });
+ const hasErrors = computed(() => diagnosticCounts.value.error > 0);
+ 
+ /** The Fluent key explaining why Run is disabled, or `null` when it isn't.
+- * Only the two conditions the brief names (errors, mkvmerge missing) plus
+- * the functional precondition of having a validated report to run at all
+- * -- `start_run` re-plans and dry-runs internally regardless (spec 5.5),
+- * so this view never requires an explicit dry-run click first. */
++ * The two conditions the T10 brief names (errors, mkvmerge missing), the
++ * functional precondition of having a validated report to run at all --
++ * `start_run` re-plans and dry-runs internally regardless (spec 5.5), so
++ * this view never requires an explicit dry-run click first -- plus the D23
++ * fix: a run already active elsewhere in the app (Jobs view, via
++ * `runActive`) checked first, since it overrides every other reason. */
+ const runDisabledReason = computed<string | null>(() => {
++  if (props.runActive) {
++    return "batch-run-tooltip-run-active";
++  }
+   if (!selectedProfile.value || !report.value) {
+     return "batch-run-tooltip-no-profile";
+   }
+   if (report.value.mkvmerge_found === false) {
+     return "batch-run-tooltip-mkvmerge-missing";
+   }
+   if (hasErrors.value) {
+     return "batch-run-tooltip-errors";
+   }
+   return null;
+@@ -330,21 +342,21 @@ function emitStartRun(): void {
+           :disabled="busy"
+           @change="onDirInputChange('source')"
+         >
+         <p id="batch-source-dir-hint">
+           {{ $t("batch-source-hint") }}
+         </p>
+         <button
+           type="button"
+           data-testid="batch-source-browse"
+           :disabled="busy"
+-          :title="$t('browse-button-tooltip')"
++          :title="$t('batch-browse-dir-tooltip')"
+           @click="pickDir('source')"
+         >
+           {{ $t("browse-button") }}
+         </button>
+       </div>
+       <div>
+         <label for="batch-output-dir">{{ $t("batch-output-label") }}</label>
+         <input
+           id="batch-output-dir"
+           v-model="outputDir"
+@@ -353,21 +365,21 @@ function emitStartRun(): void {
+           :disabled="busy"
+           @change="onDirInputChange('output')"
+         >
+         <p id="batch-output-dir-hint">
+           {{ $t("batch-output-hint") }}
+         </p>
+         <button
+           type="button"
+           data-testid="batch-output-browse"
+           :disabled="busy"
+-          :title="$t('browse-button-tooltip')"
++          :title="$t('batch-browse-dir-tooltip')"
+           @click="pickDir('output')"
+         >
+           {{ $t("browse-button") }}
+         </button>
+       </div>
+     </section>
+ 
+     <p
+       v-if="ipcErrorCode"
+       role="alert"
+diff --git a/src/views/JobsView.vue b/src/views/JobsView.vue
+index deaf4c7..b694bd0 100644
+--- a/src/views/JobsView.vue
++++ b/src/views/JobsView.vue
+@@ -1,20 +1,22 @@
+ <script setup lang="ts">
+ // Jobs view (T11, spec 8.2 view 3, D30): live queue, per-job/batch cancel,
+ // run-finished summary, and run history + log export.
+ //
+ // Wave-5 contract (binding, controller-defined): receives `pending-run`
+ // from App.vue (owned by the parallel Batch-view task, T10) and, on every
+ // non-null value, invokes `start_run` then emits `consumed` so App clears
+ // its ref. `PendingRun` is declared here regardless of whether App.vue
+ // already passes it -- the two sides reconcile trivially since this file
+-// owns its whole contents.
++// owns its whole contents. Also emits `update:runActive` (fix, D23: "the
++// UI additionally disables Run while active") whenever this view's own
++// `runActive` ref changes, so App can forward it to BatchView's Run gate.
+ //
+ // Event-ordering contract (`run.rs::start_run`'s own doc, binding): both
+ // `muxsmith://job-event` and `muxsmith://run-finished` listeners MUST be
+ // registered -- and, since `listen()` itself is async, actually confirmed
+ // registered -- before `start_run` is invoked. A soft outcome (profile
+ // load failure, missing mkvmerge, zero planned jobs) emits
+ // `muxsmith://run-finished` synchronously inside the Rust command, before
+ // its own promise resolves; `ensureListeners()` is awaited first on every
+ // dispatch to close that race.
+ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+@@ -38,21 +40,21 @@ interface RunRequest {
+ }
+ 
+ // Optional (`pendingRun?:`), not a bare required prop: App.vue is the
+ // PARALLEL task's file (T10) and does not pass `pending-run` yet on this
+ // branch's current placeholder wiring (`<JobsView v-else />`, no props) --
+ // this view must still type-check and behave correctly (no pending run) as
+ // a standalone unit until that wiring lands. The watcher below treats a
+ // missing prop exactly like an explicit `null` (`if (!req) return;`), so
+ // T10's eventual `:pending-run` binding needs no further change here.
+ const props = defineProps<{ pendingRun?: RunRequest | null }>();
+-const emit = defineEmits<{ consumed: [] }>();
++const emit = defineEmits<{ consumed: []; "update:runActive": [active: boolean] }>();
+ 
+ // The DOM cap applies to the combined live-output feed LiveLog.vue filters
+ // locally (Step 2: "DOM-capped at 5000 lines - the full log is in the
+ // file"): the persisted job-<index>.json record has every line regardless.
+ const LOG_LINE_CAP = 5000;
+ 
+ const jobs = ref<JobRowData[]>([]);
+ const runActive = ref(false);
+ const startError = ref<IpcError | null>(null);
+ const actionError = ref<IpcError | null>(null);
+@@ -146,44 +148,74 @@ onUnmounted(() => {
+   unlistenRunFinished?.();
+ });
+ 
+ watch(
+   () => props.pendingRun,
+   async (req) => {
+     if (!req) {
+       return;
+     }
+     await ensureListeners();
+-    jobs.value = [];
+-    logLines.value = [];
+-    finishedSummary.value = null;
+     startError.value = null;
+     actionError.value = null;
+-    runActive.value = true;
++
++    // Fix (D23 divergence): only reset the live-run display when this view
++    // does not already believe a run is active. Resetting unconditionally
++    // here used to wipe a currently-active run's rows the instant a SECOND
++    // start_run landed (e.g. a stray double-dispatch) and got rejected
++    // with run-already-active -- the catch branch then flipped runActive
++    // to false too, disabling cancel while the first run kept executing
++    // completely invisibly. `runActive` is this view's own single source
++    // of truth for "a run is active" (set true only on a successful start,
++    // cleared only by onRunFinished or a failed *fresh* start below), so
++    // checking it first is self-consistent. The reset itself must still
++    // run BEFORE calling startRun, not after: a soft-outcome run (zero
++    // jobs planned, etc.) emits muxsmith://run-finished synchronously
++    // inside the Rust command, before this command's own promise resolves
++    // (run.rs's documented event-ordering contract) -- resetting AFTER a
++    // successful await would clobber whatever onRunFinished just wrote for
++    // that very run.
++    const startingFresh = !runActive.value;
++    if (startingFresh) {
++      jobs.value = [];
++      logLines.value = [];
++      finishedSummary.value = null;
++      runActive.value = true;
++    }
++
+     try {
+       const started = await startRun({
+         profile: req.profile,
+         source: req.source ?? undefined,
+         output: req.output ?? undefined,
+         jobs: req.jobs ?? undefined,
+       });
+       ensureJobsLength(started.total_jobs);
+     } catch (e) {
+       startError.value = e as IpcError;
+-      runActive.value = false;
++      if (startingFresh) {
++        runActive.value = false;
++      }
+     } finally {
+       emit("consumed");
+     }
+   },
+   { immediate: true },
+ );
+ 
++// Fix (D23): surface run-active state upward so BatchView can disable Run
++// while a run is active ("the UI additionally disables Run while active",
++// D23's own sentence) -- a watcher rather than an emit at each `runActive`
++// assignment site, so every mutation (the watcher above, onRunFinished)
++// is covered without having to remember to emit at each one.
++watch(runActive, (value) => emit("update:runActive", value), { immediate: true });
++
+ async function onCancelBatch() {
+   actionError.value = null;
+   try {
+     await cancelRun();
+   } catch (e) {
+     actionError.value = e as IpcError;
+   }
+ }
+ 
+ async function onCancelJob(index: number) {

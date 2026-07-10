@@ -1,0 +1,920 @@
+# Review package: 65d7065..1b76fd6
+
+## Commits
+1b76fd6 feat(gui): batch view - profile/dirs, dry-run report, suggestions show+copy
+
+## Files changed
+ locales/en/gui-batch.ftl            |  48 ++++
+ src/App.vue                         |  25 ++-
+ src/components/DiagnosticsPanel.vue |  57 +++++
+ src/components/ResolutionTable.vue  |  68 ++++++
+ src/components/SuggestionCard.vue   |  57 +++++
+ src/ipc.ts                          |  68 +++++-
+ src/views/BatchView.vue             | 435 +++++++++++++++++++++++++++++++++++-
+ 7 files changed, 743 insertions(+), 15 deletions(-)
+
+## Diff
+diff --git a/locales/en/gui-batch.ftl b/locales/en/gui-batch.ftl
+new file mode 100644
+index 0000000..bf42b14
+--- /dev/null
++++ b/locales/en/gui-batch.ftl
+@@ -0,0 +1,48 @@
++# T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
++# are show-and-copy only, never applied). `browse-button`/
++# `browse-button-tooltip` (gui-common.ftl) are reused for the source/output
++# directory pickers rather than duplicated here.
++
++batch-view-heading = Batch
++
++batch-profile-heading = Profile
++batch-profile-pick = Choose profile...
++batch-profile-pick-tooltip = Pick a Muxsmith profile YAML file to validate and run.
++batch-profile-filter-name = Muxsmith profiles
++batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch.
++batch-profile-current = Selected profile: { $path }
++
++batch-recents-heading = Recent profiles
++batch-recents-empty = No recent profiles yet.
++batch-recents-select-tooltip = Open this profile again.
++
++batch-dirs-heading = Directories
++batch-source-label = Source directory
++batch-source-hint = Directory scanned for input files. Leave empty to use the profile's own source directory.
++batch-output-label = Output directory
++batch-output-hint = Directory the muxed files are written to. Leave empty to use the profile's output directory.
++
++batch-diagnostics-heading = Diagnostics
++batch-diagnostics-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info notice(s).
++batch-diagnostic-line = { $severity }: { $message }
++
++batch-dry-run = Dry run
++batch-dry-run-tooltip = Resolve every track rule and render the report below without muxing anything.
++
++batch-files-heading = Files
++batch-resolution-rule-header = Rule
++batch-resolution-track-header = Resolved track
++batch-file-caption = { $source } (identifier: { $identifier }) -> { $output }
++batch-file-no-plan = { $source } (identifier: { $identifier }): no plan produced; see diagnostics below.
++
++batch-suggestions-heading = Suggestions
++batch-suggestion-header = Suggestion for { $config_path }:
++batch-suggestion-copy = Copy
++batch-suggestion-copy-tooltip = Copy this YAML fragment to the clipboard.
++batch-suggestion-copied = Copied to clipboard.
++
++batch-run = Run
++batch-run-tooltip = Start this batch: mux every resolved file with mkvmerge.
++batch-run-tooltip-no-profile = Choose and validate a profile before running.
++batch-run-tooltip-errors = Fix every error-severity diagnostic before running.
++batch-run-tooltip-mkvmerge-missing = mkvmerge is not available; fix detection in Settings before running.
+diff --git a/src/App.vue b/src/App.vue
+index 3ae9ca1..5620bee 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -1,31 +1,43 @@
+ <script setup lang="ts">
+ import { onMounted, ref } from "vue";
+ import BatchView from "./views/BatchView.vue";
+ import JobsView from "./views/JobsView.vue";
+ import FirstRun from "./views/FirstRun.vue";
+ import SettingsDialog from "./components/SettingsDialog.vue";
+ import { detectMkvmerge } from "./ipc";
+-import type { IpcError } from "./ipc";
++import type { IpcError, RunRequest } from "./ipc";
+ 
+ type View = "batch" | "jobs";
+ 
+ // Startup gate (D28, T9 brief): probe mkvmerge exactly once on mount. A
+ // clean result unlocks the shell; a missing/too-old one mounts FirstRun
+ // instead, which owns its own retry loop and clears `blockedError` itself
+ // once a fresh detect succeeds (see its `resolved` emit) -- checkMkvmerge
+ // never runs a second time.
+ const checking = ref(true);
+ const blockedError = ref<IpcError | null>(null);
+ const activeView = ref<View>("batch");
+ const settingsDialog = ref<InstanceType<typeof SettingsDialog> | null>(null);
+ 
++// Plan 5 wave-5 shell contract (T10 brief): BatchView's `start-run` emit
++// hands over the picked profile/dirs/jobs; App just stores it and switches
++// to Jobs, which owns actually calling `startRun` (T11) and clears this
++// via `consumed` once it has (`pendingRun` is a one-shot handoff, not
++// shared state either view reads back).
++const pendingRun = ref<RunRequest | null>(null);
++
++function onStartRun(request: RunRequest) {
++  pendingRun.value = request;
++  activeView.value = "jobs";
++}
++
+ async function checkMkvmerge() {
+   try {
+     await detectMkvmerge();
+     blockedError.value = null;
+   } catch (e) {
+     blockedError.value = e as IpcError;
+   } finally {
+     checking.value = false;
+   }
+ }
+@@ -69,16 +81,23 @@ onMounted(checkMkvmerge);
+       <button
+         type="button"
+         data-testid="open-settings"
+         :title="$t('settings-open-tooltip')"
+         @click="settingsDialog?.open()"
+       >
+         {{ $t("settings-open-label") }}
+       </button>
+     </nav>
+     <main>
+-      <BatchView v-if="activeView === 'batch'" />
+-      <JobsView v-else />
++      <BatchView
++        v-if="activeView === 'batch'"
++        @start-run="onStartRun"
++      />
++      <JobsView
++        v-else
++        :pending-run="pendingRun"
++        @consumed="pendingRun = null"
++      />
+     </main>
+     <SettingsDialog ref="settingsDialog" />
+   </template>
+ </template>
+diff --git a/src/components/DiagnosticsPanel.vue b/src/components/DiagnosticsPanel.vue
+new file mode 100644
+index 0000000..474906d
+--- /dev/null
++++ b/src/components/DiagnosticsPanel.vue
+@@ -0,0 +1,57 @@
++<script setup lang="ts">
++import type { Diagnostic } from "../ipc";
++
++// Renders one flat list of diagnostics (spec 5.2, 8.4): severity icon
++// (decorative, `aria-hidden`) plus the localized severity word and the
++// `code`/`params` rendered through `diagnostics.ftl` -- the same catalog
++// the CLI's `Renderer` reads (spec 7), so a diagnostic reads identically
++// in both surfaces. Reused for the batch/config-level diagnostics
++// (BatchView) and, once per file, for `ReportFile.diagnostics`
++// (ResolutionTable): same shape, same rendering, no per-caller variant.
++//
++// Deliberately no "no diagnostics" empty state here: an empty list means
++// there is nothing to say at this spot, and BatchView's own `role="status"`
++// summary line already covers the batch-wide zero-diagnostics case: a
++// second, repeated-per-instance empty message would be noise.
++defineProps<{ diagnostics: Diagnostic[] }>();
++</script>
++
++<template>
++  <ul v-if="diagnostics.length">
++    <li
++      v-for="(d, i) in diagnostics"
++      :key="i"
++    >
++      <span
++        class="severity-dot"
++        :class="`severity-dot--${d.severity}`"
++        aria-hidden="true"
++      />
++      <span>{{
++        $t("batch-diagnostic-line", {
++          severity: $t(`severity-${d.severity}`),
++          message: $t(d.code, d.params),
++        })
++      }}</span>
++    </li>
++  </ul>
++</template>
++
++<style scoped>
++.severity-dot {
++  display: inline-block;
++  width: 0.6em;
++  height: 0.6em;
++  border-radius: 50%;
++  margin-inline-end: 0.35em;
++}
++.severity-dot--error {
++  background: #c0392b;
++}
++.severity-dot--warning {
++  background: #d68910;
++}
++.severity-dot--info {
++  background: #2471a3;
++}
++</style>
+diff --git a/src/components/ResolutionTable.vue b/src/components/ResolutionTable.vue
+new file mode 100644
+index 0000000..1a841ac
+--- /dev/null
++++ b/src/components/ResolutionTable.vue
+@@ -0,0 +1,68 @@
++<script setup lang="ts">
++import DiagnosticsPanel from "./DiagnosticsPanel.vue";
++import type { PlanAssignment, ReportFile } from "../ipc";
++
++// One `batch_document.files[]` entry (spec 5, T10 brief step 2): the
++// rule -> resolved track table plus this file's own diagnostics.
++// `file.plan` is `null` exactly when the file carries an error-severity
++// diagnostic (spec 5.1, no plan produced); the table only ever renders
++// when a plan exists, matching what `plan.assignments` can express -- an
++// empty table body would misrepresent "planning never reached this file"
++// as "this file resolves to zero tracks".
++//
++// Unmatched `track_id === null` renders as the ASCII "-" placeholder, not
++// a Fluent key: it mirrors the CLI's own identical unlocalized "-"
++// (`muxsmith-cli/src/commands/mod.rs::print_batch_human`) for the same
++// value, spec 7's "CLI and GUI render the same report structures"
++// consistency. `track_kind` (video/audio/subtitles/buttons) is likewise
++// left as-is: an mkvmerge-identification vocabulary word passed through
++// from core, not app-authored UI copy (spec 8.4's `detail`-param
++// exception covers the same kind of third-party passthrough text).
++defineProps<{ file: ReportFile }>();
++
++function resolvedTrackLabel(a: PlanAssignment): string {
++  return a.track_id === null ? "-" : `${a.track_id} (${a.track_kind})`;
++}
++</script>
++
++<template>
++  <section
++    data-testid="batch-resolution-table"
++    :data-index="file.identifier"
++  >
++    <table v-if="file.plan">
++      <caption>
++        {{
++          $t("batch-file-caption", {
++            source: file.source,
++            identifier: file.identifier,
++            output: file.plan.output,
++          })
++        }}
++      </caption>
++      <thead>
++        <tr>
++          <th scope="col">
++            {{ $t("batch-resolution-rule-header") }}
++          </th>
++          <th scope="col">
++            {{ $t("batch-resolution-track-header") }}
++          </th>
++        </tr>
++      </thead>
++      <tbody>
++        <tr
++          v-for="a in file.plan.assignments"
++          :key="a.rule_index"
++        >
++          <td>{{ a.rule_index }}</td>
++          <td>{{ resolvedTrackLabel(a) }}</td>
++        </tr>
++      </tbody>
++    </table>
++    <p v-else>
++      {{ $t("batch-file-no-plan", { source: file.source, identifier: file.identifier }) }}
++    </p>
++    <DiagnosticsPanel :diagnostics="file.diagnostics" />
++  </section>
++</template>
+diff --git a/src/components/SuggestionCard.vue b/src/components/SuggestionCard.vue
+new file mode 100644
+index 0000000..62302cc
+--- /dev/null
++++ b/src/components/SuggestionCard.vue
+@@ -0,0 +1,57 @@
++<script setup lang="ts">
++import { ref } from "vue";
++import { writeText } from "@tauri-apps/plugin-clipboard-manager";
++import type { Suggestion } from "../ipc";
++
++// D22: Plan 5 ships suggestions as show-and-copy only, never applied --
++// the profile is never mutated from here. `edit` (the structured,
++// machine-applicable form) is deliberately never read; only
++// `config_path` and `yaml_fragment` -- the exact text the CLI itself
++// prints for `dry-run-suggestion` -- are shown/copied. `resolves` (the
++// `DiagCode` this fixes) is likewise left unshown, matching the CLI's own
++// suggestion header (`muxsmith-cli/src/commands/mod.rs`), which never
++// prints it either.
++const props = defineProps<{ suggestion: Suggestion }>();
++
++const copied = ref(false);
++let copiedTimeout: ReturnType<typeof setTimeout> | undefined;
++
++async function copy() {
++  try {
++    await writeText(props.suggestion.yaml_fragment);
++    copied.value = true;
++    clearTimeout(copiedTimeout);
++    // Transient confirmation only; a failed copy leaves the button ready
++    // to retry rather than surfacing a modal error over what is a minor,
++    // easily-repeated action.
++    copiedTimeout = setTimeout(() => {
++      copied.value = false;
++    }, 2000);
++  } catch {
++    copied.value = false;
++  }
++}
++</script>
++
++<template>
++  <article data-testid="batch-suggestion-card">
++    <p>
++      {{ $t("batch-suggestion-header", { config_path: suggestion.config_path }) }}
++    </p>
++    <pre><code>{{ suggestion.yaml_fragment }}</code></pre>
++    <button
++      type="button"
++      data-testid="batch-suggestion-copy"
++      :title="$t('batch-suggestion-copy-tooltip')"
++      @click="copy"
++    >
++      {{ $t("batch-suggestion-copy") }}
++    </button>
++    <p
++      v-if="copied"
++      role="status"
++    >
++      {{ $t("batch-suggestion-copied") }}
++    </p>
++  </article>
++</template>
+diff --git a/src/ipc.ts b/src/ipc.ts
+index b1cf832..ba9b16b 100644
+--- a/src/ipc.ts
++++ b/src/ipc.ts
+@@ -54,41 +54,79 @@ export interface Diagnostic {
+   config_path: string;
+   file?: string;
+   params: Record<string, string>;
+   suggestion_ref?: number;
+   rendered: string;
+ }
+ 
+ /**
+  * A `validate_profile`/`dry_run` report document (spec 5.2, 5.5, 7):
+  * mirrors `muxsmith_core::report::json::{config_only_document,
+- * batch_document}`. `files[].plan`/`suggestions` carry the planner's own
+- * `FilePlan`/`Suggestion` shapes, which no T9 code reads and so are left
+- * structurally opaque here rather than half-mirrored; T10 (the Batch
+- * view, the actual consumer of file-level plan data) is where that shape
+- * earns a real type.
++ * batch_document}`.
+  */
+ export interface ReportDocument {
+   config_diagnostics: Diagnostic[];
+   files: ReportFile[];
+   batch_diagnostics: Diagnostic[];
+-  suggestions: unknown[];
++  suggestions: Suggestion[];
+   mkvmerge_found?: boolean;
+ }
+ 
+ export interface ReportFile {
+   source: string;
+   identifier: string;
+-  plan: unknown | null;
++  plan: FilePlan | null;
+   diagnostics: Diagnostic[];
+ }
+ 
++/**
++ * One resolved rule-to-track assignment (spec 5, T10's resolution table):
++ * mirrors `muxsmith_core::planner::Assignment`, narrowed to the fields the
++ * Batch view renders. `track_id`/`track_kind` are `None`/`null` together,
++ * exactly when an `optional` rule matched nothing (spec 5.1); `source` and
++ * `changes` exist on the Rust struct but have no T10 consumer, so they stay
++ * unmirrored here rather than half-typed.
++ */
++export interface PlanAssignment {
++  rule_index: number;
++  track_id: number | null;
++  track_kind: string | null;
++}
++
++/**
++ * The resolved plan for one primary file (spec 3), narrowed to what T10's
++ * `ResolutionTable` renders: mirrors `muxsmith_core::planner::Plan`.
++ * Present only when the file has no error-severity diagnostic (`files[].plan`
++ * is `null` otherwise). Every other `Plan` field (attachments, chapters,
++ * tags, title, keep_unmatched, primary_track_ids) is profile-editor
++ * territory (Plan 6, D22), not rendered by the batch view, and stays
++ * unmirrored here.
++ */
++export interface FilePlan {
++  output: string;
++  assignments: PlanAssignment[];
++}
++
++/**
++ * A batch-validated suggested edit (spec 5.3, D6): mirrors
++ * `muxsmith_core::planner::Suggestion`. `edit` (the `StructuredEdit`
++ * enum) exists on the Rust struct but D22 confines the GUI to
++ * show-and-copy on `yaml_fragment`; no T10 code interprets `edit`, so it
++ * stays structurally opaque rather than half-mirrored.
++ */
++export interface Suggestion {
++  resolves: string;
++  config_path: string;
++  edit: unknown;
++  yaml_fragment: string;
++}
++
+ /** Mirrors `src-tauri/src/lib.rs::identify_document`'s JSON shape. */
+ export interface IdentifyDocument {
+   file_name: string;
+   identification_format_version: number;
+   identifiable: boolean;
+   tracks: { id: number; type: string; codec: string }[];
+ }
+ 
+ /** Mirrors `src-tauri/src/run.rs::StartedRun`. */
+ export interface StartedRun {
+@@ -194,20 +232,36 @@ export function detectMkvmerge(): Promise<MkvmergeInfo> {
+ }
+ 
+ export function getSettings(): Promise<AppSettings> {
+   return invoke<AppSettings>("get_settings");
+ }
+ 
+ export function setSettings(settings: AppSettings): Promise<void> {
+   return invoke<void>("set_settings", { settings });
+ }
+ 
++/**
++ * The Plan 5 wave-5 shell contract (controller-defined, T10/T11 briefs):
++ * what BatchView's `start-run` emit hands to App, which stores it and
++ * passes it to JobsView as the `pending-run` prop. Deliberately not
++ * `startRun`'s own parameter type above: `null` here means "unset,
++ * JobsView/the backend picks the default" for every field, whereas
++ * `startRun`'s optional fields are `undefined`-shaped; T11 maps between
++ * the two when it actually calls `startRun`.
++ */
++export interface RunRequest {
++  profile: string;
++  source: string | null;
++  output: string | null;
++  jobs: number | null;
++}
++
+ // --- run lifecycle commands (T8) ---------------------------------------
+ 
+ export function startRun(params: {
+   profile: string;
+   source?: string;
+   output?: string;
+   jobs?: number;
+ }): Promise<StartedRun> {
+   return invoke<StartedRun>("start_run", params);
+ }
+diff --git a/src/views/BatchView.vue b/src/views/BatchView.vue
+index 0cb74af..83bc14f 100644
+--- a/src/views/BatchView.vue
++++ b/src/views/BatchView.vue
+@@ -1,12 +1,437 @@
+ <script setup lang="ts">
+-// Placeholder for Task 10 (Batch view, spec 8.2 view 2). T9's scope is
+-// only to prove the view-switch mounts a real component per view; the
+-// profile picker, dry-run report, and suggestions UI land in T10, which
+-// replaces this file's content.
++import { computed, onMounted, ref } from "vue";
++import { useFluent } from "fluent-vue";
++import { open as openDialog } from "@tauri-apps/plugin-dialog";
++import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
++import ResolutionTable from "../components/ResolutionTable.vue";
++import SuggestionCard from "../components/SuggestionCard.vue";
++import { dryRun, getSettings, setSettings, validateProfile } from "../ipc";
++import type {
++  AppSettings,
++  Diagnostic,
++  DirMemory,
++  IpcError,
++  ReportDocument,
++  RunRequest,
++} from "../ipc";
++
++// Task 10 (spec 8.2 view 2, D22): profile pick + recents, source/output
++// directory memory, dry-run report rendering, suggestions as show+copy
++// cards, and the `start-run` handoff to App/JobsView (Plan 5 wave-5
++// contract). No profile mutation anywhere in this view (D22; that is
++// Plan 6's profile editor).
++
++const fluent = useFluent();
++
++function defaultAppSettings(): AppSettings {
++  return {
++    mkvmerge_path: null,
++    default_jobs: 1,
++    locale: null,
++    recent_profiles: [],
++    dir_memory: {},
++  };
++}
++
++const settings = ref<AppSettings>(defaultAppSettings());
++const selectedProfile = ref<string | null>(null);
++const sourceDir = ref("");
++const outputDir = ref("");
++const report = ref<ReportDocument | null>(null);
++const validating = ref(false);
++const dryRunning = ref(false);
++const ipcErrorCode = ref<string | null>(null);
++const ipcErrorParams = ref<Record<string, string>>({});
++
++const busy = computed(() => validating.value || dryRunning.value);
++
++const emit = defineEmits<{ "start-run": [payload: RunRequest] }>();
++
++onMounted(async () => {
++  try {
++    settings.value = await getSettings();
++  } catch {
++    // Non-fatal, mirrors FirstRun's identical tolerance (T9): recents and
++    // directory memory just start empty, the view stays fully usable.
++  }
++});
++
++/** Re-fetches settings immediately before every write and spreads the
++ * result (mirrors SettingsDialog's baseline pattern): this view owns
++ * `recent_profiles`/`dir_memory` but must never clobber
++ * `mkvmerge_path`/`default_jobs`/`locale`, which SettingsDialog owns. */
++async function updateSettings(mutate: (current: AppSettings) => AppSettings): Promise<void> {
++  const current = await getSettings();
++  const next = mutate(current);
++  await setSettings(next);
++  settings.value = next;
++}
++
++async function rememberRecentProfile(path: string): Promise<void> {
++  try {
++    await updateSettings((current) => ({
++      ...current,
++      recent_profiles: [path, ...current.recent_profiles.filter((p) => p !== path)],
++    }));
++  } catch (e) {
++    // Background bookkeeping only; a failed recents write never blocks
++    // picking or validating the profile itself.
++    console.warn("[batch] failed to persist recent profile:", e);
++  }
++}
++
++async function persistDir(kind: "source" | "output", value: string): Promise<void> {
++  if (!selectedProfile.value) {
++    return;
++  }
++  const profile = selectedProfile.value;
++  const trimmed = value.trim();
++  try {
++    await updateSettings((current) => {
++      const existing: DirMemory = { ...current.dir_memory[profile] };
++      if (trimmed === "") {
++        delete existing[kind];
++      } else {
++        existing[kind] = trimmed;
++      }
++      return { ...current, dir_memory: { ...current.dir_memory, [profile]: existing } };
++    });
++  } catch (e) {
++    console.warn("[batch] failed to persist directory memory:", e);
++  }
++}
++
++async function runValidate(): Promise<void> {
++  if (!selectedProfile.value) {
++    return;
++  }
++  validating.value = true;
++  ipcErrorCode.value = null;
++  try {
++    report.value = await validateProfile(selectedProfile.value);
++  } catch (e) {
++    const err = e as IpcError;
++    ipcErrorCode.value = err.code;
++    ipcErrorParams.value = err.params;
++  } finally {
++    validating.value = false;
++  }
++}
++
++async function selectProfile(path: string): Promise<void> {
++  if (busy.value) {
++    return;
++  }
++  selectedProfile.value = path;
++  report.value = null;
++  ipcErrorCode.value = null;
++  const memory = settings.value.dir_memory[path];
++  sourceDir.value = memory?.source ?? "";
++  outputDir.value = memory?.output ?? "";
++  await rememberRecentProfile(path);
++  await runValidate();
++}
++
++async function pickProfile(): Promise<void> {
++  if (busy.value) {
++    return;
++  }
++  const picked = await openDialog({
++    multiple: false,
++    directory: false,
++    filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
++  });
++  if (typeof picked === "string") {
++    await selectProfile(picked);
++  }
++}
++
++async function pickDir(kind: "source" | "output"): Promise<void> {
++  if (busy.value) {
++    return;
++  }
++  const picked = await openDialog({ multiple: false, directory: true });
++  if (typeof picked !== "string") {
++    return;
++  }
++  if (kind === "source") {
++    sourceDir.value = picked;
++  } else {
++    outputDir.value = picked;
++  }
++  await persistDir(kind, picked);
++}
++
++function onDirInputChange(kind: "source" | "output"): void {
++  void persistDir(kind, kind === "source" ? sourceDir.value : outputDir.value);
++}
++
++async function runDryRun(): Promise<void> {
++  if (!selectedProfile.value || busy.value) {
++    return;
++  }
++  dryRunning.value = true;
++  ipcErrorCode.value = null;
++  try {
++    report.value = await dryRun(
++      selectedProfile.value,
++      sourceDir.value.trim() === "" ? undefined : sourceDir.value.trim(),
++      outputDir.value.trim() === "" ? undefined : outputDir.value.trim(),
++    );
++  } catch (e) {
++    const err = e as IpcError;
++    ipcErrorCode.value = err.code;
++    ipcErrorParams.value = err.params;
++  } finally {
++    dryRunning.value = false;
++  }
++}
++
++// `report.value` covers both shapes T7 returns: `validate_profile`'s
++// config-only document (files/batch_diagnostics/suggestions always empty)
++// and `dry_run`'s full `batch_document`. Grouping config+batch-level
++// diagnostics here (as opposed to per-file, rendered inside each
++// ResolutionTable) covers cross-file/runtime facts like DuplicateIdentifier
++// that the brief's "config + per-file" wording does not name explicitly
++// but that can carry error severity -- hiding them here while still
++// counting them in the summary/Run-gate below would make an error block
++// Run with no visible explanation.
++const generalDiagnostics = computed<Diagnostic[]>(() =>
++  report.value ? [...report.value.config_diagnostics, ...report.value.batch_diagnostics] : [],
++);
++const allDiagnostics = computed<Diagnostic[]>(() =>
++  report.value
++    ? [...generalDiagnostics.value, ...report.value.files.flatMap((f) => f.diagnostics)]
++    : [],
++);
++const diagnosticCounts = computed(() => {
++  const counts = { error: 0, warning: 0, info: 0 };
++  for (const d of allDiagnostics.value) {
++    counts[d.severity] += 1;
++  }
++  return counts;
++});
++const hasErrors = computed(() => diagnosticCounts.value.error > 0);
++
++/** The Fluent key explaining why Run is disabled, or `null` when it isn't.
++ * Only the two conditions the brief names (errors, mkvmerge missing) plus
++ * the functional precondition of having a validated report to run at all
++ * -- `start_run` re-plans and dry-runs internally regardless (spec 5.5),
++ * so this view never requires an explicit dry-run click first. */
++const runDisabledReason = computed<string | null>(() => {
++  if (!selectedProfile.value || !report.value) {
++    return "batch-run-tooltip-no-profile";
++  }
++  if (report.value.mkvmerge_found === false) {
++    return "batch-run-tooltip-mkvmerge-missing";
++  }
++  if (hasErrors.value) {
++    return "batch-run-tooltip-errors";
++  }
++  return null;
++});
++const runDisabled = computed(() => runDisabledReason.value !== null || busy.value);
++const runTooltip = computed(() => fluent.$t(runDisabledReason.value ?? "batch-run-tooltip"));
++
++function emitStartRun(): void {
++  if (runDisabled.value || !selectedProfile.value) {
++    return;
++  }
++  emit("start-run", {
++    profile: selectedProfile.value,
++    source: sourceDir.value.trim() === "" ? null : sourceDir.value.trim(),
++    output: outputDir.value.trim() === "" ? null : outputDir.value.trim(),
++    // No jobs-count control in this view (outside the T10 brief's scope);
++    // pass the app's own configured default rather than `null` so Run
++    // does not silently downgrade to sequential -- `start_run`'s own
++    // Rust-side default for `jobs: None` is 1, independent of
++    // AppSettings.default_jobs (src-tauri/src/run.rs).
++    jobs: settings.value.default_jobs,
++  });
++}
+ </script>
+ 
+ <template>
+   <section data-testid="view-batch">
+-    <h2>{{ $t("nav-batch") }}</h2>
++    <h2>{{ $t("batch-view-heading") }}</h2>
++
++    <section
++      aria-labelledby="batch-profile-heading"
++      :aria-busy="validating"
++    >
++      <h3 id="batch-profile-heading">
++        {{ $t("batch-profile-heading") }}
++      </h3>
++      <p v-if="!selectedProfile">
++        {{ $t("batch-profile-none") }}
++      </p>
++      <p v-else>
++        {{ $t("batch-profile-current", { path: selectedProfile }) }}
++      </p>
++      <button
++        type="button"
++        data-testid="batch-profile-pick"
++        :disabled="busy"
++        :title="$t('batch-profile-pick-tooltip')"
++        @click="pickProfile"
++      >
++        {{ $t("batch-profile-pick") }}
++      </button>
++
++      <h4 id="batch-recents-heading">
++        {{ $t("batch-recents-heading") }}
++      </h4>
++      <ul
++        v-if="settings.recent_profiles.length"
++        aria-labelledby="batch-recents-heading"
++      >
++        <li
++          v-for="(path, i) in settings.recent_profiles"
++          :key="path"
++        >
++          <button
++            type="button"
++            data-testid="batch-recent-profile"
++            :data-index="i"
++            :disabled="busy"
++            :title="$t('batch-recents-select-tooltip')"
++            @click="selectProfile(path)"
++          >
++            {{ path }}
++          </button>
++        </li>
++      </ul>
++      <p v-else>
++        {{ $t("batch-recents-empty") }}
++      </p>
++    </section>
++
++    <section aria-labelledby="batch-dirs-heading">
++      <h3 id="batch-dirs-heading">
++        {{ $t("batch-dirs-heading") }}
++      </h3>
++      <div>
++        <label for="batch-source-dir">{{ $t("batch-source-label") }}</label>
++        <input
++          id="batch-source-dir"
++          v-model="sourceDir"
++          type="text"
++          aria-describedby="batch-source-dir-hint"
++          :disabled="busy"
++          @change="onDirInputChange('source')"
++        >
++        <p id="batch-source-dir-hint">
++          {{ $t("batch-source-hint") }}
++        </p>
++        <button
++          type="button"
++          data-testid="batch-source-browse"
++          :disabled="busy"
++          :title="$t('browse-button-tooltip')"
++          @click="pickDir('source')"
++        >
++          {{ $t("browse-button") }}
++        </button>
++      </div>
++      <div>
++        <label for="batch-output-dir">{{ $t("batch-output-label") }}</label>
++        <input
++          id="batch-output-dir"
++          v-model="outputDir"
++          type="text"
++          aria-describedby="batch-output-dir-hint"
++          :disabled="busy"
++          @change="onDirInputChange('output')"
++        >
++        <p id="batch-output-dir-hint">
++          {{ $t("batch-output-hint") }}
++        </p>
++        <button
++          type="button"
++          data-testid="batch-output-browse"
++          :disabled="busy"
++          :title="$t('browse-button-tooltip')"
++          @click="pickDir('output')"
++        >
++          {{ $t("browse-button") }}
++        </button>
++      </div>
++    </section>
++
++    <p
++      v-if="ipcErrorCode"
++      role="alert"
++    >
++      {{ $t(ipcErrorCode, ipcErrorParams) }}
++    </p>
++
++    <button
++      type="button"
++      data-testid="batch-dry-run"
++      :disabled="!selectedProfile || busy"
++      :aria-busy="dryRunning"
++      :title="$t('batch-dry-run-tooltip')"
++      @click="runDryRun"
++    >
++      {{ $t("batch-dry-run") }}
++    </button>
++
++    <template v-if="report">
++      <section aria-labelledby="batch-diagnostics-heading">
++        <h3 id="batch-diagnostics-heading">
++          {{ $t("batch-diagnostics-heading") }}
++        </h3>
++        <p role="status">
++          {{
++            $t("batch-diagnostics-summary", {
++              errors: diagnosticCounts.error,
++              warnings: diagnosticCounts.warning,
++              infos: diagnosticCounts.info,
++            })
++          }}
++        </p>
++        <DiagnosticsPanel :diagnostics="generalDiagnostics" />
++      </section>
++
++      <section
++        v-if="report.files.length"
++        aria-labelledby="batch-files-heading"
++      >
++        <h3 id="batch-files-heading">
++          {{ $t("batch-files-heading") }}
++        </h3>
++        <ResolutionTable
++          v-for="f in report.files"
++          :key="f.source"
++          :file="f"
++        />
++      </section>
++
++      <section
++        v-if="report.suggestions.length"
++        aria-labelledby="batch-suggestions-heading"
++      >
++        <h3 id="batch-suggestions-heading">
++          {{ $t("batch-suggestions-heading") }}
++        </h3>
++        <SuggestionCard
++          v-for="(s, i) in report.suggestions"
++          :key="i"
++          :data-index="i"
++          :suggestion="s"
++        />
++      </section>
++    </template>
++
++    <button
++      type="button"
++      data-testid="batch-run"
++      :disabled="runDisabled"
++      :aria-busy="busy"
++      :title="runTooltip"
++      @click="emitStartRun"
++    >
++      {{ $t("batch-run") }}
++    </button>
+   </section>
+ </template>

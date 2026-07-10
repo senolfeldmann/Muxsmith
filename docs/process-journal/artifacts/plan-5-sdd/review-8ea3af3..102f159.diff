@@ -1,0 +1,1525 @@
+# Review package: 8ea3af3..102f159
+
+## Commits
+102f159 test(gui): playwright smoke + axe a11y + i18n completeness gate
+
+## Files changed
+ .github/workflows/ci.yml   |  16 +++
+ .gitignore                 |   6 +
+ e2e/global.d.ts            |  34 +++++
+ e2e/i18n-en.ts             |  56 ++++++++
+ e2e/mocks.ts               | 156 ++++++++++++++++++++
+ e2e/smoke.spec.ts          | 344 +++++++++++++++++++++++++++++++++++++++++++++
+ e2e/tauri-mock-entry.ts    |  20 +++
+ e2e/tsconfig.json          |   8 ++
+ e2e/vite.harness.config.ts |  29 ++++
+ eslint.config.js           |   6 +
+ package.json               |   7 +-
+ playwright.config.ts       |  35 +++++
+ pnpm-lock.yaml             |  83 ++++++++++-
+ scripts/check-i18n.mjs     | 177 +++++++++++++++++++++++
+ 14 files changed, 971 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7af4f68..9a26369 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -48,20 +48,36 @@ jobs:
+       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+         with:
+           cache: true
+       - name: Install frontend dependencies
+         run: pnpm install --frozen-lockfile
+       - run: cargo fmt --all --check
+       - run: cargo clippy --workspace --all-targets -- -D warnings
+       - run: cargo test --workspace
+       - run: pnpm lint
+       - run: pnpm build
++      # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
++      # same guard as the mkvtoolnix/webkit2gtk steps above (private-repo
++      # minute economy: PR/tag runs on win/mac still build+lint+test, they
++      # just skip the browser install and the smoke). The smoke drives a
++      # plain Chromium against `dist/` via `vite preview` with
++      # `@tauri-apps/api/mocks` standing in for Tauri IPC (spec 10, no
++      # tauri-driver) -- `pnpm build` above already produced `dist/`.
++      - name: i18n completeness gate
++        if: runner.os == 'Linux'
++        run: pnpm check:i18n
++      - name: Install Playwright Chromium
++        if: runner.os == 'Linux'
++        run: pnpm exec playwright install --with-deps chromium
++      - name: Playwright smoke (GUI e2e)
++        if: runner.os == 'Linux'
++        run: pnpm test:e2e
+ 
+   deny:
+     # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on
+     # Linux always, independent of the test matrix trim.
+     runs-on: ubuntu-26.04
+     steps:
+       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+       - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
+         with:
+           command: check
+diff --git a/.gitignore b/.gitignore
+index fdd8413..4963446 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,10 +2,16 @@
+ .superpowers/
+ gh-log.md
+ 
+ # parallel SDD worktree streams
+ .worktrees/
+ 
+ # JS/Tauri frontend
+ node_modules/
+ dist/
+ src-tauri/gen/
++
++# Task 12: Playwright + the e2e mock harness build (never ships in the
++# Tauri binary -- see e2e/vite.harness.config.ts)
++e2e/.generated/
++playwright-report/
++test-results/
+diff --git a/e2e/global.d.ts b/e2e/global.d.ts
+new file mode 100644
+index 0000000..0abc3a4
+--- /dev/null
++++ b/e2e/global.d.ts
+@@ -0,0 +1,34 @@
++// Ambient typings for the mock harness's browser-side globals (Task 12).
++// Shared by `tauri-mock-entry.ts` (defines `window.__muxsmithE2E__`) and
++// `mocks.ts` (the `installMockIPC` function that runs inside the page via
++// `page.addInitScript`, see that file's own doc for why it cannot import
++// these instead).
++export {};
++
++declare global {
++  interface Window {
++    /** Set by `tauri-mock-entry.ts` (bundled by `vite.harness.config.ts`):
++     * the real `@tauri-apps/api/mocks` functions plus `emit` from
++     * `@tauri-apps/api/event`, re-exported onto `window` so a plain
++     * `page.addInitScript`/`page.evaluate` call can reach them without a
++     * bare-specifier import (browsers cannot resolve those natively). */
++    __muxsmithE2E__: {
++      mockIPC: (
++        cb: (cmd: string, args?: unknown) => unknown,
++        options?: { shouldMockEvents?: boolean },
++      ) => void;
++      mockWindows: (current: string, ...rest: string[]) => void;
++      clearMocks: () => void;
++      emit: (event: string, payload?: unknown) => Promise<void>;
++    };
++    /** `@tauri-apps/plugin-os`'s `platform()` reads this global directly
++     * (verified: node_modules/@tauri-apps/plugin-os/dist-js/index.js has
++     * no `invoke` call at all for `platform()`) -- neither `mockIPC` nor
++     * `mockWindows` ever sets it, so `mocks.ts`'s `installMockIPC` does. */
++    __TAURI_OS_PLUGIN_INTERNALS__?: Record<string, unknown>;
++    /** Bound via `page.exposeFunction` in `mocks.ts`: every mocked
++     * `invoke()` call is forwarded here so tests can assert on real
++     * invocation evidence instead of a UI echo. */
++    __muxsmithRecordInvoke__?: (cmd: string, argsJson: string) => void;
++  }
++}
+diff --git a/e2e/i18n-en.ts b/e2e/i18n-en.ts
+new file mode 100644
+index 0000000..214187d
+--- /dev/null
++++ b/e2e/i18n-en.ts
+@@ -0,0 +1,56 @@
++/**
++ * En-catalog loader for e2e assertions (Task 12 binding convention: "no
++ * hardcoded user-facing assertions where a Fluent key exists -- assert
++ * against the en catalog values"). Mirrors `src/i18n/index.ts`'s catalog
++ * set exactly (`gui-*.ftl` + `diagnostics.ftl`; `cli.ftl` excluded -- the
++ * frontend never renders it), using the same `@fluent/bundle` the app
++ * itself renders through, so a smoke assertion is byte-identical to what a
++ * user actually sees instead of a hand-duplicated string that can silently
++ * drift from the catalog.
++ */
++import { readFileSync, readdirSync } from "node:fs";
++import { dirname, join, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import { FluentBundle, FluentResource } from "@fluent/bundle";
++import type { FluentVariable } from "@fluent/bundle";
++
++const LOCALES_EN = resolve(dirname(fileURLToPath(import.meta.url)), "../locales/en");
++
++function buildEnBundle(): FluentBundle {
++  const bundle = new FluentBundle("en");
++  const files = readdirSync(LOCALES_EN)
++    .filter((f) => f.endsWith(".ftl") && (f.startsWith("gui-") || f === "diagnostics.ftl"))
++    .sort();
++  for (const file of files) {
++    const errors = bundle.addResource(
++      new FluentResource(readFileSync(join(LOCALES_EN, file), "utf8")),
++    );
++    if (errors.length > 0) {
++      throw new Error(`e2e/i18n-en: catalog error in ${file}: ${errors.map(String).join("; ")}`);
++    }
++  }
++  return bundle;
++}
++
++const bundle = buildEnBundle();
++
++/**
++ * Renders one message id through the real en catalog, exactly as the
++ * app's own `$t(id, params)` would (fluent-vue delegates to the same
++ * `FluentBundle.formatPattern`). Throws on a missing id or a formatting
++ * error rather than returning the id itself -- a test fixture referencing
++ * a nonexistent key is a test bug to fail loudly on, not a value to
++ * silently degrade.
++ */
++export function en(id: string, args?: Record<string, FluentVariable>): string {
++  const message = bundle.getMessage(id);
++  if (!message || !message.value) {
++    throw new Error(`e2e/i18n-en: no message "${id}" in the en catalog`);
++  }
++  const errors: Error[] = [];
++  const text = bundle.formatPattern(message.value, args, errors);
++  if (errors.length > 0) {
++    throw new Error(`e2e/i18n-en: format error for "${id}": ${errors.map(String).join("; ")}`);
++  }
++  return text;
++}
+diff --git a/e2e/mocks.ts b/e2e/mocks.ts
+new file mode 100644
+index 0000000..ef94cd3
+--- /dev/null
++++ b/e2e/mocks.ts
+@@ -0,0 +1,156 @@
++/**
++ * Playwright-side Tauri IPC/event mocking for the smoke (Task 12, spec 10):
++ * installs the real `@tauri-apps/api/mocks` harness (`tauri-mock-entry.ts`,
++ * bundled by `vite.harness.config.ts`) into the page before any app script
++ * runs, wires a per-command scripted response queue, and exposes a
++ * Node-side call log plus an `emitEvent` helper so tests can drive
++ * `muxsmith://job-event`/`muxsmith://run-finished` exactly like
++ * `src-tauri/src/run.rs` does.
++ *
++ * Binding app contracts this mock respects (read directly from
++ * `crates/muxsmith-core/src/executor/queue.rs` and `src-tauri/src/run.rs`,
++ * not assumed): the app registers both window-event listeners BEFORE
++ * invoking `start_run` (`JobsView.vue`'s `ensureListeners()`), and a soft
++ * `start_run` outcome emits `run-finished` synchronously, before the
++ * command's own promise resolves. `shouldMockEvents` preserves that
++ * ordering here too, since `emit()`/`listen()` both go through the same
++ * mocked `invoke()` the app's own bundled `@tauri-apps/api/event` uses --
++ * nothing about event delivery is reimplemented, only scripted responses
++ * for plain commands are.
++ */
++import { dirname, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import type { Page } from "@playwright/test";
++
++const HARNESS_PATH = resolve(
++  dirname(fileURLToPath(import.meta.url)),
++  ".generated/tauri-mock-harness.js",
++);
++
++export type MockResult =
++  | { kind: "resolve"; value: unknown }
++  | { kind: "reject"; error: { code: string; params?: Record<string, string> } };
++
++export function resolveWith(value: unknown): MockResult {
++  return { kind: "resolve", value };
++}
++
++export function rejectWith(code: string, params: Record<string, string> = {}): MockResult {
++  return { kind: "reject", error: { code, params } };
++}
++
++export interface MockScenario {
++  /** `window.__TAURI_OS_PLUGIN_INTERNALS__.platform` (D28's per-OS install
++   * guidance): `@tauri-apps/plugin-os`'s `platform()` reads this global
++   * directly rather than going through `invoke` (see `global.d.ts`), so
++   * `installMockIPC` sets it explicitly instead of the mock IPC handler
++   * below ever seeing a `plugin:os|platform` command. */
++  platform?: string;
++  /** Per-command response queue, consumed in call order; once exhausted,
++   * the last entry repeats for any further call (covers an incidental
++   * extra call -- e.g. `RunHistory.vue`'s own `list_runs` refresh after a
++   * run finishes -- without needing an exact call count per scenario). An
++   * unmocked command throws in the page instead of silently hanging the
++   * app's `invoke()` promise forever. */
++  commands: Record<string, MockResult[]>;
++}
++
++export interface RecordedInvoke {
++  cmd: string;
++  args: unknown;
++}
++
++/**
++ * Runs INSIDE the page: Playwright serializes this whole function body via
++ * `page.addInitScript(fn, arg)` and re-evaluates it fresh on every
++ * navigation, so it must not close over anything from this module's scope
++ * beyond the `scenario` argument itself (see `global.d.ts` for the ambient
++ * `window.__muxsmithE2E__`/`__TAURI_OS_PLUGIN_INTERNALS__`/
++ * `__muxsmithRecordInvoke__` typings it relies on).
++ */
++function installMockIPC(scenario: MockScenario): void {
++  const queues = new Map<string, MockResult[]>(
++    Object.entries(scenario.commands).map(([cmd, results]) => [cmd, [...results]]),
++  );
++
++  function nextResult(cmd: string): MockResult | undefined {
++    const q = queues.get(cmd);
++    if (!q || q.length === 0) {
++      return undefined;
++    }
++    return q.length > 1 ? q.shift() : q[0];
++  }
++
++  window.__muxsmithE2E__.mockWindows("main");
++  window.__TAURI_OS_PLUGIN_INTERNALS__ = { platform: scenario.platform ?? "linux" };
++
++  window.__muxsmithE2E__.mockIPC(
++    (cmd, args) => {
++      window.__muxsmithRecordInvoke__?.(cmd, JSON.stringify(args ?? null));
++
++      const result = nextResult(cmd);
++      if (result) {
++        return result.kind === "reject" ? Promise.reject(result.error) : result.value;
++      }
++      // Incidental background commands every scenario touches regardless
++      // of what it is actually testing: both views mount eagerly at
++      // startup (T10's `v-show` contract, App.vue), so `RunHistory.vue`'s
++      // own `onMounted(refresh)` always fires `list_runs`, and
++      // `main.ts`'s locale bootstrap plus every view's own settings reads
++      // always fire `get_settings`.
++      if (cmd === "list_runs") {
++        return [];
++      }
++      if (cmd === "get_settings") {
++        return {
++          mkvmerge_path: null,
++          default_jobs: 1,
++          locale: "en",
++          recent_profiles: [],
++          dir_memory: {},
++        };
++      }
++      if (cmd === "set_settings" || cmd === "plugin:fs|write_text_file") {
++        return null;
++      }
++      throw new Error(`e2e mock: unmocked command "${cmd}"`);
++    },
++    { shouldMockEvents: true },
++  );
++}
++
++/**
++ * Installs the harness bundle plus this scenario's IPC responses, and
++ * wires a Node-side call log fed from the page via `page.exposeFunction`:
++ * real invocation evidence, not a UI echo (Task 12's self-review
++ * requirement) -- e.g. a clipboard-copy assertion checks that
++ * `plugin:clipboard-manager|write_text` was actually called with the
++ * expected text, not just that a local "Copied" flag flipped in the DOM.
++ * Call once per test, before `page.goto`.
++ */
++export async function installTauriMocks(
++  page: Page,
++  scenario: MockScenario,
++): Promise<RecordedInvoke[]> {
++  const recorded: RecordedInvoke[] = [];
++  await page.exposeFunction("__muxsmithRecordInvoke__", (cmd: string, argsJson: string) => {
++    recorded.push({ cmd, args: JSON.parse(argsJson) as unknown });
++  });
++  await page.addInitScript({ path: HARNESS_PATH });
++  await page.addInitScript(installMockIPC, scenario);
++  return recorded;
++}
++
++/**
++ * Drives `muxsmith://job-event`/`muxsmith://run-finished` (or any other
++ * window event) exactly like `src-tauri/src/run.rs` emits them: through
++ * the real bundled `emit()` (`window.__muxsmithE2E__.emit`), which goes
++ * through the same mocked `invoke("plugin:event|emit", ...)` the app's own
++ * `listen()` registrations are recorded against.
++ */
++export async function emitEvent(page: Page, channel: string, payload: unknown): Promise<void> {
++  await page.evaluate(
++    ({ channel, payload }) => window.__muxsmithE2E__.emit(channel, payload),
++    { channel, payload },
++  );
++}
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+new file mode 100644
+index 0000000..7e8c875
+--- /dev/null
++++ b/e2e/smoke.spec.ts
+@@ -0,0 +1,344 @@
++/**
++ * Task 12 GUI smoke: the built frontend in a plain Chromium browser,
++ * mocked IPC (`mocks.ts`), locale pinned to "en" (playwright.config.ts's
++ * `use.locale` plus the mocked `get_settings.locale`). Three scenarios per
++ * the task brief:
++ *   (a) mkvmerge detection fails -> first-run guidance -> manual path
++ *       recovers it.
++ *   (b) a mocked `dry_run` document renders the resolution table and
++ *       diagnostics, and copying a suggestion hits the clipboard mock.
++ *   (c) a mocked `start_run` plus scripted `job-event`s progress the job
++ *       rows and fill the live log; per-row cancel invokes `cancel_job`;
++ *       `run-finished` announces the summary.
++ * Every user-facing string asserted against comes from `e2e/i18n-en.ts`
++ * (the real en Fluent catalog), never a hand-duplicated literal (Task 12's
++ * binding test-discipline convention). Locators prefer `getByRole`;
++ * `data-testid` is the fallback where no distinct accessible role/name
++ * exists.
++ */
++import { expect, test } from "@playwright/test";
++import AxeBuilder from "@axe-core/playwright";
++import type { Page } from "@playwright/test";
++import { emitEvent, installTauriMocks, rejectWith, resolveWith } from "./mocks";
++import { en } from "./i18n-en";
++import type { FluentVariable } from "@fluent/bundle";
++import {
++  JOB_EVENT_CHANNEL,
++  RUN_FINISHED_CHANNEL,
++} from "../src/ipc";
++import type {
++  AppSettings,
++  JobEvent,
++  MkvmergeInfo,
++  ReportDocument,
++  RunFinishedEvent,
++  StartedRun,
++} from "../src/ipc";
++
++/** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
++ * default role-name matching is a case-insensitive SUBSTRING match, which
++ * collides here for real (not hypothetically): "Run" (the batch-run
++ * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
++ * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
++ * list), so an un-exact match resolves to 2-3 elements and Playwright's
++ * strict mode rejects the locator. */
++function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
++  return { name: en(id, args), exact: true };
++}
++
++/** Fails the test with every axe violation of impact "serious" or
++ * "critical" listed (id, impact, help text, offending selectors) -- Task
++ * 12 step 2: one scan per view state the smoke actually reaches. */
++async function assertNoSeriousA11yViolations(page: Page): Promise<void> {
++  const results = await new AxeBuilder({ page }).analyze();
++  const serious = results.violations.filter(
++    (v) => v.impact === "serious" || v.impact === "critical",
++  );
++  const report = serious
++    .map(
++      (v) =>
++        `${v.id} (${v.impact}): ${v.help}\n  ${v.nodes.map((n) => n.target.join(" ")).join("\n  ")}`,
++    )
++    .join("\n\n");
++  expect(serious, report).toEqual([]);
++}
++
++const MKVMERGE_INFO: MkvmergeInfo = {
++  path: "/usr/bin/mkvmerge",
++  version: "90.0.0",
++  meets_minimum: true,
++};
++
++test.describe("first-run gate", () => {
++  test("detect failure shows guidance; a manual path recovers it", async ({ page }) => {
++    const MANUAL_PATH = "/opt/mkvtoolnix/mkvmerge";
++
++    const recorded = await installTauriMocks(page, {
++      platform: "linux",
++      commands: {
++        detect_mkvmerge: [rejectWith("mkvmerge-not-found"), resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(MANUAL_PATH)],
++      },
++    });
++
++    await page.goto("/");
++
++    const firstRun = page.getByRole("main");
++    await expect(
++      firstRun.getByRole("heading", name("firstrun-missing-heading")),
++    ).toBeVisible();
++    await expect(page.getByText(en("mkvmerge-not-found"))).toBeVisible();
++    await expect(page.getByText(en("firstrun-guidance-linux"))).toBeVisible();
++
++    await assertNoSeriousA11yViolations(page);
++
++    await firstRun.getByRole("button", name("browse-button")).click();
++    const pathInput = firstRun.getByRole("textbox", name("firstrun-picker-label"));
++    await expect(pathInput).toHaveValue(MANUAL_PATH);
++
++    await firstRun.getByRole("button", name("firstrun-use-path")).click();
++
++    await expect(page.getByRole("heading", name("app-title"))).toBeVisible();
++    await expect(page.getByRole("navigation", name("nav-label"))).toBeVisible();
++
++    // Real invocation evidence, not a UI echo: the retry actually happened
++    // (two detect_mkvmerge calls) and the manual path was actually
++    // persisted via set_settings before the retry.
++    expect(recorded.filter((r) => r.cmd === "detect_mkvmerge")).toHaveLength(2);
++    const settingsWrite = recorded.find((r) => r.cmd === "set_settings");
++    expect((settingsWrite?.args as { settings: AppSettings } | undefined)?.settings.mkvmerge_path).toBe(
++      MANUAL_PATH,
++    );
++  });
++});
++
++test.describe("batch view: dry run", () => {
++  const PROFILE_PATH = "/profiles/demo.yaml";
++  const SOURCE_FILE = "movie.mkv";
++  const SOURCE_IDENTIFIER = "movie";
++  const OUTPUT_FILE = "output/movie.mkv";
++  const SUGGESTION_YAML = "track_rules:\n  - match:\n      type: audio\n";
++
++  const emptyReport: ReportDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  const dryRunReport: ReportDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [
++      {
++        code: "ignored-file",
++        severity: "info",
++        config_path: PROFILE_PATH,
++        params: {},
++        rendered: "ignored-file",
++      },
++    ],
++    files: [
++      {
++        source: SOURCE_FILE,
++        identifier: SOURCE_IDENTIFIER,
++        plan: {
++          output: OUTPUT_FILE,
++          assignments: [
++            { rule_index: 0, track_id: 0, track_kind: "video" },
++            { rule_index: 1, track_id: 1, track_kind: "audio" },
++          ],
++        },
++        diagnostics: [
++          {
++            code: "unknown-property",
++            severity: "warning",
++            config_path: PROFILE_PATH,
++            params: { property: "codec_kind_extra" },
++            rendered: "unknown-property",
++          },
++        ],
++      },
++    ],
++    suggestions: [
++      {
++        resolves: "unknown-property",
++        config_path: PROFILE_PATH,
++        edit: null,
++        yaml_fragment: SUGGESTION_YAML,
++      },
++    ],
++    mkvmerge_found: true,
++  };
++
++  test("dry-run document renders the resolution table + diagnostics; suggestion copy hits the clipboard mock", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        validate_profile: [resolveWith(emptyReport)],
++        dry_run: [resolveWith(dryRunReport)],
++        "plugin:clipboard-manager|write_text": [resolveWith(null)],
++      },
++    });
++
++    await page.goto("/");
++
++    const batch = page.getByTestId("view-batch");
++    await expect(batch.getByRole("heading", name("batch-view-heading"))).toBeVisible();
++
++    await batch.getByRole("button", name("batch-profile-pick")).click();
++    await expect(
++      batch.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
++    ).toBeVisible();
++
++    await batch.getByRole("button", name("batch-dry-run")).click();
++
++    const table = batch.getByRole(
++      "table",
++      name("batch-file-caption", {
++        source: SOURCE_FILE,
++        identifier: SOURCE_IDENTIFIER,
++        output: OUTPUT_FILE,
++      }),
++    );
++    await expect(table).toBeVisible();
++    await expect(table.getByRole("row")).toHaveCount(3); // header + 2 assignments
++
++    const expectedDiagnosticLine = en("batch-diagnostic-line", {
++      severity: en("severity-warning"),
++      message: en("unknown-property", { property: "codec_kind_extra" }),
++    });
++    await expect(batch.getByText(expectedDiagnosticLine)).toBeVisible();
++
++    const suggestion = batch.getByRole("article");
++    await expect(suggestion.locator("pre code")).toContainText("track_rules");
++
++    await assertNoSeriousA11yViolations(page);
++
++    await suggestion.getByRole("button", name("batch-suggestion-copy")).click();
++    await expect(suggestion.getByText(en("batch-suggestion-copied"))).toBeVisible();
++
++    const clipboardCalls = recorded.filter((r) => r.cmd === "plugin:clipboard-manager|write_text");
++    expect(clipboardCalls).toHaveLength(1);
++    expect((clipboardCalls[0].args as { text: string }).text).toBe(SUGGESTION_YAML);
++  });
++});
++
++test.describe("jobs view: live run", () => {
++  const PROFILE_PATH = "/profiles/run-demo.yaml";
++  const JOB0_OUTPUT = "output/episode1.mkv";
++  const JOB1_OUTPUT = "output/episode2.mkv";
++  const RUN_ID = "20260710-190000Z";
++
++  const runnableReport: ReportDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  test("scripted job-events progress rows and fill the log; per-row cancel invokes cancel_job; run-finished announces the summary", async ({
++    page,
++  }) => {
++    const startedRun: StartedRun = { run_id: RUN_ID, total_jobs: 2, run_dir: `/runs/${RUN_ID}` };
++
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        validate_profile: [resolveWith(runnableReport)],
++        start_run: [resolveWith(startedRun)],
++        cancel_job: [resolveWith(null)],
++      },
++    });
++
++    await page.goto("/");
++
++    const batch = page.getByTestId("view-batch");
++    await batch.getByRole("button", name("batch-profile-pick")).click();
++    const runButton = batch.getByRole("button", name("batch-run"));
++    await expect(runButton).toBeEnabled();
++    await runButton.click();
++
++    const jobs = page.getByTestId("view-jobs");
++    await expect(jobs.getByTestId("job-row")).toHaveCount(2);
++
++    await emitEvent(page, JOB_EVENT_CHANNEL, {
++      event: "started",
++      index: 0,
++      output: JOB0_OUTPUT,
++    } satisfies JobEvent);
++    await emitEvent(page, JOB_EVENT_CHANNEL, {
++      event: "progress",
++      index: 0,
++      percent: 42,
++    } satisfies JobEvent);
++    await emitEvent(page, JOB_EVENT_CHANNEL, {
++      event: "output",
++      index: 0,
++      line: "mkvmerge output line 1",
++    } satisfies JobEvent);
++    await emitEvent(page, JOB_EVENT_CHANNEL, {
++      event: "started",
++      index: 1,
++      output: JOB1_OUTPUT,
++    } satisfies JobEvent);
++
++    const row0 = jobs.getByTestId("job-row").nth(0);
++    const row1 = jobs.getByTestId("job-row").nth(1);
++
++    await expect(row0.getByTestId("job-progress")).toHaveJSProperty("value", 42);
++    await expect(jobs.getByTestId("live-log")).toContainText("mkvmerge output line 1");
++
++    await assertNoSeriousA11yViolations(page);
++
++    await row1.getByRole("button", name("jobs-row-cancel-label")).click();
++    expect(
++      recorded.some((r) => r.cmd === "cancel_job" && (r.args as { index: number }).index === 1),
++    ).toBe(true);
++
++    await emitEvent(page, JOB_EVENT_CHANNEL, {
++      event: "finished",
++      index: 0,
++      outcome: { state: "ok", exit_code: 0, warnings: [], errors: [], duration_ms: 1234 },
++    } satisfies JobEvent);
++    await emitEvent(page, JOB_EVENT_CHANNEL, {
++      event: "finished",
++      index: 1,
++      outcome: { state: "cancelled", exit_code: null, warnings: [], errors: [], duration_ms: 50 },
++    } satisfies JobEvent);
++
++    const runFinished: RunFinishedEvent = {
++      config_diagnostics: [],
++      batch_diagnostics: [],
++      files: [],
++      suggestions: [],
++      mkvmerge_found: true,
++      jobs: [
++        { index: 0, output: JOB0_OUTPUT, state: "ok", exit_code: 0, warnings: [], errors: [], duration_ms: 1234 },
++        {
++          index: 1,
++          output: JOB1_OUTPUT,
++          state: "cancelled",
++          exit_code: null,
++          warnings: [],
++          errors: [],
++          duration_ms: 50,
++        },
++      ],
++      summary: { ok: 1, warning: 0, failed: 0, cancelled: 1 },
++      joblog_status: "complete",
++    };
++    await emitEvent(page, RUN_FINISHED_CHANNEL, runFinished);
++
++    await expect(jobs.getByTestId("jobs-run-summary")).toHaveText(
++      en("jobs-summary-line", { ok: 1, warning: 0, failed: 0, cancelled: 1 }),
++    );
++    await expect(row0.getByText(en("jobs-state-ok"))).toBeVisible();
++    await expect(row1.getByText(en("jobs-state-cancelled"))).toBeVisible();
++  });
++});
+diff --git a/e2e/tauri-mock-entry.ts b/e2e/tauri-mock-entry.ts
+new file mode 100644
+index 0000000..dd53980
+--- /dev/null
++++ b/e2e/tauri-mock-entry.ts
+@@ -0,0 +1,20 @@
++/**
++ * Browser-side Tauri mock harness (Task 12). Bundled standalone by
++ * `vite.harness.config.ts` into a dependency-free IIFE
++ * (`e2e/.generated/tauri-mock-harness.js`) and injected into every test
++ * page BEFORE any app script runs, via `page.addInitScript({ path })` in
++ * `mocks.ts`. Re-exports the REAL `@tauri-apps/api/mocks` functions plus
++ * `emit` from `@tauri-apps/api/event` -- the same pinned `@tauri-apps/api`
++ * version `src/` itself bundles -- on `window.__muxsmithE2E__`, instead of
++ * hand-reimplementing the `plugin:event|listen`/`plugin:event|emit` wire
++ * contract those two modules already define (verified against their
++ * shipped source, node_modules/@tauri-apps/api/{mocks,event}.js:
++ * `mockIPC`'s `shouldMockEvents` option intercepts exactly those two
++ * invoke names internally and replays a registered `listen()` handler on
++ * `emit()`, which is exactly the mechanism `src-tauri/src/run.rs` uses in
++ * production).
++ */
++import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
++import { emit } from "@tauri-apps/api/event";
++
++window.__muxsmithE2E__ = { mockIPC, mockWindows, clearMocks, emit };
+diff --git a/e2e/tsconfig.json b/e2e/tsconfig.json
+new file mode 100644
+index 0000000..8577e2f
+--- /dev/null
++++ b/e2e/tsconfig.json
+@@ -0,0 +1,8 @@
++{
++  "extends": "../tsconfig.json",
++  "compilerOptions": {
++    "types": ["node", "@playwright/test"],
++    "noEmit": true
++  },
++  "include": ["**/*.ts", "../playwright.config.ts"]
++}
+diff --git a/e2e/vite.harness.config.ts b/e2e/vite.harness.config.ts
+new file mode 100644
+index 0000000..7f53ad3
+--- /dev/null
++++ b/e2e/vite.harness.config.ts
+@@ -0,0 +1,29 @@
++import { dirname, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import { defineConfig } from "vite";
++
++// Pre-test build step, chained into the `test:e2e` script (NOT part of the
++// app's own `pnpm build`/`tauri.conf.json` bundling -- this output never
++// ships in the Tauri binary). Bundles `tauri-mock-entry.ts` into one
++// dependency-free IIFE so `mocks.ts` can inject the REAL
++// `@tauri-apps/api/mocks`/`event` code into a plain browser page via
++// `page.addInitScript({ path })`, which reads the file straight off disk
++// (no HTTP serving involved -- this never touches `dist/`/`public/`, so it
++// can never leak into the shipped Tauri bundle). Output is gitignored and
++// rebuilt on every `test:e2e` run, so it can never drift from the pinned
++// `@tauri-apps/api` version `src/` itself uses.
++const here = dirname(fileURLToPath(import.meta.url));
++
++export default defineConfig({
++  build: {
++    outDir: resolve(here, ".generated"),
++    emptyOutDir: true,
++    minify: false,
++    lib: {
++      entry: resolve(here, "tauri-mock-entry.ts"),
++      name: "MuxsmithE2EHarness",
++      formats: ["iife"],
++      fileName: () => "tauri-mock-harness.js",
++    },
++  },
++});
+diff --git a/eslint.config.js b/eslint.config.js
+index 1f92948..0046458 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -8,26 +8,32 @@ import tseslint from "typescript-eslint";
+ // pull in message-catalog rules (`no-unused-keys`, `no-missing-keys`, ...)
+ // that expect vue-i18n's JSON/YAML catalogs via `settings['vue-i18n']
+ // .localeDir`. `no-raw-text` itself only scans Vue template text nodes; it
+ // has no dependency on the vue-i18n runtime or catalog format, so it works
+ // standalone here (verified empirically: a raw template string trips this
+ // rule with no other vue-i18n config present).
+ export default tseslint.config(
+   {
+     // .worktrees/: SDD worktree checkouts (main checkout only) carry their
+     // own target/ with rustdoc-generated JS that eslint must never see.
++    // e2e/.generated/: the bundled, gitignored mock harness build (Task
++    // 12) -- vendored @tauri-apps/api code via vite.harness.config.ts,
++    // never hand-authored, never linted.
+     ignores: [
+       "dist/**",
+       "src-tauri/**",
+       "node_modules/**",
+       "target/**",
+       ".worktrees/**",
++      "e2e/.generated/**",
++      "playwright-report/**",
++      "test-results/**",
+     ],
+   },
+   // typescript-eslint's base config sets `languageOptions.parser` with no
+   // `files` restriction, so it must come before the Vue-specific blocks
+   // below; otherwise it wins the flat-config merge for *.vue too and
+   // vue-eslint-parser never sees the SFC (`<script setup>` then fails to
+   // parse as if it were bare TS).
+   ...tseslint.configs.recommended,
+   ...pluginVue.configs["flat/recommended"],
+   {
+diff --git a/package.json b/package.json
+index 7342b42..62a5f2b 100644
+--- a/package.json
++++ b/package.json
+@@ -1,34 +1,39 @@
+ {
+   "name": "muxsmith-gui",
+   "private": true,
+   "version": "0.1.0",
+   "type": "module",
+   "packageManager": "pnpm@11.10.0",
+   "scripts": {
+     "dev": "vite",
+     "build": "vue-tsc --noEmit && vite build",
+     "preview": "vite preview",
+-    "lint": "eslint ."
++    "lint": "eslint .",
++    "check:i18n": "node scripts/check-i18n.mjs",
++    "test:e2e": "vite build --config e2e/vite.harness.config.ts && playwright test"
+   },
+   "dependencies": {
+     "@fluent/bundle": "0.19.1",
+     "@tauri-apps/api": "2.11.1",
+     "@tauri-apps/plugin-clipboard-manager": "2.3.2",
+     "@tauri-apps/plugin-dialog": "2.7.1",
+     "@tauri-apps/plugin-fs": "2.5.1",
+     "@tauri-apps/plugin-os": "2.3.2",
+     "fluent-vue": "3.8.2",
+     "vue": "3.5.39"
+   },
+   "devDependencies": {
++    "@axe-core/playwright": "4.12.1",
+     "@intlify/eslint-plugin-vue-i18n": "4.5.1",
++    "@playwright/test": "1.61.1",
+     "@tauri-apps/cli": "2.11.4",
++    "@types/node": "26.1.1",
+     "@vitejs/plugin-vue": "6.0.7",
+     "eslint": "10.6.0",
+     "eslint-plugin-vue": "10.9.2",
+     "typescript": "6.0.3",
+     "typescript-eslint": "8.63.0",
+     "vite": "8.1.4",
+     "vue-tsc": "3.3.7"
+   }
+ }
+diff --git a/playwright.config.ts b/playwright.config.ts
+new file mode 100644
+index 0000000..b01b552
+--- /dev/null
++++ b/playwright.config.ts
+@@ -0,0 +1,35 @@
++import { defineConfig, devices } from "@playwright/test";
++
++// Task 12 (spec 10, thin smoke): drives the BUILT frontend (`vite preview`
++// over `dist/`) in a plain Chromium browser with `@tauri-apps/api/mocks`
++// standing in for the Tauri IPC bridge -- no tauri-driver, no real webview
++// window (see e2e/mocks.ts). Chromium only: this smoke checks the Vue
++// app's own behavior against the documented IPC/event contract, not
++// cross-engine rendering. Precondition: `dist/` must already exist
++// (`pnpm build`), which the per-commit gate runs before `pnpm test:e2e`.
++export default defineConfig({
++  testDir: "./e2e",
++  testMatch: "**/*.spec.ts",
++  fullyParallel: true,
++  forbidOnly: !!process.env.CI,
++  reporter: "list",
++  use: {
++    baseURL: "http://127.0.0.1:4173",
++    locale: "en-US",
++    trace: "retain-on-failure",
++  },
++  webServer: {
++    // `--host 127.0.0.1` forced explicitly: vite preview's default
++    // `localhost` bind resolved to `[::1]` only on the machine this was
++    // authored on, so Playwright's own IPv4 health check against
++    // `127.0.0.1` timed out against a server that was, in fact, already
++    // up (verified: curl to `[::1]:4173` succeeded, `127.0.0.1:4173`
++    // connection-refused, `ss -tlnp` showed `[::1]:4173` only). Pinning
++    // the bind address removes that ambiguity instead of hoping every
++    // runner's `localhost` resolution order happens to match.
++    command: "vite preview --host 127.0.0.1 --port 4173 --strictPort",
++    url: "http://127.0.0.1:4173",
++    reuseExistingServer: !process.env.CI,
++  },
++  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
++});
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index a08bd09..0087878 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -26,50 +26,64 @@ importers:
+       '@tauri-apps/plugin-os':
+         specifier: 2.3.2
+         version: 2.3.2
+       fluent-vue:
+         specifier: 3.8.2
+         version: 3.8.2(@fluent/bundle@0.19.1)(vue@3.5.39(typescript@6.0.3))
+       vue:
+         specifier: 3.5.39
+         version: 3.5.39(typescript@6.0.3)
+     devDependencies:
++      '@axe-core/playwright':
++        specifier: 4.12.1
++        version: 4.12.1(playwright-core@1.61.1)
+       '@intlify/eslint-plugin-vue-i18n':
+         specifier: 4.5.1
+         version: 4.5.1(eslint@10.6.0)(jsonc-eslint-parser@3.1.0)(vue-eslint-parser@10.4.1(eslint@10.6.0))(yaml-eslint-parser@2.1.0)
++      '@playwright/test':
++        specifier: 1.61.1
++        version: 1.61.1
+       '@tauri-apps/cli':
+         specifier: 2.11.4
+         version: 2.11.4
++      '@types/node':
++        specifier: 26.1.1
++        version: 26.1.1
+       '@vitejs/plugin-vue':
+         specifier: 6.0.7
+-        version: 6.0.7(vite@8.1.4(yaml@2.9.0))(vue@3.5.39(typescript@6.0.3))
++        version: 6.0.7(vite@8.1.4(@types/node@26.1.1)(yaml@2.9.0))(vue@3.5.39(typescript@6.0.3))
+       eslint:
+         specifier: 10.6.0
+         version: 10.6.0
+       eslint-plugin-vue:
+         specifier: 10.9.2
+         version: 10.9.2(@typescript-eslint/parser@8.63.0(eslint@10.6.0)(typescript@6.0.3))(eslint@10.6.0)(vue-eslint-parser@10.4.1(eslint@10.6.0))
+       typescript:
+         specifier: 6.0.3
+         version: 6.0.3
+       typescript-eslint:
+         specifier: 8.63.0
+         version: 8.63.0(eslint@10.6.0)(typescript@6.0.3)
+       vite:
+         specifier: 8.1.4
+-        version: 8.1.4(yaml@2.9.0)
++        version: 8.1.4(@types/node@26.1.1)(yaml@2.9.0)
+       vue-tsc:
+         specifier: 3.3.7
+         version: 3.3.7(typescript@6.0.3)
+ 
+ packages:
+ 
++  '@axe-core/playwright@4.12.1':
++    resolution: {integrity: sha512-rMd7xriptqKpP+w5265i4Hdkv2X5kbu6uiBi/B2I7uf3hieRBM3qDCfaKPtxfiYb2mKXfF+yLODJwIx+Jv1GDw==}
++    peerDependencies:
++      playwright-core: '>= 1.0.0'
++
+   '@babel/helper-string-parser@7.29.7':
+     resolution: {integrity: sha512-Pb5ijPrZ89GDH8223L4UP8i6QApWxs04RbPQJTeWDV0/keR2E36MeKnyr6LYmUUvqRRI+Iv87SuF1W6ErINzYw==}
+     engines: {node: '>=6.9.0'}
+ 
+   '@babel/helper-validator-identifier@7.29.7':
+     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
+     engines: {node: '>=6.9.0'}
+ 
+   '@babel/parser@7.29.7':
+     resolution: {integrity: sha512-hnORnjP/1P/zFEndoeX+n+t1RwWRJiJpM/jO7FW32Kn9r5+sJB2JWOdYo4L6k78j15eCwY3Gm/7364B1EMwtNg==}
+@@ -199,20 +213,25 @@ packages:
+     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
+ 
+   '@pkgjs/parseargs@0.11.0':
+     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
+     engines: {node: '>=14'}
+ 
+   '@pkgr/core@0.3.6':
+     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
+     engines: {node: ^14.18.0 || >=16.0.0}
+ 
++  '@playwright/test@1.61.1':
++    resolution: {integrity: sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==}
++    engines: {node: '>=18'}
++    hasBin: true
++
+   '@rolldown/binding-android-arm64@1.1.5':
+     resolution: {integrity: sha512-lZg8fqIv2v7FF237bwMgzGZEJvGL79/s5knJ/i6FmsGF4XXlzccZ4jb+TrFIxtSSxFtIpdsgrPZeMk1I9AFcyQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [android]
+ 
+   '@rolldown/binding-darwin-arm64@1.1.5':
+     resolution: {integrity: sha512-51Bnx9pNiMRKSUNtBfySkNJ9vMU9Hh3I1ozDd6gyPPYzaXCfnptUcEZxXGYFn+ul2dtcMUiqGR1Yai2K10uoTw==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+@@ -400,20 +419,23 @@ packages:
+ 
+   '@types/esrecurse@4.3.1':
+     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
+ 
+   '@types/estree@1.0.9':
+     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+ 
+   '@types/json-schema@7.0.15':
+     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
+ 
++  '@types/node@26.1.1':
++    resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
++
+   '@typescript-eslint/eslint-plugin@8.63.0':
+     resolution: {integrity: sha512-rvwSgqT+DHpWdzfSzPatRLm02a0GlESt++9iy3hLCDY4BgkaLcl8LBi9Yh7XGFBpwcBE/K3024QuXWTpbz4FfQ==}
+     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+     peerDependencies:
+       '@typescript-eslint/parser': ^8.63.0
+       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
+       typescript: '>=4.8.4 <6.1.0'
+ 
+   '@typescript-eslint/parser@8.63.0':
+     resolution: {integrity: sha512-gwh4gvvlaVDKKxyfxMG+Gnu1u9X0OQBwyGLkbwB65dIzBKnxeRiJlNFqlI3zwVhNXJIs6qV7mlFCn/BIajlVig==}
+@@ -551,20 +573,24 @@ packages:
+     resolution: {integrity: sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==}
+     engines: {node: '>=8'}
+ 
+   ansi-styles@6.2.3:
+     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
+     engines: {node: '>=12'}
+ 
+   argparse@2.0.1:
+     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
+ 
++  axe-core@4.12.1:
++    resolution: {integrity: sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==}
++    engines: {node: '>=4'}
++
+   balanced-match@1.0.2:
+     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
+ 
+   balanced-match@4.0.4:
+     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
+     engines: {node: 18 || 20 || >=22}
+ 
+   birpc@2.9.0:
+     resolution: {integrity: sha512-KrayHS5pBi69Xi9JmvoqrIgYGDkD6mcSe/i6YKi3w5kekCLzrX4+nawcXqrj2tIp50Kw/mT/s3p+GVK0A0sKxw==}
+ 
+@@ -761,20 +787,25 @@ packages:
+       '@vue/composition-api': '>=1.0.0-rc.1'
+       vue: ^2.6.11 || >=3.2.45
+     peerDependenciesMeta:
+       '@vue/composition-api':
+         optional: true
+ 
+   foreground-child@3.3.1:
+     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
+     engines: {node: '>=14'}
+ 
++  fsevents@2.3.2:
++    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
++    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
++    os: [darwin]
++
+   fsevents@2.3.3:
+     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
+     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+     os: [darwin]
+ 
+   glob-parent@6.0.2:
+     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
+     engines: {node: '>=10.13.0'}
+ 
+   glob@10.5.0:
+@@ -1019,20 +1050,30 @@ packages:
+   perfect-debounce@2.1.0:
+     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
+ 
+   picocolors@1.1.1:
+     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
+ 
+   picomatch@4.0.5:
+     resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
+     engines: {node: '>=12'}
+ 
++  playwright-core@1.61.1:
++    resolution: {integrity: sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg==}
++    engines: {node: '>=18'}
++    hasBin: true
++
++  playwright@1.61.1:
++    resolution: {integrity: sha512-DWnY5o3YbLWK4GovuAVwpqL+1VwGNdUGrRr++8j8PtQQzvAVZUIMjKQ90fY689sEJZJBbZVw1rXaOKSTitkzPQ==}
++    engines: {node: '>=18'}
++    hasBin: true
++
+   postcss-selector-parser@7.1.4:
+     resolution: {integrity: sha512-HeP7D2wyhkR+XaK6v4W8oRF62Dsz4flyuczALJp61GckGm42u1saSSJ/0auvcBqxs3jMRFEcPK34At/0JBKdOg==}
+     engines: {node: '>=4'}
+ 
+   postcss@8.5.16:
+     resolution: {integrity: sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==}
+     engines: {node: ^10 || ^12 || >=14}
+ 
+   prelude-ls@1.2.1:
+     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
+@@ -1118,20 +1159,23 @@ packages:
+     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+     peerDependencies:
+       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
+       typescript: '>=4.8.4 <6.1.0'
+ 
+   typescript@6.0.3:
+     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+     engines: {node: '>=14.17'}
+     hasBin: true
+ 
++  undici-types@8.3.0:
++    resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
++
+   uri-js@4.4.1:
+     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
+ 
+   util-deprecate@1.0.2:
+     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
+ 
+   vite@8.1.4:
+     resolution: {integrity: sha512-bTT9PsdWO+MQMNG9ZXIP/qM9wGh37DFxTV/sPq9cFpHr3w4jkgef032PkAL9jAqhk3Nz8NQw3O8n6/xFkqO4QQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     hasBin: true
+@@ -1237,20 +1281,25 @@ packages:
+     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
+     engines: {node: '>= 14.6'}
+     hasBin: true
+ 
+   yocto-queue@0.1.0:
+     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
+     engines: {node: '>=10'}
+ 
+ snapshots:
+ 
++  '@axe-core/playwright@4.12.1(playwright-core@1.61.1)':
++    dependencies:
++      axe-core: 4.12.1
++      playwright-core: 1.61.1
++
+   '@babel/helper-string-parser@7.29.7': {}
+ 
+   '@babel/helper-validator-identifier@7.29.7': {}
+ 
+   '@babel/parser@7.29.7':
+     dependencies:
+       '@babel/types': 7.29.7
+ 
+   '@babel/runtime@7.29.7': {}
+ 
+@@ -1401,20 +1450,24 @@ snapshots:
+       '@tybys/wasm-util': 0.10.3
+     optional: true
+ 
+   '@oxc-project/types@0.139.0': {}
+ 
+   '@pkgjs/parseargs@0.11.0':
+     optional: true
+ 
+   '@pkgr/core@0.3.6': {}
+ 
++  '@playwright/test@1.61.1':
++    dependencies:
++      playwright: 1.61.1
++
+   '@rolldown/binding-android-arm64@1.1.5':
+     optional: true
+ 
+   '@rolldown/binding-darwin-arm64@1.1.5':
+     optional: true
+ 
+   '@rolldown/binding-darwin-x64@1.1.5':
+     optional: true
+ 
+   '@rolldown/binding-freebsd-x64@1.1.5':
+@@ -1528,20 +1581,24 @@ snapshots:
+     dependencies:
+       tslib: 2.8.1
+     optional: true
+ 
+   '@types/esrecurse@4.3.1': {}
+ 
+   '@types/estree@1.0.9': {}
+ 
+   '@types/json-schema@7.0.15': {}
+ 
++  '@types/node@26.1.1':
++    dependencies:
++      undici-types: 8.3.0
++
+   '@typescript-eslint/eslint-plugin@8.63.0(@typescript-eslint/parser@8.63.0(eslint@10.6.0)(typescript@6.0.3))(eslint@10.6.0)(typescript@6.0.3)':
+     dependencies:
+       '@eslint-community/regexpp': 4.12.2
+       '@typescript-eslint/parser': 8.63.0(eslint@10.6.0)(typescript@6.0.3)
+       '@typescript-eslint/scope-manager': 8.63.0
+       '@typescript-eslint/type-utils': 8.63.0(eslint@10.6.0)(typescript@6.0.3)
+       '@typescript-eslint/utils': 8.63.0(eslint@10.6.0)(typescript@6.0.3)
+       '@typescript-eslint/visitor-keys': 8.63.0
+       eslint: 10.6.0
+       ignore: 7.0.5
+@@ -1619,24 +1676,24 @@ snapshots:
+       eslint: 10.6.0
+       typescript: 6.0.3
+     transitivePeerDependencies:
+       - supports-color
+ 
+   '@typescript-eslint/visitor-keys@8.63.0':
+     dependencies:
+       '@typescript-eslint/types': 8.63.0
+       eslint-visitor-keys: 5.0.1
+ 
+-  '@vitejs/plugin-vue@6.0.7(vite@8.1.4(yaml@2.9.0))(vue@3.5.39(typescript@6.0.3))':
++  '@vitejs/plugin-vue@6.0.7(vite@8.1.4(@types/node@26.1.1)(yaml@2.9.0))(vue@3.5.39(typescript@6.0.3))':
+     dependencies:
+       '@rolldown/pluginutils': 1.0.1
+-      vite: 8.1.4(yaml@2.9.0)
++      vite: 8.1.4(@types/node@26.1.1)(yaml@2.9.0)
+       vue: 3.5.39(typescript@6.0.3)
+ 
+   '@volar/language-core@2.4.28':
+     dependencies:
+       '@volar/source-map': 2.4.28
+ 
+   '@volar/source-map@2.4.28': {}
+ 
+   '@volar/typescript@2.4.28':
+     dependencies:
+@@ -1741,20 +1798,22 @@ snapshots:
+   ansi-regex@6.2.2: {}
+ 
+   ansi-styles@4.3.0:
+     dependencies:
+       color-convert: 2.0.1
+ 
+   ansi-styles@6.2.3: {}
+ 
+   argparse@2.0.1: {}
+ 
++  axe-core@4.12.1: {}
++
+   balanced-match@1.0.2: {}
+ 
+   balanced-match@4.0.4: {}
+ 
+   birpc@2.9.0: {}
+ 
+   boolbase@1.0.0: {}
+ 
+   brace-expansion@1.1.16:
+     dependencies:
+@@ -1936,20 +1995,23 @@ snapshots:
+       '@vue/devtools-api': 8.1.5
+       cached-iterable: 0.3.0
+       vue: 3.5.39(typescript@6.0.3)
+       vue-demi: 0.14.10(vue@3.5.39(typescript@6.0.3))
+ 
+   foreground-child@3.3.1:
+     dependencies:
+       cross-spawn: 7.0.6
+       signal-exit: 4.1.0
+ 
++  fsevents@2.3.2:
++    optional: true
++
+   fsevents@2.3.3:
+     optional: true
+ 
+   glob-parent@6.0.2:
+     dependencies:
+       is-glob: 4.0.3
+ 
+   glob@10.5.0:
+     dependencies:
+       foreground-child: 3.3.1
+@@ -2147,20 +2209,28 @@ snapshots:
+     dependencies:
+       lru-cache: 10.4.3
+       minipass: 7.1.3
+ 
+   perfect-debounce@2.1.0: {}
+ 
+   picocolors@1.1.1: {}
+ 
+   picomatch@4.0.5: {}
+ 
++  playwright-core@1.61.1: {}
++
++  playwright@1.61.1:
++    dependencies:
++      playwright-core: 1.61.1
++    optionalDependencies:
++      fsevents: 2.3.2
++
+   postcss-selector-parser@7.1.4:
+     dependencies:
+       cssesc: 3.0.0
+       util-deprecate: 1.0.2
+ 
+   postcss@8.5.16:
+     dependencies:
+       nanoid: 3.3.15
+       picocolors: 1.1.1
+       source-map-js: 1.2.1
+@@ -2252,34 +2322,37 @@ snapshots:
+       '@typescript-eslint/parser': 8.63.0(eslint@10.6.0)(typescript@6.0.3)
+       '@typescript-eslint/typescript-estree': 8.63.0(typescript@6.0.3)
+       '@typescript-eslint/utils': 8.63.0(eslint@10.6.0)(typescript@6.0.3)
+       eslint: 10.6.0
+       typescript: 6.0.3
+     transitivePeerDependencies:
+       - supports-color
+ 
+   typescript@6.0.3: {}
+ 
++  undici-types@8.3.0: {}
++
+   uri-js@4.4.1:
+     dependencies:
+       punycode: 2.3.1
+ 
+   util-deprecate@1.0.2: {}
+ 
+-  vite@8.1.4(yaml@2.9.0):
++  vite@8.1.4(@types/node@26.1.1)(yaml@2.9.0):
+     dependencies:
+       lightningcss: 1.32.0
+       picomatch: 4.0.5
+       postcss: 8.5.16
+       rolldown: 1.1.5
+       tinyglobby: 0.2.17
+     optionalDependencies:
++      '@types/node': 26.1.1
+       fsevents: 2.3.3
+       yaml: 2.9.0
+ 
+   vscode-uri@3.1.0: {}
+ 
+   vue-demi@0.14.10(vue@3.5.39(typescript@6.0.3)):
+     dependencies:
+       vue: 3.5.39(typescript@6.0.3)
+ 
+   vue-eslint-parser@10.4.1(eslint@10.6.0):
+diff --git a/scripts/check-i18n.mjs b/scripts/check-i18n.mjs
+new file mode 100644
+index 0000000..6c1240c
+--- /dev/null
++++ b/scripts/check-i18n.mjs
+@@ -0,0 +1,177 @@
++#!/usr/bin/env node
++// Task 12 i18n completeness gate (spec 8.4). No dependencies beyond Node
++// itself. Two independent checks over the same catalog/source scan:
++//
++//  1. HARD FAILURE (exit 1): every LITERAL `t('id')`/`$t('id')` call found
++//     in src/**/*.{vue,ts} must resolve to a real message id in the known
++//     catalog (locales/en/gui-*.ftl + diagnostics.ftl -- the same set
++//     src/i18n/index.ts itself globs; cli.ftl is CLI-only vocabulary the
++//     frontend never renders, excluded exactly like the real loader).
++//     A call whose first argument is not a plain quoted string (a
++//     computed key -- `$t(stateKey)`, `$t(err.code, err.params)`, a
++//     template literal `` $t(`severity-${d.severity}`) ``) is dynamic and
++//     cannot be statically resolved, so it is skipped here, never
++//     flagged.
++//
++//  2. WARNING ONLY (always exit 0 on this half): gui-* catalog ids never
++//     referenced anywhere in src/. Many ids are reached only dynamically
++//     rather than as a literal $t() argument -- a diagnostic code via
++//     `$t(d.code, d.params)`, a shell IpcError code via
++//     `$t(err.code, err.params)`, a state-chip key returned from a
++//     mapping function (`jobRowState.ts`'s `jobStateKey`) -- so "used"
++//     here also counts any catalog id that appears anywhere in src/ as a
++//     quoted string literal (covers the mapping-function case, e.g.
++//     `case "ok": return "jobs-state-ok";`), plus two explicit
++//     allowlists for ids that never appear as a literal ANYWHERE in the
++//     frontend because they are produced entirely on the Rust side:
++//       - every diagnostics.ftl id (muxsmith_core::report::DiagCode::key(),
++//         reached only via a runtime Diagnostic.code, never spelled out
++//         in src/ at all)
++//       - gui-common.ftl's four close-abort-* keys (D31: consumed by
++//         src-tauri's own `include_str!` lookup in run.rs, never by the
++//         frontend)
++//     Known residual false positive, accepted because this half is a
++//     warning, never a failure: a handful of shell IpcError codes (e.g.
++//     gui-common.ftl's mkvmerge-spawn-failed/mkvmerge-query-failed/
++//     settings-io-failed/settings-parse-failed/internal-task-failed,
++//     gui-jobs.ftl's run-already-active/no-active-run/invalid-run-id/
++//     job-log-unavailable/job-log-not-found) are reached only via a
++//     generic `$t(err.code, err.params)` pattern and never spelled out
++//     literally anywhere in src/, so they can surface as "unused" even
++//     though they are genuinely rendered whenever that IPC error occurs.
++
++import { readFileSync, readdirSync } from "node:fs";
++import { dirname, join, relative, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++
++const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const LOCALES_EN = join(ROOT, "locales", "en");
++const SRC = join(ROOT, "src");
++
++// D31: src-tauri/src/run.rs's `ftl_message()` include_str!s gui-common.ftl
++// directly for the native close-confirmation dialog; the frontend never
++// calls $t() for these four.
++const RUST_ONLY_IDS = new Set([
++  "close-abort-title",
++  "close-abort-message",
++  "close-abort-confirm",
++  "close-abort-dismiss",
++]);
++
++const MESSAGE_ID_RE = /^([A-Za-z][A-Za-z0-9_-]*)\s*=/;
++
++function parseCatalogIds(file) {
++  const ids = [];
++  const text = readFileSync(join(LOCALES_EN, file), "utf8");
++  for (const line of text.split("\n")) {
++    const m = MESSAGE_ID_RE.exec(line);
++    if (m) {
++      ids.push(m[1]);
++    }
++  }
++  return ids;
++}
++
++const catalogFiles = readdirSync(LOCALES_EN)
++  .filter((f) => f.endsWith(".ftl") && (f.startsWith("gui-") || f === "diagnostics.ftl"))
++  .sort();
++
++/** id -> source catalog file. */
++const knownIds = new Map();
++const diagnosticsIds = new Set();
++for (const file of catalogFiles) {
++  for (const id of parseCatalogIds(file)) {
++    knownIds.set(id, file);
++    if (file === "diagnostics.ftl") {
++      diagnosticsIds.add(id);
++    }
++  }
++}
++
++function walkSourceFiles(dir, out) {
++  for (const entry of readdirSync(dir, { withFileTypes: true })) {
++    const full = join(dir, entry.name);
++    if (entry.isDirectory()) {
++      walkSourceFiles(full, out);
++    } else if (/\.(vue|ts)$/.test(entry.name)) {
++      out.push(full);
++    }
++  }
++}
++
++const sourceFiles = [];
++walkSourceFiles(SRC, sourceFiles);
++
++// Requires a non-identifier character (or start of line) immediately
++// before the optional `$` -- without this, `t(` also matches the tail of
++// `emit(`, `writeText(`, `useFluent(`, `attempt(`, `.mount(`, etc., which
++// this codebase has plenty of (verified empirically against src/ before
++// settling on this pattern).
++const CALL_RE = /(?<![\w$])\$?t\(\s*(['"])([^'"]*)\1/g;
++
++const missing = []; // { id, file, line }
++const literalCallIds = new Set();
++const literalAnywhereIds = new Set();
++const fileTexts = new Map();
++
++for (const file of sourceFiles) {
++  const text = readFileSync(file, "utf8");
++  fileTexts.set(file, text);
++
++  const lines = text.split("\n");
++  lines.forEach((line, i) => {
++    CALL_RE.lastIndex = 0;
++    let m;
++    while ((m = CALL_RE.exec(line)) !== null) {
++      const id = m[2];
++      literalCallIds.add(id);
++      if (!knownIds.has(id)) {
++        missing.push({ id, file: relative(ROOT, file), line: i + 1 });
++      }
++    }
++  });
++}
++
++for (const id of knownIds.keys()) {
++  for (const text of fileTexts.values()) {
++    if (text.includes(`"${id}"`) || text.includes(`'${id}'`)) {
++      literalAnywhereIds.add(id);
++      break;
++    }
++  }
++}
++
++if (missing.length > 0) {
++  console.error("check-i18n: literal t()/$t() ids missing from the en catalog:");
++  for (const m of missing) {
++    console.error(`  ${m.file}:${m.line}  "${m.id}"`);
++  }
++}
++
++const usedIds = new Set([
++  ...literalCallIds,
++  ...literalAnywhereIds,
++  ...diagnosticsIds,
++  ...RUST_ONLY_IDS,
++]);
++
++const unused = [...knownIds.entries()]
++  .filter(([id, file]) => file.startsWith("gui-") && !usedIds.has(id))
++  .map(([id, file]) => `${id}  (${file})`)
++  .sort();
++
++if (unused.length > 0) {
++  console.warn("check-i18n: gui-* catalog keys with no detected reference in src/ (warning only):");
++  for (const line of unused) {
++    console.warn(`  ${line}`);
++  }
++}
++
++if (missing.length === 0) {
++  console.log(
++    `check-i18n: ok (${sourceFiles.length} source files scanned, ${knownIds.size} catalog ids, ` +
++      `${unused.length} unused warning(s)).`,
++  );
++  process.exit(0);
++}
++process.exit(1);

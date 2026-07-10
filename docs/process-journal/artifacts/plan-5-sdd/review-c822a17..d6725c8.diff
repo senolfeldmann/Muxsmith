@@ -1,0 +1,291 @@
+# Review package: c822a17..d6725c8
+
+## Commits
+d6725c8 feat(core): raw output-line job events (D24) + JobEvent wire golden test
+
+## Files changed
+ crates/muxsmith-cli/src/commands/run.rs       |   4 +
+ crates/muxsmith-core/src/executor/job.rs      |  25 ++++--
+ crates/muxsmith-core/src/executor/queue.rs    |  11 +++
+ crates/muxsmith-core/tests/executor_events.rs | 115 ++++++++++++++++++++++++++
+ 4 files changed, 147 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index 3796574..197cc7d 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -385,20 +385,24 @@ impl MilestoneState {
+                         ("index", &(index + 1).to_string()),
+                         ("total", &total.to_string()),
+                         ("output", &self.outputs[*index]),
+                         ("text", text),
+                     ],
+                 )]
+             }
+             JobEvent::Finished { index, outcome } => {
+                 vec![self.render_finished(*index, outcome, total, renderer)]
+             }
++            // Raw output lines (D24) feed a live log pane / persisted job
++            // logs in a later task; human-mode milestone rendering has
++            // nothing to say about them.
++            JobEvent::Output { .. } => Vec::new(),
+         }
+     }
+ 
+     /// One `run-job-{ok,warning,failed,cancelled}` line for a job's terminal
+     /// outcome.
+     fn render_finished(
+         &self,
+         index: usize,
+         outcome: &JobOutcome,
+         total: usize,
+diff --git a/crates/muxsmith-core/src/executor/job.rs b/crates/muxsmith-core/src/executor/job.rs
+index b69e5f5..d875ae4 100644
+--- a/crates/muxsmith-core/src/executor/job.rs
++++ b/crates/muxsmith-core/src/executor/job.rs
+@@ -57,20 +57,26 @@ pub struct JobOutcome {
+ 
+ /// Mid-job signal surfaced to the caller (the queue re-emits as JobEvent).
+ #[derive(Debug, Clone, PartialEq)]
+ pub enum JobProgress {
+     /// Parsed `#GUI#progress NN%` line.
+     Percent(u8),
+     /// A captured `#GUI#warning` line, tag stripped.
+     WarningLine(String),
+     /// A captured `#GUI#error` line, tag stripped.
+     ErrorLine(String),
++    /// Any line mkvmerge wrote that is not a `#GUI#progress` tick, verbatim
++    /// (tags included, so warning/error lines appear here too, in addition
++    /// to their own tag-stripped [`JobProgress::WarningLine`] /
++    /// [`JobProgress::ErrorLine`]). Feeds a live log pane and persisted job
++    /// logs (D24); core attaches no meaning to the text itself.
++    OutputLine(String),
+ }
+ 
+ /// Runs one job to completion: ensures the output's parent dir exists
+ /// (D13), spawns, streams lines through the gui-mode parser, maps the exit
+ /// code (0 ok / 1 warning, output kept / 2 or abnormal failed, partial
+ /// deleted / killed while `cancel` is set = cancelled, partial deleted).
+ ///
+ /// Drains `next_line` to EOF before calling `wait` (never the reverse): the
+ /// live `RunningJob::wait` holds the child mutex across a blocking waitpid,
+ /// so calling it while a concurrent `Killer` might still be needed to end a
+@@ -104,28 +110,31 @@ pub fn run_job(
+             };
+         }
+     };
+ 
+     let mut warnings = Vec::new();
+     let mut errors = Vec::new();
+ 
+     while let Some(line) = running.next_line() {
+         if let Some(pct) = parse_progress(&line) {
+             on_progress(JobProgress::Percent(pct));
+-        } else if let Some(text) = line.strip_prefix("#GUI#warning ") {
+-            let text = text.to_string();
+-            warnings.push(text.clone());
+-            on_progress(JobProgress::WarningLine(text));
+-        } else if let Some(text) = line.strip_prefix("#GUI#error ") {
+-            let text = text.to_string();
+-            errors.push(text.clone());
+-            on_progress(JobProgress::ErrorLine(text));
++        } else {
++            on_progress(JobProgress::OutputLine(line.clone()));
++            if let Some(text) = line.strip_prefix("#GUI#warning ") {
++                let text = text.to_string();
++                warnings.push(text.clone());
++                on_progress(JobProgress::WarningLine(text));
++            } else if let Some(text) = line.strip_prefix("#GUI#error ") {
++                let text = text.to_string();
++                errors.push(text.clone());
++                on_progress(JobProgress::ErrorLine(text));
++            }
+         }
+     }
+ 
+     let exit_code = running.wait();
+     let state = match exit_code {
+         Some(0) => JobState::Ok,
+         Some(1) => JobState::Warning,
+         None if cancel.load(Ordering::SeqCst) => JobState::Cancelled,
+         _ => JobState::Failed,
+     };
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 7b18ca3..0fd077f 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -46,20 +46,30 @@ pub enum JobEvent {
+         /// Tag-stripped error text.
+         text: String,
+     },
+     /// A job reached its terminal state.
+     Finished {
+         /// Index into the `specs` slice passed to [`run_queue`].
+         index: usize,
+         /// The terminal outcome.
+         outcome: JobOutcome,
+     },
++    /// A raw output line (D24), verbatim, for every line mkvmerge wrote that
++    /// was not a `#GUI#progress` tick. Feeds a live log pane and persisted
++    /// job logs; warning/error lines appear both here (verbatim) and as
++    /// their own tagged [`JobEvent::Warning`]/[`JobEvent::Error`].
++    Output {
++        /// Index into the `specs` slice passed to [`run_queue`].
++        index: usize,
++        /// The line, verbatim (tags included).
++        line: String,
++    },
+ }
+ 
+ /// Queue policy (spec 6, D14).
+ #[derive(Debug, Clone, Copy)]
+ pub struct QueueOpts {
+     /// Requested worker count; clamped to >= 1, then further capped at the
+     /// batch's spec count (see [`worker_count`]) so a `--jobs` far larger
+     /// than the batch never spawns idle OS threads. Default 1 (sequential).
+     pub jobs: usize,
+     /// Soft fail-fast (D14): on the first Failed, dequeue nothing further;
+@@ -143,20 +153,21 @@ pub fn run_queue(
+                             killers,
+                             slot,
+                         };
+                         let mut on_progress = |progress: JobProgress| {
+                             let event = match progress {
+                                 JobProgress::Percent(percent) => {
+                                     JobEvent::Progress { index, percent }
+                                 }
+                                 JobProgress::WarningLine(text) => JobEvent::Warning { index, text },
+                                 JobProgress::ErrorLine(text) => JobEvent::Error { index, text },
++                                JobProgress::OutputLine(line) => JobEvent::Output { index, line },
+                             };
+                             let _ = events.send(event);
+                         };
+                         let outcome = run_job(&registering, spec, cancel, &mut on_progress);
+                         killers.lock().unwrap()[slot] = None;
+ 
+                         if outcome.state == JobState::Failed && opts.fail_fast {
+                             stop.store(true, Ordering::SeqCst);
+                         }
+                         let _ = events.send(JobEvent::Finished {
+diff --git a/crates/muxsmith-core/tests/executor_events.rs b/crates/muxsmith-core/tests/executor_events.rs
+new file mode 100644
+index 0000000..dd3bfcb
+--- /dev/null
++++ b/crates/muxsmith-core/tests/executor_events.rs
+@@ -0,0 +1,115 @@
++//! `JobEvent` wire-shape golden test (D24) plus raw output-line behavior:
++//! Plan 5's Tauri shell forwards `JobEvent` verbatim to a frontend, so the
++//! serialized field names, tag layout, and variant shape are a contract, not
++//! an implementation detail a refactor may silently drift.
++
++use std::path::PathBuf;
++use std::sync::atomic::AtomicBool;
++
++use muxsmith_core::executor::job::{JobOutcome, JobProgress, JobSpec, JobState, run_job};
++use muxsmith_core::executor::queue::JobEvent;
++use muxsmith_core::executor::spawn::FakeSpawner;
++
++/// Exact `serde_json::to_string` output for every `JobEvent` variant. A
++/// silent field rename, reorder, or shape change here is a wire-contract
++/// break the Tauri frontend (a later task) would only discover at runtime.
++#[test]
++fn job_event_wire_shapes() {
++    let ev = JobEvent::Started {
++        index: 0,
++        output: PathBuf::from("out.mkv"),
++    };
++    assert_eq!(
++        serde_json::to_string(&ev).unwrap(),
++        r#"{"event":"started","index":0,"output":"out.mkv"}"#
++    );
++
++    let ev = JobEvent::Progress {
++        index: 0,
++        percent: 42,
++    };
++    assert_eq!(
++        serde_json::to_string(&ev).unwrap(),
++        r#"{"event":"progress","index":0,"percent":42}"#
++    );
++
++    let ev = JobEvent::Warning {
++        index: 0,
++        text: "'x.srt': track ignored.".into(),
++    };
++    assert_eq!(
++        serde_json::to_string(&ev).unwrap(),
++        r#"{"event":"warning","index":0,"text":"'x.srt': track ignored."}"#
++    );
++
++    let ev = JobEvent::Error {
++        index: 0,
++        text: "boom".into(),
++    };
++    assert_eq!(
++        serde_json::to_string(&ev).unwrap(),
++        r#"{"event":"error","index":0,"text":"boom"}"#
++    );
++
++    let ev = JobEvent::Finished {
++        index: 0,
++        outcome: JobOutcome {
++            state: JobState::Ok,
++            exit_code: Some(0),
++            warnings: Vec::new(),
++            errors: Vec::new(),
++            duration_ms: 1234,
++        },
++    };
++    assert_eq!(
++        serde_json::to_string(&ev).unwrap(),
++        r#"{"event":"finished","index":0,"outcome":{"state":"ok","exit_code":0,"warnings":[],"errors":[],"duration_ms":1234}}"#
++    );
++
++    let index = 0;
++    let ev = JobEvent::Output {
++        index,
++        line: "#GUI#warning hello".into(),
++    };
++    assert_eq!(
++        serde_json::to_string(&ev).unwrap(),
++        r##"{"event":"output","index":0,"line":"#GUI#warning hello"}"##
++    );
++}
++
++/// A plain line and a tagged warning line both surface verbatim as
++/// `OutputLine`, in addition to the tagged line's existing tag-stripped
++/// `WarningLine`; the progress tick surfaces only as `Percent`, never as an
++/// `OutputLine`.
++#[test]
++fn output_line_captures_every_non_tick_line_verbatim() {
++    let dir = tempfile::tempdir().unwrap();
++    let spec = JobSpec {
++        argv: vec!["ignored".to_string()],
++        output: dir.path().join("out.mkv"),
++    };
++    let fake = FakeSpawner::script(
++        vec![
++            "#GUI#progress 50%".to_string(),
++            "a plain diagnostic line".to_string(),
++            "#GUI#warning 'x.srt': track ignored.".to_string(),
++        ],
++        Some(0),
++    );
++    let cancel = AtomicBool::new(false);
++    let mut collected = Vec::new();
++
++    run_job(&fake, &spec, &cancel, &mut |p| collected.push(p));
++
++    assert_eq!(
++        collected,
++        vec![
++            JobProgress::Percent(50),
++            JobProgress::OutputLine("a plain diagnostic line".to_string()),
++            JobProgress::OutputLine("#GUI#warning 'x.srt': track ignored.".to_string()),
++            JobProgress::WarningLine("'x.srt': track ignored.".to_string()),
++        ],
++        "plain and tagged lines both surface verbatim as OutputLine; the \
++         tick never does"
++    );
++}

@@ -1,0 +1,340 @@
+# Review package: 7da714d..f54cbab
+
+## Commits
+f54cbab fix(core+cli): surface lost mid-run job-log writes; gate runs-root env override to debug builds
+
+## Files changed
+ crates/muxsmith-cli/src/commands/run.rs     | 34 ++++++++++++++++------
+ crates/muxsmith-core/src/executor/joblog.rs | 40 +++++++++++++++++++++-----
+ crates/muxsmith-core/tests/joblog.rs        | 44 +++++++++++++++++++++++++++--
+ locales/en/cli.ftl                          |  1 +
+ 4 files changed, 101 insertions(+), 18 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index abbeded..a9459af 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -255,52 +255,70 @@ pub fn run(
+         &json_outputs,
+     );
+ 
+     if !json {
+         println!("{}", render_summary(&outcomes, renderer));
+     } else {
+         println!("{}", document);
+     }
+ 
+     if let Some(logger) = logger {
++        // `finish` consumes the logger, so the directory (which the error
++        // message below still needs) is captured up front.
++        let dir = logger.dir().display().to_string();
+         match logger.finish(&document) {
+-            Ok(dir) if !json => println!(
++            Ok(_) if !json => {
++                println!("{}", renderer.msg("run-joblog-written", &[("dir", &dir)]))
++            }
++            Ok(_) => {}
++            // A per-job write failed mid-run (surfaced by finish even when
++            // summary.json wrote fine), or summary.json itself failed: the
++            // directory exists but is not a complete record, so warn instead
++            // of ever printing run-joblog-written over partial data.
++            Err(_) => eprintln!(
+                 "{}",
+-                renderer.msg("run-joblog-written", &[("dir", &dir.display().to_string())])
++                renderer.msg("run-joblog-incomplete", &[("dir", &dir)])
+             ),
+-            Ok(_) => {}
+-            Err(_) => eprintln!("{}", renderer.msg("run-joblog-unavailable", &[])),
+         }
+     }
+ 
+     if cancel.load(Ordering::SeqCst) {
+         return 130;
+     }
+ 
+     std::cmp::max(
+         diag_exit_code(&config_diags, &batch),
+         job_exit_code(&outcomes),
+     )
+ }
+ 
+-/// Creates this run's [`RunLogger`] (D26): resolves the runs root (the
+-/// `MUXSMITH_RUNS_ROOT` env var if set -- tests point this at a tempdir so
+-/// they never write into the real platform data dir; [`default_runs_root`]
+-/// otherwise), then [`RunLogger::create`]s the run's log directory under it.
++/// Creates this run's [`RunLogger`] (D26): resolves the runs root via
++/// [`default_runs_root`] (debug builds only: a `MUXSMITH_RUNS_ROOT` env
++/// override takes precedence -- a test seam, not a feature, see the cfg
++/// below), then [`RunLogger::create`]s the run's log directory under it.
+ /// Either step failing (no resolvable data dir, or `create` itself erroring
+ /// -- permissions, disk full, ...) renders `run-joblog-unavailable` to
+ /// stderr and returns `None`: persistence is best-effort from the CLI's
+ /// perspective, a mux run never dies for a log dir.
+ fn create_logger(renderer: &Renderer, specs: &[JobSpec]) -> Option<RunLogger> {
++    // Test seam only (cargo test's subprocess tests run the debug binary and
++    // point this at a tempdir so they never write into the real platform
++    // data dir), deliberately absent from release builds: D26 fixes the log
++    // location, and a real user-facing override would be a deliberate v1.x
++    // decision, not a side door.
++    #[cfg(debug_assertions)]
+     let runs_root = std::env::var_os("MUXSMITH_RUNS_ROOT")
+         .map(PathBuf::from)
+         .or_else(default_runs_root);
++    #[cfg(not(debug_assertions))]
++    let runs_root = default_runs_root();
++
+     let logger = runs_root.and_then(|root| {
+         let run_id = make_run_id(std::time::SystemTime::now());
+         RunLogger::create(&root, &run_id, specs).ok()
+     });
+     if logger.is_none() {
+         eprintln!("{}", renderer.msg("run-joblog-unavailable", &[]));
+     }
+     logger
+ }
+ 
+diff --git a/crates/muxsmith-core/src/executor/joblog.rs b/crates/muxsmith-core/src/executor/joblog.rs
+index 01b8bfc..323ccfd 100644
+--- a/crates/muxsmith-core/src/executor/joblog.rs
++++ b/crates/muxsmith-core/src/executor/joblog.rs
+@@ -99,20 +99,25 @@ struct JobRecord<'a> {
+     started_at: Option<String>,
+     finished_at: String,
+ }
+ 
+ /// Accumulates one run's job logs from a stream of [`JobEvent`]s and writes
+ /// them to disk (D26). See the module doc for the single-threaded-writer
+ /// invariant.
+ pub struct RunLogger {
+     dir: PathBuf,
+     jobs: HashMap<usize, JobAccumulator>,
++    /// Set when any `job-<index>.json` write fails in [`Self::on_event`]
++    /// (which has no return channel of its own); [`Self::finish`] surfaces
++    /// it so a run whose per-job logs are silently incomplete never reports
++    /// clean persistence.
++    had_write_error: bool,
+ }
+ 
+ impl RunLogger {
+     /// Creates the run's log directory under `runs_root`, named `run_id`
+     /// (`mkdir -p runs_root` first, then the leaf directory itself). A
+     /// leaf-name collision (a directory of that name already exists, e.g. a
+     /// prior run with the same-second `run_id`) appends a numeric suffix:
+     /// `<run_id>-2`, then `<run_id>-3`, and so on, until an unused name is
+     /// found.
+     ///
+@@ -144,21 +149,25 @@ impl RunLogger {
+                     JobAccumulator {
+                         argv: spec.argv.clone(),
+                         output: spec.output.clone(),
+                         lines: Vec::new(),
+                         started_at: None,
+                     },
+                 )
+             })
+             .collect();
+ 
+-        Ok(RunLogger { dir, jobs })
++        Ok(RunLogger {
++            dir,
++            jobs,
++            had_write_error: false,
++        })
+     }
+ 
+     /// The run's actual log directory (post-collision-suffix).
+     pub fn dir(&self) -> &Path {
+         &self.dir
+     }
+ 
+     /// Feeds one [`JobEvent`] into the logger: `Started` records the start
+     /// timestamp, `Output` appends the raw line (D24: every non-progress-tick
+     /// line, verbatim; core attaches no meaning to it), `Finished` writes
+@@ -167,24 +176,25 @@ impl RunLogger {
+     /// transient and `Warning`/`Error` text already reaches the record two
+     /// other ways (verbatim inside `lines`, and structured in the `Finished`
+     /// outcome's own `warnings`/`errors`).
+     ///
+     /// A job that never receives `Finished` at all (never dequeued under a
+     /// batch cancel, D16 -- it emits no events whatsoever) never gets a
+     /// `job-<index>.json`; only `summary.json` ([`Self::finish`]) covers it,
+     /// via the `run_document`'s own `jobs` array (index-aligned to every
+     /// outcome, unconditionally).
+     ///
+-    /// A write failure (e.g. disk full) is swallowed rather than surfaced:
+-    /// `on_event` returns nothing (mirrors the queue's own "event send
+-    /// failures are ignored" contract) and the run itself is never at risk
+-    /// over a log write.
++    /// A write failure (e.g. disk full) never interrupts the run --
++    /// `on_event` returns nothing (the run itself is never at risk over a
++    /// log write) -- but it is not lost either: the logger remembers it and
++    /// [`Self::finish`] returns `Err`, so the caller can report the run's
++    /// logs as incomplete instead of claiming clean persistence.
+     pub fn on_event(&mut self, ev: &JobEvent) {
+         match ev {
+             JobEvent::Started { index, .. } => {
+                 if let Some(job) = self.jobs.get_mut(index) {
+                     job.started_at = Some(now_rfc3339());
+                 }
+             }
+             JobEvent::Output { index, line } => {
+                 if let Some(job) = self.jobs.get_mut(index) {
+                     job.lines.push(line.clone());
+@@ -199,32 +209,48 @@ impl RunLogger {
+                         state: outcome.state,
+                         exit_code: outcome.exit_code,
+                         warnings: &outcome.warnings,
+                         errors: &outcome.errors,
+                         duration_ms: outcome.duration_ms,
+                         lines: &job.lines,
+                         started_at: job.started_at,
+                         finished_at: now_rfc3339(),
+                     };
+                     let path = self.dir.join(format!("job-{index}.json"));
+-                    if let Ok(bytes) = serde_json::to_vec_pretty(&record) {
+-                        let _ = fs::write(path, bytes);
++                    let written = serde_json::to_vec_pretty(&record)
++                        .map_err(io::Error::from)
++                        .and_then(|bytes| fs::write(path, bytes));
++                    if written.is_err() {
++                        self.had_write_error = true;
+                     }
+                 }
+             }
+             JobEvent::Progress { .. } | JobEvent::Warning { .. } | JobEvent::Error { .. } => {}
+         }
+     }
+ 
+     /// Writes `run_document` (the T2 `report::json::run_document`, passed in
+     /// verbatim -- this module never rebuilds it) to `summary.json` and
+     /// returns the run's log directory. Consumes `self`: once a run has
+     /// finished, its accumulators (any left over from jobs that never
+     /// received `Finished`, see [`Self::on_event`]) are simply dropped.
++    ///
++    /// Returns `Err` not only when the `summary.json` write itself fails,
++    /// but also when any earlier `job-<index>.json` write failed inside
++    /// [`Self::on_event`] (which has no return channel of its own):
++    /// `summary.json` is still written first in that case (best-effort:
++    /// persist what we can, then signal), so a caller seeing this error
++    /// knows the run's log directory exists but is incomplete, and must not
++    /// report clean persistence.
+     pub fn finish(self, run_document: &serde_json::Value) -> io::Result<PathBuf> {
+         fs::write(
+             self.dir.join("summary.json"),
+             serde_json::to_vec_pretty(run_document)?,
+         )?;
++        if self.had_write_error {
++            return Err(io::Error::other(
++                "one or more job-<index>.json writes failed during the run",
++            ));
++        }
+         Ok(self.dir)
+     }
+ }
+diff --git a/crates/muxsmith-core/tests/joblog.rs b/crates/muxsmith-core/tests/joblog.rs
+index 4022a22..17cdd45 100644
+--- a/crates/muxsmith-core/tests/joblog.rs
++++ b/crates/muxsmith-core/tests/joblog.rs
+@@ -107,23 +107,25 @@ fn full_lifecycle_writes_job_and_summary_files() {
+         serde_json::json!(["--output", "out.mkv", "a.srt"])
+     );
+     assert_eq!(job["state"], "ok");
+     assert_eq!(job["exit_code"], 0);
+     assert_eq!(job["warnings"], serde_json::json!([]));
+     assert_eq!(job["errors"], serde_json::json!([]));
+     assert_eq!(job["duration_ms"], 42);
+     assert_eq!(
+         job["lines"],
+         serde_json::json!(["#GUI#progress 100%", "some real output line"]),
+-        "lines accumulate every raw Output line verbatim, progress ticks included \
+-         (D24: core attaches no meaning to the text; only run.rs's milestone \
+-         renderer treats #GUI#progress specially)"
++        "lines accumulate every Output line verbatim, without inspecting the \
++         text (D24) -- the progress-shaped line here is synthetic, proving the \
++         writer does not filter by content; in the real pipeline run_job's \
++         parser turns progress ticks into Progress events, so they never \
++         arrive as Output at all"
+     );
+     assert!(job["started_at"].is_string(), "job: {job}");
+     assert!(job["finished_at"].is_string(), "job: {job}");
+ 
+     let summary: serde_json::Value =
+         serde_json::from_str(&std::fs::read_to_string(written_dir.join("summary.json")).unwrap())
+             .unwrap();
+     assert_eq!(
+         summary, run_document,
+         "summary.json is the T2 run_document, written verbatim"
+@@ -176,20 +178,56 @@ fn skipped_job_without_started_still_writes_a_record_with_empty_lines() {
+         "a job that never started must not claim a started_at, got: {job}"
+     );
+     assert!(
+         !written_dir.join("job-0.json").exists(),
+         "job 0 never received any event (never dequeued under a hypothetical \
+          batch cancel) and must not get a file; only the run_document \
+          (summary.json) covers it"
+     );
+ }
+ 
++/// A `job-<index>.json` write failure mid-run must not vanish: `on_event`
++/// keeps its no-return signature (it cannot surface anything itself), but
++/// `finish` must return `Err` so the caller knows the run's logs are
++/// incomplete -- while still writing `summary.json` first (best-effort:
++/// persist what we can, then signal). A pre-created DIRECTORY at the
++/// `job-0.json` path is the same portable, no-perms way to force the write
++/// to fail on every OS that `delete_partial_failure_surfaces_into_errors`
++/// (job.rs) already uses.
++#[test]
++fn a_failed_job_file_write_makes_finish_err_but_summary_still_writes() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    let specs = vec![spec(&["a.mkv"], "a.mkv")];
++
++    let mut logger = RunLogger::create(&runs_root, "run", &specs).unwrap();
++    std::fs::create_dir(logger.dir().join("job-0.json")).unwrap();
++    logger.on_event(&JobEvent::Finished {
++        index: 0,
++        outcome: outcome(JobState::Ok, Some(0)),
++    });
++
++    let written_dir = logger.dir().to_path_buf();
++    let run_document = serde_json::json!({ "jobs": [], "summary": {} });
++    logger
++        .finish(&run_document)
++        .expect_err("a lost job-0.json write must surface as a finish error");
++
++    let summary: serde_json::Value =
++        serde_json::from_str(&std::fs::read_to_string(written_dir.join("summary.json")).unwrap())
++            .unwrap();
++    assert_eq!(
++        summary, run_document,
++        "summary.json is still written (best-effort) before the error is returned"
++    );
++}
++
+ /// A job that is never dequeued under BATCH cancellation (D16, unchanged)
+ /// gets no events at all -- not even `Finished` (its outcome appears only in
+ /// the queue's returned vector, never as an event). The writer must not
+ /// write a file for it: `on_event` simply never fires for that index.
+ #[test]
+ fn a_job_with_zero_events_never_gets_a_file() {
+     let dir = tempfile::tempdir().unwrap();
+     let runs_root = dir.path().join("runs");
+     let specs = vec![spec(&["a.mkv"], "a.mkv")];
+ 
+diff --git a/locales/en/cli.ftl b/locales/en/cli.ftl
+index f1a770a..3921fcf 100644
+--- a/locales/en/cli.ftl
++++ b/locales/en/cli.ftl
+@@ -17,10 +17,11 @@ run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }
+ run-job-ok = [{ $index }/{ $total }] { $output } ... ok ({ $seconds }s)
+ run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count ->
+     [one] 1 warning
+    *[other] { $count } warnings
+ }, { $seconds }s)
+ run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
+ run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
+ run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
+ run-joblog-unavailable = Job logs could not be written for this run; continuing without persisted logs.
+ run-joblog-written = Job logs written to { $dir }
++run-joblog-incomplete = Job logs under { $dir } are incomplete; some log files could not be written.

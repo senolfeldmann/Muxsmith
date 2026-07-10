@@ -1,0 +1,654 @@
+# Review package: 2478520..77317a0
+
+## Commits
+77317a0 feat(cli): run --json final document with per-job results (D15)
+
+## Files changed
+ crates/muxsmith-cli/src/commands/dry_run.rs |  14 +-
+ crates/muxsmith-cli/src/commands/run.rs     | 133 +++++++++++++-
+ crates/muxsmith-cli/tests/run_cli.rs        | 276 +++++++++++++++++++++++++++-
+ 3 files changed, 408 insertions(+), 15 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/dry_run.rs b/crates/muxsmith-cli/src/commands/dry_run.rs
+index 6930d7f..7a9b109 100644
+--- a/crates/muxsmith-cli/src/commands/dry_run.rs
++++ b/crates/muxsmith-cli/src/commands/dry_run.rs
+@@ -94,21 +94,24 @@ pub fn run(
+             println!("{}", renderer.diagnostic(d));
+         }
+         print_batch_human(&batch, renderer);
+     }
+     diag_exit_code(&config_diags, &batch)
+ }
+ 
+ /// Builds the `--json` report (spec 5.2): the raw `Batch` plus the
+ /// config-time diagnostics, with a `rendered` message string attached to
+ /// every diagnostic (config-time, batch-level, and per-file alike).
+-fn batch_json(
++///
++/// `pub(crate)`: `run --json` (D15) reuses this verbatim as the base of its
++/// own document, extending it with `jobs`/`summary`.
++pub(crate) fn batch_json(
+     config_diags: &[Diagnostic],
+     batch: &Batch,
+     renderer: &Renderer,
+ ) -> serde_json::Value {
+     let files: Vec<serde_json::Value> = batch
+         .files
+         .iter()
+         .map(|f| {
+             serde_json::json!({
+                 "source": f.source,
+@@ -127,21 +130,28 @@ fn batch_json(
+ }
+ 
+ /// Builds the `--json` report for the mkvmerge-not-found path (spec 5.5):
+ /// planning never ran, so `files`/`batch_diagnostics`/`suggestions` stay
+ /// empty, but the config-time diagnostics collected before the mkvmerge
+ /// lookup are still rendered here, keeping this a valid JSON document (not
+ /// plain text on stderr) and dry-run a superset of `validate` even when
+ /// mkvmerge is missing. `mkvmerge_found: false` flags the condition itself
+ /// for JSON consumers, since the exit code alone (2) does not distinguish
+ /// this from any other error-severity report.
+-fn config_only_json(config_diags: &[Diagnostic], renderer: &Renderer) -> serde_json::Value {
++///
++/// `pub(crate)`: `run --json` (D15) reuses this for its own
++/// mkvmerge-not-found path, which needs the identical superset-of-validate
++/// guarantee.
++pub(crate) fn config_only_json(
++    config_diags: &[Diagnostic],
++    renderer: &Renderer,
++) -> serde_json::Value {
+     serde_json::json!({
+         "config_diagnostics": rendered_diags(config_diags, renderer),
+         "files": [],
+         "batch_diagnostics": [],
+         "suggestions": [],
+         "mkvmerge_found": false,
+     })
+ }
+ 
+ /// Maps each diagnostic to its JSON value with a `rendered` field injected
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index 328123a..828c813 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -11,21 +11,21 @@ use std::sync::mpsc;
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::command::command;
+ use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
+ use muxsmith_core::executor::queue::{JobEvent, QueueOpts, run_queue};
+ use muxsmith_core::executor::spawn::LiveSpawner;
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::profile::{lint, load, validate};
+ 
+-use crate::commands::{diag_exit_code, print_batch_human};
++use crate::commands::{diag_exit_code, dry_run, print_batch_human};
+ use crate::i18n::Renderer;
+ 
+ /// Progress thresholds a job's cumulative percent is checked against, in
+ /// ascending order. Each threshold prints at most one milestone line per
+ /// job, the first time progress reaches or passes it; the printed
+ /// `$percent` is the threshold itself (not the raw reported value), so a
+ /// single `Progress` event that jumps past several thresholds at once (a
+ /// coarse-grained mkvmerge report) still renders one line per threshold
+ /// crossed, in ascending order.
+ const MILESTONES: [u8; 3] = [25, 50, 75];
+@@ -61,25 +61,30 @@ pub fn run(
+             return 2;
+         }
+     };
+ 
+     let mut config_diags = validate::validate(&profile);
+     config_diags.extend(lint::provable_overlaps(&profile));
+ 
+     let mkv = match Mkvmerge::locate() {
+         Ok(m) => m,
+         Err(_) => {
+-            // TODO(Task 9): the --json final document must surface this
+-            // path too (mirroring dry-run's `config_only_json` shape);
+-            // until then, json mode here just suppresses the human lines
+-            // dry-run would print and returns the same exit code.
+-            if !json {
++            // Planning never runs without mkvmerge, so json mode gets the
++            // same superset-of-validate document dry-run builds for this
++            // path (D15): config diagnostics surfaced, everything else
++            // empty, `mkvmerge_found: false`.
++            if json {
++                println!(
++                    "{}",
++                    run_json_document(dry_run::config_only_json(&config_diags, renderer), &[], &[],)
++                );
++            } else {
+                 for d in &config_diags {
+                     println!("{}", renderer.diagnostic(d));
+                 }
+                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+             }
+             return 2;
+         }
+     };
+     let lang = match mkv.list_languages() {
+         Ok(l) => l,
+@@ -115,30 +120,46 @@ pub fn run(
+         .iter()
+         .filter_map(|f| f.plan.as_ref())
+         .map(|p| JobSpec {
+             argv: command(p),
+             output: p.output.clone(),
+         })
+         .collect();
+ 
+     if specs.is_empty() {
+         // Nothing plans cleanly enough to mux: fold and exit exactly like
+-        // dry-run, never touching the queue.
+-        // TODO(Task 9): the --json final document for this path.
++        // dry-run, never touching the queue. json callers still get a
++        // complete document (D15): the same base dry-run's `--json` would
++        // print, with an empty `jobs` array and a zeroed `summary`.
++        if json {
++            println!(
++                "{}",
++                run_json_document(
++                    dry_run::batch_json(&config_diags, &batch, renderer),
++                    &[],
++                    &[]
++                )
++            );
++        }
+         return diag_exit_code(&config_diags, &batch);
+     }
+ 
+     let total = specs.len();
+     let outputs: Vec<String> = specs
+         .iter()
+         .map(|s| s.output.display().to_string())
+         .collect();
++    // `outputs` is moved into `MilestoneState` below (human mode only needs
++    // it there); json mode needs its own copy to pair with `outcomes` once
++    // the queue finishes, so it is cloned once, up front, regardless of
++    // mode (cheap: one string per job).
++    let json_outputs = outputs.clone();
+     let spawner = LiveSpawner {
+         mkvmerge: mkv.path().into(),
+     };
+     let opts = QueueOpts { jobs, fail_fast };
+     // Plain flag (Task 10 wires SIGINT onto this); it never flips in this
+     // task's scope.
+     let cancel = Arc::new(AtomicBool::new(false));
+     let (tx, rx) = mpsc::channel();
+ 
+     // `run_queue` blocks until the whole batch finishes, so it runs on its
+@@ -161,20 +182,29 @@ pub fn run(
+             for line in milestones.render(&event, total, renderer) {
+                 println!("{}", line);
+             }
+         }
+ 
+         handle.join().expect("queue worker thread panicked")
+     });
+ 
+     if !json {
+         println!("{}", render_summary(&outcomes, renderer));
++    } else {
++        println!(
++            "{}",
++            run_json_document(
++                dry_run::batch_json(&config_diags, &batch, renderer),
++                &outcomes,
++                &json_outputs,
++            )
++        );
+     }
+ 
+     if cancel.load(Ordering::SeqCst) {
+         return 130;
+     }
+ 
+     std::cmp::max(
+         diag_exit_code(&config_diags, &batch),
+         job_exit_code(&outcomes),
+     )
+@@ -201,20 +231,59 @@ fn render_summary(outcomes: &[JobOutcome], renderer: &Renderer) -> String {
+         "run-summary",
+         &[
+             ("ok", &count(JobState::Ok).to_string()),
+             ("warning", &count(JobState::Warning).to_string()),
+             ("failed", &count(JobState::Failed).to_string()),
+             ("cancelled", &count(JobState::Cancelled).to_string()),
+         ],
+     )
+ }
+ 
++/// Extends a dry-run-shaped `--json` base document (`config_diagnostics`,
++/// `files`, `batch_diagnostics`, `suggestions`, and on the mkvmerge-missing
++/// path `mkvmerge_found`; both built by [`dry_run::batch_json`] /
++/// [`dry_run::config_only_json`]) with `run`'s own two additions (D15): a
++/// `jobs` array (one entry per outcome: `index`, `output`, plus every
++/// `JobOutcome` field via its existing `Serialize` impl) and a `summary`
++/// object with the same worst-of state counts as [`render_summary`]'s human
++/// line. `outcomes` and `outputs` must be index-aligned, exactly like
++/// `run_queue`'s return value and `run`'s own `outputs` vector always are;
++/// an empty pair (the mkvmerge-not-found and nothing-plans-cleanly-enough
++/// paths, where the queue never runs) yields an empty `jobs` array and a
++/// zeroed `summary`, so json callers always get a complete document.
++fn run_json_document(
++    mut base: serde_json::Value,
++    outcomes: &[JobOutcome],
++    outputs: &[String],
++) -> serde_json::Value {
++    let jobs: Vec<serde_json::Value> = outcomes
++        .iter()
++        .zip(outputs)
++        .enumerate()
++        .map(|(index, (outcome, output))| {
++            let mut v = serde_json::to_value(outcome).expect("JobOutcome always serializes");
++            v["index"] = serde_json::json!(index);
++            v["output"] = serde_json::json!(output);
++            v
++        })
++        .collect();
++    let count = |state: JobState| outcomes.iter().filter(|o| o.state == state).count();
++    base["jobs"] = serde_json::Value::Array(jobs);
++    base["summary"] = serde_json::json!({
++        "ok": count(JobState::Ok),
++        "warning": count(JobState::Warning),
++        "failed": count(JobState::Failed),
++        "cancelled": count(JobState::Cancelled),
++    });
++    base
++}
++
+ /// Human-mode progress rendering for one `run` invocation: tracks, per job
+ /// index, the highest [`MILESTONES`] threshold already printed (so
+ /// `Progress` events between crossings render nothing), plus every job's
+ /// output path (only `Started` carries it on the event itself; every other
+ /// variant needs it looked up by index, precomputed here from the same
+ /// `specs` the queue was given so it never drifts).
+ struct MilestoneState {
+     outputs: Vec<String>,
+     last_milestone: Vec<u8>,
+ }
+@@ -615,20 +684,68 @@ mod tests {
+             2
+         );
+         assert_eq!(
+             job_exit_code(&[outcome(JobState::Cancelled, None, 0, 0)]),
+             0,
+             "a lone Cancelled outcome folds to 0 on its own; the 130 override \
+              comes from the cancel flag, not from job_exit_code"
+         );
+     }
+ 
++    #[test]
++    fn run_json_document_adds_indexed_jobs_and_a_zeroed_summary_when_empty() {
++        let base = serde_json::json!({
++            "config_diagnostics": [],
++            "files": [],
++            "batch_diagnostics": [],
++            "suggestions": [],
++        });
++        let doc = run_json_document(base, &[], &[]);
++        assert_eq!(
++            doc,
++            serde_json::json!({
++                "config_diagnostics": [],
++                "files": [],
++                "batch_diagnostics": [],
++                "suggestions": [],
++                "jobs": [],
++                "summary": { "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 },
++            })
++        );
++    }
++
++    #[test]
++    fn run_json_document_maps_outcomes_to_indexed_job_entries_and_counts_the_summary() {
++        let base = serde_json::json!({ "config_diagnostics": [] });
++        let outcomes = vec![
++            outcome(JobState::Ok, Some(0), 0, 12400),
++            outcome(JobState::Warning, Some(1), 1, 500),
++            outcome(JobState::Failed, Some(2), 0, 10),
++            outcome(JobState::Cancelled, None, 0, 0),
++        ];
++        let outs = outputs(&["a.mkv", "b.mkv", "c.mkv", "d.mkv"]);
++        let doc = run_json_document(base, &outcomes, &outs);
++        assert_eq!(
++            doc,
++            serde_json::json!({
++                "config_diagnostics": [],
++                "jobs": [
++                    {"index": 0, "output": "a.mkv", "state": "ok", "exit_code": 0, "warnings": [], "errors": [], "duration_ms": 12400},
++                    {"index": 1, "output": "b.mkv", "state": "warning", "exit_code": 1, "warnings": ["w0"], "errors": [], "duration_ms": 500},
++                    {"index": 2, "output": "c.mkv", "state": "failed", "exit_code": 2, "warnings": [], "errors": [], "duration_ms": 10},
++                    {"index": 3, "output": "d.mkv", "state": "cancelled", "exit_code": null, "warnings": [], "errors": [], "duration_ms": 0},
++                ],
++                "summary": { "ok": 1, "warning": 1, "failed": 1, "cancelled": 1 },
++            })
++        );
++    }
++
+     #[test]
+     fn summary_line_counts_every_state() {
+         let r = renderer();
+         let outcomes = vec![
+             outcome(JobState::Ok, Some(0), 0, 0),
+             outcome(JobState::Ok, Some(0), 0, 0),
+             outcome(JobState::Warning, Some(1), 1, 0),
+             outcome(JobState::Failed, Some(2), 0, 0),
+             outcome(JobState::Cancelled, None, 0, 0),
+         ];
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index 0f3bf3b..b9f5348 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -1,24 +1,34 @@
+-//! CLI-level tests for `muxsmith run`'s planning-failure paths (Task 8): any
+-//! bad-profile or missing-mkvmerge condition must exit with the usual
+-//! diagnostic-fold code and never touch the job queue. The full execute
+-//! path (a real mux, exit 0/1/2 driven by actual job outcomes) is Task 11's
+-//! gated end-to-end test, not this file's job.
++//! CLI-level tests for `muxsmith run`'s planning-failure paths (Task 8) and
++//! its `--json` final document (Task 9, D15): every path that can produce a
++//! document (a real mux, the specs-empty path, and the mkvmerge-not-found
++//! path) must emit exactly one, with `jobs`/`summary` matching the actual
++//! outcomes. Beyond the single-fixture case here, a real end-to-end mux
++//! under concurrency and failure/warning job states is Task 11's gated
++//! end-to-end test, not this file's job.
+ 
+ use std::process::Command;
+ 
+ use assert_cmd::cargo::CommandCargoExt;
+ 
+ fn muxsmith() -> Command {
+     Command::cargo_bin("muxsmith").unwrap()
+ }
+ 
++fn have_mkvmerge() -> bool {
++    Command::new("mkvmerge")
++        .arg("--version")
++        .output()
++        .map(|o| o.status.success())
++        .unwrap_or(false)
++}
++
+ /// No job ever started: neither a milestone `start` line (`run-job-start`'s
+ /// fixed `"... start"` fragment) nor the final `run-summary` line (always
+ /// containing `" ok, "`) appears.
+ fn asserts_no_job_ran(stdout: &str) {
+     assert!(
+         !stdout.contains("... start") && !stdout.contains(" ok, "),
+         "planning-error path must never start or summarize a job, got stdout: {stdout}"
+     );
+ }
+ 
+@@ -105,10 +115,266 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
+     assert_eq!(out.status.code(), Some(2));
+     let stdout = String::from_utf8_lossy(&out.stdout);
+     let stderr = String::from_utf8_lossy(&out.stderr);
+     assert!(
+         stdout.contains("Invalid regular expression"),
+         "expected the config-time diagnostic in stdout, got: {stdout}"
+     );
+     assert!(stderr.contains("mkvmerge"), "got stderr: {stderr}");
+     asserts_no_job_ran(&stdout);
+ }
++
++/// Task 9 (D15): a real single-file mux under `--json` produces exactly one
++/// stdout document (all human lines suppressed, per the module doc), whose
++/// `jobs` array has one index-0 entry with the real output path, `state:
++/// "ok"`, `exit_code: 0`, no captured warnings/errors, and a numeric
++/// `duration_ms`; `summary` counts that same job as `ok`; and the
++/// dry-run-shaped base fields (`files`, `batch_diagnostics`, `suggestions`)
++/// still carry the plan, exactly like `dry-run --json` would.
++#[test]
++fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
++    if !have_mkvmerge() {
++        eprintln!("mkvmerge not found; skipping");
++        return;
++    }
++    let dir = tempfile::tempdir().unwrap();
++    let wav = concat!(
++        env!("CARGO_MANIFEST_DIR"),
++        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
++    );
++    let srt = concat!(
++        env!("CARGO_MANIFEST_DIR"),
++        "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
++    );
++    let media = dir.path().join("Show.S01E01.mkv");
++    let ok = Command::new("mkvmerge")
++        .args(["-q", "-o"])
++        .arg(&media)
++        .args(["--language", "0:eng"])
++        .arg(wav)
++        .args(["--language", "0:eng"])
++        .arg(srt)
++        .status()
++        .unwrap()
++        .success();
++    assert!(ok);
++
++    let profile = dir.path().join("p.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++    let output_dir = dir.path().join("out");
++
++    let out = muxsmith()
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .args(["--output"])
++        .arg(&output_dir)
++        .arg("--json")
++        .output()
++        .unwrap();
++
++    assert!(
++        out.status.success(),
++        "exit: {:?}, stderr: {}",
++        out.status.code(),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    assert!(
++        !stdout.contains("... start") && !stdout.contains(" ok, "),
++        "--json must suppress every human line, got stdout: {stdout}"
++    );
++    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
++        panic!(
++            "json report: {e}, stderr: {}",
++            String::from_utf8_lossy(&out.stderr)
++        )
++    });
++    assert_eq!(report["files"].as_array().unwrap().len(), 1);
++    let jobs = report["jobs"].as_array().expect("jobs array");
++    assert_eq!(jobs.len(), 1);
++    let job = &jobs[0];
++    assert_eq!(job["index"], 0);
++    assert_eq!(job["state"], "ok");
++    assert_eq!(job["exit_code"], 0);
++    assert_eq!(job["warnings"].as_array().unwrap().len(), 0);
++    assert_eq!(job["errors"].as_array().unwrap().len(), 0);
++    assert!(
++        job["duration_ms"].as_u64().is_some(),
++        "duration_ms must be a number, got: {job}"
++    );
++    // `output.filename` defaults to `keep` (spec 4.8): file_stem + ".mkv",
++    // i.e. the full source stem, not the identifier.
++    let expected_output = output_dir.join("Show.S01E01.mkv");
++    assert_eq!(job["output"], expected_output.display().to_string());
++    assert!(expected_output.exists());
++    assert_eq!(
++        report["summary"],
++        serde_json::json!({ "ok": 1, "warning": 0, "failed": 0, "cancelled": 0 })
++    );
++}
++
++/// Task 9 (D15): the specs-empty path (nothing plans cleanly enough to mux,
++/// here because `input.pattern` fails to compile, an error-severity
++/// config-time diagnostic) must still emit a valid `--json` document: the
++/// queue never ran, so `jobs` stays empty and `summary` stays zeroed, but
++/// the offending `config_diagnostics` entry is still there and the exit
++/// code is still the diagnostic-fold 2, exactly like plain `run` (see
++/// `bad_regex_profile_exits_two_without_executing_a_job` above).
++#[test]
++fn run_json_on_specs_empty_from_a_bad_regex_still_emits_a_document_with_empty_jobs() {
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("bad.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++
++    let out = muxsmith()
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .arg("--json")
++        .output()
++        .unwrap();
++
++    assert_eq!(
++        out.status.code(),
++        Some(2),
++        "stdout: {}, stderr: {}",
++        String::from_utf8_lossy(&out.stdout),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    asserts_no_job_ran(&stdout);
++    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
++        panic!(
++            "json report: {e}, stderr: {}",
++            String::from_utf8_lossy(&out.stderr)
++        )
++    });
++    let config_diags = report["config_diagnostics"]
++        .as_array()
++        .expect("config_diagnostics array");
++    assert!(
++        config_diags.iter().any(|d| d["code"] == "invalid-regex"),
++        "expected an invalid-regex diagnostic, got: {report}"
++    );
++    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
++    assert_eq!(
++        report["summary"],
++        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
++    );
++}
++
++/// Same specs-empty path as above, reached via a clean profile over a
++/// source directory with no matching files instead of a bad regex: nothing
++/// errors, so the exit code is 0 (not 2) with an empty `jobs` array and a
++/// zeroed `summary`, distinguishing "queue never ran because there was
++/// nothing to run" from "queue never ran because planning failed".
++#[test]
++fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_summary() {
++    if !have_mkvmerge() {
++        eprintln!("mkvmerge not found; skipping");
++        return;
++    }
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("p.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++
++    let out = muxsmith()
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .arg("--json")
++        .output()
++        .unwrap();
++
++    assert!(
++        out.status.success(),
++        "exit: {:?}, stderr: {}",
++        out.status.code(),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
++        panic!(
++            "json report: {e}, stderr: {}",
++            String::from_utf8_lossy(&out.stderr)
++        )
++    });
++    assert_eq!(report["files"].as_array().unwrap().len(), 0);
++    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
++    assert_eq!(
++        report["summary"],
++        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
++    );
++}
++
++/// Task 9 (D15): the mkvmerge-not-found path must surface the same document
++/// dry-run's `config_only_json` builds for the same condition (spec 5.5
++/// superset-of-validate guarantee), extended with an empty `jobs` array and
++/// a zeroed `summary`. Forces the condition via an empty `PATH`, so this
++/// does not depend on whether the test machine actually has mkvmerge
++/// installed (compare `dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing`
++/// in dry_run_cli.rs).
++#[test]
++fn run_json_surfaces_the_mkvmerge_not_found_document() {
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("bad.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++    let no_mkvmerge_path = tempfile::tempdir().unwrap();
++
++    let out = muxsmith()
++        .env("PATH", no_mkvmerge_path.path())
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .arg("--json")
++        .output()
++        .unwrap();
++
++    assert_eq!(
++        out.status.code(),
++        Some(2),
++        "stdout: {}, stderr: {}",
++        String::from_utf8_lossy(&out.stdout),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    asserts_no_job_ran(&stdout);
++    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
++        panic!(
++            "json report: {e}, stderr: {}",
++            String::from_utf8_lossy(&out.stderr)
++        )
++    });
++    let config_diags = report["config_diagnostics"]
++        .as_array()
++        .expect("config_diagnostics array");
++    assert!(
++        config_diags.iter().any(|d| d["code"] == "invalid-regex"),
++        "expected an invalid-regex diagnostic, got: {report}"
++    );
++    assert_eq!(report["mkvmerge_found"], false);
++    assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
++    assert_eq!(
++        report["summary"],
++        serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
++    );
++}

@@ -1,0 +1,40 @@
+# Review package: 1b55d98..5aefde1
+
+## Commits
+5aefde1 ci: install mkvtoolnix on Linux so gated tests run (D18)
+
+## Files changed
+ .github/workflows/ci.yml | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index cad9cf8..e4a71ca 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -15,20 +15,25 @@ jobs:
+       # run the full matrix. Revert to a static 3-OS list on going public.
+       matrix:
+         os: ${{ fromJSON((github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest", "macos-latest"]') }}
+     runs-on: ${{ matrix.os }}
+     steps:
+       - uses: actions/checkout@v4
+       - uses: dtolnay/rust-toolchain@stable
+         with:
+           components: rustfmt, clippy
+       - uses: Swatinem/rust-cache@v2
++      # Linux-only: branch pushes are Linux-only anyway (minute economy);
++      # gated integration tests self-skip on other platforms.
++      - name: Install mkvtoolnix (gated integration tests)
++        if: runner.os == 'Linux'
++        run: sudo apt-get update && sudo apt-get install -y mkvtoolnix
+       - run: cargo fmt --all --check
+       - run: cargo clippy --workspace --all-targets -- -D warnings
+       - run: cargo test --workspace
+ 
+   deny:
+     # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on
+     # Linux always, independent of the test matrix trim.
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
