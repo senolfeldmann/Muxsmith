@@ -413,3 +413,17 @@ archive commit. Suite 215 -> 269 tests, gate green throughout.
 ## 2026-07-10 | Plan 5 close addendum (3-OS verified) | session 6
 
 First-ever Windows/macOS compile+test of the workspace, via the post-go-public static matrix. Run 1 (29113642425): ubuntu+macos+deny green, windows red - clippy -D warnings on an unused import consumed only by cfg(unix) tests. Run 2: same class, second instance (test helper in run.rs). Both fixed (fdf220b, 12e96ea-class commit); the second fix was preceded by a local cross-target clippy sweep (rustup target add x86_64-pc-windows-msvc; cargo clippy --target ...) proving the class empty instead of iterating through CI. Run 3 (29114394929): ALL GREEN - windows-2025 and macos-15 pass cargo test/fmt/clippy incl. the Plan-4 Windows kill-mapping unit tests that had never executed on Windows. Plan 5 cross-platform verification complete. Lesson recorded: for -D warnings workspaces, cross-target clippy locally before the first foreign-OS CI run; cfg-gated tests need cfg-gated imports/helpers.
+
+## 2026-07-10 | Session 6 close (post-Plan-5 housekeeping) | session 6
+
+Scope: the tail of session "Done: Muxsmith Plan 5" after the 3-OS addendum. Commits 705f735 + docs commits (c9bd6b4 ROADMAP, this entry).
+
+Decisions and why:
+- docs/ROADMAP.md created as the living forward-tracker (pre-1.0 gates / near-1.0 / v1.x) after Senol asked where deferred items live; taxonomy argument: spec=contract, memos=frozen decisions, IDEAS=unbuilt product ideas, journal=history - the forward slot was empty and HANDOFF (untracked, superseded) was silently lossy for it. Items are discussion anchors, not execution licenses; README/guide/blogposts explicitly require a format interview with Senol first.
+- Public-docs leak audit (4 parallel auditors, all 258 tracked docs files + BUILDING.md): 0 secrets, 0 personal-data leaks. Senol ruled: Peter persona name stays public ("kann ich doch nennen wie ich will"), gmail commit identity stays, mkv-batch-tools reference stays (controller's own re-weighing: the Ruby prototype is already deliberately public in the spec decision log, so the flag was rubric reflex). Only real defect: stale Cargo.toml repository URL (senolf/muxsmith) - fixed 705f735.
+- SI-3 gained a licensing boundary (Senol asked whether GPL-source parity reading is compatible with MIT): behavior/facts/interfaces yes, literal expression no, modeled wordings recorded as explicit memo decisions. Persisted in HANDOFF SI-3 + project_muxsmith memory.
+- Claude Code transcript retention raised to cleanupPeriodDays=36500 (no off switch exists; max is 2^53-1 days) so session transcripts survive for the planned HANDOFF-Bergung.
+- HANDOFF-Bergung + ROADMAP-Sweep deferred to the next session by Senol; this session (62503ddd, "Done: Muxsmith Plan 5") is excluded from the sweep since its content is already extracted. Two HANDOFFs recovered into docs/process-journal/artifacts/handoffs/ (plan-4-close verbatim from session context, plan-5-close disk snapshot) - deliberately UNCOMMITTED until Senol reviews the collection.
+- Discovered: HANDOFF.md was never actually gitignored, only untracked - noted in the new HANDOFF as a git add -A hazard.
+
+Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 sessions by customTitle, proposal list to Senol), collection Sichtung -> commit, then Plan 6.
