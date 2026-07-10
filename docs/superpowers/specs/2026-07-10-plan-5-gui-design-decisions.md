@@ -238,3 +238,28 @@ choice delegated). The convention, in priority order:
   job's log as text for copy/paste support requests; Muxsmith's equivalent
   (export/copy log from the history view) is cheap and included in Plan 5's
   Jobs view scope.
+
+## D31: Window close with an active run - full mkvtoolnix parity (amendment 2026-07-10)
+
+**Decision.** (Şenol 2026-07-10, supersedes D23's bare "cancel_all on
+CloseRequested".) Closing the window while a run is active never exits
+immediately: the close is prevented, a confirmation dialog asks whether to
+abort the running batch (mkvtoolnix-gui wording as reference); on Yes the
+shell issues cancel_all and exits only after the runner thread has finished
+(kills landed, joblog finish written); on No the window stays open. With no
+active run the window closes normally.
+
+- Parity evidence (SI-3): mkvtoolnix-gui never closes immediately with
+  running jobs - MainWindow::beforeCloseCheckRunningJobs shows a
+  confirmation (gated by m_warnBeforeAbortingJobs, default on), then
+  IGNORES the close event, aborts each running job with
+  setQuitAfterFinished(true), and the app quits itself after the abort
+  completes (main_window.cpp:492-548).
+- Rationale: immediate exit races the 50ms cancel poll - an orphaned
+  mkvmerge can keep writing after the app is gone, and summary.json may
+  never be written (lost history, exactly what D26 exists for).
+- The dialog-suppression preference mkvtoolnix offers
+  (m_warnBeforeAbortingJobs) is a v1.x settings candidate, not v1 scope.
+- Alternatives rejected: abort-then-quit without dialog (accidental close
+  kills a batch silently); keep immediate close (deliberate divergence
+  with data-loss risk, declined).
