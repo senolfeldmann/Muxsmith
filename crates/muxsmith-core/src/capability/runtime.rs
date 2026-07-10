@@ -31,7 +31,36 @@ pub enum RuntimeError {
     },
     /// The output could not be parsed into the expected shape.
     Parse(String),
+    /// A located mkvmerge answered `--version` below [`MIN_SUPPORTED`].
+    TooOld {
+        /// The raw `mkvmerge --version` first line that was found.
+        found: String,
+        /// [`MIN_SUPPORTED`], formatted as `"major.minor"`.
+        minimum: String,
+    },
 }
+
+/// Minimum supported mkvmerge version (D28): the release that introduced
+/// identification schema v20, the schema this build's capability table is
+/// generated against ([`crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION`],
+/// spec 9). Below this floor, `-J` output cannot be trusted to match the
+/// generated table.
+///
+/// Evidence (checked in `~/Downloads/mkvtoolnix` source, not from memory):
+/// `src/merge/id_result.h` pins `ID_JSON_FORMAT_VERSION = 20`, matching the
+/// schema linked from `doc/man/mkvmerge.xml`
+/// (`mkvmerge-identification-output-schema-v20.json`). `NEWS.md` never
+/// spells out "bumped to 20" verbatim, so the release is derived from the
+/// schema diff: `doc/json-schema/...-v19.json` vs `...-v20.json` differ only
+/// in replacing five enumerated `tag_*` track properties with an open
+/// `patternProperties: { "^tag_": ... }` (`additionalProperties: true`).
+/// `NEWS.md`, "Version 86.0 'Winter' 2024-07-13", records exactly that
+/// change: "mkvmerge: Matroska reader: track statistics tags are included
+/// in the JSON identification output ... as part of the track properties,
+/// prefixed with `tag_`." No schema-affecting entry exists between v82.0
+/// (which explicitly bumped to schema v19, `NEWS.md` line ~633-634) and
+/// v86.0, so v86.0 is the release that moved the schema from 19 to 20.
+pub const MIN_SUPPORTED: (u64, u64) = (86, 0);
 
 impl Mkvmerge {
     /// Uses the executable at `path` without searching PATH (an app-settings
@@ -42,9 +71,11 @@ impl Mkvmerge {
     }
 
     /// Locates mkvmerge on PATH by spawning `mkvmerge --version`. Returns
-    /// `NotFound` if the spawn fails with a not-found OS error. Platform-
-    /// standard install-location probing (spec 8.2) is a GUI/first-run concern
-    /// deferred to Plan 4; the CLI relies on PATH plus the explicit override.
+    /// `NotFound` if the spawn fails with a not-found OS error. Does not
+    /// check the version floor (spec 8.2); the CLI has relied on PATH plus
+    /// the explicit override since Plan 2 and that behavior is unchanged.
+    /// [`Mkvmerge::detect`] adds platform-candidate probing and the floor
+    /// check on top of this, for the GUI's first-run detection (Plan 5).
     pub fn locate() -> Result<Mkvmerge, RuntimeError> {
         let m = Mkvmerge {
             path: PathBuf::from("mkvmerge"),
@@ -54,6 +85,41 @@ impl Mkvmerge {
             Err(RuntimeError::Spawn(_)) => Err(RuntimeError::NotFound),
             Err(e) => Err(e),
         }
+    }
+
+    /// Detection ladder for first-run/GUI use (spec 8.2, D28): an explicit
+    /// `override_path` (if given) is authoritative, probed with
+    /// `--version` and returned or failed outright, PATH and platform
+    /// candidates are never consulted. Without an override, tries PATH via
+    /// [`Mkvmerge::locate`], then each of [`platform_candidates`] in order;
+    /// the first one that answers `--version` with a parseable version wins.
+    /// A found mkvmerge below [`MIN_SUPPORTED`] stops the ladder immediately
+    /// with `TooOld` rather than being silently skipped in favor of another
+    /// candidate: that is real, actionable signal ("upgrade this install"),
+    /// not a "not found here" result. Exhausting every rung without finding
+    /// any usable mkvmerge is `NotFound`.
+    pub fn detect(override_path: Option<&Path>) -> Result<Mkvmerge, RuntimeError> {
+        if let Some(path) = override_path {
+            return enforce_floor(Mkvmerge::at(path));
+        }
+
+        if let Ok(m) = Mkvmerge::locate() {
+            match enforce_floor(m) {
+                Ok(m) => return Ok(m),
+                Err(e @ RuntimeError::TooOld { .. }) => return Err(e),
+                Err(_) => {} // nothing usable on PATH; fall through
+            }
+        }
+
+        for candidate in platform_candidates() {
+            match enforce_floor(Mkvmerge::at(candidate)) {
+                Ok(m) => return Ok(m),
+                Err(e @ RuntimeError::TooOld { .. }) => return Err(e),
+                Err(_) => continue,
+            }
+        }
+
+        Err(RuntimeError::NotFound)
     }
 
     /// The resolved executable path (PATH-relative `mkvmerge` or an override).
@@ -81,6 +147,12 @@ impl Mkvmerge {
         Ok(out.lines().next().unwrap_or("").trim().to_string())
     }
 
+    /// The `(major, minor)` version pair parsed from [`Mkvmerge::version`]
+    /// (D28), for comparison against [`MIN_SUPPORTED`].
+    pub fn version_pair(&self) -> Result<(u64, u64), RuntimeError> {
+        parse_version_pair(&self.version()?)
+    }
+
     /// Lowercase source-file extensions the local mkvmerge accepts, from
     /// `--list-types`, deduped and sorted (spec 4.2 validation input).
     pub fn list_types(&self) -> Result<Vec<String>, RuntimeError> {
@@ -102,6 +174,107 @@ impl Mkvmerge {
         })?;
         self.run(&["-J", file])
     }
+}
+
+/// Checks `m` against [`MIN_SUPPORTED`] (D28): probes `--version` once, and
+/// either returns `m` unchanged or a `TooOld`/propagated query error. Shared
+/// by every rung of [`Mkvmerge::detect`]'s ladder so the version query is
+/// never run twice for the same candidate.
+fn enforce_floor(m: Mkvmerge) -> Result<Mkvmerge, RuntimeError> {
+    let raw = m.version()?;
+    let pair = parse_version_pair(&raw)?;
+    if pair < MIN_SUPPORTED {
+        return Err(RuntimeError::TooOld {
+            found: raw,
+            minimum: format!("{}.{}", MIN_SUPPORTED.0, MIN_SUPPORTED.1),
+        });
+    }
+    Ok(m)
+}
+
+/// Parses the `(major, minor)` pair out of an `mkvmerge --version` first
+/// line, e.g. `"mkvmerge v100.0.0 ('Message') 64-bit"`. The locally
+/// installed v100 actually reports the shorter `"mkvmerge v100.0 (...) ..."`
+/// (no patch component), so only the first dot-separated component after
+/// the leading `v` is required; a missing second component defaults to 0,
+/// and any further components (patch, etc.) are ignored.
+fn parse_version_pair(raw: &str) -> Result<(u64, u64), RuntimeError> {
+    let token = raw
+        .split_whitespace()
+        .find(|tok| {
+            tok.strip_prefix('v')
+                .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+        })
+        .ok_or_else(|| RuntimeError::Parse(format!("no version token in {raw:?}")))?;
+    let mut parts = token[1..].split('.');
+    let major = parts
+        .next()
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| RuntimeError::Parse(format!("no major version in {raw:?}")))?;
+    let minor = parts
+        .next()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    Ok((major, minor))
+}
+
+/// Platform-standard mkvmerge install locations (D28, spec 8.2), probed as
+/// the last rung of [`Mkvmerge::detect`] after an override and PATH both
+/// come up empty. Verified against mkvtoolnix's own packaging
+/// (`~/Downloads/mkvtoolnix/packaging/`), not memory; only locations an
+/// actual mkvtoolnix installer, package, or its own install docs place a
+/// binary in are listed. Checked and explicitly excluded:
+/// - Homebrew (`/opt/homebrew/bin`): no Homebrew formula exists anywhere in
+///   mkvtoolnix's own source tree (Homebrew packaging for it lives in the
+///   separate `homebrew-core` repo), so it cannot be verified from this
+///   source and is dropped.
+/// - Flatpak (`/var/lib/flatpak/exports/bin/org.bunkus.mkvtoolnix-gui`):
+///   `packaging/` ships no Flatpak manifest either; that app ID also names
+///   the GUI, not a standalone `mkvmerge` CLI binary.
+fn platform_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        // packaging/windows/installer/mkvtoolnix.nsi: PRODUCT_NAME is
+        // "MKVToolNix"; InstallDir is `$PROGRAMFILES64\${PRODUCT_NAME}` for
+        // the 64-bit installer target, `$PROGRAMFILES\${PRODUCT_NAME}` for
+        // the 32-bit one. On a 64-bit process %ProgramFiles% resolves to the
+        // former and %ProgramFiles(x86)% to the latter, so both cover
+        // whichever installer variant was actually run.
+        for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(pf) = std::env::var(var) {
+                candidates.push(PathBuf::from(pf).join("MKVToolNix").join("mkvmerge.exe"));
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // packaging/macos/config.sh: APP_BUNDLE_NAME="MKVToolNix.app" (fixed
+        // name, no version suffix). packaging/macos/build.sh's build_dmg
+        // places the CLI binaries at Contents/MacOS/{mkvmerge,...} inside
+        // that bundle, and its own README.macOS.txt (written by build_dmg,
+        // shipped in the DMG) tells users to copy them to /usr/local/bin.
+        candidates.push(PathBuf::from(
+            "/Applications/MKVToolNix.app/Contents/MacOS/mkvmerge",
+        ));
+        candidates.push(PathBuf::from("/usr/local/bin/mkvmerge"));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // packaging/debian/mkvtoolnix.install and
+        // packaging/centos-fedora-opensuse/mkvtoolnix.spec (%{_bindir}) both
+        // place mkvmerge at /usr/bin. mkvtoolnix's own INSTALL (the
+        // unmodified generic autotools boilerplate: configure.ac has no
+        // AC_PREFIX_DEFAULT override) documents /usr/local as the default
+        // `./configure` prefix for a from-source build.
+        candidates.push(PathBuf::from("/usr/bin/mkvmerge"));
+        candidates.push(PathBuf::from("/usr/local/bin/mkvmerge"));
+    }
+
+    candidates
 }
 
 /// Extracts the bracketed extension lists from `mkvmerge --list-types` output.
@@ -252,5 +425,54 @@ Klingon               | tlh            |                |   \n";
     fn language_index_from_rows_builds_directly() {
         let idx = LanguageIndex::from_rows(&[["English", "eng", "eng", "en"]]);
         assert_eq!(idx.normalize("en"), idx.normalize("eng"));
+    }
+
+    #[test]
+    fn version_pair_parses_three_component_version() {
+        let raw = "mkvmerge v100.0.0 ('Message') 64-bit";
+        assert_eq!(parse_version_pair(raw).unwrap(), (100, 0));
+    }
+
+    #[test]
+    fn version_pair_parses_two_component_version() {
+        // The locally installed v100 actually reports this shorter form
+        // (no patch component), so the parser must not assume exactly three
+        // dot-separated components.
+        let raw = "mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit";
+        assert_eq!(parse_version_pair(raw).unwrap(), (100, 0));
+    }
+
+    #[test]
+    fn version_pair_rejects_unparseable_string() {
+        assert!(matches!(
+            parse_version_pair("not a version string"),
+            Err(RuntimeError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn platform_candidates_are_verified_against_mkvtoolnix_packaging() {
+        let candidates = platform_candidates();
+        #[cfg(target_os = "linux")]
+        {
+            assert!(candidates.contains(&PathBuf::from("/usr/bin/mkvmerge")));
+            assert!(candidates.contains(&PathBuf::from("/usr/local/bin/mkvmerge")));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            assert!(candidates.contains(&PathBuf::from(
+                "/Applications/MKVToolNix.app/Contents/MacOS/mkvmerge"
+            )));
+            assert!(candidates.contains(&PathBuf::from("/usr/local/bin/mkvmerge")));
+        }
+        #[cfg(target_os = "windows")]
+        {
+            assert!(
+                candidates
+                    .iter()
+                    .any(|p| p.ends_with("MKVToolNix/mkvmerge.exe")
+                        || p.ends_with("MKVToolNix\\mkvmerge.exe"))
+            );
+        }
     }
 }
