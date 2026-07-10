@@ -16,11 +16,11 @@ jobs:
   test:
     strategy:
       fail-fast: false
-      # Private-repo minute economy: branch pushes run Linux only
-      # (macOS bills 10x, Windows 2x); PRs, tags and manual dispatch
-      # run the full matrix. Revert to a static 3-OS list on going public.
+      # Static 3-OS matrix since going public (2026-07-10): Actions are free
+      # on public-repo standard runners, so every push runs all platforms.
+      # The private-era dynamic Linux-only trim is retired.
       matrix:
-        os: ${{ fromJSON((github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')) && '["ubuntu-26.04"]' || '["ubuntu-26.04", "windows-2025", "macos-15"]') }}
+        os: ["ubuntu-26.04", "windows-2025", "macos-15"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -29,8 +29,7 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      # Linux-only: branch pushes are Linux-only anyway (minute economy);
-      # gated integration tests self-skip on other platforms.
+      # Linux-only: gated integration tests self-skip on other platforms.
       # mkvtoolnix version floats with the distro; pinning it is in the
       # backlog (Şenol 2026-07-10).
       - name: Install mkvtoolnix (gated integration tests)
@@ -56,10 +55,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm build
       # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
-      # same guard as the mkvtoolnix/webkit2gtk steps above (private-repo
-      # minute economy: PR/tag runs on win/mac still build+lint+test, they
-      # just skip the browser install and the smoke). The smoke drives a
-      # plain Chromium against `dist/` via `vite preview` with
+      # same guard as the mkvtoolnix/webkit2gtk steps above (win/mac legs
+      # still build+lint+test; they skip the browser install and the
+      # smoke, which is platform-independent DOM testing). The smoke drives
+      # a plain Chromium against `dist/` via `vite preview` with
       # `@tauri-apps/api/mocks` standing in for Tauri IPC (spec 10, no
       # tauri-driver) -- `pnpm build` above already produced `dist/`.
       - name: i18n completeness gate
