@@ -15,9 +15,15 @@
 //! whole UI for that duration. The reservation keeps the single-run
 //! invariant airtight end-to-end (a second `start_run` during planning is
 //! still rejected with `"run-already-active"`) while every lock
-//! acquisition stays O(1). A window close ([`on_close_requested`]) cancels
-//! the active (or still-planning) run cooperatively without blocking the
-//! close itself.
+//! acquisition stays O(1).
+//!
+//! **D31 close-with-active-run.** A window close while a run is active
+//! (planning or running) never exits immediately: [`on_close_requested`]
+//! prevents the close and asks, via a native non-blocking confirmation
+//! dialog, whether to abort the running batch. Yes cancels everything and
+//! exits only once the runner's teardown has fully completed (kills
+//! landed, joblog `summary.json` written); No leaves the window open and
+//! the run untouched. With no active run the window closes normally.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,6 +34,7 @@ use std::time::SystemTime;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::command::command;
@@ -52,6 +59,13 @@ use crate::error::IpcError;
 #[derive(Default)]
 pub struct AppState {
     active: Mutex<Option<RunSlot>>,
+    /// D31 quit-after-finished: set when the user confirms the
+    /// close-with-active-run dialog ([`abort_and_quit`]); consumed
+    /// (exactly once, via `swap`) by whichever completion path finishes
+    /// last -- the runner's [`finish_teardown`], a soft outcome's
+    /// [`finish_without_queue`], or [`abort_and_quit`] itself when the
+    /// run already tore down while the dialog was open.
+    quit_after_finished: AtomicBool,
 }
 
 /// What currently occupies [`AppState::active`]'s single slot. Both
@@ -96,12 +110,16 @@ impl<'a> Reservation<'a> {
     /// Reserves the single-run slot, or fails with `"run-already-active"`
     /// if either a reservation or a running queue already holds it. The
     /// mutex is held only for this check-and-insert, never across
-    /// planning.
+    /// planning. Also discards any stale quit-after-finished request
+    /// (D31): a new run starting supersedes a pending quit -- without
+    /// this, a flag orphaned by e.g. a mid-callback panic would silently
+    /// exit the app after the *next* unrelated run.
     fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
         let mut slot = state.active.lock().unwrap();
         if slot.is_some() {
             return Err(IpcError::code("run-already-active"));
         }
+        state.quit_after_finished.store(false, Ordering::SeqCst);
         let cancel = Arc::new(AtomicBool::new(false));
         *slot = Some(RunSlot::Reserved(Arc::clone(&cancel)));
         Ok(Reservation {
@@ -123,7 +141,7 @@ impl<'a> Reservation<'a> {
     /// Promotes the reservation to a running queue: installs
     /// [`RunSlot::Running`] over the `Reserved` placeholder. Called before
     /// the queue thread spawns, so the thread's own end-of-run clear
-    /// ([`run_batch`]) can never race ahead of the install.
+    /// ([`finish_teardown`]) can never race ahead of the install.
     fn commit(mut self, ctl: Arc<QueueControl>) {
         *self.state.active.lock().unwrap() = Some(RunSlot::Running(ActiveRun { ctl }));
         self.committed = true;
@@ -231,7 +249,7 @@ pub fn start_run(
         Err(d) => {
             drop(reservation);
             let doc = run_document(config_only_document(&[d], None, &ShellRenderer), &[], &[]);
-            return Ok(finish_without_queue(&app, doc));
+            return Ok(finish_without_queue(&app, &state, doc));
         }
     };
 
@@ -247,7 +265,7 @@ pub fn start_run(
                 &[],
                 &[],
             );
-            return Ok(finish_without_queue(&app, doc));
+            return Ok(finish_without_queue(&app, &state, doc));
         }
     };
     let lang = match mkv.list_languages() {
@@ -259,7 +277,7 @@ pub fn start_run(
                 &[],
                 &[],
             );
-            return Ok(finish_without_queue(&app, doc));
+            return Ok(finish_without_queue(&app, &state, doc));
         }
     };
 
@@ -296,7 +314,7 @@ pub fn start_run(
             &[],
             &[],
         );
-        return Ok(finish_without_queue(&app, doc));
+        return Ok(finish_without_queue(&app, &state, doc));
     }
 
     let run_id = make_run_id(SystemTime::now());
@@ -326,15 +344,18 @@ pub fn start_run(
             jobs,
             fail_fast: false,
         };
-        let bg_state = app_bg.state::<AppState>();
-        let (outcomes, logger) =
-            run_batch(&bg_state, &specs, &spawner, opts, &ctl, logger, |event| {
-                let _ = app_bg.emit("muxsmith://job-event", event);
-            });
+        let (outcomes, logger) = run_batch(&specs, &spawner, opts, &ctl, logger, |event| {
+            let _ = app_bg.emit("muxsmith://job-event", event);
+        });
 
         let document = run_document(base, &outcomes, &outputs);
         let status = finalize_joblog(logger, &document);
         emit_run_finished(&app_bg, document, status);
+        // Teardown is complete only now (kills landed, joblog finalized,
+        // terminal event emitted): clear the slot and honor a pending
+        // quit-after-finished (D31) -- never earlier, or a confirmed quit
+        // could kill the process before summary.json is written.
+        finish_teardown(&app_bg.state::<AppState>(), |code| app_bg.exit(code));
     });
 
     Ok(StartedRun {
@@ -390,26 +411,146 @@ pub fn get_job_log(
     get_job_log_in(resolve_runs_root().as_deref(), &run_id, index)
 }
 
-/// Cooperative teardown (D23) on window close: cancels the active run, if
-/// any, but never blocks the close itself -- `WindowEvent::CloseRequested`
-/// is otherwise left untouched (no `prevent_close`), so the window closes
-/// normally while the queue's own in-flight kills run in the background.
-/// A run still mid-planning ([`RunSlot::Reserved`]) has no queue to kill
-/// yet; setting its cancel flag makes the queue, if planning still
-/// materializes one, start already-cancelled. Every arm here is O(1): this
-/// runs synchronously on Tauri's event-loop thread, and [`start_run`]'s
-/// reservation pattern exists precisely so this lock is never contended
-/// for longer than a pointer swap.
+/// The English GUI catalog, embedded at build time (D31): the shell's few
+/// native-dialog strings are looked up here via [`ftl_message`] instead of
+/// being written as Rust literals, so `locales/en/gui-common.ftl` stays
+/// the single source of truth that T9's frontend Fluent loader will also
+/// read.
+const GUI_COMMON_FTL: &str = include_str!("../../locales/en/gui-common.ftl");
+
+/// Minimal single-line Fluent-message lookup over [`GUI_COMMON_FTL`]:
+/// finds the `key = value` line and returns the trimmed value.
+/// Deliberately NOT a Fluent parser: the shell only ever consumes simple
+/// one-line messages (the `.ftl` carries a comment pinning that
+/// constraint, and `close_abort_strings_resolve` tests each key), and a
+/// full Fluent stack in the shell would duplicate the frontend's loader
+/// for four strings. A missing key degrades to the key itself -- a stable
+/// code, not a panic, matching the shell's prose-free posture.
+fn ftl_message(key: &'static str) -> &'static str {
+    GUI_COMMON_FTL
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix(key)?
+                .trim_start()
+                .strip_prefix('=')
+                .map(str::trim)
+        })
+        .unwrap_or(key)
+}
+
+/// What a `CloseRequested` event should do, decided from the run slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseDecision {
+    /// No active run: let the window close normally (D31 unchanged path).
+    Close,
+    /// A run is active (planning or running): prevent the close and ask
+    /// whether to abort the batch.
+    ConfirmAbort,
+}
+
+/// The close-vs-ask decision (D31), factored off the Tauri types so it is
+/// unit-testable: any occupant of the slot (Reserved or Running) means
+/// "confirm first".
+fn close_decision(state: &AppState) -> CloseDecision {
+    if state.active.lock().unwrap().is_some() {
+        CloseDecision::ConfirmAbort
+    } else {
+        CloseDecision::Close
+    }
+}
+
+/// Window-close handling (D31, supersedes D23's bare cancel_all): with no
+/// active run the window closes normally; with an active run the close is
+/// prevented and a native, non-blocking confirmation dialog asks whether
+/// to abort the running batch (mkvtoolnix-gui parity, SI-3). Yes runs
+/// [`abort_and_quit`] (cancel everything, exit after teardown completes);
+/// No does nothing -- the window stays open and the run continues.
+///
+/// Everything on the event-loop thread is O(1): the slot check is a
+/// pointer read and `show` only schedules the dialog, its callback firing
+/// later. The dialog itself carries the [`ftl_message`] strings, the one
+/// place the shell hands prose to the OS (sourced from the `.ftl`, not
+/// hardcoded).
 pub fn on_close_requested(window: &Window, event: &WindowEvent) {
-    if !matches!(event, WindowEvent::CloseRequested { .. }) {
+    let WindowEvent::CloseRequested { api, .. } = event else {
+        return;
+    };
+    let app = window.app_handle();
+    if close_decision(&app.state::<AppState>()) == CloseDecision::Close {
         return;
     }
-    let state = window.app_handle().state::<AppState>();
-    match state.active.lock().unwrap().as_ref() {
-        Some(RunSlot::Reserved(cancel)) => cancel.store(true, Ordering::SeqCst),
-        Some(RunSlot::Running(run)) => run.ctl.cancel_all(),
-        None => {}
+    api.prevent_close();
+
+    let app = app.clone();
+    app.dialog()
+        .message(ftl_message("close-abort-message"))
+        .title(ftl_message("close-abort-title"))
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            ftl_message("close-abort-confirm").to_string(),
+            ftl_message("close-abort-dismiss").to_string(),
+        ))
+        .show(move |abort| {
+            if abort {
+                abort_and_quit(&app.state::<AppState>(), |code| app.exit(code));
+            }
+        });
+}
+
+/// The dialog's Yes path (D31): requests quit-after-finished, then cancels
+/// whatever currently occupies the slot -- a running queue via
+/// `cancel_all`, a still-planning reservation via its cancel flag (the
+/// future queue's own batch flag, so the cancel is carried, not lost). The
+/// pending quit is then honored by whichever completion path runs last:
+/// [`finish_teardown`] after a real run, [`finish_without_queue`] after a
+/// soft outcome, or right here when the run already tore down while the
+/// dialog was open (slot empty = teardown fully complete, including the
+/// joblog, since clearing is teardown's final step).
+///
+/// `exit` is injected (production: `app.exit`) so the exactly-once
+/// semantics are unit-testable; the `swap` inside [`quit_if_requested`]
+/// is what guarantees a single exit no matter which paths race.
+fn abort_and_quit(state: &AppState, exit: impl FnOnce(i32)) {
+    state.quit_after_finished.store(true, Ordering::SeqCst);
+    let already_torn_down = match state.active.lock().unwrap().as_ref() {
+        Some(RunSlot::Reserved(cancel)) => {
+            cancel.store(true, Ordering::SeqCst);
+            false
+        }
+        Some(RunSlot::Running(run)) => {
+            run.ctl.cancel_all();
+            false
+        }
+        None => true,
+    };
+    if already_torn_down {
+        quit_if_requested(state, exit);
     }
+}
+
+/// Consumes a pending quit-after-finished request (D31): calls `exit(0)`
+/// iff the flag was set, clearing it atomically (`swap`), so concurrent
+/// completion paths ([`abort_and_quit`] vs [`finish_teardown`] vs
+/// [`finish_without_queue`]) can all call this and exactly one ever exits.
+fn quit_if_requested(state: &AppState, exit: impl FnOnce(i32)) {
+    if state.quit_after_finished.swap(false, Ordering::SeqCst) {
+        exit(0);
+    }
+}
+
+/// The runner thread's final step (D23/D31): clears the active-run slot,
+/// then honors a pending quit-after-finished. Runs strictly after
+/// [`finalize_joblog`] and the terminal emit, so an empty slot always
+/// means "teardown fully complete" -- the invariant [`abort_and_quit`]'s
+/// direct-exit arm relies on. The tradeoff is documented: a frontend that
+/// reacts to `muxsmith://run-finished` by instantly invoking `start_run`
+/// can race this clear by microseconds and get a spurious
+/// `"run-already-active"`; that is recoverable (retry), whereas exiting
+/// before `summary.json` is written would lose the run's history (the
+/// exact loss D26/D31 exist to prevent).
+fn finish_teardown(state: &AppState, exit: impl FnOnce(i32)) {
+    *state.active.lock().unwrap() = None;
+    quit_if_requested(state, exit);
 }
 
 /// Synchronously finishes a [`start_run`] call that never touched the
@@ -419,15 +560,23 @@ pub fn on_close_requested(window: &Window, event: &WindowEvent) {
 /// [`JoblogStatus::Unavailable`] (D26: nothing ran, so no run directory
 /// exists), and returns the [`StartedRun`] `start_run` itself returns --
 /// `total_jobs: 0`, no `run_dir`. The caller drops its [`Reservation`]
-/// before calling this, releasing the single-run slot.
+/// before calling this, releasing the single-run slot; the
+/// [`quit_if_requested`] at the end is this path's teardown-completion
+/// hook (D31): a quit confirmed while planning ran still exits even
+/// though no queue ever existed.
 ///
 /// The emit happens synchronously inside the `start_run` invocation, i.e.
 /// before the command's `Result` reaches the frontend: this is the emit
 /// site behind [`start_run`]'s event-ordering contract (listeners must be
 /// registered before invoking the command, or this event is lost).
-fn finish_without_queue(app: &AppHandle, document: serde_json::Value) -> StartedRun {
+fn finish_without_queue(
+    app: &AppHandle,
+    state: &AppState,
+    document: serde_json::Value,
+) -> StartedRun {
     let run_id = make_run_id(SystemTime::now());
     emit_run_finished(app, document, JoblogStatus::Unavailable);
+    quit_if_requested(state, |code| app.exit(code));
     StartedRun {
         run_id,
         total_jobs: 0,
@@ -457,17 +606,22 @@ fn emit_run_finished(app: &AppHandle, mut document: serde_json::Value, status: J
 /// function's own call stack drains the event channel, tee-ing every
 /// [`JobEvent`] through `logger` (when persistence is available) and
 /// `on_event` (the shell's window-emit in production, a plain collector in
-/// tests), then clears `state`'s active-run slot. Synchronous by design so
-/// it is directly unit-testable with a scripted [`Spawn`]; the
-/// `#[tauri::command]` wrapper is what moves the whole call onto a
-/// detached `std::thread` so `start_run` itself returns immediately.
+/// tests). Synchronous by design so it is directly unit-testable with a
+/// scripted [`Spawn`]; the `#[tauri::command]` wrapper is what moves the
+/// whole call onto a detached `std::thread` so `start_run` itself returns
+/// immediately.
+///
+/// Deliberately does NOT clear the active-run slot: that is
+/// [`finish_teardown`]'s job, and it must run only after the joblog is
+/// finalized and the terminal event emitted (D31: "slot empty" has to
+/// mean "teardown fully complete", or a confirmed quit could exit the
+/// process before `summary.json` is written).
 ///
 /// Returns the outcomes (index-aligned to `specs`, exactly like
 /// `run_queue`) and `logger` back, still open, so the caller can build the
 /// terminal `run_document` and only then call [`RunLogger::finish`] on it
 /// (`finish` needs the very document it is about to persist).
 fn run_batch(
-    state: &AppState,
     specs: &[JobSpec],
     spawner: &(dyn Spawn + Sync),
     opts: QueueOpts,
@@ -486,8 +640,6 @@ fn run_batch(
         }
         handle.join().expect("queue worker thread panicked")
     });
-
-    *state.active.lock().unwrap() = None;
 
     (outcomes, logger)
 }
@@ -742,10 +894,10 @@ mod tests {
     }
 
     /// commit installs Running (not Reserved) and survives the
-    /// reservation's own drop; run_batch's end-of-run clear then frees the
-    /// slot -- the full lifecycle in slot terms.
+    /// reservation's own drop; the runner thread's final finish_teardown
+    /// then frees the slot -- the full lifecycle in slot terms.
     #[test]
-    fn commit_promotes_the_reservation_and_run_batch_clears_it() {
+    fn commit_promotes_the_reservation_and_finish_teardown_clears_it() {
         let state = AppState::default();
         let control = ctl(1);
         Reservation::acquire(&state)
@@ -760,7 +912,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let specs = vec![spec(dir.path(), "a.mkv")];
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
-        run_batch(&state, &specs, &fake, opts(), &control, None, |_| {});
+        run_batch(&specs, &fake, opts(), &control, None, |_| {});
+        finish_teardown(&state, |_| {});
 
         assert!(state.active.lock().unwrap().is_none());
         Reservation::acquire(&state).unwrap();
@@ -803,10 +956,9 @@ mod tests {
         let specs = vec![spec(dir.path(), "a.mkv")];
         let fake = FakeSpawner::script(vec!["hello".to_string()], Some(0));
         let control = ctl(specs.len());
-        let state = AppState::default();
 
         let mut collected: Vec<JobEvent> = Vec::new();
-        let (outcomes, logger) = run_batch(&state, &specs, &fake, opts(), &control, None, |e| {
+        let (outcomes, logger) = run_batch(&specs, &fake, opts(), &control, None, |e| {
             collected.push(e.clone())
         });
 
@@ -831,20 +983,19 @@ mod tests {
         assert_eq!(kinds, vec!["started", "output", "finished"]);
     }
 
-    // -- run_batch: active flag clears after finish -------------------------
+    // -- finish_teardown: active flag clears after finish ---------------------
 
     #[test]
-    fn run_batch_clears_the_active_slot_when_done() {
-        let dir = tempfile::tempdir().unwrap();
-        let specs = vec![spec(dir.path(), "a.mkv")];
-        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
-        let control = ctl(specs.len());
+    fn finish_teardown_clears_the_slot_without_exiting_when_no_quit_is_pending() {
         let state = AppState::default();
+        let control = ctl(1);
         *state.active.lock().unwrap() = Some(running(&control));
 
-        run_batch(&state, &specs, &fake, opts(), &control, None, |_| {});
+        let mut exits = 0;
+        finish_teardown(&state, |_| exits += 1);
 
         assert!(state.active.lock().unwrap().is_none());
+        assert_eq!(exits, 0, "a normal run end never exits the app");
     }
 
     // -- run_batch: joblog dir populated -------------------------------------
@@ -856,22 +1007,152 @@ mod tests {
         let specs = vec![spec(out_dir.path(), "a.mkv")];
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
         let control = ctl(specs.len());
-        let state = AppState::default();
         let logger = RunLogger::create(runs_root.path(), "20260710-000000Z", &specs).unwrap();
         let dir = logger.dir().to_path_buf();
 
-        let (_outcomes, logger) = run_batch(
-            &state,
-            &specs,
-            &fake,
-            opts(),
-            &control,
-            Some(logger),
-            |_| {},
-        );
+        let (_outcomes, logger) = run_batch(&specs, &fake, opts(), &control, Some(logger), |_| {});
 
         assert!(dir.join("job-0.json").exists());
         assert!(logger.is_some());
+    }
+
+    // -- D31: close decision + quit-after-finished ----------------------------
+
+    #[test]
+    fn close_decision_lets_an_idle_window_close_normally() {
+        let state = AppState::default();
+        assert_eq!(close_decision(&state), CloseDecision::Close);
+
+        // The quit machinery is never engaged on this path: no flag was
+        // set, so the consume fires nothing.
+        let mut exits = 0;
+        quit_if_requested(&state, |_| exits += 1);
+        assert_eq!(exits, 0);
+    }
+
+    #[test]
+    fn close_decision_confirms_while_planning_and_while_running() {
+        let state = AppState::default();
+        let reservation = Reservation::acquire(&state).unwrap();
+        assert_eq!(close_decision(&state), CloseDecision::ConfirmAbort);
+
+        let control = ctl(1);
+        reservation.commit(Arc::clone(&control));
+        assert_eq!(close_decision(&state), CloseDecision::ConfirmAbort);
+    }
+
+    /// The D31 happy path: Yes on the dialog while the queue runs cancels
+    /// the batch without exiting; the runner's teardown completion then
+    /// exits exactly once, and the consumed request can never fire again.
+    #[test]
+    fn quit_flag_plus_teardown_completion_exits_exactly_once() {
+        let state = AppState::default();
+        let control = ctl(1);
+        *state.active.lock().unwrap() = Some(running(&control));
+
+        let mut exits: Vec<i32> = Vec::new();
+        abort_and_quit(&state, |code| exits.push(code));
+        assert!(exits.is_empty(), "exit must wait for teardown");
+        assert!(control.job_cancelled(0), "Yes must cancel the batch");
+
+        finish_teardown(&state, |code| exits.push(code));
+        assert_eq!(exits, vec![0], "teardown completion exits exactly once");
+
+        quit_if_requested(&state, |code| exits.push(code));
+        assert_eq!(
+            exits,
+            vec![0],
+            "the request is consumed; nothing fires twice"
+        );
+    }
+
+    /// Yes clicked after the run already tore down (dialog was open while
+    /// the last job finished): the slot is empty, teardown is complete
+    /// (clearing is teardown's final step), so the exit fires immediately,
+    /// still exactly once.
+    #[test]
+    fn abort_and_quit_exits_immediately_when_the_run_already_tore_down() {
+        let state = AppState::default();
+
+        let mut exits: Vec<i32> = Vec::new();
+        abort_and_quit(&state, |code| exits.push(code));
+        assert_eq!(exits, vec![0]);
+
+        quit_if_requested(&state, |code| exits.push(code));
+        assert_eq!(exits, vec![0], "consumed; no second exit");
+    }
+
+    /// The Reserved-but-not-yet-Running case (coordinator-mandated): Yes
+    /// during planning cancels via the reservation's flag; when planning
+    /// ends in a soft outcome (reservation dropped, no queue ever built),
+    /// the soft path's own completion hook (quit_if_requested inside
+    /// finish_without_queue) still exits.
+    #[test]
+    fn abort_and_quit_during_planning_exits_after_a_soft_outcome() {
+        let state = AppState::default();
+        let reservation = Reservation::acquire(&state).unwrap();
+        let cancel = reservation.cancel_flag();
+
+        let mut exits: Vec<i32> = Vec::new();
+        abort_and_quit(&state, |code| exits.push(code));
+        assert!(exits.is_empty(), "planning still in flight; no exit yet");
+        assert!(
+            cancel.load(Ordering::SeqCst),
+            "the cancel must reach the reservation's flag (the future queue's batch flag)"
+        );
+
+        // Soft outcome: reservation dropped, then start_run's soft path
+        // runs its completion hook (this is what finish_without_queue does
+        // after emitting run-finished).
+        drop(reservation);
+        quit_if_requested(&state, |code| exits.push(code));
+        assert_eq!(exits, vec![0]);
+    }
+
+    #[test]
+    fn a_new_reservation_discards_a_stale_quit_request() {
+        let state = AppState::default();
+        state.quit_after_finished.store(true, Ordering::SeqCst);
+
+        let _reservation = Reservation::acquire(&state).unwrap();
+
+        let mut exits = 0;
+        quit_if_requested(&state, |_| exits += 1);
+        assert_eq!(
+            exits, 0,
+            "a stale quit request must not survive into a new run"
+        );
+    }
+
+    // -- D31: dialog strings from the .ftl -------------------------------------
+
+    #[test]
+    fn close_abort_strings_resolve_from_the_ftl_catalog() {
+        for key in [
+            "close-abort-title",
+            "close-abort-message",
+            "close-abort-confirm",
+            "close-abort-dismiss",
+        ] {
+            let value = ftl_message(key);
+            assert_ne!(
+                value, key,
+                "{key} must resolve to a real message, not fall back to the key"
+            );
+            assert!(!value.is_empty());
+        }
+        // The reference wording (D31: mkvtoolnix-gui parity) is pinned so
+        // an accidental .ftl edit that breaks the line-parser contract
+        // (multiline, attributes) fails here instead of shipping a key as
+        // the dialog title.
+        assert_eq!(ftl_message("close-abort-title"), "Abort running jobs");
+    }
+
+    #[test]
+    fn ftl_message_falls_back_to_the_key_and_never_prefix_matches() {
+        assert_eq!(ftl_message("no-such-key"), "no-such-key");
+        // A key that is a strict prefix of a real entry must not match it.
+        assert_eq!(ftl_message("close-abort"), "close-abort");
     }
 
     // -- finalize_joblog ------------------------------------------------------

@@ -12,8 +12,11 @@ pub mod run;
 
 /// Builds and runs the Tauri application: registers the `dialog` and
 /// `clipboard-manager` plugins (capabilities in `capabilities/default.json`
-/// gate what each grants), the run-lifecycle managed state and IPC
-/// commands (D23), and launches the main window from `tauri.conf.json`.
+/// gate what each grants to the *frontend*; the shell's own Rust-side
+/// dialog use in [`run::on_close_requested`] bypasses the IPC permission
+/// layer and needs no capability entry), the run-lifecycle managed state
+/// and IPC commands (D23), the close-with-active-run confirmation (D31),
+/// and launches the main window from `tauri.conf.json`.
 ///
 /// # Panics
 ///
@@ -25,7 +28,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        // -- run lifecycle (D23, Task 8) --
+        // -- run lifecycle (D23/D31, Task 8) --
         .manage(run::AppState::default())
         .invoke_handler(tauri::generate_handler![
             run::start_run,
