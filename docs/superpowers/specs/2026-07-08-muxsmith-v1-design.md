@@ -21,7 +21,7 @@ Muxsmith is a rule-based bulk muxing tool. The user defines a reusable **profile
 | Disambiguation help | Batch-wide validated suggestions | Suggestions are simulated against the whole batch before being shown; an applied suggestion survives the next dry run. |
 | MKV structure scope | Full control in v1 | Tracks, attachments, chapters, tags, title all configurable. More surface than tracks-only, accepted deliberately. |
 | Output naming | Keep name or rename template; collision policy | `error | skip | overwrite`, default `error`. In-place replacement excluded. |
-| Stack | Tauri 2 + Rust core crate + React/TS frontend + clap CLI | Mature, small bundles, best packaging, largest OSS contributor pool. Tradeoff: Rust learning curve for the core; webkitgtk quirks on Linux. |
+| Stack | Tauri 2 + Rust core crate + Vue 3/TS frontend + clap CLI | Mature, small bundles, best packaging. Vue replaces the original React choice (2026-07-10, D27: author preference against React; Vue equally in his stack, SFC templates instead of JSX). Tradeoff: Rust learning curve for the core; webkitgtk quirks on Linux. |
 | License | MIT | Permissive, commercialization by anyone including the author; consistent with the Ruby prototype. |
 | mkvtoolnix dependency | External, user-installed, CLI invocation only | No linking, no GPL implications, no bundling burden. Detected at startup. |
 | Identification schema | Build-time data extraction, never redistributed | Property names/types are generated into the capability model at build time; sidesteps schema licensing and runtime fetching entirely. |
@@ -314,7 +314,7 @@ Muxsmith/
 │   ├── muxsmith-core/      # all logic (below); emits no user-facing prose
 │   └── muxsmith-cli/       # thin clap binary over core
 ├── src-tauri/              # Tauri shell: commands + job event stream, no logic
-├── src/                    # React + TypeScript frontend
+├── src/                    # Vue 3 + TypeScript frontend
 ├── locales/                # Fluent catalogs (locales/en/*.ftl), shared by CLI and frontend
 └── help/                   # long-form help topics, markdown per locale (help/en/<help-id>.md)
 ```
