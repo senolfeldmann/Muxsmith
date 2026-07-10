@@ -1,13 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window: file/folder pickers, clipboard-copy, and OS platform detection (T9 first-run guidance), the minimum the GUI needs beyond Tauri's core defaults. Extend deliberately as GUI features land.",
+  "description": "Capability for the main window: file/folder pickers, clipboard-copy, OS platform detection (T9 first-run guidance), and job-log export (T11, D30 gap closure: save-dialog picks a path, fs writes the text there -- no static fs scope needed, the dialog plugin adds the picked path to the fs scope itself), the minimum the GUI needs beyond Tauri's core defaults. Extend deliberately as GUI features land.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:event:default",
     "dialog:allow-open",
+    "dialog:allow-save",
     "clipboard-manager:allow-write-text",
-    "os:default"
+    "os:default",
+    "fs:allow-write-text-file"
   ]
 }
