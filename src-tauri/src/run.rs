@@ -461,6 +461,18 @@ pub async fn start_run(
     let app_bg = app.clone();
 
     std::thread::spawn(move || {
+        let managed_state = app_bg.state::<AppState>();
+        let exit_app = app_bg.clone();
+        // Armed for the whole runner-thread body (fix): if `run_batch`'s
+        // `handle.join().expect(...)` below ever panics (a `run_queue`
+        // worker panic), this still clears the slot and honors a pending
+        // quit on unwind -- see TeardownGuard's own doc. Teardown is
+        // complete only once this drops (kills landed, joblog finalized,
+        // terminal event emitted, or the panic path above): never earlier,
+        // or a confirmed quit could kill the process before summary.json
+        // is written.
+        let _teardown = TeardownGuard::new(&managed_state, move |code| exit_app.exit(code));
+
         let spawner = LiveSpawner { mkvmerge: mkv_path };
         let opts = QueueOpts {
             jobs,
@@ -473,11 +485,6 @@ pub async fn start_run(
         let document = run_document(base, &outcomes, &outputs);
         let status = finalize_joblog(logger, &document);
         emit_run_finished(&app_bg, document, status);
-        // Teardown is complete only now (kills landed, joblog finalized,
-        // terminal event emitted): clear the slot and honor a pending
-        // quit-after-finished (D31) -- never earlier, or a confirmed quit
-        // could kill the process before summary.json is written.
-        finish_teardown(&app_bg.state::<AppState>(), |code| app_bg.exit(code));
     });
 
     Ok(StartedRun {
@@ -673,6 +680,40 @@ fn quit_if_requested(state: &AppState, exit: impl FnOnce(i32)) {
 fn finish_teardown(state: &AppState, exit: impl FnOnce(i32)) {
     *state.active.lock().unwrap() = None;
     quit_if_requested(state, exit);
+}
+
+/// RAII guard around the whole runner-thread body (fix). A `run_queue`
+/// worker panic used to propagate straight out through [`run_batch`]'s
+/// `handle.join().expect(...)` and terminate the runner thread before
+/// [`finish_teardown`] ever ran: the active-run slot stayed `Running`
+/// forever (every later `start_run` permanently rejected with
+/// `"run-already-active"`), and a quit confirmed while that panic was in
+/// flight could never fire (nothing left to consume it), making the window
+/// unclosable on top of already being wedged. Constructing this guard at
+/// the top of the runner thread and letting it fall out of scope at the
+/// bottom makes [`finish_teardown`] run exactly once no matter how the
+/// closure ends -- normal completion or an unwind -- so this guard is the
+/// thread's ONLY call site for it.
+struct TeardownGuard<'a, F: FnOnce(i32)> {
+    state: &'a AppState,
+    exit: Option<F>,
+}
+
+impl<'a, F: FnOnce(i32)> TeardownGuard<'a, F> {
+    fn new(state: &'a AppState, exit: F) -> TeardownGuard<'a, F> {
+        TeardownGuard {
+            state,
+            exit: Some(exit),
+        }
+    }
+}
+
+impl<F: FnOnce(i32)> Drop for TeardownGuard<'_, F> {
+    fn drop(&mut self) {
+        if let Some(exit) = self.exit.take() {
+            finish_teardown(self.state, exit);
+        }
+    }
 }
 
 /// Synchronously finishes a [`start_run`] call that never touched the
@@ -1240,6 +1281,62 @@ mod tests {
 
         assert!(state.active.lock().unwrap().is_none());
         assert_eq!(exits, 0, "a normal run end never exits the app");
+    }
+
+    // -- TeardownGuard: runner-thread panic must not wedge the app ------------
+
+    /// The fix under test: a panic inside the runner thread's body (the
+    /// real trigger is `run_batch`'s `handle.join().expect(...)` when the
+    /// `run_queue` worker itself panics) must still clear the slot and
+    /// honor a pending quit -- otherwise the app is wedged
+    /// ("run-already-active" forever) and, if a quit was mid-flight,
+    /// unclosable on top of that.
+    #[test]
+    fn teardown_guard_clears_the_slot_and_exits_on_unwind_when_quit_was_pending() {
+        let state = AppState::default();
+        let control = ctl(1);
+        *state.active.lock().unwrap() = Some(running(&control));
+        state.quit_after_finished.store(true, Ordering::SeqCst);
+
+        let exits: Arc<std::sync::Mutex<Vec<i32>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let exits_cl = Arc::clone(&exits);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard =
+                TeardownGuard::new(&state, move |code| exits_cl.lock().unwrap().push(code));
+            panic!("simulated run_queue worker panic");
+        }));
+
+        assert!(
+            result.is_err(),
+            "the panic must still unwind past this point"
+        );
+        assert!(
+            state.active.lock().unwrap().is_none(),
+            "the slot must be cleared even though the body panicked"
+        );
+        assert_eq!(
+            *exits.lock().unwrap(),
+            vec![0],
+            "a pending quit must still exit after an unwind"
+        );
+    }
+
+    /// The normal (non-panicking) path: the guard's drop at ordinary scope
+    /// exit is what runs `finish_teardown` now (no separate explicit call
+    /// in `start_run`'s runner thread any more), exactly once.
+    #[test]
+    fn teardown_guard_runs_teardown_exactly_once_on_a_clean_finish() {
+        let state = AppState::default();
+        let control = ctl(1);
+        *state.active.lock().unwrap() = Some(running(&control));
+
+        let mut exits = 0;
+        {
+            let _guard = TeardownGuard::new(&state, |_| exits += 1);
+        }
+
+        assert!(state.active.lock().unwrap().is_none());
+        assert_eq!(exits, 0, "no quit was pending; teardown must not exit");
     }
 
     // -- run_batch: joblog dir populated -------------------------------------
