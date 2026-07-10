@@ -392,6 +392,10 @@ impl MilestoneState {
             JobEvent::Finished { index, outcome } => {
                 vec![self.render_finished(*index, outcome, total, renderer)]
             }
+            // Raw output lines (D24) feed a live log pane / persisted job
+            // logs in a later task; human-mode milestone rendering has
+            // nothing to say about them.
+            JobEvent::Output { .. } => Vec::new(),
         }
     }
 
