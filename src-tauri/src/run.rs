@@ -193,81 +193,79 @@ pub enum JoblogStatus {
     Unavailable,
 }
 
-/// Starts a run (D23): re-plans `profile`/`source`/`output` from scratch
-/// (never reusing a stale dry-run, mirroring the CLI's `run` command and
-/// spec 5.5's re-plan invariant), then drives the resulting jobs to
-/// completion on a detached thread. Rejects with `"run-already-active"` if
-/// a run is already in flight (D23 single-run).
+/// The blocking planning pass factored out of [`start_run`] (fix: this used
+/// to run inline on `start_run`'s own thread, which -- before this fix --
+/// was the Tauri command dispatch thread itself, freezing the whole event
+/// loop for the duration; now it runs inside
+/// `tauri::async_runtime::spawn_blocking`, see [`start_run`]'s doc). Pure
+/// and `AppState`-free by construction: it takes only owned/`Send` inputs
+/// and returns an owned outcome, so it never needs to touch
+/// [`AppState::active`] (planning stays lock-free, D23's own invariant)
+/// and is directly unit-testable without any Tauri runtime.
 ///
-/// Every branch where planning never reaches a real job queue (profile
-/// load failure, mkvmerge missing/unqueryable, or a batch that plans zero
-/// jobs) still returns `Ok`: it synchronously emits
-/// `muxsmith://run-finished` with the same `run_document` shape a real run
-/// would (spec 7 -- CLI and GUI share this document shape), `total_jobs:
-/// 0`, and no `run_dir`. `IpcError` is reserved for the one failure the
-/// caller must react to differently (the single-run conflict); a planning
-/// outcome is data, not a shell-level error -- and in practice `start_run`
-/// is only reachable once T10's Batch view has already shown a clean
-/// `dry_run`, so these branches are defensive, not the expected path.
+/// **Fix (CRITICAL): honors the settings mkvmerge override.** This used to
+/// resolve mkvmerge via [`Mkvmerge::locate`] (PATH only), unlike every
+/// other mkvmerge-touching command (`dry_run`/`identify`/`detect_mkvmerge`,
+/// all [`Mkvmerge::detect`] with the settings override, D28) -- so a
+/// Windows standard install (never on PATH) or a manual override the user
+/// configured in Settings would pass `detect_mkvmerge` and `dry_run`
+/// cleanly and then have every real run silently soft-fail
+/// (`mkvmerge_found: false`) for a reason invisible from the UI the user
+/// had just seen succeed. `settings_path` is loaded here, inside the
+/// blocking pass, exactly like `dry_run`'s own settings read (its doc:
+/// "the settings read... lives INSIDE the `spawn_blocking` closure with
+/// the body itself").
 ///
-/// **Event-ordering contract (frontend requirement).** Listeners for BOTH
-/// `muxsmith://job-event` and `muxsmith://run-finished` MUST be registered
-/// *before* invoking `start_run`. On the soft-outcome branches above,
-/// `muxsmith://run-finished` is emitted synchronously, before this
-/// command's own `Result` ever returns to the caller; a frontend that
-/// waits for `start_run` to resolve and only then subscribes misses that
-/// terminal event entirely (and can race the first job events of a real
-/// run the same way). Subscribe first, then invoke.
-#[tauri::command]
-pub fn start_run(
-    app: AppHandle,
-    state: State<AppState>,
+/// `cancel_flag` is the reservation's own batch-cancel flag ([`Reservation::cancel_flag`]),
+/// cloned by the caller *before* this pass starts (a cheap, non-blocking
+/// `Arc` clone) so it can be moved in as an ordinary owned value: a
+/// [`Reservation`] itself cannot cross into `spawn_blocking` (it borrows
+/// `&AppState`, not `'static`), but the flag alone can, and constructing
+/// [`QueueControl`] with it here (rather than back on `start_run`'s own
+/// stack) carries the same D23 invariant this module has always had -- a
+/// cancel/close landing during planning still reaches the eventual queue,
+/// born already-cancelled.
+fn plan_run(
+    settings_path: Option<PathBuf>,
     profile: String,
     source: Option<String>,
     output: Option<String>,
-    jobs: Option<usize>,
-) -> Result<StartedRun, IpcError> {
-    // Reserve the single-run slot, then plan WITHOUT holding the lock
-    // (module doc: a lock held across planning would freeze the event
-    // loop). Dropping `reservation` uncommitted -- every soft-outcome
-    // early return below -- releases the slot again.
-    let reservation = Reservation::acquire(&state)?;
+    cancel_flag: Arc<AtomicBool>,
+) -> Result<PlanOutcome, IpcError> {
+    let mkvmerge_override = crate::load_settings_from(settings_path.as_deref())?.mkvmerge_path;
 
     let profile_path = PathBuf::from(profile);
     let profile = match load::from_file(&profile_path) {
         Ok(p) => p,
         Err(d) => {
-            drop(reservation);
             let doc = run_document(config_only_document(&[d], None, &ShellRenderer), &[], &[]);
-            return Ok(finish_without_queue(&app, &state, doc));
+            return Ok(PlanOutcome::Soft(doc));
         }
     };
 
     let mut config_diags = validate::validate(&profile);
     config_diags.extend(lint::provable_overlaps(&profile));
 
-    let mkv = match Mkvmerge::locate() {
+    let mkv = match Mkvmerge::detect(mkvmerge_override.as_deref().map(Path::new)) {
         Ok(m) => m,
         Err(_) => {
-            drop(reservation);
             let doc = run_document(
                 config_only_document(&config_diags, Some(false), &ShellRenderer),
                 &[],
                 &[],
             );
-            return Ok(finish_without_queue(&app, &state, doc));
+            return Ok(PlanOutcome::Soft(doc));
         }
     };
     let lang = match mkv.list_languages() {
         Ok(l) => l,
         Err(_) => {
-            drop(reservation);
             let doc = run_document(
                 config_only_document(&config_diags, Some(true), &ShellRenderer),
                 &[],
                 &[],
             );
-            return Ok(finish_without_queue(&app, &state, doc));
+            return Ok(PlanOutcome::Soft(doc));
         }
     };
 
@@ -298,33 +296,167 @@ pub fn start_run(
         .collect();
 
     if specs.is_empty() {
-        drop(reservation);
         let doc = run_document(
             batch_document(&config_diags, &batch, &ShellRenderer),
             &[],
             &[],
         );
-        return Ok(finish_without_queue(&app, &state, doc));
+        return Ok(PlanOutcome::Soft(doc));
     }
 
     let run_id = make_run_id(SystemTime::now());
-    // The reservation's own flag becomes the queue's batch-cancel flag: a
-    // cancel_run/window-close that landed while planning ran is carried
-    // into the queue (born already-cancelled) instead of lost.
-    let ctl = QueueControl::new(specs.len(), reservation.cancel_flag());
+    let ctl = QueueControl::new(specs.len(), cancel_flag);
     let logger =
         resolve_runs_root().and_then(|root| RunLogger::create(&root, &run_id, &specs).ok());
     let run_dir = logger.as_ref().map(|l| l.dir().display().to_string());
-    let total_jobs = specs.len();
-
-    reservation.commit(Arc::clone(&ctl));
-
     let base = batch_document(&config_diags, &batch, &ShellRenderer);
     let outputs: Vec<String> = specs
         .iter()
         .map(|s| s.output.display().to_string())
         .collect();
     let mkv_path = mkv.path().to_path_buf();
+
+    Ok(PlanOutcome::Ready(Box::new(ReadyPlan {
+        run_id,
+        specs,
+        ctl,
+        logger,
+        run_dir,
+        base,
+        outputs,
+        mkv_path,
+    })))
+}
+
+/// [`plan_run`]'s result.
+enum PlanOutcome {
+    /// A run that never reaches a real job queue (profile load failure,
+    /// mkvmerge unavailable, or zero planned jobs): the synthesized
+    /// `run_document`, ready for [`finish_without_queue`].
+    Soft(serde_json::Value),
+    /// A real batch, ready to hand to the runner thread. Boxed: `Soft`'s
+    /// `serde_json::Value` is far smaller than this variant's payload, and
+    /// clippy's `large_enum_variant` flags the resulting size gap -- every
+    /// `PlanOutcome` would otherwise be sized for the rare branch instead of
+    /// the common ones.
+    Ready(Box<ReadyPlan>),
+}
+
+/// [`PlanOutcome::Ready`]'s payload. Every field here is exactly what the
+/// pre-fix inline code computed on `start_run`'s own stack before spawning
+/// the runner thread; moving the computation into [`plan_run`] does not
+/// change what is computed, only where.
+struct ReadyPlan {
+    run_id: String,
+    specs: Vec<JobSpec>,
+    ctl: Arc<QueueControl>,
+    logger: Option<RunLogger>,
+    run_dir: Option<String>,
+    base: serde_json::Value,
+    outputs: Vec<String>,
+    mkv_path: PathBuf,
+}
+
+/// Starts a run (D23): re-plans `profile`/`source`/`output` from scratch
+/// (never reusing a stale dry-run, mirroring the CLI's `run` command and
+/// spec 5.5's re-plan invariant), then drives the resulting jobs to
+/// completion on a detached thread. Rejects with `"run-already-active"` if
+/// a run is already in flight (D23 single-run).
+///
+/// **Fix: `async`, planning runs on `spawn_blocking`.** This command used
+/// to be a plain `fn`, so its entire planning pass -- [`plan_run`], which
+/// shells out to mkvmerge once per source file via [`plan_batch`]'s
+/// identification -- ran synchronously on Tauri's command-dispatch thread:
+/// the same thread that also has to service [`on_close_requested`] and
+/// `cancel_run`/`cancel_job`, so a long batch froze the window AND made
+/// cancelling or closing it unreachable for the whole planning pass. Now
+/// only the O(1) reservation acquire/commit and the actual thread spawn run
+/// on the calling thread; [`plan_run`] itself runs inside
+/// `tauri::async_runtime::spawn_blocking`, the same pattern `dry_run`/
+/// `identify`/`detect_mkvmerge` already use (see `detect_mkvmerge`'s doc
+/// for the threading rationale). The [`Reservation`] itself is held across
+/// the `.await` (on `start_run`'s own stack, not moved into the blocking
+/// closure -- it borrows `&AppState` and is not `'static`), so the
+/// single-run gate is unchanged: a concurrent `start_run` is still
+/// rejected synchronously, before any thread-pool round trip.
+///
+/// Every branch where planning never reaches a real job queue (profile
+/// load failure, mkvmerge missing/unqueryable, or a batch that plans zero
+/// jobs) still returns `Ok`: it emits `muxsmith://run-finished` with the
+/// same `run_document` shape a real run would (spec 7 -- CLI and GUI share
+/// this document shape), `total_jobs: 0`, and no `run_dir`. `IpcError` is
+/// reserved for failures the caller must react to differently: the
+/// single-run conflict, and (unchanged from every other settings-reading
+/// command) a settings I/O/parse failure; a planning outcome itself is
+/// data, not a shell-level error -- and in practice `start_run` is only
+/// reachable once T10's Batch view has already shown a clean `dry_run`, so
+/// these branches are defensive, not the expected path.
+///
+/// **Event-ordering contract (frontend requirement), unchanged in shape.**
+/// Listeners for BOTH `muxsmith://job-event` and `muxsmith://run-finished`
+/// MUST be registered *before* invoking `start_run`. On the soft-outcome
+/// branches above, `muxsmith://run-finished` is still emitted before this
+/// command's own `Result` reaches the caller -- the emit now happens after
+/// an `.await` point rather than fully synchronously, but that distinction
+/// is invisible to the frontend: a promise resolution is always
+/// "afterwards" from its point of view, and nothing else can observe the
+/// command's internal await. A frontend that waits for `start_run` to
+/// resolve and only then subscribes still misses that terminal event
+/// entirely (and can still race the first job events of a real run the
+/// same way). Subscribe first, then invoke.
+#[tauri::command]
+pub async fn start_run(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile: String,
+    source: Option<String>,
+    output: Option<String>,
+    jobs: Option<usize>,
+) -> Result<StartedRun, IpcError> {
+    // Reserve the single-run slot synchronously, on the calling thread,
+    // BEFORE spawn_blocking -- module doc: a lock held across planning
+    // would freeze the event loop, but this is just the O(1)
+    // check-and-insert, not planning itself. Held across the .await below;
+    // dropping it uncommitted (every soft-outcome/error early return)
+    // releases the slot again.
+    let reservation = Reservation::acquire(&state)?;
+    let settings_path = state.settings_path.clone();
+    let cancel_flag = reservation.cancel_flag();
+
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        plan_run(settings_path, profile, source, output, cancel_flag)
+    })
+    .await
+    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?;
+
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            drop(reservation);
+            return Err(e);
+        }
+    };
+
+    let ReadyPlan {
+        run_id,
+        specs,
+        ctl,
+        logger,
+        run_dir,
+        base,
+        outputs,
+        mkv_path,
+    } = match outcome {
+        PlanOutcome::Soft(doc) => {
+            drop(reservation);
+            return Ok(finish_without_queue(&app, &state, doc));
+        }
+        PlanOutcome::Ready(ready) => *ready,
+    };
+
+    let total_jobs = specs.len();
+    reservation.commit(Arc::clone(&ctl));
+
     let jobs = jobs.unwrap_or(1);
     let app_bg = app.clone();
 
@@ -820,6 +952,142 @@ mod tests {
         RunSlot::Running(ActiveRun {
             ctl: Arc::clone(control),
         })
+    }
+
+    fn minimal_profile_yaml() -> &'static str {
+        "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
+    }
+
+    /// A fake `mkvmerge` that answers `--version` with a fixed line, fails
+    /// every other invocation, and appends one line to a counter file on
+    /// EVERY invocation -- so a test can assert exactly how many times it
+    /// was spawned. Mirrors `muxsmith-gui`'s own `lib.rs::counting_fake_mkvmerge`
+    /// and `muxsmith-core`'s identical `tests/mkvmerge_runtime.rs` helper;
+    /// this module needs its own copy since none of those live in a
+    /// dependency this crate's test target can reach.
+    #[cfg(unix)]
+    fn counting_fake_mkvmerge(dir: &Path, version_line: &str) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let script = dir.join("mkvmerge");
+        let counter = dir.join("spawn-count");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho run >> '{}'\nif [ \"$1\" = \"--version\" ]; then\n  echo '{version_line}'\n  exit 0\nfi\nexit 1\n",
+                counter.display()
+            ),
+        )
+        .unwrap();
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+        // A freshly written+chmod'd script can transiently answer
+        // ExecutableFileBusy under parallel test load (identical warm-up to
+        // lib.rs's own helper).
+        for attempt in 0.. {
+            match std::process::Command::new(&script)
+                .arg("--version")
+                .output()
+            {
+                Ok(_) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
+            }
+        }
+        fs::write(&counter, "").unwrap();
+        (script, counter)
+    }
+
+    #[cfg(unix)]
+    fn spawn_count(counter: &Path) -> usize {
+        fs::read_to_string(counter)
+            .unwrap_or_default()
+            .lines()
+            .count()
+    }
+
+    // -- plan_run: CRITICAL fix, honors the settings mkvmerge override --------
+
+    /// The CRITICAL bug this wave fixes: `start_run`'s planning pass used to
+    /// resolve mkvmerge via `Mkvmerge::locate()` (PATH only), silently
+    /// ignoring `AppSettings::mkvmerge_path` -- unlike `dry_run`/`identify`/
+    /// `detect_mkvmerge`, which all honor it via `Mkvmerge::detect`. A fake
+    /// mkvmerge that only answers `--version` (never `--list-languages`),
+    /// placed at a path NOT on PATH and wired in purely through a settings
+    /// file, must be the binary `plan_run` actually spawns -- proven by its
+    /// own invocation counter -- even though a REAL, fully working mkvmerge
+    /// is present on this test machine's PATH. Under the pre-fix
+    /// `locate()`-only resolution this test would silently exercise the
+    /// real PATH mkvmerge instead (spawn_count staying 0 for the fake) and
+    /// most likely plan a real batch, masking exactly the bug in question.
+    #[test]
+    #[cfg(unix)]
+    fn plan_run_honors_the_settings_mkvmerge_override_not_just_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        let (script, counter) =
+            counting_fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Fake') 64-bit");
+        crate::settings::save(
+            &settings_path,
+            &crate::settings::AppSettings {
+                mkvmerge_path: Some(script.display().to_string()),
+                ..crate::settings::AppSettings::default()
+            },
+        )
+        .expect("save settings");
+
+        let profile_path = dir.path().join("p.yaml");
+        fs::write(&profile_path, minimal_profile_yaml()).unwrap();
+
+        let outcome = plan_run(
+            Some(settings_path),
+            profile_path.display().to_string(),
+            None,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .expect("settings load must succeed");
+
+        match outcome {
+            PlanOutcome::Soft(doc) => {
+                // The fake answers --version (so Mkvmerge::detect resolves
+                // it and clears the floor check) but not --list-languages,
+                // so the query fails next -- the same "found but broken"
+                // branch dry_run_body's own test exercises. Getting HERE
+                // (rather than a real Ready batch built from the system
+                // mkvmerge) is itself proof the override was consulted.
+                assert_eq!(doc["mkvmerge_found"], serde_json::json!(true), "doc: {doc}");
+            }
+            PlanOutcome::Ready(_) => {
+                panic!("expected a soft outcome from the deliberately broken fake mkvmerge")
+            }
+        }
+        assert!(
+            spawn_count(&counter) >= 1,
+            "the override binary at {script:?} must actually have been spawned"
+        );
+    }
+
+    #[test]
+    fn plan_run_propagates_a_settings_load_failure_as_an_ipc_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        fs::write(&settings_path, b"{ not json").unwrap();
+
+        let outcome = plan_run(
+            Some(settings_path),
+            dir.path().join("p.yaml").display().to_string(),
+            None,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        );
+
+        match outcome {
+            Err(e) => assert_eq!(e.code, "settings-parse-failed"),
+            Ok(_) => panic!("expected a settings-parse-failed IpcError"),
+        }
     }
 
     // -- Reservation: single-run invariant across the planning window ---------
