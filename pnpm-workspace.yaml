@@ -1,2 +1,6 @@
+# vue-demi (fluent-vue dependency) needs its postinstall script (selects the
+# Vue-2/Vue-3 build); pnpm blocks install scripts by default and CI's
+# --frozen-lockfile install cannot approve interactively, so the approval
+# is recorded here.
 allowBuilds:
   vue-demi: true

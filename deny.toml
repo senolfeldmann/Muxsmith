@@ -17,10 +17,13 @@ ignore = [
     "RUSTSEC-2025-0081", # unic-char-property
     "RUSTSEC-2025-0098", # unic-ucd-version
     "RUSTSEC-2025-0100", # unic-ucd-ident
+    # proc-macro-error: unmaintained in its own right (its own advisory,
+    # not the GTK3 archival below); reached as glib-macros' proc-macro
+    # dependency, i.e. via the same Tauri Linux stack.
+    "RUSTSEC-2024-0370", # proc-macro-error
     # gtk-rs GTK3 bindings (gtk-rs/gtk3-rs): archived upstream in favor of
     # gtk4-rs; Tauri 2's Linux backend (tao/wry) has not migrated off GTK3.
     # No fix available at the application level.
-    "RUSTSEC-2024-0370", # proc-macro-error (glib-macros build dep)
     "RUSTSEC-2024-0411", # gdkwayland-sys
     "RUSTSEC-2024-0412", # gdk
     "RUSTSEC-2024-0413", # atk
