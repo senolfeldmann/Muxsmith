@@ -7,10 +7,13 @@
 //! it), unlike `muxsmith-core`/`muxsmith-cli`. Public items are still
 //! documented.
 
+pub mod error;
+pub mod run;
+
 /// Builds and runs the Tauri application: registers the `dialog` and
 /// `clipboard-manager` plugins (capabilities in `capabilities/default.json`
-/// gate what each grants) and launches the main window from
-/// `tauri.conf.json`.
+/// gate what each grants), the run-lifecycle managed state and IPC
+/// commands (D23), and launches the main window from `tauri.conf.json`.
 ///
 /// # Panics
 ///
@@ -22,6 +25,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        // -- run lifecycle (D23, Task 8) --
+        .manage(run::AppState::default())
+        .invoke_handler(tauri::generate_handler![
+            run::start_run,
+            run::cancel_run,
+            run::cancel_job,
+            run::list_runs,
+            run::get_job_log,
+        ])
+        .on_window_event(run::on_close_requested)
         .run(tauri::generate_context!())
         .expect("error while running muxsmith-gui");
 }
