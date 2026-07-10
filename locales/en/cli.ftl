@@ -22,3 +22,5 @@ run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count ->
 run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
 run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
 run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
+run-joblog-unavailable = Job logs could not be written for this run; continuing without persisted logs.
+run-joblog-written = Job logs written to { $dir }

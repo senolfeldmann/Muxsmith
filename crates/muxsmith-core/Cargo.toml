@@ -6,12 +6,14 @@ license.workspace = true
 publish = false
 
 [dependencies]
+dirs = "6.0.0"
 language-tags = "0.3.2"
 regex = "1.12.4"
 schemars = "1.2.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 serde_path_to_error = "0.1.20"
+time = { version = "0.3.53", features = ["formatting"] }
 yaml_serde = "0.10.4"
 
 [dev-dependencies]

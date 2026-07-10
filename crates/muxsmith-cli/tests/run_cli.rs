@@ -174,6 +174,10 @@ fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
         .args(["--output"])
         .arg(&output_dir)
         .arg("--json")
+        // Task 6 (D26): a real mux reaches the queue and would otherwise
+        // persist job logs into the real platform data dir; point it at a
+        // tempdir instead.
+        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
         .output()
         .unwrap();
 

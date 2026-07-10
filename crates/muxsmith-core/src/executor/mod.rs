@@ -3,5 +3,6 @@
 //! core; all human text lives in the CLI's Fluent catalogs.
 
 pub mod job;
+pub mod joblog;
 pub mod queue;
 pub mod spawn;

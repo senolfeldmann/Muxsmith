@@ -107,6 +107,10 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
         .arg(&source_dir)
         .args(["--output"])
         .arg(&output_dir)
+        // Task 6 (D26): a real mux reaches the queue and would otherwise
+        // persist job logs into the real platform data dir; point it at a
+        // tempdir instead.
+        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
         .output()
         .unwrap();
 
@@ -167,6 +171,9 @@ fn live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched(
     fs::write(&profile, PROFILE).unwrap();
     let output_dir = dir.path().join("out");
 
+    // Task 6 (D26): the setup run below reaches the queue and would
+    // otherwise persist job logs into the real platform data dir; point
+    // both invocations at a tempdir instead.
     let run_args = |on_collision: Option<&str>| {
         let mut cmd = muxsmith();
         cmd.args(["run"])
@@ -174,7 +181,8 @@ fn live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched(
             .args(["--source"])
             .arg(&source_dir)
             .args(["--output"])
-            .arg(&output_dir);
+            .arg(&output_dir)
+            .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"));
         if let Some(policy) = on_collision {
             cmd.args(["--on-collision", policy]);
         }

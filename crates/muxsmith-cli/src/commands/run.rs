@@ -11,6 +11,7 @@ use std::sync::mpsc;
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::command::command;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
+use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
 use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
 use muxsmith_core::executor::spawn::LiveSpawner;
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
@@ -210,6 +211,11 @@ pub fn run(
         }
     });
 
+    // D26: persisted job logs. Created before the queue runs so `on_event`
+    // can tee every event as it arrives (see the drain loop below); a
+    // creation failure never aborts the run (see `create_logger`'s doc).
+    let mut logger = create_logger(renderer, &specs);
+
     let (tx, rx) = mpsc::channel();
 
     // `run_queue` blocks until the whole batch finishes, so it runs on its
@@ -224,6 +230,12 @@ pub fn run(
 
         let mut milestones = MilestoneState::new(outputs);
         for event in rx {
+            // Persistence is unconditional (spec 6, D26): tee every event
+            // into the log writer regardless of `--json`, mirroring how
+            // milestone rendering is the only thing `--json` suppresses.
+            if let Some(logger) = logger.as_mut() {
+                logger.on_event(&event);
+            }
             if json {
                 // --json suppresses human progress lines; Task 9 builds the
                 // final document from the returned outcomes instead.
@@ -237,17 +249,27 @@ pub fn run(
         handle.join().expect("queue worker thread panicked")
     });
 
+    let document = run_document(
+        batch_document(&config_diags, &batch, renderer),
+        &outcomes,
+        &json_outputs,
+    );
+
     if !json {
         println!("{}", render_summary(&outcomes, renderer));
     } else {
-        println!(
-            "{}",
-            run_document(
-                batch_document(&config_diags, &batch, renderer),
-                &outcomes,
-                &json_outputs,
-            )
-        );
+        println!("{}", document);
+    }
+
+    if let Some(logger) = logger {
+        match logger.finish(&document) {
+            Ok(dir) if !json => println!(
+                "{}",
+                renderer.msg("run-joblog-written", &[("dir", &dir.display().to_string())])
+            ),
+            Ok(_) => {}
+            Err(_) => eprintln!("{}", renderer.msg("run-joblog-unavailable", &[])),
+        }
     }
 
     if cancel.load(Ordering::SeqCst) {
@@ -258,6 +280,28 @@ pub fn run(
         diag_exit_code(&config_diags, &batch),
         job_exit_code(&outcomes),
     )
+}
+
+/// Creates this run's [`RunLogger`] (D26): resolves the runs root (the
+/// `MUXSMITH_RUNS_ROOT` env var if set -- tests point this at a tempdir so
+/// they never write into the real platform data dir; [`default_runs_root`]
+/// otherwise), then [`RunLogger::create`]s the run's log directory under it.
+/// Either step failing (no resolvable data dir, or `create` itself erroring
+/// -- permissions, disk full, ...) renders `run-joblog-unavailable` to
+/// stderr and returns `None`: persistence is best-effort from the CLI's
+/// perspective, a mux run never dies for a log dir.
+fn create_logger(renderer: &Renderer, specs: &[JobSpec]) -> Option<RunLogger> {
+    let runs_root = std::env::var_os("MUXSMITH_RUNS_ROOT")
+        .map(PathBuf::from)
+        .or_else(default_runs_root);
+    let logger = runs_root.and_then(|root| {
+        let run_id = make_run_id(std::time::SystemTime::now());
+        RunLogger::create(&root, &run_id, specs).ok()
+    });
+    if logger.is_none() {
+        eprintln!("{}", renderer.msg("run-joblog-unavailable", &[]));
+    }
+    logger
 }
 
 /// The queue's own worst-of fold (spec 8.1, D15): 2 if any job `Failed`, 1

@@ -2131,6 +2131,7 @@ dependencies = [
 name = "muxsmith-core"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "language-tags",
  "regex",
  "schemars 1.2.1",
@@ -2138,6 +2139,7 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "tempfile",
+ "time",
  "yaml_serde",
 ]
 
