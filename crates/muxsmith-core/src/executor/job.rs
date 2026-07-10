@@ -387,6 +387,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let output = dir.path().join("out.mkv");
         std::fs::write(&output, b"valid output from a prior run").unwrap();
+        let nested = spec(dir.path().join("never/created/out.mkv"));
         let spec = spec(output);
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
         let cancelled = || true;
@@ -397,12 +398,24 @@ mod tests {
         assert_eq!(outcome.exit_code, None);
         assert!(outcome.errors.is_empty());
         assert!(
-            fake.spawned().is_empty(),
-            "the spawner must never be called once already cancelled"
-        );
-        assert!(
             spec.output.exists(),
             "pre-spawn cancel must delete nothing (D25)"
+        );
+
+        // Zero filesystem touch, pinned directly: with a nested output
+        // whose parent does not exist, a pre-spawn cancel must not even
+        // create that parent directory (create_dir_all sits after the
+        // check).
+        let outcome = run_job(&fake, &nested, &cancelled, &mut |_| {});
+
+        assert_eq!(outcome.state, JobState::Cancelled);
+        assert!(
+            !nested.output.parent().unwrap().exists(),
+            "pre-spawn cancel must not create the output's parent dir"
+        );
+        assert!(
+            fake.spawned().is_empty(),
+            "the spawner must never be called once already cancelled"
         );
     }
 

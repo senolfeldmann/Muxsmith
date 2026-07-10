@@ -231,7 +231,7 @@ pub fn run_queue(
 
                         let registering = RegisteringSpawner {
                             inner: spawner,
-                            killers: &ctl.killers,
+                            ctl,
                             index,
                         };
                         let mut on_progress = |progress: JobProgress| {
@@ -307,17 +307,32 @@ fn worker_count(jobs: usize, spec_count: usize) -> usize {
 /// The worker loop removes the entry once `run_job` returns.
 struct RegisteringSpawner<'a> {
     inner: &'a (dyn Spawn + Sync),
-    killers: &'a Mutex<HashMap<usize, Killer>>,
+    ctl: &'a QueueControl,
     index: usize,
 }
 
 impl Spawn for RegisteringSpawner<'_> {
     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
         let job = self.inner.spawn(argv)?;
-        self.killers
+        let killer = job.killer();
+        self.ctl
+            .killers
             .lock()
             .unwrap()
-            .insert(self.index, job.killer());
+            .insert(self.index, Arc::clone(&killer));
+        // Closes the D25 lost-cancellation window: a cancel_job landing
+        // between run_job's pre-spawn check and the insert above found no
+        // killer to invoke, and a normally-exiting process never reaches
+        // the `None if cancelled()` arm - the request would be silently
+        // dropped. Re-check now that the killer is registered and kill the
+        // fresh process ourselves if so. The ordering makes the window
+        // airtight: a cancel_job earlier than this check is seen via the
+        // flag here; one later than it finds the killer in the map. A
+        // double invocation (both paths firing) is harmless - Killer is
+        // idempotent and best-effort by contract (spawn.rs).
+        if self.ctl.job_cancelled(self.index) {
+            killer();
+        }
         Ok(job)
     }
 }
@@ -896,6 +911,84 @@ mod tests {
             kills.load(Ordering::SeqCst),
             1,
             "exactly one kill, for the targeted job only"
+        );
+    }
+
+    /// Wraps a [`FakeSpawner`] so `spawn` parks in the exact D25 race
+    /// window: after `run_job`'s pre-spawn check has passed (`run_job`
+    /// only calls `spawn` at all once that check returned false) and
+    /// before [`RegisteringSpawner`] can insert the killer (insertion
+    /// happens only after this returns). It signals the test over `ready`,
+    /// then blocks until `release` fires, so the test can call
+    /// [`QueueControl::cancel_job`] inside the window deterministically -
+    /// no sleeps, no timing bets.
+    struct MidSpawnGateSpawner<'a> {
+        inner: &'a FakeSpawner,
+        ready: Sender<()>,
+        release: Mutex<mpsc::Receiver<()>>,
+    }
+
+    impl Spawn for MidSpawnGateSpawner<'_> {
+        fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
+            let job = self.inner.spawn(argv)?;
+            let _ = self.ready.send(());
+            let _ = self.release.lock().unwrap().recv();
+            Ok(job)
+        }
+    }
+
+    /// D25 lost-cancellation race: `cancel_job` fired while the process is
+    /// mid-spawn (pre-spawn check already passed, killer not yet
+    /// registered) finds no killer to invoke; without a post-registration
+    /// re-check the flag alone changes nothing, because the process exits
+    /// normally (`Some(0)`) and the `None if cancelled()` arm never fires -
+    /// the cancel request would be silently dropped and the job would
+    /// complete `Ok`. The fix re-checks `job_cancelled` in
+    /// [`RegisteringSpawner::spawn`] right after inserting the killer and
+    /// kills the fresh process itself if set.
+    #[test]
+    fn cancel_job_during_spawn_window_is_not_lost() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![spec(0, dir.path().join("a.mkv"))];
+        std::fs::write(&specs[0].output, b"partial").unwrap();
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let spawner = MidSpawnGateSpawner {
+            inner: &fake,
+            ready: ready_tx,
+            release: Mutex::new(release_rx),
+        };
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        let (tx, rx) = mpsc::channel();
+        let opts = QueueOpts {
+            jobs: 1,
+            fail_fast: false,
+        };
+
+        let outcomes = std::thread::scope(|scope| {
+            let handle = scope.spawn(|| run_queue(&specs, &spawner, opts, &ctl, &tx));
+            ready_rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("spawn never reached the race window");
+            // The killer for job 0 is provably not registered yet (the
+            // spawner is still parked inside spawn), so this cancel_job
+            // finds nothing to kill - the exact lost-cancellation window.
+            ctl.cancel_job(0);
+            release_tx.send(()).expect("run_queue thread hung up early");
+            handle.join().expect("run_queue thread panicked")
+        });
+        drop(tx);
+        let _events: Vec<JobEvent> = rx.iter().collect();
+
+        assert_eq!(
+            outcomes[0].state,
+            JobState::Cancelled,
+            "a cancel_job landing mid-spawn must not be silently dropped"
+        );
+        assert!(
+            !specs[0].output.exists(),
+            "the killed job's partial must be deleted (D17)"
         );
     }
 
