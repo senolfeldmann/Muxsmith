@@ -2,7 +2,11 @@
 //! when mkvmerge is not on PATH, so the suite stays green on machines without
 //! it; CI installs mkvtoolnix so these run there.
 
-use muxsmith_core::capability::runtime::{MIN_SUPPORTED, Mkvmerge, RuntimeError};
+use muxsmith_core::capability::runtime::{MIN_SUPPORTED, Mkvmerge};
+// Only the #[cfg(unix)] fake-script tests consume the error type; an
+// unconditional import fails clippy -D warnings on Windows (unused).
+#[cfg(unix)]
+use muxsmith_core::capability::runtime::RuntimeError;
 
 fn mkvmerge() -> Option<Mkvmerge> {
     Mkvmerge::locate().ok()
