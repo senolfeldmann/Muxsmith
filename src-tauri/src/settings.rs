@@ -132,15 +132,45 @@ pub fn load(path: &Path) -> Result<AppSettings, SettingsError> {
 /// the persisted file itself, independent of what the caller handed in),
 /// keeping the first `RECENT_PROFILES_CAP` entries under the newest-first
 /// convention documented on the field.
+///
+/// **Atomic publish (fix).** Writing straight to `path` left a torn,
+/// unparseable file behind if the process died mid-write (crash, power
+/// loss, kill) -- and `load`'s [`SettingsError::Parse`] on that torn file
+/// is exactly what a naive first-run recovery flow would loop on forever,
+/// since the file exists and simply never parses. Instead: the bytes are
+/// written to a same-directory temp file first, then [`fs::rename`]
+/// publishes it onto `path` -- same-filesystem rename is atomic on Linux,
+/// macOS, and Windows, so any reader of `path` always sees either the
+/// previous complete file or the new complete one, never a partial write.
+/// `fs::rename` is the ONLY thing that ever touches the final name. On a
+/// failed rename the temp file is removed rather than left behind (its
+/// error is deliberately swallowed: the publish failure is what gets
+/// reported, a second failure while cleaning up after it would not be more
+/// actionable).
 pub fn save(path: &Path, settings: &AppSettings) -> Result<(), SettingsError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| SettingsError::Io(e.to_string()))?;
-    }
+    let parent = match path.parent() {
+        Some(parent) => {
+            fs::create_dir_all(parent).map_err(|e| SettingsError::Io(e.to_string()))?;
+            parent
+        }
+        None => Path::new("."),
+    };
     let mut capped = settings.clone();
     capped.recent_profiles.truncate(RECENT_PROFILES_CAP);
     let bytes =
         serde_json::to_vec_pretty(&capped).map_err(|e| SettingsError::Parse(e.to_string()))?;
-    fs::write(path, bytes).map_err(|e| SettingsError::Io(e.to_string()))
+
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "settings".to_string());
+    let tmp_path = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
+
+    fs::write(&tmp_path, &bytes).map_err(|e| SettingsError::Io(e.to_string()))?;
+    fs::rename(&tmp_path, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        SettingsError::Io(e.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -224,6 +254,63 @@ mod tests {
             Err(SettingsError::Parse(detail)) => assert!(!detail.is_empty()),
             other => panic!("expected Parse error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn save_leaves_no_temp_file_behind_after_a_successful_write() {
+        // Regression guard for the atomic-write fix (write-to-temp, then
+        // rename onto the final path, the only publish point): after a
+        // successful save the directory holds exactly the final
+        // settings.json, no temp sibling.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        save(&path, &AppSettings::default()).expect("save");
+
+        let entries: Vec<String> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            entries,
+            vec!["settings.json".to_string()],
+            "only the final settings.json may remain visible; no temp file leftover"
+        );
+    }
+
+    #[test]
+    fn save_cleans_up_its_temp_file_when_the_publish_rename_fails() {
+        // A directory at the FINAL path (not a file) forces fs::rename to
+        // fail (EISDIR/ENOTDIR depending on OS) -- root-safe, unlike a
+        // permission-bit trick, mirroring executor::job's/run.rs's own
+        // delete_partial/finalize_joblog test pattern. Asserts both halves
+        // of "rename is the only publish point": the pre-existing directory
+        // at the final name is untouched (the write never touched it), and
+        // the temp file the atomic write staged its bytes in does not leak
+        // -- a naive atomic-write implementation that skips cleanup on a
+        // failed publish would otherwise accumulate temp files forever.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::create_dir(&path).unwrap();
+
+        let result = save(&path, &AppSettings::default());
+        assert!(result.is_err(), "a directory at the final path must fail");
+        assert!(
+            path.is_dir(),
+            "the pre-existing directory must be untouched"
+        );
+
+        let leftovers: Vec<String> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "settings.json")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "no temp file may survive a failed publish, found: {leftovers:?}"
+        );
     }
 
     #[test]
