@@ -1,0 +1,88 @@
+# Building Muxsmith from source
+
+Single source for build prerequisites and commands until the public README
+absorbs this at 1.0.
+
+Muxsmith is a Rust workspace (`crates/muxsmith-core`, `crates/muxsmith-cli`,
+`crates/xtask`, `src-tauri`) plus a Vue 3 + TypeScript frontend (`src/`) that
+`src-tauri` (crate `muxsmith-gui`) wraps into a Tauri 2 desktop app.
+
+## Prerequisites
+
+### Rust toolchain
+
+Pinned via `rust-toolchain.toml` (currently 1.96.1, with `rustfmt` and
+`clippy`); `rustup` on a rustup-managed system installs and switches to it
+automatically the first time you run `cargo` in this repo. No manual step.
+
+### System libraries (Tauri's native shell)
+
+Tauri needs a platform webview plus a few native headers to compile
+`src-tauri`.
+
+**Fedora:**
+
+```bash
+sudo dnf install -y webkit2gtk4.1-devel librsvg2-devel libappindicator-gtk3-devel
+```
+
+**Debian/Ubuntu** (same set CI installs):
+
+```bash
+sudo apt update
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+**Windows:** MSVC build tools (Visual Studio Build Tools or Visual Studio
+with the "Desktop development with C++" workload) and the WebView2 runtime
+(preinstalled on current Windows 10/11; installable separately otherwise).
+
+**macOS:** Xcode Command Line Tools (`xcode-select --install`). The system
+WebKit ships with the OS.
+
+### Node + pnpm
+
+The repo pins Node 26.5.0 and pnpm 11.10.0 via `mise.toml` (root, committed);
+`pnpm@11.10.0` is also mirrored in `package.json`'s `packageManager` field.
+
+- **mise users** (recommended, matches CI): `mise install` in the repo root
+  picks up `mise.toml` and installs the pinned versions.
+- **Without mise:** install Node >= 26 yourself, then `corepack enable` so
+  Corepack reads `packageManager` and provisions the exact pnpm version.
+
+Verify: `node --version` (v26.x), `pnpm --version` (11.x),
+`pkg-config --modversion webkit2gtk-4.1` (Linux only; prints a version once
+the system libraries above are installed).
+
+## Building and running
+
+```bash
+pnpm install         # frontend + Tauri JS dependencies (frozen lockfile in CI)
+pnpm dev             # Tauri dev window: Vite dev server + hot-reloading webview
+pnpm build            # vue-tsc type-check + production frontend build
+```
+
+`pnpm build` only builds the frontend bundle (`dist/`); it does not invoke
+`cargo tauri build`. Building the desktop bundle itself
+(`pnpm exec tauri build`) is out of scope for local development and not
+part of the CI gate yet.
+
+### The Rust gate (four parts, run from the repo root, workspace-wide)
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo deny check
+```
+
+### Frontend checks
+
+```bash
+pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
+pnpm test:e2e         # Playwright e2e suite - not yet implemented (later task)
+```
+
+CI (`.github/workflows/ci.yml`) runs the same four-part Rust gate plus
+`pnpm lint` and `pnpm build` on every push/PR; `cargo deny check` runs as an
+independent job.

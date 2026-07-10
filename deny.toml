@@ -5,17 +5,62 @@
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+# All entries below are transitive, from Tauri 2's Linux windowing stack
+# (Task 4 scaffold) - not dependencies we chose directly. Re-run
+# `cargo deny check` periodically; drop an ID once its crate is gone from
+# Cargo.lock (upstream fix) instead of leaving it stale.
+ignore = [
+    # open-i18n/rust-unic (unic-*): unmaintained, no safe upgrade exists.
+    # Pulled via urlpattern -> tauri-utils (Tauri's IPC URL matching).
+    "RUSTSEC-2025-0075", # unic-char-range
+    "RUSTSEC-2025-0080", # unic-common
+    "RUSTSEC-2025-0081", # unic-char-property
+    "RUSTSEC-2025-0098", # unic-ucd-version
+    "RUSTSEC-2025-0100", # unic-ucd-ident
+    # proc-macro-error: unmaintained in its own right (its own advisory,
+    # not the GTK3 archival below); reached as glib-macros' proc-macro
+    # dependency, i.e. via the same Tauri Linux stack.
+    "RUSTSEC-2024-0370", # proc-macro-error
+    # gtk-rs GTK3 bindings (gtk-rs/gtk3-rs): archived upstream in favor of
+    # gtk4-rs; Tauri 2's Linux backend (tao/wry) has not migrated off GTK3.
+    # No fix available at the application level.
+    "RUSTSEC-2024-0411", # gdkwayland-sys
+    "RUSTSEC-2024-0412", # gdk
+    "RUSTSEC-2024-0413", # atk
+    "RUSTSEC-2024-0414", # gdkx11-sys
+    "RUSTSEC-2024-0415", # gtk
+    "RUSTSEC-2024-0416", # atk-sys
+    "RUSTSEC-2024-0417", # gdkx11
+    "RUSTSEC-2024-0418", # gdk-sys
+    "RUSTSEC-2024-0419", # gtk3-macros
+    "RUSTSEC-2024-0420", # gtk-sys
+    # quick-xml 0.39.4 DoS advisories (quadratic parse time / unbounded
+    # namespace allocation on untrusted XML). Reached only through
+    # wayland-scanner, a (proc-macro) build-time codegen tool that parses
+    # the static, trusted protocol XML shipped inside wayland-protocols;
+    # not linked into the muxsmith-gui binary and never sees untrusted
+    # input. A second, already-patched quick-xml 0.41.0 (via plist) is the
+    # one actually reachable at runtime.
+    "RUSTSEC-2026-0194", # quick-xml quadratic duplicate-attribute check
+    "RUSTSEC-2026-0195", # quick-xml unbounded namespace allocation
+]
 
 [licenses]
 version = 2
 # MIT project (spec 12); allow exactly the permissive licenses our dependency
 # tree actually uses today. Extend deliberately when a new dependency needs
-# one, never with a blanket allow.
+# one, never with a blanket allow. MPL-2.0 (cssparser, via Tauri's webview
+# tooling) is weak/file-level copyleft: safe to consume as an unmodified
+# dependency, does not affect muxsmith's own MIT license.
 allow = [
     "MIT",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "MPL-2.0",
     "Unicode-3.0",
+    "Zlib",
 ]
 confidence-threshold = 0.9
 

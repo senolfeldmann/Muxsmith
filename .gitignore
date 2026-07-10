@@ -4,3 +4,8 @@ gh-log.md
 
 # parallel SDD worktree streams
 .worktrees/
+
+# JS/Tauri frontend
+node_modules/
+dist/
+src-tauri/gen/
