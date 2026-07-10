@@ -58,6 +58,23 @@ const RUST_ONLY_IDS = new Set([
   "close-abort-dismiss",
 ]);
 
+// PARSING CONSTRAINT (deliberate, line-based -- not a Fluent parser,
+// mirroring src-tauri/src/run.rs::ftl_message's identically documented
+// line-lookup constraint): a message id is recognized only as a
+// column-0 `id =` line. What that means for Fluent syntax this catalog
+// tree uses today or may grow:
+//   - MULTILINE VALUES (indented continuation lines, incl. selectors like
+//     diagnostics.ftl's `invalid-template` / gui-jobs.ftl's
+//     `jobs-row-warning-count`): fine -- the id sits on the first line and
+//     continuation lines are indented, so they can never register a bogus
+//     id, and Fluent syntax inside the value is never inspected.
+//   - ATTRIBUTES (`.label = ...` lines): NOT registered as ids. If a
+//     catalog ever adds attributes the frontend addresses (fluent-vue's
+//     `$t("msg.attr")` form), this scanner will flag those references as
+//     missing -- extend parseCatalogIds then, don't work around it.
+//   - TERMS (`-brand-name = ...`): NOT registered (leading `-` fails the
+//     regex). Correct as-is: terms are catalog-internal and can never be
+//     a `$t()` argument.
 const MESSAGE_ID_RE = /^([A-Za-z][A-Za-z0-9_-]*)\s*=/;
 
 function parseCatalogIds(file) {
