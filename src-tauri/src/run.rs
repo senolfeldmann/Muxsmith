@@ -7,16 +7,23 @@
 //! persisted-history reads.
 //!
 //! **D23 single-run.** At most one run may be active; [`AppState::active`]
-//! is the source of truth, held across [`start_run`]'s whole synchronous
-//! planning pass (see [`lock_for_start`]) so a concurrent `start_run` can
-//! never race past the check. A window close ([`on_close_requested`])
-//! cancels the active run cooperatively without blocking the close itself.
+//! is the source of truth. [`start_run`] *reserves* the slot up front
+//! ([`Reservation`]) and then plans **without holding the lock**: planning
+//! shells out to mkvmerge per file and can run long, and
+//! [`on_close_requested`] locks this same mutex synchronously on Tauri's
+//! event-loop thread, so a lock held across planning would freeze the
+//! whole UI for that duration. The reservation keeps the single-run
+//! invariant airtight end-to-end (a second `start_run` during planning is
+//! still rejected with `"run-already-active"`) while every lock
+//! acquisition stays O(1). A window close ([`on_close_requested`]) cancels
+//! the active (or still-planning) run cooperatively without blocking the
+//! close itself.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use serde::Serialize;
@@ -44,16 +51,91 @@ use crate::error::IpcError;
 /// at merge time.
 #[derive(Default)]
 pub struct AppState {
-    active: Mutex<Option<ActiveRun>>,
+    active: Mutex<Option<RunSlot>>,
 }
 
-/// The run currently occupying [`AppState::active`]'s slot: the
-/// [`QueueControl`] that reaches its queue for `cancel_run`/`cancel_job`/
+/// What currently occupies [`AppState::active`]'s single slot. Both
+/// variants count as "a run is active" for the D23 single-run gate; they
+/// differ only in what a cancel can reach (see each variant).
+enum RunSlot {
+    /// [`start_run`] is mid-planning: the slot is held so a concurrent
+    /// `start_run` is rejected, but no queue exists yet. Carries the
+    /// batch-cancel flag that will become the queue's own (via
+    /// [`QueueControl::new`]) if the run materializes, so a
+    /// `cancel_run`/window-close landing in this window is not lost: the
+    /// queue is born already-cancelled and every job finishes `Cancelled`
+    /// without spawning (D16 semantics, before the first dequeue).
+    Reserved(Arc<AtomicBool>),
+    /// The queue is running; the [`ActiveRun`]'s control reaches it.
+    Running(ActiveRun),
+}
+
+/// The running queue occupying [`AppState::active`]'s slot: the
+/// [`QueueControl`] that reaches it for `cancel_run`/`cancel_job`/
 /// window-close teardown. The run's id is returned to the caller directly
 /// by [`start_run`] (as [`StartedRun::run_id`]) and is not otherwise
 /// consumed while the run is in flight, so it is not duplicated here.
 struct ActiveRun {
     ctl: Arc<QueueControl>,
+}
+
+/// An RAII hold on [`AppState::active`]'s slot for the span of
+/// [`start_run`]'s lock-free planning pass (D23). [`Reservation::acquire`]
+/// installs [`RunSlot::Reserved`] and releases the mutex immediately;
+/// dropping the reservation *without* [`Reservation::commit`] clears the
+/// slot again -- one mechanism covering every soft-outcome early return
+/// (and a mid-planning panic) so no path can leak the reservation and
+/// wedge the app in permanent `"run-already-active"`.
+struct Reservation<'a> {
+    state: &'a AppState,
+    cancel: Arc<AtomicBool>,
+    committed: bool,
+}
+
+impl<'a> Reservation<'a> {
+    /// Reserves the single-run slot, or fails with `"run-already-active"`
+    /// if either a reservation or a running queue already holds it. The
+    /// mutex is held only for this check-and-insert, never across
+    /// planning.
+    fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
+        let mut slot = state.active.lock().unwrap();
+        if slot.is_some() {
+            return Err(IpcError::code("run-already-active"));
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        *slot = Some(RunSlot::Reserved(Arc::clone(&cancel)));
+        Ok(Reservation {
+            state,
+            cancel,
+            committed: false,
+        })
+    }
+
+    /// The reservation's batch-cancel flag, to be shared into
+    /// [`QueueControl::new`] as the queue's own batch flag: a cancel that
+    /// landed during planning ([`do_cancel_run`]/[`on_close_requested`] on
+    /// [`RunSlot::Reserved`]) is thereby carried into the queue instead of
+    /// lost.
+    fn cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel)
+    }
+
+    /// Promotes the reservation to a running queue: installs
+    /// [`RunSlot::Running`] over the `Reserved` placeholder. Called before
+    /// the queue thread spawns, so the thread's own end-of-run clear
+    /// ([`run_batch`]) can never race ahead of the install.
+    fn commit(mut self, ctl: Arc<QueueControl>) {
+        *self.state.active.lock().unwrap() = Some(RunSlot::Running(ActiveRun { ctl }));
+        self.committed = true;
+    }
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            *self.state.active.lock().unwrap() = None;
+        }
+    }
 }
 
 /// [`start_run`]'s success payload.
@@ -119,6 +201,15 @@ pub enum JoblogStatus {
 /// outcome is data, not a shell-level error -- and in practice `start_run`
 /// is only reachable once T10's Batch view has already shown a clean
 /// `dry_run`, so these branches are defensive, not the expected path.
+///
+/// **Event-ordering contract (frontend requirement).** Listeners for BOTH
+/// `muxsmith://job-event` and `muxsmith://run-finished` MUST be registered
+/// *before* invoking `start_run`. On the soft-outcome branches above,
+/// `muxsmith://run-finished` is emitted synchronously, before this
+/// command's own `Result` ever returns to the caller; a frontend that
+/// waits for `start_run` to resolve and only then subscribes misses that
+/// terminal event entirely (and can race the first job events of a real
+/// run the same way). Subscribe first, then invoke.
 #[tauri::command]
 pub fn start_run(
     app: AppHandle,
@@ -128,13 +219,17 @@ pub fn start_run(
     output: Option<String>,
     jobs: Option<usize>,
 ) -> Result<StartedRun, IpcError> {
-    let mut guard = lock_for_start(&state)?;
+    // Reserve the single-run slot, then plan WITHOUT holding the lock
+    // (module doc: a lock held across planning would freeze the event
+    // loop). Dropping `reservation` uncommitted -- every soft-outcome
+    // early return below -- releases the slot again.
+    let reservation = Reservation::acquire(&state)?;
 
     let profile_path = PathBuf::from(profile);
     let profile = match load::from_file(&profile_path) {
         Ok(p) => p,
         Err(d) => {
-            drop(guard);
+            drop(reservation);
             let doc = run_document(config_only_document(&[d], None, &ShellRenderer), &[], &[]);
             return Ok(finish_without_queue(&app, doc));
         }
@@ -146,7 +241,7 @@ pub fn start_run(
     let mkv = match Mkvmerge::locate() {
         Ok(m) => m,
         Err(_) => {
-            drop(guard);
+            drop(reservation);
             let doc = run_document(
                 config_only_document(&config_diags, Some(false), &ShellRenderer),
                 &[],
@@ -158,7 +253,7 @@ pub fn start_run(
     let lang = match mkv.list_languages() {
         Ok(l) => l,
         Err(_) => {
-            drop(guard);
+            drop(reservation);
             let doc = run_document(
                 config_only_document(&config_diags, Some(true), &ShellRenderer),
                 &[],
@@ -195,7 +290,7 @@ pub fn start_run(
         .collect();
 
     if specs.is_empty() {
-        drop(guard);
+        drop(reservation);
         let doc = run_document(
             batch_document(&config_diags, &batch, &ShellRenderer),
             &[],
@@ -205,16 +300,16 @@ pub fn start_run(
     }
 
     let run_id = make_run_id(SystemTime::now());
-    let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+    // The reservation's own flag becomes the queue's batch-cancel flag: a
+    // cancel_run/window-close that landed while planning ran is carried
+    // into the queue (born already-cancelled) instead of lost.
+    let ctl = QueueControl::new(specs.len(), reservation.cancel_flag());
     let logger =
         resolve_runs_root().and_then(|root| RunLogger::create(&root, &run_id, &specs).ok());
     let run_dir = logger.as_ref().map(|l| l.dir().display().to_string());
     let total_jobs = specs.len();
 
-    *guard = Some(ActiveRun {
-        ctl: Arc::clone(&ctl),
-    });
-    drop(guard);
+    reservation.commit(Arc::clone(&ctl));
 
     let base = batch_document(&config_diags, &batch, &ShellRenderer);
     let outputs: Vec<String> = specs
@@ -299,30 +394,22 @@ pub fn get_job_log(
 /// any, but never blocks the close itself -- `WindowEvent::CloseRequested`
 /// is otherwise left untouched (no `prevent_close`), so the window closes
 /// normally while the queue's own in-flight kills run in the background.
+/// A run still mid-planning ([`RunSlot::Reserved`]) has no queue to kill
+/// yet; setting its cancel flag makes the queue, if planning still
+/// materializes one, start already-cancelled. Every arm here is O(1): this
+/// runs synchronously on Tauri's event-loop thread, and [`start_run`]'s
+/// reservation pattern exists precisely so this lock is never contended
+/// for longer than a pointer swap.
 pub fn on_close_requested(window: &Window, event: &WindowEvent) {
     if !matches!(event, WindowEvent::CloseRequested { .. }) {
         return;
     }
     let state = window.app_handle().state::<AppState>();
-    if let Some(run) = state.active.lock().unwrap().as_ref() {
-        run.ctl.cancel_all();
+    match state.active.lock().unwrap().as_ref() {
+        Some(RunSlot::Reserved(cancel)) => cancel.store(true, Ordering::SeqCst),
+        Some(RunSlot::Running(run)) => run.ctl.cancel_all(),
+        None => {}
     }
-}
-
-/// D23's single-run gate: locks `state`'s active-run slot and returns the
-/// still-held guard on success, or an [`IpcError`] (code
-/// `"run-already-active"`) without ever unlocking if a run is already in
-/// flight. The lock stays held across the caller's own planning work (see
-/// [`start_run`]) so a concurrent `start_run` blocks until the first
-/// either releases it (planning produced nothing to run) or fills it (a
-/// real run started) -- closing the race a check-then-set without a held
-/// lock would leave open.
-fn lock_for_start(state: &AppState) -> Result<MutexGuard<'_, Option<ActiveRun>>, IpcError> {
-    let guard = state.active.lock().unwrap();
-    if guard.is_some() {
-        return Err(IpcError::code("run-already-active"));
-    }
-    Ok(guard)
 }
 
 /// Synchronously finishes a [`start_run`] call that never touched the
@@ -331,9 +418,13 @@ fn lock_for_start(state: &AppState) -> Result<MutexGuard<'_, Option<ActiveRun>>,
 /// (already the full `run_document` shape) and a `joblog_status` of
 /// [`JoblogStatus::Unavailable`] (D26: nothing ran, so no run directory
 /// exists), and returns the [`StartedRun`] `start_run` itself returns --
-/// `total_jobs: 0`, no `run_dir`. The active slot was never touched by the
-/// caller on this path (nothing is "in flight" for `cancel_run`/
-/// `cancel_job` to reach), so there is nothing to release here.
+/// `total_jobs: 0`, no `run_dir`. The caller drops its [`Reservation`]
+/// before calling this, releasing the single-run slot.
+///
+/// The emit happens synchronously inside the `start_run` invocation, i.e.
+/// before the command's `Result` reaches the frontend: this is the emit
+/// site behind [`start_run`]'s event-ordering contract (listeners must be
+/// registered before invoking the command, or this event is lost).
 fn finish_without_queue(app: &AppHandle, document: serde_json::Value) -> StartedRun {
     let run_id = make_run_id(SystemTime::now());
     emit_run_finished(app, document, JoblogStatus::Unavailable);
@@ -348,6 +439,12 @@ fn finish_without_queue(app: &AppHandle, document: serde_json::Value) -> Started
 /// `report::json::run_document`) with a `joblog_status` field spliced in
 /// (D26). `document` is always a JSON object here (every `run_document`
 /// base is built from an object literal), so the splice never panics.
+///
+/// Called from two places with different timing: the queue thread's
+/// natural end (after the last job), and [`finish_without_queue`]'s
+/// synchronous soft-outcome path -- the latter fires before `start_run`
+/// even returns, which is why [`start_run`]'s doc requires listeners to be
+/// registered before the command is invoked.
 fn emit_run_finished(app: &AppHandle, mut document: serde_json::Value, status: JoblogStatus) {
     document["joblog_status"] =
         serde_json::to_value(status).expect("JoblogStatus always serializes");
@@ -430,10 +527,19 @@ fn resolve_runs_root() -> Option<PathBuf> {
     }
 }
 
+/// [`cancel_run`]'s testable body. A run mid-planning
+/// ([`RunSlot::Reserved`]) is cancelled by setting the reservation's flag,
+/// which [`start_run`] shares into [`QueueControl::new`] as the queue's
+/// batch flag: the queue is born already-cancelled and every job finishes
+/// `Cancelled` without spawning, so a cancel in the planning window is
+/// honored, not lost.
 fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
-    let active = state.active.lock().unwrap();
-    match active.as_ref() {
-        Some(run) => {
+    match state.active.lock().unwrap().as_ref() {
+        Some(RunSlot::Reserved(cancel)) => {
+            cancel.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        Some(RunSlot::Running(run)) => {
             run.ctl.cancel_all();
             Ok(())
         }
@@ -441,10 +547,17 @@ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
     }
 }
 
+/// [`cancel_job`]'s testable body. During [`RunSlot::Reserved`] the job
+/// set does not exist yet, so a per-job cancel has no target: it is
+/// accepted as a no-op, mirroring [`QueueControl::cancel_job`]'s own
+/// out-of-range no-op semantics. The window is unreachable from a
+/// well-behaved frontend anyway -- job indices only become known once
+/// `start_run` returns, and by then the slot is `Running` (commit happens
+/// before `start_run` returns).
 fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
-    let active = state.active.lock().unwrap();
-    match active.as_ref() {
-        Some(run) => {
+    match state.active.lock().unwrap().as_ref() {
+        Some(RunSlot::Reserved(_)) => Ok(()),
+        Some(RunSlot::Running(run)) => {
             run.ctl.cancel_job(index);
             Ok(())
         }
@@ -523,14 +636,17 @@ fn get_job_log_in(
 }
 
 /// Guards path traversal (D26): a valid `run_id` is a single plain path
-/// component -- no separators, and not `.`/`..` -- checked before it is
-/// ever joined onto the runs root.
+/// component -- no separators, no `':'` (a Windows drive prefix like `"C:"`
+/// is a root-replacing component under `PathBuf::join` there, and `':'`
+/// never occurs in a [`make_run_id`] name anyway), and not `.`/`..` --
+/// checked before it is ever joined onto the runs root.
 fn valid_run_id(run_id: &str) -> bool {
     !run_id.is_empty()
         && run_id != "."
         && run_id != ".."
         && !run_id.contains('/')
         && !run_id.contains('\\')
+        && !run_id.contains(':')
 }
 
 /// Minimal [`DiagnosticRenderer`] the shell hands to `batch_document`/
@@ -572,24 +688,111 @@ mod tests {
         QueueControl::new(spec_count, Arc::new(AtomicBool::new(false)))
     }
 
-    // -- lock_for_start: "second start rejected while active" --------------
+    fn running(control: &Arc<QueueControl>) -> RunSlot {
+        RunSlot::Running(ActiveRun {
+            ctl: Arc::clone(control),
+        })
+    }
+
+    // -- Reservation: single-run invariant across the planning window ---------
+
+    /// The reviewer-mandated mid-planning rejection: a second start_run
+    /// arriving while the first is still planning (slot Reserved, no
+    /// queue yet) must get run-already-active. The reservation stands in
+    /// for the whole planning pass here: start_run's body between acquire
+    /// and commit/drop is a straight-line sequence with no other slot
+    /// access, so holding the reservation IS the mid-planning state.
+    #[test]
+    fn second_start_is_rejected_while_the_first_is_mid_planning() {
+        let state = AppState::default();
+        let first = Reservation::acquire(&state).unwrap();
+
+        match Reservation::acquire(&state) {
+            Err(e) => assert_eq!(e.code, "run-already-active"),
+            Ok(_) => panic!("expected run-already-active, got Ok"),
+        }
+
+        drop(first);
+    }
+
+    /// A soft outcome (any early return in start_run) drops the
+    /// reservation uncommitted; the slot must be free again -- no path may
+    /// leak the reservation into a permanent run-already-active.
+    #[test]
+    fn reservation_clears_on_a_soft_outcome() {
+        let state = AppState::default();
+        let reservation = Reservation::acquire(&state).unwrap();
+        drop(reservation);
+
+        assert!(state.active.lock().unwrap().is_none());
+        // And a fresh start_run can reserve again.
+        Reservation::acquire(&state).unwrap();
+    }
 
     #[test]
-    fn lock_for_start_rejects_when_active_is_occupied() {
+    fn second_start_is_rejected_while_a_queue_is_running_too() {
         let state = AppState::default();
-        *state.active.lock().unwrap() = Some(ActiveRun { ctl: ctl(1) });
+        let control = ctl(1);
+        Reservation::acquire(&state).unwrap().commit(control);
 
-        match lock_for_start(&state) {
+        match Reservation::acquire(&state) {
             Err(e) => assert_eq!(e.code, "run-already-active"),
             Ok(_) => panic!("expected run-already-active, got Ok"),
         }
     }
 
+    /// commit installs Running (not Reserved) and survives the
+    /// reservation's own drop; run_batch's end-of-run clear then frees the
+    /// slot -- the full lifecycle in slot terms.
     #[test]
-    fn lock_for_start_succeeds_when_idle() {
+    fn commit_promotes_the_reservation_and_run_batch_clears_it() {
         let state = AppState::default();
-        let guard = lock_for_start(&state).unwrap();
-        assert!(guard.is_none());
+        let control = ctl(1);
+        Reservation::acquire(&state)
+            .unwrap()
+            .commit(Arc::clone(&control));
+
+        assert!(matches!(
+            state.active.lock().unwrap().as_ref(),
+            Some(RunSlot::Running(_))
+        ));
+
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![spec(dir.path(), "a.mkv")];
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+        run_batch(&state, &specs, &fake, opts(), &control, None, |_| {});
+
+        assert!(state.active.lock().unwrap().is_none());
+        Reservation::acquire(&state).unwrap();
+    }
+
+    /// A cancel_run landing in the planning window sets the reservation's
+    /// flag, and because start_run shares that same flag into
+    /// QueueControl::new, the queue is born already-cancelled: every job
+    /// finishes Cancelled without spawning. The cancel is honored, not
+    /// lost.
+    #[test]
+    fn cancel_run_during_planning_reaches_the_later_queue() {
+        let state = AppState::default();
+        let reservation = Reservation::acquire(&state).unwrap();
+
+        do_cancel_run(&state).unwrap();
+
+        // What start_run does after planning: QueueControl::new with the
+        // reservation's own flag.
+        let control = QueueControl::new(1, reservation.cancel_flag());
+        assert!(
+            control.job_cancelled(0),
+            "the planning-window cancel must already cover every job"
+        );
+    }
+
+    #[test]
+    fn cancel_job_during_planning_is_an_accepted_no_op() {
+        let state = AppState::default();
+        let _reservation = Reservation::acquire(&state).unwrap();
+
+        do_cancel_job(&state, 0).unwrap();
     }
 
     // -- run_batch: event ordering ------------------------------------------
@@ -637,9 +840,7 @@ mod tests {
         let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
         let control = ctl(specs.len());
         let state = AppState::default();
-        *state.active.lock().unwrap() = Some(ActiveRun {
-            ctl: Arc::clone(&control),
-        });
+        *state.active.lock().unwrap() = Some(running(&control));
 
         run_batch(&state, &specs, &fake, opts(), &control, None, |_| {});
 
@@ -737,8 +938,22 @@ mod tests {
     }
 
     #[test]
-    fn valid_run_id_rejects_traversal_and_separators() {
-        for bad in ["../etc/passwd", "a/b", "a\\b", "..", ".", ""] {
+    fn valid_run_id_rejects_traversal_separators_and_drive_prefixes() {
+        // "C:"/"C:x" cover the Windows drive-prefix hazard: PathBuf::join
+        // with a drive-prefixed component replaces the root there, so ':'
+        // must be rejected on every platform (the check runs on Linux CI
+        // but guards the Windows build).
+        for bad in [
+            "../etc/passwd",
+            "a/b",
+            "a\\b",
+            "..",
+            ".",
+            "",
+            "C:",
+            "C:x",
+            "a:b",
+        ] {
             assert!(!valid_run_id(bad), "expected {bad:?} to be rejected");
         }
     }
@@ -823,9 +1038,7 @@ mod tests {
     fn do_cancel_run_cancels_the_active_batch() {
         let state = AppState::default();
         let control = ctl(1);
-        *state.active.lock().unwrap() = Some(ActiveRun {
-            ctl: Arc::clone(&control),
-        });
+        *state.active.lock().unwrap() = Some(running(&control));
 
         do_cancel_run(&state).unwrap();
 
@@ -843,9 +1056,7 @@ mod tests {
     fn do_cancel_job_cancels_only_the_targeted_job() {
         let state = AppState::default();
         let control = ctl(2);
-        *state.active.lock().unwrap() = Some(ActiveRun {
-            ctl: Arc::clone(&control),
-        });
+        *state.active.lock().unwrap() = Some(running(&control));
 
         do_cancel_job(&state, 0).unwrap();
 
