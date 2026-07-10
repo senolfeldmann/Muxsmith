@@ -995,6 +995,9 @@ mod tests {
         })
     }
 
+    // Consumed only by the #[cfg(unix)] fake-script test below; an ungated
+    // definition fails clippy -D warnings on Windows (never used).
+    #[cfg(unix)]
     fn minimal_profile_yaml() -> &'static str {
         "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
     }
