@@ -6,7 +6,7 @@
 
 **Architecture:** Core gains three contained extensions (raw `Output` event variant; `QueueControl` with per-job cancel keyed by job index; `executor::joblog` RunLogger) plus a hoist of the batch/run JSON document assembly from the CLI into `core::report` so both surfaces render identical structures (spec 7 DRY rule). `src-tauri` is a thin shell: commands wrap core calls, `start_run` spawns `run_queue` on a std thread and re-emits each `JobEvent` as a Tauri event (the CLI's drain pattern, run.rs:210-235). The Vue frontend performs zero semantic validation and renders core's code+params diagnostics through Fluent.
 
-**Tech Stack:** Rust (edition 2024), Tauri 2 (+ plugin-dialog, plugin-clipboard-manager), Vue 3 + TypeScript + Vite, pnpm via corepack, fluent-vue over @fluent/bundle, eslint 9 (vue + intlify no-raw-text), Playwright (+ @axe-core/playwright), new core deps `dirs` + `time`.
+**Tech Stack:** Rust (edition 2024), Tauri 2 (+ plugin-dialog, plugin-clipboard-manager), Vue 3 + TypeScript + Vite, pnpm via mise, fluent-vue over @fluent/bundle, eslint 9 (vue + intlify no-raw-text), Playwright (+ @axe-core/playwright), new core deps `dirs` + `time`.
 
 ## Global Constraints
 
@@ -42,14 +42,14 @@ Conflict notes: T5 and T6 both edit `queue.rs`/`run.rs` - strictly serial. T7 an
 
 **Files:** none in repo.
 
-- [ ] **Step 1: Şenol runs the system-library install (Fedora; mise does not cover C libs):**
+- [x] **Step 1 (DONE 2026-07-10): Şenol ran the system-library install (Fedora; mise does not cover C libs):**
 
 ```bash
 sudo dnf install -y webkit2gtk4.1-devel librsvg2-devel libappindicator-gtk3-devel
 ```
 
-- [ ] **Step 2: Runtime pins via mise (Şenol manages runtimes with mise, NOT dnf/corepack):** in the repo root, `mise use node@26 pnpm@11` - writes `.mise.toml` (commit it; it is the project runtime pin). Node 26 = current line, becomes Active LTS 2026-10 (dev-only toolchain, no production Node). pnpm exact version additionally pinned via `packageManager` in package.json (T4) - that is what CI's corepack reads.
-- [ ] **Step 3: Verify:** `pkg-config --modversion webkit2gtk-4.1` prints a version; `node --version` prints v26.x; `pnpm --version` prints 11.x. Do not proceed to Task 4 before this passes locally.
+- [x] **Step 2 (DONE 2026-07-10, commit 656449c): Runtime pins via mise (Şenol manages runtimes with mise, NOT dnf/corepack):** in the repo root, `mise use node@26 pnpm@11` - writes `mise.toml` (commit it; it is the project runtime pin). Node 26 = current line, becomes Active LTS 2026-10 (dev-only toolchain, no production Node). pnpm exact version additionally mirrored in `packageManager` in package.json (T4) for non-mise corepack users.
+- [x] **Step 3 (DONE: webkit2gtk-4.1 2.52.4, node v26.5.0, pnpm 11.10.0): Verify:** `pkg-config --modversion webkit2gtk-4.1` prints a version; `node --version` prints v26.x; `pnpm --version` prints 11.x. Do not proceed to Task 4 before this passes locally.
 
 ---
 
@@ -120,14 +120,14 @@ Plus `started`/`progress`/`warning`/`error`/`finished` (finished embeds the full
 - Test: the gate itself (workspace now compiles tauri) + `pnpm lint` + `pnpm build`
 
 **Interfaces:**
-- Produces: crate `muxsmith-gui` (bin, `src-tauri/`); `pnpm dev|build|lint` scripts; identifier `io.github.senolfeldmann.muxsmith`; Vite devUrl `http://localhost:5173`, frontendDist `../dist`. Deps: tauri 2 + `tauri-plugin-dialog` + `tauri-plugin-clipboard-manager`; frontend `vue@3`, `fluent-vue`, `@fluent/bundle`, `@tauri-apps/api`, plugins' JS bindings; dev `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint@9`, `eslint-plugin-vue`, `@intlify/eslint-plugin-vue-i18n`, `typescript-eslint`. `packageManager` field pins pnpm (corepack).
+- Produces: crate `muxsmith-gui` (bin, `src-tauri/`); `pnpm dev|build|lint` scripts; identifier `io.github.senolfeldmann.muxsmith`; Vite devUrl `http://localhost:5173`, frontendDist `../dist`. Deps: tauri 2 + `tauri-plugin-dialog` + `tauri-plugin-clipboard-manager`; frontend `vue@3`, `fluent-vue`, `@fluent/bundle`, `@tauri-apps/api`, plugins' JS bindings; dev `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint@9`, `eslint-plugin-vue`, `@intlify/eslint-plugin-vue-i18n`, `typescript-eslint`. `packageManager` field mirrors the exact pnpm pin (for corepack users); `.npmrc` with `save-exact=true` so JS manifests pin exact versions (Şenol pin-everything policy).
 - App.vue placeholder renders one Fluent-sourced heading from `gui-common.ftl` (proves the i18n pipe end to end; no literal strings from day one).
 
 - [ ] **Step 1:** Scaffold via `pnpm create tauri-app` (vue-ts template) or manual - either way normalize to the paths above; wire fluent-vue with the `.ftl` loaded as raw string via Vite `?raw` import.
 - [ ] **Step 2: VERIFY the lint gate fires (D27).** Add a literal string to a template; `pnpm lint` MUST fail via `@intlify/eslint-plugin-vue-i18n` `no-raw-text` configured standalone (we use Fluent, not vue-i18n - confirm the rule works without the vue-i18n runtime; current docs via context7). If it does not, replace with a minimal custom eslint rule in `eslint.config.js` scanning Vue template text nodes. Remove the probe string.
-- [ ] **Step 3: CI.** In `ci.yml` `test` job add, before the cargo steps: Linux-only apt install of Tauri build deps (`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` - verify list against current Tauri v2 Linux prerequisites docs); `actions/setup-node@v4` (node-version 26, matching the `.mise.toml` pin) + `corepack enable` (reads the exact pnpm from `packageManager`); `pnpm install --frozen-lockfile`; after cargo steps: `pnpm lint`, `pnpm build`. Windows/macOS legs (PR/tag matrix) need no webkit deps; guard the apt step with `runner.os == 'Linux'`. Keep checkout@v4 (the v5 bump is a separate pending one-liner).
+- [ ] **Step 3: CI.** In `ci.yml` `test` job add, before the cargo steps: Linux-only apt install of Tauri build deps (`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` - verify list against current Tauri v2 Linux prerequisites docs); `jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d` (v4.2.0, SHA-pinned like all actions) which installs the exact node+pnpm from `mise.toml` - one version source; `pnpm install --frozen-lockfile`; after cargo steps: `pnpm lint`, `pnpm build`. Windows/macOS legs (PR/tag matrix) need no webkit deps; guard the apt step with `runner.os == 'Linux'`. All existing CI actions are SHA-pinned (commit 2ee2d0c); keep that style for anything you add.
 - [ ] **Step 4:** `cargo deny check` - the tauri tree adds many crates; extend `deny.toml` only with license allowances that actually appear (MIT/Apache-2.0/BSD/Zlib/ISC family expected), never blanket-allow.
-- [ ] **Step 5: Build documentation (Şenol directive 2026-07-10).** Create `BUILDING.md` at the repo root: prerequisites per OS (Fedora dnf line = the T0 command; Ubuntu/Debian apt line = the CI dep list; Windows: WebView2 + MSVC toolchain; macOS: Xcode CLT), Rust toolchain (rust-toolchain.toml governs, stable channel), Node 26 + pnpm 11 (repo `.mise.toml` for mise users; plain node >= 26 + `corepack enable` works too, pnpm exact via `packageManager`), and the command set (`pnpm install`, `pnpm dev` for the Tauri dev window, `pnpm build`, the four-part cargo gate, `pnpm lint`/`test:e2e`). The future public README's "Building from source" section links to or absorbs this file at 1.0; keep BUILDING.md the single source until then.
+- [ ] **Step 5: Build documentation (Şenol directive 2026-07-10).** Create `BUILDING.md` at the repo root: prerequisites per OS (Fedora dnf line = the T0 command; Ubuntu/Debian apt line = the CI dep list; Windows: WebView2 + MSVC toolchain; macOS: Xcode CLT), Rust toolchain (pinned via rust-toolchain.toml, currently 1.96.1), Node 26 + pnpm 11 (repo `mise.toml` for mise users; plain node >= 26 + `corepack enable` works too, pnpm exact via `packageManager`), and the command set (`pnpm install`, `pnpm dev` for the Tauri dev window, `pnpm build`, the four-part cargo gate, `pnpm lint`/`test:e2e`). The future public README's "Building from source" section links to or absorbs this file at 1.0; keep BUILDING.md the single source until then.
 - [ ] **Step 6: Full gate + pnpm lint + pnpm build green locally; push branch, verify the CI Linux job passes with the new steps. Commit** `feat(gui): scaffold Tauri 2 shell + Vue 3 frontend + CI toolchain`
 
 ---
