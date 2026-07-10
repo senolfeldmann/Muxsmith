@@ -61,25 +61,63 @@ export interface Diagnostic {
 /**
  * A `validate_profile`/`dry_run` report document (spec 5.2, 5.5, 7):
  * mirrors `muxsmith_core::report::json::{config_only_document,
- * batch_document}`. `files[].plan`/`suggestions` carry the planner's own
- * `FilePlan`/`Suggestion` shapes, which no T9 code reads and so are left
- * structurally opaque here rather than half-mirrored; T10 (the Batch
- * view, the actual consumer of file-level plan data) is where that shape
- * earns a real type.
+ * batch_document}`.
  */
 export interface ReportDocument {
   config_diagnostics: Diagnostic[];
   files: ReportFile[];
   batch_diagnostics: Diagnostic[];
-  suggestions: unknown[];
+  suggestions: Suggestion[];
   mkvmerge_found?: boolean;
 }
 
 export interface ReportFile {
   source: string;
   identifier: string;
-  plan: unknown | null;
+  plan: FilePlan | null;
   diagnostics: Diagnostic[];
+}
+
+/**
+ * One resolved rule-to-track assignment (spec 5, T10's resolution table):
+ * mirrors `muxsmith_core::planner::Assignment`, narrowed to the fields the
+ * Batch view renders. `track_id`/`track_kind` are `None`/`null` together,
+ * exactly when an `optional` rule matched nothing (spec 5.1); `source` and
+ * `changes` exist on the Rust struct but have no T10 consumer, so they stay
+ * unmirrored here rather than half-typed.
+ */
+export interface PlanAssignment {
+  rule_index: number;
+  track_id: number | null;
+  track_kind: string | null;
+}
+
+/**
+ * The resolved plan for one primary file (spec 3), narrowed to what T10's
+ * `ResolutionTable` renders: mirrors `muxsmith_core::planner::Plan`.
+ * Present only when the file has no error-severity diagnostic (`files[].plan`
+ * is `null` otherwise). Every other `Plan` field (attachments, chapters,
+ * tags, title, keep_unmatched, primary_track_ids) is profile-editor
+ * territory (Plan 6, D22), not rendered by the batch view, and stays
+ * unmirrored here.
+ */
+export interface FilePlan {
+  output: string;
+  assignments: PlanAssignment[];
+}
+
+/**
+ * A batch-validated suggested edit (spec 5.3, D6): mirrors
+ * `muxsmith_core::planner::Suggestion`. `edit` (the `StructuredEdit`
+ * enum) exists on the Rust struct but D22 confines the GUI to
+ * show-and-copy on `yaml_fragment`; no T10 code interprets `edit`, so it
+ * stays structurally opaque rather than half-mirrored.
+ */
+export interface Suggestion {
+  resolves: string;
+  config_path: string;
+  edit: unknown;
+  yaml_fragment: string;
 }
 
 /** Mirrors `src-tauri/src/lib.rs::identify_document`'s JSON shape. */
@@ -199,6 +237,22 @@ export function getSettings(): Promise<AppSettings> {
 
 export function setSettings(settings: AppSettings): Promise<void> {
   return invoke<void>("set_settings", { settings });
+}
+
+/**
+ * The Plan 5 wave-5 shell contract (controller-defined, T10/T11 briefs):
+ * what BatchView's `start-run` emit hands to App, which stores it and
+ * passes it to JobsView as the `pending-run` prop. Deliberately not
+ * `startRun`'s own parameter type above: `null` here means "unset,
+ * JobsView/the backend picks the default" for every field, whereas
+ * `startRun`'s optional fields are `undefined`-shaped; T11 maps between
+ * the two when it actually calls `startRun`.
+ */
+export interface RunRequest {
+  profile: string;
+  source: string | null;
+  output: string | null;
+  jobs: number | null;
 }
 
 // --- run lifecycle commands (T8) ---------------------------------------
