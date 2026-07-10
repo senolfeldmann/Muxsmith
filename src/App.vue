@@ -88,12 +88,19 @@ onMounted(checkMkvmerge);
       </button>
     </nav>
     <main>
+      <!-- v-show, not v-if: both views stay mounted across tab switches, so
+           JobsView's live run listeners (registered in its onMounted, torn
+           down in onUnmounted) survive navigating away mid-run. The hidden
+           view is display:none -- out of the a11y tree, cannot trap focus.
+           Only the first-run gate above (v-if/v-else-if) unmounts the
+           shell; eager-mounting both views at startup costs nothing at
+           this scale. -->
       <BatchView
-        v-if="activeView === 'batch'"
+        v-show="activeView === 'batch'"
         @start-run="onStartRun"
       />
       <JobsView
-        v-else
+        v-show="activeView === 'jobs'"
         :pending-run="pendingRun"
         @consumed="pendingRun = null"
       />

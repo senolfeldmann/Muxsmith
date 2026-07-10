@@ -67,11 +67,21 @@ async function updateSettings(mutate: (current: AppSettings) => AppSettings): Pr
   settings.value = next;
 }
 
+/** Mirrors `src-tauri/src/settings.rs::RECENT_PROFILES_CAP` (D27). The
+ * Rust side truncates only inside `save()`, so without this client-side
+ * cap the *rendered* MRU list would grow past the limit within one
+ * session (self-healing only on restart); truncating in the mutation
+ * keeps `settings.value` identical to what was actually persisted. */
+const RECENT_PROFILES_CAP = 10;
+
 async function rememberRecentProfile(path: string): Promise<void> {
   try {
     await updateSettings((current) => ({
       ...current,
-      recent_profiles: [path, ...current.recent_profiles.filter((p) => p !== path)],
+      recent_profiles: [path, ...current.recent_profiles.filter((p) => p !== path)].slice(
+        0,
+        RECENT_PROFILES_CAP,
+      ),
     }));
   } catch (e) {
     // Background bookkeeping only; a failed recents write never blocks
