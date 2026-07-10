@@ -53,6 +53,16 @@ pub enum JobEvent {
         /// The terminal outcome.
         outcome: JobOutcome,
     },
+    /// A raw output line (D24), verbatim, for every line mkvmerge wrote that
+    /// was not a `#GUI#progress` tick. Feeds a live log pane and persisted
+    /// job logs; warning/error lines appear both here (verbatim) and as
+    /// their own tagged [`JobEvent::Warning`]/[`JobEvent::Error`].
+    Output {
+        /// Index into the `specs` slice passed to [`run_queue`].
+        index: usize,
+        /// The line, verbatim (tags included).
+        line: String,
+    },
 }
 
 /// Queue policy (spec 6, D14).
@@ -150,6 +160,7 @@ pub fn run_queue(
                                 }
                                 JobProgress::WarningLine(text) => JobEvent::Warning { index, text },
                                 JobProgress::ErrorLine(text) => JobEvent::Error { index, text },
+                                JobProgress::OutputLine(line) => JobEvent::Output { index, line },
                             };
                             let _ = events.send(event);
                         };

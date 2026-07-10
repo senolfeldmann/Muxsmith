@@ -64,6 +64,12 @@ pub enum JobProgress {
     WarningLine(String),
     /// A captured `#GUI#error` line, tag stripped.
     ErrorLine(String),
+    /// Any line mkvmerge wrote that is not a `#GUI#progress` tick, verbatim
+    /// (tags included, so warning/error lines appear here too, in addition
+    /// to their own tag-stripped [`JobProgress::WarningLine`] /
+    /// [`JobProgress::ErrorLine`]). Feeds a live log pane and persisted job
+    /// logs (D24); core attaches no meaning to the text itself.
+    OutputLine(String),
 }
 
 /// Runs one job to completion: ensures the output's parent dir exists
@@ -111,14 +117,17 @@ pub fn run_job(
     while let Some(line) = running.next_line() {
         if let Some(pct) = parse_progress(&line) {
             on_progress(JobProgress::Percent(pct));
-        } else if let Some(text) = line.strip_prefix("#GUI#warning ") {
-            let text = text.to_string();
-            warnings.push(text.clone());
-            on_progress(JobProgress::WarningLine(text));
-        } else if let Some(text) = line.strip_prefix("#GUI#error ") {
-            let text = text.to_string();
-            errors.push(text.clone());
-            on_progress(JobProgress::ErrorLine(text));
+        } else {
+            on_progress(JobProgress::OutputLine(line.clone()));
+            if let Some(text) = line.strip_prefix("#GUI#warning ") {
+                let text = text.to_string();
+                warnings.push(text.clone());
+                on_progress(JobProgress::WarningLine(text));
+            } else if let Some(text) = line.strip_prefix("#GUI#error ") {
+                let text = text.to_string();
+                errors.push(text.clone());
+                on_progress(JobProgress::ErrorLine(text));
+            }
         }
     }
 
