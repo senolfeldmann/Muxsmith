@@ -42,14 +42,14 @@ Conflict notes: T5 and T6 both edit `queue.rs`/`run.rs` - strictly serial. T7 an
 
 **Files:** none in repo.
 
-- [ ] **Step 1: Şenol confirms/runs local installs (Fedora):**
+- [ ] **Step 1: Şenol runs the system-library install (Fedora; mise does not cover C libs):**
 
 ```bash
-sudo dnf install webkit2gtk4.1-devel librsvg2-devel libappindicator-gtk3-devel nodejs
-corepack enable
+sudo dnf install -y webkit2gtk4.1-devel librsvg2-devel libappindicator-gtk3-devel
 ```
 
-- [ ] **Step 2: Verify:** `pkg-config --modversion webkit2gtk-4.1` prints a version; `node --version` >= 20; `corepack pnpm --version` resolves. Do not proceed to Task 4 before this passes locally.
+- [ ] **Step 2: Runtime pins via mise (Şenol manages runtimes with mise, NOT dnf/corepack):** in the repo root, `mise use node@24 pnpm@10` - writes `.mise.toml` (commit it; it is the project runtime pin). Node 24 = Active LTS. pnpm exact version additionally pinned via `packageManager` in package.json (T4) - that is what CI's corepack reads.
+- [ ] **Step 3: Verify:** `pkg-config --modversion webkit2gtk-4.1` prints a version; `node --version` prints v24.x; `pnpm --version` prints 10.x. Do not proceed to Task 4 before this passes locally.
 
 ---
 
@@ -125,9 +125,9 @@ Plus `started`/`progress`/`warning`/`error`/`finished` (finished embeds the full
 
 - [ ] **Step 1:** Scaffold via `pnpm create tauri-app` (vue-ts template) or manual - either way normalize to the paths above; wire fluent-vue with the `.ftl` loaded as raw string via Vite `?raw` import.
 - [ ] **Step 2: VERIFY the lint gate fires (D27).** Add a literal string to a template; `pnpm lint` MUST fail via `@intlify/eslint-plugin-vue-i18n` `no-raw-text` configured standalone (we use Fluent, not vue-i18n - confirm the rule works without the vue-i18n runtime; current docs via context7). If it does not, replace with a minimal custom eslint rule in `eslint.config.js` scanning Vue template text nodes. Remove the probe string.
-- [ ] **Step 3: CI.** In `ci.yml` `test` job add, before the cargo steps: Linux-only apt install of Tauri build deps (`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` - verify list against current Tauri v2 Linux prerequisites docs); `actions/setup-node@v4` (node 22) + `corepack enable`; `pnpm install --frozen-lockfile`; after cargo steps: `pnpm lint`, `pnpm build`. Windows/macOS legs (PR/tag matrix) need no webkit deps; guard the apt step with `runner.os == 'Linux'`. Keep checkout@v4 (the v5 bump is a separate pending one-liner).
+- [ ] **Step 3: CI.** In `ci.yml` `test` job add, before the cargo steps: Linux-only apt install of Tauri build deps (`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev` - verify list against current Tauri v2 Linux prerequisites docs); `actions/setup-node@v4` (node-version 24, matching the `.mise.toml` pin) + `corepack enable` (reads the exact pnpm from `packageManager`); `pnpm install --frozen-lockfile`; after cargo steps: `pnpm lint`, `pnpm build`. Windows/macOS legs (PR/tag matrix) need no webkit deps; guard the apt step with `runner.os == 'Linux'`. Keep checkout@v4 (the v5 bump is a separate pending one-liner).
 - [ ] **Step 4:** `cargo deny check` - the tauri tree adds many crates; extend `deny.toml` only with license allowances that actually appear (MIT/Apache-2.0/BSD/Zlib/ISC family expected), never blanket-allow.
-- [ ] **Step 5: Build documentation (Şenol directive 2026-07-10).** Create `BUILDING.md` at the repo root: prerequisites per OS (Fedora dnf line = the T0 command; Ubuntu/Debian apt line = the CI dep list; Windows: WebView2 + MSVC toolchain; macOS: Xcode CLT), Rust toolchain (rust-toolchain.toml governs), node >= 20 + `corepack enable` (pnpm pinned via `packageManager`), and the command set (`pnpm install`, `pnpm dev` for the Tauri dev window, `pnpm build`, the four-part cargo gate, `pnpm lint`/`test:e2e`). The future public README's "Building from source" section links to or absorbs this file at 1.0; keep BUILDING.md the single source until then.
+- [ ] **Step 5: Build documentation (Şenol directive 2026-07-10).** Create `BUILDING.md` at the repo root: prerequisites per OS (Fedora dnf line = the T0 command; Ubuntu/Debian apt line = the CI dep list; Windows: WebView2 + MSVC toolchain; macOS: Xcode CLT), Rust toolchain (rust-toolchain.toml governs, stable channel), Node 24 + pnpm 10 (repo `.mise.toml` for mise users; plain node >= 24 + `corepack enable` works too, pnpm exact via `packageManager`), and the command set (`pnpm install`, `pnpm dev` for the Tauri dev window, `pnpm build`, the four-part cargo gate, `pnpm lint`/`test:e2e`). The future public README's "Building from source" section links to or absorbs this file at 1.0; keep BUILDING.md the single source until then.
 - [ ] **Step 6: Full gate + pnpm lint + pnpm build green locally; push branch, verify the CI Linux job passes with the new steps. Commit** `feat(gui): scaffold Tauri 2 shell + Vue 3 frontend + CI toolchain`
 
 ---
