@@ -337,7 +337,7 @@ function emitStartRun(): void {
           type="button"
           data-testid="batch-source-browse"
           :disabled="busy"
-          :title="$t('browse-button-tooltip')"
+          :title="$t('batch-browse-dir-tooltip')"
           @click="pickDir('source')"
         >
           {{ $t("browse-button") }}
@@ -360,7 +360,7 @@ function emitStartRun(): void {
           type="button"
           data-testid="batch-output-browse"
           :disabled="busy"
-          :title="$t('browse-button-tooltip')"
+          :title="$t('batch-browse-dir-tooltip')"
           @click="pickDir('output')"
         >
           {{ $t("browse-button") }}

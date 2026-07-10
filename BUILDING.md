@@ -80,9 +80,11 @@ cargo deny check
 
 ```bash
 pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
-pnpm test:e2e         # Playwright e2e suite - not yet implemented (later task)
+pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
+pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same four-part Rust gate plus
-`pnpm lint` and `pnpm build` on every push/PR; `cargo deny check` runs as an
+`pnpm lint`, `pnpm build`, `pnpm check:i18n`, and `pnpm test:e2e` on every
+push/PR; `cargo deny check` runs as an
 independent job.

@@ -43,20 +43,16 @@ pub struct IpcError {
 }
 
 impl IpcError {
-    /// Builds a code-only error with no params.
+    /// Builds a code-only error with no params. (Cleanup: this used to have
+    /// a duplicate `code(...)` constructor -- a merge artifact from two
+    /// tasks each naming their own read-only/settings vs. run-lifecycle
+    /// call sites differently -- collapsed into this single constructor;
+    /// every call site now uses this name.)
     pub fn new(code: impl Into<String>) -> IpcError {
         IpcError {
             code: code.into(),
             params: HashMap::new(),
         }
-    }
-
-    /// Builds an [`IpcError`] with no params. Same as [`IpcError::new`],
-    /// kept as its own name alongside it: the read-only/settings commands
-    /// call `new`, the run-lifecycle commands call `code` -- both
-    /// constructors survive the merge so neither call site needs touching.
-    pub fn code(code: impl Into<String>) -> IpcError {
-        IpcError::new(code)
     }
 
     /// Attaches one param, builder-style, overwriting any prior value for
@@ -229,15 +225,15 @@ mod tests {
     }
 
     #[test]
-    fn code_builds_with_empty_params() {
-        let e = IpcError::code("run-already-active");
+    fn new_builds_with_empty_params() {
+        let e = IpcError::new("run-already-active");
         assert_eq!(e.code, "run-already-active");
         assert!(e.params.is_empty());
     }
 
     #[test]
     fn with_attaches_and_overwrites_params() {
-        let e = IpcError::code("job-log-not-found")
+        let e = IpcError::new("job-log-not-found")
             .with("run_id", "20260710-153612Z")
             .with("index", "0")
             .with("index", "1");
@@ -247,7 +243,7 @@ mod tests {
 
     #[test]
     fn serializes_as_code_and_params() {
-        let e = IpcError::code("invalid-run-id").with("run_id", "../etc");
+        let e = IpcError::new("invalid-run-id").with("run_id", "../etc");
         let json = serde_json::to_value(&e).unwrap();
         assert_eq!(json["code"], "invalid-run-id");
         assert_eq!(json["params"]["run_id"], "../etc");

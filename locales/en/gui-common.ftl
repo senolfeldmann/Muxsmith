@@ -31,6 +31,15 @@ browse-button-tooltip = Choose the file with a file picker.
 mkvmerge-not-found = mkvmerge was not found.
 mkvmerge-too-old = The mkvmerge found ({ $found }) is older than the required minimum version { $minimum }.
 mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
+# identify is registered IPC surface (src-tauri/src/lib.rs::identify) but
+# had no gui-common.ftl entry, unlike every other IpcError code above and
+# below it -- a missing key that fell back to the raw "identify-failed"
+# code string. Wording adapted from cli.ftl's identical-purpose
+# `identify-failed`, not copied verbatim: the CLI message interpolates
+# `{ $file }`, but IpcError::from(IdentifyError) (error.rs) only ever
+# attaches a `detail` param (the underlying JSON-parse/stat error text),
+# never `file` -- a literal copy would reference an unpopulated variable.
+identify-failed = Could not identify the file: { $detail }
 mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
 settings-dir-unavailable = The application settings location could not be determined on this system.
 settings-io-failed = Application settings could not be read or written: { $detail }

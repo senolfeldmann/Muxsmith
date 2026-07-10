@@ -46,7 +46,12 @@ use settings::AppSettings;
 /// never reads this field, so this renderer echoes the diagnostic's own
 /// code key rather than composing a translated message the shell has no
 /// business producing.
-struct ShellRenderer;
+///
+/// `pub(crate)`: [`run`]'s `start_run` builds the same document shapes for
+/// the run-lifecycle path and used to carry an identical duplicate
+/// definition of this same zero-field unit struct; this is the one
+/// surviving copy.
+pub(crate) struct ShellRenderer;
 
 impl report::json::DiagnosticRenderer for ShellRenderer {
     fn diagnostic(&self, diagnostic: &report::Diagnostic) -> String {

@@ -1,7 +1,11 @@
 # T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
-# are show-and-copy only, never applied). `browse-button`/
-# `browse-button-tooltip` (gui-common.ftl) are reused for the source/output
-# directory pickers rather than duplicated here.
+# are show-and-copy only, never applied). `browse-button` (gui-common.ftl,
+# the generic "Browse..." label) is reused for the source/output directory
+# pickers, but their tooltip is `batch-browse-dir-tooltip` below, not
+# gui-common.ftl's `browse-button-tooltip` (fix: that one says "Choose the
+# file with a file picker", wrong noun for a directory picker; it stays
+# reserved for genuine file pickers, e.g. FirstRun's/SettingsDialog's
+# mkvmerge-path browse button).
 
 batch-view-heading = Batch
 
@@ -17,6 +21,7 @@ batch-recents-empty = No recent profiles yet.
 batch-recents-select-tooltip = Open this profile again.
 
 batch-dirs-heading = Directories
+batch-browse-dir-tooltip = Choose the directory with a folder picker.
 batch-source-label = Source directory
 batch-source-hint = Directory scanned for input files. Leave empty to use the profile's own source directory.
 batch-output-label = Output directory

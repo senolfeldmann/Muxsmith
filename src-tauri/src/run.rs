@@ -45,12 +45,10 @@ use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
 use muxsmith_core::planner::{RunInputs, plan_batch};
 use muxsmith_core::profile::{lint, load, validate};
-use muxsmith_core::report::Diagnostic;
-use muxsmith_core::report::json::{
-    DiagnosticRenderer, batch_document, config_only_document, run_document,
-};
+use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
 
 use crate::AppState;
+use crate::ShellRenderer;
 use crate::error::IpcError;
 
 /// What currently occupies [`AppState`]'s single run slot (the struct
@@ -109,7 +107,7 @@ impl<'a> Reservation<'a> {
     fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
         let mut slot = state.active.lock().unwrap();
         if slot.is_some() {
-            return Err(IpcError::code("run-already-active"));
+            return Err(IpcError::new("run-already-active"));
         }
         state.quit_after_finished.store(false, Ordering::SeqCst);
         let cancel = Arc::new(AtomicBool::new(false));
@@ -687,7 +685,7 @@ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
             run.ctl.cancel_all();
             Ok(())
         }
-        None => Err(IpcError::code("no-active-run")),
+        None => Err(IpcError::new("no-active-run")),
     }
 }
 
@@ -705,7 +703,7 @@ fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
             run.ctl.cancel_job(index);
             Ok(())
         }
-        None => Err(IpcError::code("no-active-run")),
+        None => Err(IpcError::new("no-active-run")),
     }
 }
 
@@ -766,12 +764,12 @@ fn get_job_log_in(
     index: usize,
 ) -> Result<serde_json::Value, IpcError> {
     if !valid_run_id(run_id) {
-        return Err(IpcError::code("invalid-run-id").with("run_id", run_id));
+        return Err(IpcError::new("invalid-run-id").with("run_id", run_id));
     }
-    let root = runs_root.ok_or_else(|| IpcError::code("job-log-unavailable"))?;
+    let root = runs_root.ok_or_else(|| IpcError::new("job-log-unavailable"))?;
     let path = root.join(run_id).join(format!("job-{index}.json"));
     let not_found = || {
-        IpcError::code("job-log-not-found")
+        IpcError::new("job-log-not-found")
             .with("run_id", run_id)
             .with("index", index.to_string())
     };
@@ -793,26 +791,12 @@ fn valid_run_id(run_id: &str) -> bool {
         && !run_id.contains(':')
 }
 
-/// Minimal [`DiagnosticRenderer`] the shell hands to `batch_document`/
-/// `config_only_document` (both require one): every diagnostic's
-/// `"rendered"` field carries its own stable `code` key rather than
-/// localized prose. The frontend never reads this field -- it renders each
-/// diagnostic from its own `code`+`params` through its own Fluent catalog
-/// (spec 7/8.4's GUI-side split, T9/T10's territory) -- so this passthrough
-/// is correct data, simply not prose.
-struct ShellRenderer;
-
-impl DiagnosticRenderer for ShellRenderer {
-    fn diagnostic(&self, diagnostic: &Diagnostic) -> String {
-        diagnostic.code.key().to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use muxsmith_core::executor::spawn::FakeSpawner;
-    use muxsmith_core::report::DiagCode;
+    use muxsmith_core::report::json::DiagnosticRenderer;
+    use muxsmith_core::report::{DiagCode, Diagnostic};
 
     fn spec(dir: &Path, name: &str) -> JobSpec {
         JobSpec {
