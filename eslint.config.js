@@ -44,7 +44,21 @@ export default tseslint.config(
       "@intlify/vue-i18n": vueI18n,
     },
     rules: {
-      "@intlify/vue-i18n/no-raw-text": "error",
+      // `attributes` defaults to none checked (the rule only scans text
+      // nodes out of the box); D29 requires accessible names/tooltips to
+      // come from Fluent too, so a STATIC (non-`:`-bound) title/aria-label/
+      // placeholder/alt is flagged like any other raw string. A `:title=`/
+      // `:aria-label=` binding (the correct form, used throughout this
+      // codebase) is a directive and outside this rule's reach regardless
+      // -- this option only closes the "forgot to bind it" gap.
+      "@intlify/vue-i18n/no-raw-text": [
+        "error",
+        {
+          attributes: {
+            "/.*/": ["title", "aria-label", "placeholder", "alt"],
+          },
+        },
+      ],
     },
   },
 );

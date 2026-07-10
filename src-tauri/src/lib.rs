@@ -386,16 +386,22 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
     state.save_settings(&settings)
 }
 
-/// Builds and runs the Tauri application: registers the `dialog` and
-/// `clipboard-manager` plugins (capabilities in `capabilities/default.json`
-/// gate what each grants to the *frontend*; the shell's own Rust-side
-/// dialog use in [`run::on_close_requested`] bypasses the IPC permission
-/// layer and needs no capability entry), manages the single unified
-/// [`AppState`], registers both tasks' IPC commands under ONE
-/// `invoke_handler` (Tauri resolves `State<AppState>` once per managed
+/// Builds and runs the Tauri application: registers the `dialog`,
+/// `clipboard-manager`, and `os` plugins (capabilities in
+/// `capabilities/default.json` gate what each grants to the *frontend*; the
+/// shell's own Rust-side dialog use in [`run::on_close_requested`] bypasses
+/// the IPC permission layer and needs no capability entry), manages the
+/// single unified [`AppState`], registers both tasks' IPC commands under
+/// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
 /// type, so the read-only/settings commands and the run-lifecycle commands
 /// must share the same registration), wires the D31 close-with-active-run
 /// confirmation, and launches the main window from `tauri.conf.json`.
+///
+/// The `os` plugin (T9, D28) is here rather than in `@tauri-apps/api`
+/// (which this task's brief names): Tauri 2 moved OS/platform detection
+/// out of the core API into this separate plugin (`@tauri-apps/plugin-os`
+/// on the frontend side), so `FirstRun.vue`'s per-OS guidance needs it
+/// registered like `dialog`/`clipboard-manager` are.
 ///
 /// # Panics
 ///
@@ -407,6 +413,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_os::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             validate_profile,

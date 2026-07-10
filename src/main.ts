@@ -1,20 +1,30 @@
 import { createApp } from "vue";
 import { createFluentVue } from "fluent-vue";
-import { FluentBundle, FluentResource } from "@fluent/bundle";
 import App from "./App.vue";
+import { buildBundles } from "./i18n";
+import { getSettings } from "./ipc";
 
-// Fluent catalog loaded as a raw string (Vite `?raw`) rather than through
-// vue-i18n's JSON/YAML message-catalog loader: Muxsmith standardizes on
-// Fluent (.ftl) everywhere, CLI side included (see
-// `crates/muxsmith-cli/src/i18n.rs`), so the GUI reads the same format
-// instead of introducing a second one.
-import guiCommonFtl from "../locales/en/gui-common.ftl?raw";
+/**
+ * Resolves the locale before the app ever mounts (spec 8.4: "system locale
+ * with manual override in app settings ... falls back to English per
+ * message"), so the very first paint already uses the right catalog chain
+ * instead of flashing English and re-rendering. `get_settings` failing
+ * (e.g. no resolvable platform config dir) is not a startup blocker --
+ * `buildBundles` already falls back to "en" for any locale it cannot
+ * resolve, exactly as it would for an unset setting.
+ */
+async function resolveLocale(): Promise<string | null> {
+  try {
+    return (await getSettings()).locale ?? navigator.language;
+  } catch {
+    return navigator.language;
+  }
+}
 
-const bundle = new FluentBundle("en");
-bundle.addResource(new FluentResource(guiCommonFtl));
+async function bootstrap() {
+  const locale = await resolveLocale();
+  const fluent = createFluentVue({ bundles: buildBundles(locale) });
+  createApp(App).use(fluent).mount("#app");
+}
 
-const fluent = createFluentVue({
-  bundles: [bundle],
-});
-
-createApp(App).use(fluent).mount("#app");
+void bootstrap();

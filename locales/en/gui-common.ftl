@@ -11,3 +11,44 @@ close-abort-title = Abort running jobs
 close-abort-message = There is currently a job running. Do you really want to abort all currently running jobs and quit?
 close-abort-confirm = Abort jobs and quit
 close-abort-dismiss = Cancel
+
+# T9: app shell navigation (single window, two views + first-run + settings,
+# spec 8.2). aria-current="page" on the active tab is set in the template,
+# not encoded here.
+nav-label = Main navigation
+nav-batch = Batch
+nav-jobs = Jobs
+settings-open-label = Settings
+settings-open-tooltip = Open application settings (mkvmerge path, default jobs, language).
+browse-button = Browse...
+browse-button-tooltip = Choose the file with a file picker.
+
+# T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
+# Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
+# selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
+# raw code when a message exists here, and falls back to the code string
+# itself only when a key is genuinely missing.
+mkvmerge-not-found = mkvmerge was not found.
+mkvmerge-too-old = The mkvmerge found ({ $found }) is older than the required minimum version { $minimum }.
+mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
+mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
+settings-dir-unavailable = The application settings location could not be determined on this system.
+settings-io-failed = Application settings could not be read or written: { $detail }
+settings-parse-failed = The application settings file is corrupt: { $detail }
+internal-task-failed = An internal error occurred: { $detail }
+
+# T9: first-run mkvmerge detection (D28).
+firstrun-detecting = Looking for mkvmerge...
+firstrun-missing-heading = mkvmerge was not found
+firstrun-too-old-heading = mkvmerge is too old
+firstrun-detect-failed-heading = mkvmerge detection failed
+firstrun-guidance-windows = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at mkvmerge.exe below (typically under %ProgramFiles%\MKVToolNix\mkvmerge.exe).
+firstrun-guidance-macos = Install MKVToolNix from mkvtoolnix.download into /Applications, then retry, or point Muxsmith directly at the mkvmerge binary below (typically /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge or /usr/local/bin/mkvmerge).
+firstrun-guidance-linux = Install the mkvtoolnix package from your distribution (e.g. apt, dnf, pacman), then retry, or point Muxsmith directly at the mkvmerge binary below (typically /usr/bin/mkvmerge or /usr/local/bin/mkvmerge).
+firstrun-guidance-fallback = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at the mkvmerge binary below.
+firstrun-picker-label = mkvmerge executable path
+firstrun-picker-hint = Enter or browse to the mkvmerge executable if it is not installed in a standard location.
+firstrun-use-path = Use this path
+firstrun-use-path-tooltip = Save this mkvmerge path and detect it again.
+firstrun-retry = Retry detection
+firstrun-retry-tooltip = Detect mkvmerge again without changing the configured path.
