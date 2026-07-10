@@ -387,7 +387,7 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 }
 
 /// Builds and runs the Tauri application: registers the `dialog`,
-/// `clipboard-manager`, and `os` plugins (capabilities in
+/// `clipboard-manager`, `os`, and `fs` plugins (capabilities in
 /// `capabilities/default.json` gate what each grants to the *frontend*; the
 /// shell's own Rust-side dialog use in [`run::on_close_requested`] bypasses
 /// the IPC permission layer and needs no capability entry), manages the
@@ -403,6 +403,21 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 /// on the frontend side), so `FirstRun.vue`'s per-OS guidance needs it
 /// registered like `dialog`/`clipboard-manager` are.
 ///
+/// The `fs` plugin (T11, D30 gap closure: export a finished job's log as
+/// text) is the write half of the history view's save-as flow -- the
+/// `dialog` plugin's own `save()` only returns a user-picked path, it never
+/// writes bytes. Paired deliberately with `dialog`, not `fs:default`: a
+/// `save()` call adds its picked path to the fs plugin's own scope for the
+/// rest of that session (Tauri's documented combo for this exact pattern),
+/// so `fs:allow-write-text-file` alone (`capabilities/default.json`) is
+/// sufficient -- no static path allowlist needed, and the frontend can
+/// never write anywhere the user did not just pick via the OS dialog.
+/// Chosen over a bespoke `#[tauri::command]` write for the same reason:
+/// the plugin route inherits Tauri's own "this path came from a real save
+/// dialog" trust chain end to end, where a custom command would accept any
+/// frontend-supplied path and have to hand-roll that provenance check
+/// itself.
+///
 /// # Panics
 ///
 /// Panics if the Tauri runtime fails to launch. This mirrors the Tauri
@@ -412,6 +427,7 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .manage(AppState::default())
