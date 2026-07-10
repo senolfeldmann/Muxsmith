@@ -17,8 +17,13 @@ path = "src/main.rs"
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
+dirs = "6.0.0"
+muxsmith-core = { path = "../crates/muxsmith-core" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 tauri = "2.11.5"
 tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-dialog = "2.7.1"
+
+[dev-dependencies]
+tempfile = "3.27.0"
