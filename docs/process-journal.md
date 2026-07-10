@@ -367,3 +367,45 @@ archive commit. Suite 215 -> 269 tests, gate green throughout.
 - T6 deferred verification DONE: CI run 29059480785 green (test 1m5s, deny 54s), mkvtoolnix install step executed, 0 "mkvmerge not found" skip markers in the full job log, gated tests (live_run_*, executor_live, attachment round trip) ran and passed. Evidence and commands in gh-log.md.
 - CI annotation noted for backlog: actions/checkout@v4 targets deprecated Node 20; bump to v5 is a one-liner.
 - Next session starts Plan 5 (Tauri GUI) from a clean, pushed master at 88512c1.
+
+## 2026-07-10 | Plan 5 complete (GUI run path) + go-public | session 6
+
+**Scope.** Plan 5 end to end in one session: design memo D22-D31, plan authoring, waves 0-7 (T0-T13), final fix wave, repo taken public. Commits 735c723..226fa06 (+journal/artifacts commits after). Docs: specs/2026-07-10-plan-5-gui-design-decisions.md, plans/2026-07-10-plan-5-gui-run-path.md.
+
+**Decisions and why.**
+- Vue 3 replaced React mid-design (Senol veto; spec section 7 amended). Steelman-then-decide: nothing GUI-side was React-specific; Vue is equally in his stack, SFC over JSX.
+- Toolchain philosophy set by Senol: newest-over-LTS for dev-only runtimes (node 26.5.0, pnpm 11.10.0 via mise; eslint 10.6.0 bumped mid-review when peer ceilings proved absent), pin-everything (rust 1.96.1 over floating stable, all CI actions SHA-pinned, runners pinned incl. ubuntu-26.04 preview at his call, ctrlc full-pin).
+- D31 (close-with-active-run) was net-new scope from a plan-mandated review finding: Senol asked "what does mkvtoolnix do", source check showed confirm-then-abort-then-quit-after-finished, he chose full parity. Memo amended, T8 extended.
+- Suggestions in GUI = show+copy only (apply deferred to Plan 6 with the editor, which owns YAML mutation). Job logs JSON-per-job written by core for BOTH surfaces (spec-6 wording read as job-engine property).
+- Go-public decided mid-close-out when the 3-OS verification cost question came up ("GitHub gives more resources; reversible"). Pulled two gates forward: ConcurrencyTracker doc(hidden), static 3-OS matrix.
+
+**What the process caught.** Real defects only, stage in parens:
+- Lost-cancellation race in per-job cancel mid-spawn window (T5 task review; implementer fix predicted-RED matched exactly). Origin: implementer.
+- Silent mid-run joblog write loss -> false "logs written" (T6 review). Origin: implementer.
+- eslint pinned to a 2-year-stale 9.9.1 from training-data memory, everything else registry-current (T4 review). Origin: implementer habit; led to registry-verify-everything discipline.
+- start_run resolved mkvmerge PATH-only, ignoring the settings override: Windows/override users pass detection+dry-run, every real run fails (WHOLE-BRANCH review only; T8 mirrored the CLI verbatim and could not see T7's substitution). Origin: cross-task drift; the single strongest argument this session for the final cross-cutting review.
+- Sync start_run froze the event loop during planning, making the tested cancel-during-planning paths unreachable from production UI (whole-branch). Origin: plan sketch.
+- Destructive double-Run: JobsView wiped a live run's state before rejection landed; D23's "UI disables Run while active" was simply not implemented (whole-branch). Origin: implementer + unowned cross-view concern.
+- Panic-wedge post-D31 (app unclosable), torn settings.json bricking FirstRun recovery loop (whole-branch, promoted from triage).
+- T12's claimed type-drift protection was unwired (tsc never invoked); reviewer proved it with the repo's own tooling. Origin: implementer report vs reality.
+- Noise separated: ~16 accumulated Minors triaged FIX-NOW (3) vs DEFER (13) by the whole-branch reviewer.
+
+**Mechanics/metrics (approx).** 14 tasks, 7 waves; 3 parallel worktree waves (4+2+2 streams), zero real merge conflicts except the planned T7/T8 AppState/IpcError reconciliation (dedicated subagent, nothing lost, 72 gui tests after union). Dispatches: 12 implementers + 12 task reviewers (all sonnet) + 1 explore + 1 merge-reconciler + 1 whole-branch reviewer (fable) + 1 final fixer; ~14 fix rounds total, every task Approved within 2 review cycles. Test suite 269 -> 369 tests + 3 Playwright scenarios + axe + i18n gate. Eight-gate discipline from T4 on. Wall clock: one long session incl. one Claude Code restart (context7 auth) and a mid-session pause.
+
+**Friction/failure.**
+- Harness permission classifier blocked agent commits/pushes early despite the SI-4 standing grant (three denials, then passed; one line noted each time, work continued). Mechanical friction, not revocation.
+- Controller initially proposed dnf/corepack for node - Senol corrected to mise (now a Peter memory + repo mise.toml). Same class: node 24-LTS proposal overturned by his newest-when-nothing-blocks policy; plan repinned twice (24 -> 26 -> 26.5.0 exact).
+- context7 required auth mid-wave; no browser window in-session; T4 agent rerouted to WebFetch, auth later verified working without the restart Senol did anyway.
+- The final fixer flagged the controller's legitimate mid-task scope addendum as suspected prompt injection and refused it (healthy reflex, false positive); controller applied the one-attribute change himself.
+- Worktree removal timed out on node_modules trees; rm -rf + worktree prune is the pattern now.
+- Plan-4 leftovers in .superpowers/sdd got swept into the plan-5 artifact archive (duplication accepted over loss).
+
+**Moments.**
+- T5 reviewer named the exact race window in prose; the implementer's RED test then failed with precisely the predicted silent-Ok symptom (queue.rs cancel_job_during_spawn_window_is_not_lost).
+- T3's MIN_SUPPORTED=(86,0) evidence chain (schema v19/v20 diff -> NEWS.md v86.0) was independently re-derived by the reviewer, who also corrected the brief's macOS bundle-name guess from packaging/.
+- T12 drift probe: rename duration_ms -> durationMs, watch test:e2e die at TS2561 before Playwright starts.
+- Whole-branch reviewer sharpened the Homebrew question: Finder-launched GUI apps do not inherit shell PATH, so /opt/homebrew is not covered by the PATH rung - one line, real product bug on the most common macOS install route.
+
+**Deltas.** Brief said platform() lives in @tauri-apps/api (stale; plugin-os since Tauri 2). eslint@9 in the plan was a default, not a constraint - owner policy overrode. The killer registry was per-worker-slot, not per-job (plan assumed re-keyable; it was, plus one real race). D31 grew the plan mid-flight by a full product decision; the memo-amendment path handled it cleanly.
+
+**Open threads.** First 3-OS CI run (public, free) pending at close - Windows/macOS have never compiled; red legs are in-plan follow-ups. Deferred triage: mutex poison recovery, joblog atomic writes, i18n warn-noise for IpcError codes, RunMeta cannot express joblog_status. Pre-first-RELEASE gates (not go-public): real CSP (csp:null carried since T4), log pruning, dialog-suppression setting, mkvtoolnix CI pin. Dependabot/Renovate now unlocked by public visibility - Senol's call. Plan 6: profile editor, help mode, apply-suggestion, packaging.
