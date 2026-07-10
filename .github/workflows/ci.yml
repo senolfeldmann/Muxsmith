@@ -55,6 +55,22 @@ jobs:
       - run: cargo test --workspace
       - run: pnpm lint
       - run: pnpm build
+      # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
+      # same guard as the mkvtoolnix/webkit2gtk steps above (private-repo
+      # minute economy: PR/tag runs on win/mac still build+lint+test, they
+      # just skip the browser install and the smoke). The smoke drives a
+      # plain Chromium against `dist/` via `vite preview` with
+      # `@tauri-apps/api/mocks` standing in for Tauri IPC (spec 10, no
+      # tauri-driver) -- `pnpm build` above already produced `dist/`.
+      - name: i18n completeness gate
+        if: runner.os == 'Linux'
+        run: pnpm check:i18n
+      - name: Install Playwright Chromium
+        if: runner.os == 'Linux'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright smoke (GUI e2e)
+        if: runner.os == 'Linux'
+        run: pnpm test:e2e
 
   deny:
     # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on

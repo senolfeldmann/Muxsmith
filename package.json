@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "test:e2e": "vite build --config e2e/vite.harness.config.ts && playwright test"
   },
   "dependencies": {
     "@fluent/bundle": "0.19.1",
@@ -21,8 +23,11 @@
     "vue": "3.5.39"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
     "@intlify/eslint-plugin-vue-i18n": "4.5.1",
+    "@playwright/test": "1.61.1",
     "@tauri-apps/cli": "2.11.4",
+    "@types/node": "26.1.1",
     "@vitejs/plugin-vue": "6.0.7",
     "eslint": "10.6.0",
     "eslint-plugin-vue": "10.9.2",

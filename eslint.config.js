@@ -15,12 +15,18 @@ export default tseslint.config(
   {
     // .worktrees/: SDD worktree checkouts (main checkout only) carry their
     // own target/ with rustdoc-generated JS that eslint must never see.
+    // e2e/.generated/: the bundled, gitignored mock harness build (Task
+    // 12) -- vendored @tauri-apps/api code via vite.harness.config.ts,
+    // never hand-authored, never linted.
     ignores: [
       "dist/**",
       "src-tauri/**",
       "node_modules/**",
       "target/**",
       ".worktrees/**",
+      "e2e/.generated/**",
+      "playwright-report/**",
+      "test-results/**",
     ],
   },
   // typescript-eslint's base config sets `languageOptions.parser` with no
