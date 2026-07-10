@@ -2147,12 +2147,15 @@ dependencies = [
 name = "muxsmith-gui"
 version = "0.1.0"
 dependencies = [
+ "dirs",
+ "muxsmith-core",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
+ "tempfile",
 ]
 
 [[package]]
