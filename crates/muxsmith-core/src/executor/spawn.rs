@@ -230,6 +230,10 @@ impl RunningJob for FakeJob {
 /// is incremented in `spawn` and decremented in `wait`, mirroring the window
 /// during which a real job is in flight, and `max` records the high-water
 /// mark so a `--jobs N` bound is observable from a test.
+///
+/// Test instrumentation only, not a supported API: hidden from rustdoc
+/// (pre-go-public decision); kept `pub` because cross-crate tests consume it.
+#[doc(hidden)]
 #[derive(Default)]
 pub struct ConcurrencyTracker {
     current: AtomicUsize,
