@@ -124,6 +124,15 @@ impl Renderer {
     }
 }
 
+/// Lets `report::json`'s document-assembly functions (spec 7, D15) fill
+/// each diagnostic's `"rendered"` field without core itself depending on
+/// this Fluent-based renderer.
+impl muxsmith_core::report::json::DiagnosticRenderer for Renderer {
+    fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+        Renderer::diagnostic(self, d)
+    }
+}
+
 fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
     match s {
         muxsmith_core::report::Severity::Error => "severity-error",

@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+pub mod json;
+
 /// Diagnostic severity (spec 5.2). `Ord`-derived in declaration order
 /// (`Info < Warning < Error`), giving [`worst_severity`] and the CLI's
 /// error-first sort a total order to compare/sort on.
