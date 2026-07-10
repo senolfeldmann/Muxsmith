@@ -262,13 +262,22 @@ pub fn run(
     }
 
     if let Some(logger) = logger {
+        // `finish` consumes the logger, so the directory (which the error
+        // message below still needs) is captured up front.
+        let dir = logger.dir().display().to_string();
         match logger.finish(&document) {
-            Ok(dir) if !json => println!(
-                "{}",
-                renderer.msg("run-joblog-written", &[("dir", &dir.display().to_string())])
-            ),
+            Ok(_) if !json => {
+                println!("{}", renderer.msg("run-joblog-written", &[("dir", &dir)]))
+            }
             Ok(_) => {}
-            Err(_) => eprintln!("{}", renderer.msg("run-joblog-unavailable", &[])),
+            // A per-job write failed mid-run (surfaced by finish even when
+            // summary.json wrote fine), or summary.json itself failed: the
+            // directory exists but is not a complete record, so warn instead
+            // of ever printing run-joblog-written over partial data.
+            Err(_) => eprintln!(
+                "{}",
+                renderer.msg("run-joblog-incomplete", &[("dir", &dir)])
+            ),
         }
     }
 
@@ -282,18 +291,27 @@ pub fn run(
     )
 }
 
-/// Creates this run's [`RunLogger`] (D26): resolves the runs root (the
-/// `MUXSMITH_RUNS_ROOT` env var if set -- tests point this at a tempdir so
-/// they never write into the real platform data dir; [`default_runs_root`]
-/// otherwise), then [`RunLogger::create`]s the run's log directory under it.
+/// Creates this run's [`RunLogger`] (D26): resolves the runs root via
+/// [`default_runs_root`] (debug builds only: a `MUXSMITH_RUNS_ROOT` env
+/// override takes precedence -- a test seam, not a feature, see the cfg
+/// below), then [`RunLogger::create`]s the run's log directory under it.
 /// Either step failing (no resolvable data dir, or `create` itself erroring
 /// -- permissions, disk full, ...) renders `run-joblog-unavailable` to
 /// stderr and returns `None`: persistence is best-effort from the CLI's
 /// perspective, a mux run never dies for a log dir.
 fn create_logger(renderer: &Renderer, specs: &[JobSpec]) -> Option<RunLogger> {
+    // Test seam only (cargo test's subprocess tests run the debug binary and
+    // point this at a tempdir so they never write into the real platform
+    // data dir), deliberately absent from release builds: D26 fixes the log
+    // location, and a real user-facing override would be a deliberate v1.x
+    // decision, not a side door.
+    #[cfg(debug_assertions)]
     let runs_root = std::env::var_os("MUXSMITH_RUNS_ROOT")
         .map(PathBuf::from)
         .or_else(default_runs_root);
+    #[cfg(not(debug_assertions))]
+    let runs_root = default_runs_root();
+
     let logger = runs_root.and_then(|root| {
         let run_id = make_run_id(std::time::SystemTime::now());
         RunLogger::create(&root, &run_id, specs).ok()

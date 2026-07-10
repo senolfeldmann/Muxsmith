@@ -24,3 +24,4 @@ run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
 run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
 run-joblog-unavailable = Job logs could not be written for this run; continuing without persisted logs.
 run-joblog-written = Job logs written to { $dir }
+run-joblog-incomplete = Job logs under { $dir } are incomplete; some log files could not be written.

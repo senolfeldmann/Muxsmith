@@ -114,9 +114,11 @@ fn full_lifecycle_writes_job_and_summary_files() {
     assert_eq!(
         job["lines"],
         serde_json::json!(["#GUI#progress 100%", "some real output line"]),
-        "lines accumulate every raw Output line verbatim, progress ticks included \
-         (D24: core attaches no meaning to the text; only run.rs's milestone \
-         renderer treats #GUI#progress specially)"
+        "lines accumulate every Output line verbatim, without inspecting the \
+         text (D24) -- the progress-shaped line here is synthetic, proving the \
+         writer does not filter by content; in the real pipeline run_job's \
+         parser turns progress ticks into Progress events, so they never \
+         arrive as Output at all"
     );
     assert!(job["started_at"].is_string(), "job: {job}");
     assert!(job["finished_at"].is_string(), "job: {job}");
@@ -180,6 +182,42 @@ fn skipped_job_without_started_still_writes_a_record_with_empty_lines() {
         "job 0 never received any event (never dequeued under a hypothetical \
          batch cancel) and must not get a file; only the run_document \
          (summary.json) covers it"
+    );
+}
+
+/// A `job-<index>.json` write failure mid-run must not vanish: `on_event`
+/// keeps its no-return signature (it cannot surface anything itself), but
+/// `finish` must return `Err` so the caller knows the run's logs are
+/// incomplete -- while still writing `summary.json` first (best-effort:
+/// persist what we can, then signal). A pre-created DIRECTORY at the
+/// `job-0.json` path is the same portable, no-perms way to force the write
+/// to fail on every OS that `delete_partial_failure_surfaces_into_errors`
+/// (job.rs) already uses.
+#[test]
+fn a_failed_job_file_write_makes_finish_err_but_summary_still_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let runs_root = dir.path().join("runs");
+    let specs = vec![spec(&["a.mkv"], "a.mkv")];
+
+    let mut logger = RunLogger::create(&runs_root, "run", &specs).unwrap();
+    std::fs::create_dir(logger.dir().join("job-0.json")).unwrap();
+    logger.on_event(&JobEvent::Finished {
+        index: 0,
+        outcome: outcome(JobState::Ok, Some(0)),
+    });
+
+    let written_dir = logger.dir().to_path_buf();
+    let run_document = serde_json::json!({ "jobs": [], "summary": {} });
+    logger
+        .finish(&run_document)
+        .expect_err("a lost job-0.json write must surface as a finish error");
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(written_dir.join("summary.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        summary, run_document,
+        "summary.json is still written (best-effort) before the error is returned"
     );
 }
 

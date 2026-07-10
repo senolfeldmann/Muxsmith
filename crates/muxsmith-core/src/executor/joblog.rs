@@ -106,6 +106,11 @@ struct JobRecord<'a> {
 pub struct RunLogger {
     dir: PathBuf,
     jobs: HashMap<usize, JobAccumulator>,
+    /// Set when any `job-<index>.json` write fails in [`Self::on_event`]
+    /// (which has no return channel of its own); [`Self::finish`] surfaces
+    /// it so a run whose per-job logs are silently incomplete never reports
+    /// clean persistence.
+    had_write_error: bool,
 }
 
 impl RunLogger {
@@ -151,7 +156,11 @@ impl RunLogger {
             })
             .collect();
 
-        Ok(RunLogger { dir, jobs })
+        Ok(RunLogger {
+            dir,
+            jobs,
+            had_write_error: false,
+        })
     }
 
     /// The run's actual log directory (post-collision-suffix).
@@ -174,10 +183,11 @@ impl RunLogger {
     /// via the `run_document`'s own `jobs` array (index-aligned to every
     /// outcome, unconditionally).
     ///
-    /// A write failure (e.g. disk full) is swallowed rather than surfaced:
-    /// `on_event` returns nothing (mirrors the queue's own "event send
-    /// failures are ignored" contract) and the run itself is never at risk
-    /// over a log write.
+    /// A write failure (e.g. disk full) never interrupts the run --
+    /// `on_event` returns nothing (the run itself is never at risk over a
+    /// log write) -- but it is not lost either: the logger remembers it and
+    /// [`Self::finish`] returns `Err`, so the caller can report the run's
+    /// logs as incomplete instead of claiming clean persistence.
     pub fn on_event(&mut self, ev: &JobEvent) {
         match ev {
             JobEvent::Started { index, .. } => {
@@ -206,8 +216,11 @@ impl RunLogger {
                         finished_at: now_rfc3339(),
                     };
                     let path = self.dir.join(format!("job-{index}.json"));
-                    if let Ok(bytes) = serde_json::to_vec_pretty(&record) {
-                        let _ = fs::write(path, bytes);
+                    let written = serde_json::to_vec_pretty(&record)
+                        .map_err(io::Error::from)
+                        .and_then(|bytes| fs::write(path, bytes));
+                    if written.is_err() {
+                        self.had_write_error = true;
                     }
                 }
             }
@@ -220,11 +233,24 @@ impl RunLogger {
     /// returns the run's log directory. Consumes `self`: once a run has
     /// finished, its accumulators (any left over from jobs that never
     /// received `Finished`, see [`Self::on_event`]) are simply dropped.
+    ///
+    /// Returns `Err` not only when the `summary.json` write itself fails,
+    /// but also when any earlier `job-<index>.json` write failed inside
+    /// [`Self::on_event`] (which has no return channel of its own):
+    /// `summary.json` is still written first in that case (best-effort:
+    /// persist what we can, then signal), so a caller seeing this error
+    /// knows the run's log directory exists but is incomplete, and must not
+    /// report clean persistence.
     pub fn finish(self, run_document: &serde_json::Value) -> io::Result<PathBuf> {
         fs::write(
             self.dir.join("summary.json"),
             serde_json::to_vec_pretty(run_document)?,
         )?;
+        if self.had_write_error {
+            return Err(io::Error::other(
+                "one or more job-<index>.json writes failed during the run",
+            ));
+        }
         Ok(self.dir)
     }
 }
