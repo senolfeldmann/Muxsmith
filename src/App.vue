@@ -5,7 +5,7 @@ import JobsView from "./views/JobsView.vue";
 import FirstRun from "./views/FirstRun.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import { detectMkvmerge } from "./ipc";
-import type { IpcError } from "./ipc";
+import type { IpcError, RunRequest } from "./ipc";
 
 type View = "batch" | "jobs";
 
@@ -18,6 +18,18 @@ const checking = ref(true);
 const blockedError = ref<IpcError | null>(null);
 const activeView = ref<View>("batch");
 const settingsDialog = ref<InstanceType<typeof SettingsDialog> | null>(null);
+
+// Plan 5 wave-5 shell contract (T10 brief): BatchView's `start-run` emit
+// hands over the picked profile/dirs/jobs; App just stores it and switches
+// to Jobs, which owns actually calling `startRun` (T11) and clears this
+// via `consumed` once it has (`pendingRun` is a one-shot handoff, not
+// shared state either view reads back).
+const pendingRun = ref<RunRequest | null>(null);
+
+function onStartRun(request: RunRequest) {
+  pendingRun.value = request;
+  activeView.value = "jobs";
+}
 
 async function checkMkvmerge() {
   try {
@@ -76,8 +88,15 @@ onMounted(checkMkvmerge);
       </button>
     </nav>
     <main>
-      <BatchView v-if="activeView === 'batch'" />
-      <JobsView v-else />
+      <BatchView
+        v-if="activeView === 'batch'"
+        @start-run="onStartRun"
+      />
+      <JobsView
+        v-else
+        :pending-run="pendingRun"
+        @consumed="pendingRun = null"
+      />
     </main>
     <SettingsDialog ref="settingsDialog" />
   </template>
