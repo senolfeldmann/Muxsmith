@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/muxsmith-core", "crates/muxsmith-cli", "crates/xtask"]
+members = ["crates/muxsmith-core", "crates/muxsmith-cli", "crates/xtask", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

@@ -1,0 +1,32 @@
+{
+  "name": "muxsmith-gui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@fluent/bundle": "0.19.1",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "2.3.2",
+    "@tauri-apps/plugin-dialog": "2.7.1",
+    "fluent-vue": "3.8.2",
+    "vue": "3.5.39"
+  },
+  "devDependencies": {
+    "@intlify/eslint-plugin-vue-i18n": "4.5.1",
+    "@tauri-apps/cli": "2.11.4",
+    "@vitejs/plugin-vue": "6.0.7",
+    "eslint": "9.9.1",
+    "eslint-plugin-vue": "10.9.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.63.0",
+    "vite": "8.1.4",
+    "vue-tsc": "3.3.7"
+  }
+}
