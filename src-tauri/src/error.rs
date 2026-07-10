@@ -155,6 +155,36 @@ mod tests {
     }
 
     #[test]
+    fn non_zero_maps_to_query_failed_with_detail_and_exit_code() {
+        let err: IpcError = RuntimeError::NonZero {
+            code: Some(2),
+            stderr: "unsupported option".into(),
+        }
+        .into();
+        assert_eq!(err.code, "mkvmerge-query-failed");
+        assert_eq!(err.params["detail"], "unsupported option");
+        assert_eq!(err.params["code"], "2");
+    }
+
+    #[test]
+    fn non_zero_signal_termination_maps_code_param_to_signal() {
+        let err: IpcError = RuntimeError::NonZero {
+            code: None,
+            stderr: "killed".into(),
+        }
+        .into();
+        assert_eq!(err.code, "mkvmerge-query-failed");
+        assert_eq!(err.params["code"], "signal");
+    }
+
+    #[test]
+    fn parse_failure_maps_to_query_failed_with_detail() {
+        let err: IpcError = RuntimeError::Parse("no version token in \"gibberish\"".into()).into();
+        assert_eq!(err.code, "mkvmerge-query-failed");
+        assert_eq!(err.params["detail"], "no version token in \"gibberish\"");
+    }
+
+    #[test]
     fn identify_runtime_failure_delegates_to_the_runtime_mapping() {
         let err: IpcError = IdentifyError::Runtime(RuntimeError::NotFound).into();
         assert_eq!(err.code, "mkvmerge-not-found");

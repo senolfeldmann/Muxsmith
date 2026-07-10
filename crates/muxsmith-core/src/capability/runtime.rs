@@ -12,6 +12,18 @@ use std::process::Command;
 #[derive(Debug, Clone)]
 pub struct Mkvmerge {
     path: PathBuf,
+    /// The `(major, minor)` pair already parsed by [`Mkvmerge::detect`]'s
+    /// floor check (`enforce_floor`), cached so a caller that follows
+    /// `detect` with [`Mkvmerge::version_pair`] -- the GUI's
+    /// `detect_mkvmerge` command does exactly that, on every startup --
+    /// does not spawn `mkvmerge --version` a second time for a value the
+    /// ladder already obtained. `None` on handles from [`Mkvmerge::at`]
+    /// and [`Mkvmerge::locate`], whose behavior is unchanged: they never
+    /// enforce the floor, so `version_pair` spawns per call there. The
+    /// cache is a snapshot from detection time; a caller that needs to
+    /// re-probe a possibly-replaced binary uses `at(path)` for a fresh,
+    /// uncached handle.
+    cached_version_pair: Option<(u64, u64)>,
 }
 
 /// Failure of a runtime mkvmerge query. Data only; call sites map these to
@@ -67,7 +79,10 @@ impl Mkvmerge {
     /// or `--mkvmerge` override; spec 8.2). The path is not probed here; the
     /// first query surfaces a `Spawn`/`NotFound` error if it is wrong.
     pub fn at(path: impl Into<PathBuf>) -> Mkvmerge {
-        Mkvmerge { path: path.into() }
+        Mkvmerge {
+            path: path.into(),
+            cached_version_pair: None,
+        }
     }
 
     /// Locates mkvmerge on PATH by spawning `mkvmerge --version`. Returns
@@ -79,6 +94,7 @@ impl Mkvmerge {
     pub fn locate() -> Result<Mkvmerge, RuntimeError> {
         let m = Mkvmerge {
             path: PathBuf::from("mkvmerge"),
+            cached_version_pair: None,
         };
         match m.version() {
             Ok(_) => Ok(m),
@@ -148,8 +164,16 @@ impl Mkvmerge {
     }
 
     /// The `(major, minor)` version pair parsed from [`Mkvmerge::version`]
-    /// (D28), for comparison against [`MIN_SUPPORTED`].
+    /// (D28), for comparison against [`MIN_SUPPORTED`]. On a handle
+    /// returned by [`Mkvmerge::detect`], answers from the pair its floor
+    /// check already parsed, spawning nothing (see the field doc on
+    /// `cached_version_pair` for the exact contract); on an
+    /// [`Mkvmerge::at`]/[`Mkvmerge::locate`] handle, spawns `--version`
+    /// per call, unchanged.
     pub fn version_pair(&self) -> Result<(u64, u64), RuntimeError> {
+        if let Some(pair) = self.cached_version_pair {
+            return Ok(pair);
+        }
         parse_version_pair(&self.version()?)
     }
 
@@ -177,9 +201,11 @@ impl Mkvmerge {
 }
 
 /// Checks `m` against [`MIN_SUPPORTED`] (D28): probes `--version` once, and
-/// either returns `m` unchanged or a `TooOld`/propagated query error. Shared
-/// by every rung of [`Mkvmerge::detect`]'s ladder so the version query is
-/// never run twice for the same candidate.
+/// either returns `m` (with the parsed pair cached on it, so a subsequent
+/// [`Mkvmerge::version_pair`] answers without respawning) or a
+/// `TooOld`/propagated query error. Shared by every rung of
+/// [`Mkvmerge::detect`]'s ladder so the version query is never run twice
+/// for the same candidate.
 fn enforce_floor(m: Mkvmerge) -> Result<Mkvmerge, RuntimeError> {
     let raw = m.version()?;
     let pair = parse_version_pair(&raw)?;
@@ -189,7 +215,10 @@ fn enforce_floor(m: Mkvmerge) -> Result<Mkvmerge, RuntimeError> {
             minimum: format!("{}.{}", MIN_SUPPORTED.0, MIN_SUPPORTED.1),
         });
     }
-    Ok(m)
+    Ok(Mkvmerge {
+        cached_version_pair: Some(pair),
+        ..m
+    })
 }
 
 /// Parses the `(major, minor)` pair out of an `mkvmerge --version` first

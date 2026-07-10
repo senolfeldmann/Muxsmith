@@ -52,6 +52,56 @@ fn fake_mkvmerge(dir: &std::path::Path, version_line: &str) -> std::path::PathBu
     script
 }
 
+/// Like [`fake_mkvmerge`], but the script also appends one line to a counter
+/// file on EVERY invocation, so a test can assert exactly how many times the
+/// executable was spawned. The warm-up invocations inside the shared
+/// write+chmod+retry helper inflate the counter, so it is reset to empty
+/// before returning; the count observed by the test starts at zero.
+#[cfg(unix)]
+fn counting_fake_mkvmerge(
+    dir: &std::path::Path,
+    version_line: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let script = dir.join("mkvmerge");
+    let counter = dir.join("spawn-count");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho run >> '{}'\nif [ \"$1\" = \"--version\" ]; then\n  echo '{version_line}'\n  exit 0\nfi\nexit 1\n",
+            counter.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).unwrap();
+    // Same ExecutableFileBusy warm-up as fake_mkvmerge (see its comment).
+    for attempt in 0.. {
+        match std::process::Command::new(&script)
+            .arg("--version")
+            .output()
+        {
+            Ok(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 50 => {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Err(e) => panic!("fake mkvmerge script at {script:?} never became runnable: {e}"),
+        }
+    }
+    // Discard the warm-up invocations so tests count from zero.
+    std::fs::write(&counter, "").unwrap();
+    (script, counter)
+}
+
+#[cfg(unix)]
+fn spawn_count(counter: &std::path::Path) -> usize {
+    std::fs::read_to_string(counter)
+        .unwrap_or_default()
+        .lines()
+        .count()
+}
+
 #[test]
 fn version_reports_mkvmerge() {
     let Some(m) = mkvmerge() else {
@@ -110,6 +160,38 @@ fn detect_reports_too_old_with_found_and_minimum() {
         }
         other => panic!("expected TooOld, got {other:?}"),
     }
+}
+
+/// A handle returned by `detect` carries the version pair its floor check
+/// (D28) already parsed, so a subsequent `version_pair()` -- exactly what
+/// the GUI's `detect_mkvmerge` command does right after `detect` on every
+/// startup -- answers from the cache instead of spawning `--version` a
+/// second time. An uncached handle (`Mkvmerge::at`) still spawns per call,
+/// unchanged.
+#[test]
+#[cfg(unix)]
+fn detect_caches_version_pair_so_version_pair_spawns_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (script, counter) =
+        counting_fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Counting') 64-bit");
+
+    let detected = Mkvmerge::detect(Some(&script)).expect("detect");
+    assert_eq!(
+        spawn_count(&counter),
+        1,
+        "detect itself spawns exactly once"
+    );
+
+    assert_eq!(detected.version_pair().unwrap(), (123, 4));
+    assert_eq!(
+        spawn_count(&counter),
+        1,
+        "version_pair() after detect must answer from the cache, not respawn"
+    );
+
+    // Contrast: an at() handle has no cache and spawns per call (unchanged).
+    assert_eq!(Mkvmerge::at(&script).version_pair().unwrap(), (123, 4));
+    assert_eq!(spawn_count(&counter), 2);
 }
 
 /// Gated: `detect(None)` falls through to PATH (like `locate()`) and finds
