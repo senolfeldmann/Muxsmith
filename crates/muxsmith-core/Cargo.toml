@@ -17,4 +17,7 @@ time = { version = "0.3.53", features = ["formatting"] }
 yaml_serde = "0.10.4"
 
 [dev-dependencies]
+# Exact-pin per toolchain doctrine; registry-verified current stable
+# (crates.io API, 2026-07-11): proptest 1.11.0 is max_stable_version.
+proptest = "=1.11.0"
 tempfile = "3.27.0"
