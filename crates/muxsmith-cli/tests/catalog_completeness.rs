@@ -30,6 +30,13 @@ fn every_diag_code_has_a_catalog_message() {
 /// `profile/{validate,load,lint}.rs`). Exhaustive match: a new `DiagCode`
 /// variant fails to compile here until its fixture is added, so the guard
 /// grows with the enum instead of silently missing new codes.
+///
+/// **Limitation:** this guard is exhaustive over `DiagCode` variants, not
+/// over emitter sites per variant. It renders one fixture per code, which
+/// proves the fixture matches the template; a single emitter site that omits
+/// a param its siblings set will leak `{$param}` in production while this
+/// guard stays green (known case found in review: `planner.rs:600` emits
+/// `InvalidPropertyValue` without `allowed`, caught separately).
 fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
     let mut args = FluentArgs::new();
     match code {
