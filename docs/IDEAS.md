@@ -187,3 +187,25 @@ transcript if a deeper disposition round is ever wanted.
 
 **When to reconsider.** At the next parity-audit round, or when
 output-plausibility diagnostics are extended.
+
+## 7. Configurable run-log prune behavior (disable / change days)
+
+**What this is.** v1 auto-prunes run directories older than 14 days, fixed
+(D35, pre-1.0 design-decisions memo). The configurable variant - a setting
+to disable auto-pruning or change the day count - is deferred here (Şenol
+2026-07-11, in the same breath as D35).
+
+**What the reference tool does.** mkvtoolnix-gui exposes exactly this pair:
+`m_removeOldJobs` (bool) + `m_removeOldJobsDays` (int), defaults true/14
+(settings.cpp:625-626), plus immediate-removal policies (on completion/on
+exit) that Muxsmith deliberately does not adopt (D35 parity note).
+
+**Why deferred.** Option surface not earned in v1; one sane default beats
+early configuration (same restraint as idea #5's rejected options).
+
+**What building it takes.** A settings key read by core (both surfaces
+already share core settings), plumbing into the prune call, a settings-UI
+row, CLI visibility of the effective policy. Trivial once wanted.
+
+**When to reconsider.** First real user request to keep logs longer or
+forever, or the next deliberate settings-surface extension round.

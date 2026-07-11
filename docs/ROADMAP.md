@@ -61,12 +61,13 @@ action:
 ## Pre-1.0 release gates
 
 Must be resolved before the first tagged release; none blocks Plan 6 work.
-All CODE gates below are covered by **Plan 5.5**
+The code gates from the 2026-07-11 sweep are covered by **Plan 5.5**
 (docs/superpowers/plans/2026-07-11-plan-5.5-pre-1.0-hardening.md, authored
-2026-07-11, awaiting Şenol's execution go); the non-code gates (README,
-guide/blogs, log-pruning decision) remain individually tracked here.
-(CSP: resolved 2026-07-11, decision D34 in the pre-1.0 design-decisions
-memo; policy set and verified.)
+2026-07-11, awaiting Şenol's execution go). Tracked individually outside
+Plan 5.5: README, guide/blogs, the whole-codebase idiomacy review, and the
+D35 auto-prune implementation. (Resolved so far: CSP 2026-07-11 -> D34,
+policy set and verified; log-pruning decided 2026-07-11 -> D35,
+implementation entry below.)
 
 - **README**: definitely 1.0. Absorbs or links BUILDING.md's "building from
   source" (plan-5 T4 note). Şenol has concrete expectations about voice and
@@ -87,9 +88,13 @@ memo; policy set and verified.)
   morning) and worth mining when the format interview happens. The
   process-learnings distillate in Şenol's Nextcloud project folder is a
   second primary source.
-- **Log pruning decision**: D26 defers pruning out of v1; before 1.0 decide
-  keep-forever vs `prune` facility vs setting. (Şenol: "ist für später,
-  schon notiert.")
+- **Run-log auto-prune implementation (D35)**: decided 2026-07-11 (D35,
+  pre-1.0 memo) - core auto-prunes run dirs older than 14 days, fixed, no
+  configuration in v1 (configurability parked in IDEAS #7); parity match
+  with mkvtoolnix defaults. Small core task with regression tests;
+  vehicle open (Şenol's call at the Plan 5.5 go: ride the plan as an added
+  wave-1 task, or standalone) - the milestone gate blocks on this entry
+  either way.
 - **mkvtoolnix version pin in CI**: currently floats with the distro
   (backlog note in ci.yml, Şenol 2026-07-10). Decided 2026-07-11: resolve
   in the same touch as the mac/win runner gate below (walkthrough #14).
