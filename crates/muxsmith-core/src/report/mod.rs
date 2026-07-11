@@ -144,6 +144,8 @@ diag_codes! {
     MultipleIdentifierMatches => "multiple-identifier-matches",
     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
     UnknownPropertySkew => "unknown-property-skew",
+    /// A `profile.input.extensions` entry is not among the local mkvmerge's `--list-types` output (spec 4.2); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
+    UnknownExtension => "unknown-extension",
     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
     SuggestionsCapped => "suggestions-capped",
 }

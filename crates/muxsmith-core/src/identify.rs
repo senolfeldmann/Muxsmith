@@ -296,6 +296,11 @@ impl std::fmt::Display for IdentifyError {
 #[derive(Debug, Default)]
 pub struct IdentifyCache {
     entries: HashMap<PathBuf, (CacheKey, Identification)>,
+    /// Memoized [`Mkvmerge::known_extensions`] result: outer `None` means
+    /// not yet queried, inner `None` means the query failed (degrade). Batch
+    /// planning asks for this at most once per `plan_core` call (spec 4.2,
+    /// mirroring `entries`' per-file memoization at the batch scope).
+    known_extensions: Option<Option<Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -327,6 +332,16 @@ impl IdentifyCache {
         }
         Ok(&self.entries.get(path).expect("just inserted").1)
     }
+
+    /// [`Mkvmerge::known_extensions`], queried at most once per cache
+    /// instance and memoized (spec 4.2); repeat calls (e.g. across the
+    /// suggestion engine's re-simulated `plan_core` passes) never respawn
+    /// mkvmerge.
+    pub fn known_extensions(&mut self, mkv: &Mkvmerge) -> Option<Vec<String>> {
+        self.known_extensions
+            .get_or_insert_with(|| mkv.known_extensions())
+            .clone()
+    }
 }
 
 fn cache_key(path: &Path) -> Result<CacheKey, IdentifyError> {
@@ -349,6 +364,16 @@ fn cache_key(path: &Path) -> Result<CacheKey, IdentifyError> {
 pub trait Identify {
     /// Identifies `path`, or returns why it could not be identified.
     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError>;
+
+    /// The runtime's known source-file extensions (spec 4.2), for
+    /// `plan_core`'s batch-wide `profile.input.extensions` validation.
+    /// `None` when the capability is unavailable (mkvmerge absent, or a
+    /// fixture-backed test double that does not model it); the check
+    /// degrades to a no-op rather than blocking planning. Defaulted here so
+    /// existing `Identify` fakes need no change to keep compiling.
+    fn known_extensions(&mut self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// The production [`Identify`]: an [`IdentifyCache`] plus the resolved
@@ -363,6 +388,10 @@ pub struct LiveIdentifier<'a> {
 impl Identify for LiveIdentifier<'_> {
     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
         self.cache.get_or_identify(self.mkv, path).cloned()
+    }
+
+    fn known_extensions(&mut self) -> Option<Vec<String>> {
+        self.cache.known_extensions(self.mkv)
     }
 }
 

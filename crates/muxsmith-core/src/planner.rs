@@ -239,6 +239,8 @@ pub fn plan_core(
 ) -> Batch {
     let mut batch_diagnostics = Vec::new();
     validate_language_values(profile, lang, &mut batch_diagnostics);
+    let known_extensions = id.known_extensions();
+    validate_extension_values(profile, known_extensions.as_deref(), &mut batch_diagnostics);
 
     let primary_paths: Vec<PathBuf> = primaries.iter().map(|p| p.path.clone()).collect();
     let output_dir = run
@@ -297,6 +299,31 @@ pub fn plan_batch(
 fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
     for (i, rule) in profile.tracks.rules.iter().enumerate() {
         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
+    }
+}
+
+// Batch-wide, once per plan_core call (spec 4.2, walkthrough #3): checks
+// `profile.input.extensions` against the runtime's `--list-types` output,
+// mirroring `validate_language_values`'s structure. `known` is `None` when
+// the capability is unavailable (mkvmerge absent or the query failed); the
+// check then degrades to a no-op rather than blocking planning, unlike
+// `validate_language_values`'s `lang`, which callers must always resolve
+// before planning can start at all.
+fn validate_extension_values(
+    profile: &Profile,
+    known: Option<&[String]>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(known) = known else { return };
+    for (i, ext) in profile.input.extensions.iter().enumerate() {
+        let normalized = ext.to_ascii_lowercase();
+        if !known.contains(&normalized) {
+            diags.push(
+                Diagnostic::warning(DiagCode::UnknownExtension, format!("input.extensions[{i}]"))
+                    .with("extension", ext.clone())
+                    .with("known", known.join(", ")),
+            );
+        }
     }
 }
 

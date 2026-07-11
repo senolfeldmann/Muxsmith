@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::path::Path;
 
-use muxsmith_core::identify::Identification;
+use muxsmith_core::identify::{Identification, Identify, IdentifyError};
 use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::Scalar;
@@ -1047,6 +1048,149 @@ tracks:
             .batch_diagnostics
             .iter()
             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+}
+
+/// A [`FakeIdent`] wrapper that also answers [`Identify::known_extensions`],
+/// standing in for a runtime whose `--list-types` output is known (Task 5,
+/// #3): the batch-validation tests below need to control this independently
+/// of the per-file identification `FakeIdent` already provides.
+struct FakeIdentWithExtensions {
+    inner: FakeIdent,
+    known_extensions: Option<Vec<String>>,
+}
+
+impl Identify for FakeIdentWithExtensions {
+    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+        self.inner.identify(path)
+    }
+
+    fn known_extensions(&mut self) -> Option<Vec<String>> {
+        self.known_extensions.clone()
+    }
+}
+
+fn plan_one_with_extensions(
+    profile_yaml: &str,
+    file_name: &str,
+    ident_json: &str,
+    known_extensions: Option<Vec<&str>>,
+) -> (Batch, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(file_name), b"x").unwrap();
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        file_name.to_string(),
+        Identification::from_json(ident_json).unwrap(),
+    );
+    let mut ident = FakeIdentWithExtensions {
+        inner: FakeIdent { by_name },
+        known_extensions: known_extensions.map(|exts| exts.into_iter().map(String::from).collect()),
+    };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    (batch, dir)
+}
+
+// Task 5 (#3): `input.extensions` checked once per batch against the
+// runtime's `--list-types` output, mirroring
+// `bad_language_value_is_batch_invalid_property_value`'s layout.
+#[test]
+fn unknown_extension_is_batch_warning_naming_the_extension() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "mp4", "avi"]),
+    );
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(unknown[0].severity, Severity::Warning);
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    // Batch continues: the file still resolves to a plan despite the warning.
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5 (#3): the runtime's extension list is unavailable (mkvmerge
+// absent/query failed): the check degrades to a no-op rather than blocking
+// planning, unlike `lang`'s hard batch-planning precondition.
+#[test]
+fn unknown_extension_check_degrades_when_runtime_unavailable() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(p, "Show.S01E01.mkv", SERIES, None);
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnknownExtension),
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5 (#3): extension matching (and its validation) is case-insensitive
+// (model.rs `Input.extensions` doc).
+#[test]
+fn known_extension_case_insensitive_is_not_flagged() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [MKV] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "mp4", "avi"]),
+    );
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnknownExtension),
         "batch diags: {:?}",
         batch.batch_diagnostics
     );
