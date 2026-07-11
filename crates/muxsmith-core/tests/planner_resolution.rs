@@ -1300,6 +1300,205 @@ tracks:
     );
 }
 
+// Task 5.9 (spec 4.6): a track rule's external locator's `extensions` is
+// batch-checked against the runtime's `--list-types` output too, same as
+// `input.extensions` (Task 5). `optional: true` keeps the locator's
+// zero-hit resolution from adding its own `MissingExternal` error, so the
+// `UnknownExtension` warning is the only diagnostic under test.
+#[test]
+fn unknown_extension_in_track_rule_locator_is_batch_warning() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: '.', extensions: [srt, mp4a] }
+      match: { exact: { type: subtitles } }
+      optional: true
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "srt", "avi"]),
+    );
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(unknown[0].severity, Severity::Warning);
+    assert_eq!(
+        unknown[0].config_path,
+        "tracks[1].source.external.extensions[1]"
+    );
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    // Batch continues: the file still resolves to a plan despite the warning.
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5.9 (spec 4.6): a `chapters` external locator's `extensions` is
+// checked the same way. A real `.xml` donor keeps chapters resolution from
+// raising its own `MissingExternal` error (chapters has no `optional`
+// escape, unlike a track rule's external source), isolating the
+// `UnknownExtension` warning under test.
+#[test]
+fn unknown_extension_in_chapters_locator_is_batch_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters:
+  external: { path: '.', extensions: [xml, mp4a], match_to_source: true }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdentWithExtensions {
+        inner: FakeIdent { by_name },
+        known_extensions: Some(vec!["mkv".into(), "xml".into()]),
+    };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(unknown[0].config_path, "chapters.external.extensions[1]");
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5.9 (spec 4.6): an `attachments.rules[i].add` locator's `extensions`
+// is checked the same way. An `add` locator's zero-hit case is a warning,
+// not an error (spec 4.9), so no donor file is needed to keep the plan
+// resolving.
+#[test]
+fn unknown_extension_in_attachments_add_locator_is_batch_warning() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: '.', extensions: [ttf, mp4a] }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "ttf", "otf"]),
+    );
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(
+        unknown[0].config_path,
+        "attachments.rules[0].add.extensions[1]"
+    );
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5.9: T5's walk never deduped `input.extensions` occurrences by
+// value (two entries with the same unknown string each get their own
+// diagnostic, keyed by their own index/path); the locator walk keeps that
+// behavior rather than introducing batch-wide dedup by extension value, so
+// the same unknown extension repeated across `input.extensions` and a
+// locator yields two independent warnings.
+#[test]
+fn unknown_extension_repeated_across_input_and_locator_is_not_deduped() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: '.', extensions: [mp4a] }
+      match: { exact: { type: subtitles } }
+      optional: true
+"#;
+    let (batch, _dir) =
+        plan_one_with_extensions(p, "Show.S01E01.mkv", SERIES, Some(vec!["mkv", "srt"]));
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        2,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    let paths: Vec<&str> = unknown.iter().map(|d| d.config_path.as_str()).collect();
+    assert!(paths.contains(&"input.extensions[1]"), "paths: {paths:?}");
+    assert!(
+        paths.contains(&"tracks[1].source.external.extensions[0]"),
+        "paths: {paths:?}"
+    );
+}
+
 // Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
 #[test]
 fn chapters_drop_keyword_resolves_to_drop() {

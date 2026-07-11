@@ -300,24 +300,72 @@ fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut
     }
 }
 
-// Batch-wide, once per plan_core call (spec 4.2, walkthrough #3): checks
-// `profile.input.extensions` against the runtime's `--list-types` output,
-// mirroring `validate_language_values`'s structure. `known` is `None` when
-// the capability is unavailable (mkvmerge absent or the query failed); the
+// Batch-wide, once per plan_core call (spec 4.2, 4.6, walkthrough #3):
+// checks `profile.input.extensions` and every locator's `extensions` (a
+// track rule's external source, `chapters`, each `attachments.rules[i].add`)
+// against the runtime's `--list-types` output, mirroring
+// `validate_language_values`'s structure. `known` is `None` when the
+// capability is unavailable (mkvmerge absent or the query failed); the
 // check then degrades to a no-op rather than blocking planning, unlike
 // `validate_language_values`'s `lang`, which callers must always resolve
-// before planning can start at all.
+// before planning can start at all. No dedup by extension value: the same
+// unknown extension repeated across `input.extensions` and a locator (or
+// across two locators) gets one diagnostic per occurrence, each at its own
+// `config_path`, exactly as two repeated `input.extensions` entries always
+// did.
 fn validate_extension_values(
     profile: &Profile,
     known: Option<&[String]>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let Some(known) = known else { return };
-    for (i, ext) in profile.input.extensions.iter().enumerate() {
+    validate_extension_list(known, "input.extensions", &profile.input.extensions, diags);
+
+    for (i, rule) in profile.tracks.rules.iter().enumerate() {
+        if let SourceCfg::External(block) = &rule.source {
+            validate_extension_list(
+                known,
+                &format!("tracks[{i}].source.external.extensions"),
+                &block.external.extensions,
+                diags,
+            );
+        }
+    }
+    if let ChaptersCfg::External(block) = &profile.chapters {
+        validate_extension_list(
+            known,
+            "chapters.external.extensions",
+            &block.external.extensions,
+            diags,
+        );
+    }
+    for (i, rule) in profile.attachments.rules.iter().enumerate() {
+        if let Some(locator) = &rule.add {
+            validate_extension_list(
+                known,
+                &format!("attachments.rules[{i}].add.extensions"),
+                &locator.extensions,
+                diags,
+            );
+        }
+    }
+}
+
+// Shared per-list core (Task 5.9 reuse): checks one `extensions` list
+// against `known`, raising `UnknownExtension` at `{path_prefix}[i]` per
+// offending entry. Backs both `input.extensions` and every locator
+// position in `validate_extension_values`.
+fn validate_extension_list(
+    known: &[String],
+    path_prefix: &str,
+    extensions: &[String],
+    diags: &mut Vec<Diagnostic>,
+) {
+    for (i, ext) in extensions.iter().enumerate() {
         let normalized = ext.to_ascii_lowercase();
         if !known.contains(&normalized) {
             diags.push(
-                Diagnostic::warning(DiagCode::UnknownExtension, format!("input.extensions[{i}]"))
+                Diagnostic::warning(DiagCode::UnknownExtension, format!("{path_prefix}[{i}]"))
                     .with("extension", ext.clone())
                     .with("known", known.join(", ")),
             );
