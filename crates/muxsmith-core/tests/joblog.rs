@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
-use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
+use muxsmith_core::executor::joblog::{
+    RunLogger, default_runs_root, make_run_id, prune_stale_runs, run_id_timestamp,
+};
 use muxsmith_core::executor::queue::JobEvent;
 
 fn spec(argv: &[&str], output: &str) -> JobSpec {
@@ -239,5 +241,156 @@ fn a_job_with_zero_events_never_gets_a_file() {
         entries.len(),
         1,
         "only summary.json; no job file for a spec that received no events at all"
+    );
+}
+
+/// D35: `create` prunes run dirs older than 14 days, best-effort, before it
+/// creates the new run's own leaf. Seeds `runs_root` with a stale dir, a
+/// stale collision-suffixed dir, a fresh run dir (named via `make_run_id`,
+/// so it looks exactly like one of ours but is recent), a non-run dir, and
+/// a plain file -- only the two stale run dirs must disappear; everything
+/// else, including the dir `create` itself produces, must survive. The
+/// stale dirs get a fresh mtime (just created by this test) but an old
+/// NAME, so their deletion also proves the age decision reads the name,
+/// not the filesystem timestamp.
+#[test]
+fn create_prunes_run_dirs_older_than_14_days_by_name_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let runs_root = dir.path().join("runs");
+    std::fs::create_dir_all(&runs_root).unwrap();
+
+    std::fs::create_dir(runs_root.join("20200101-000000Z")).unwrap();
+    std::fs::create_dir(runs_root.join("20200101-000000Z-2")).unwrap();
+
+    let fresh_name = make_run_id(SystemTime::now());
+    std::fs::create_dir(runs_root.join(&fresh_name)).unwrap();
+
+    std::fs::create_dir(runs_root.join("keep-me")).unwrap();
+    std::fs::write(runs_root.join("notes.txt"), b"hello").unwrap();
+
+    RunLogger::create(&runs_root, "this-run", &[]).unwrap();
+
+    let mut entries: Vec<String> = std::fs::read_dir(&runs_root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+
+    let mut expected = vec![
+        fresh_name,
+        "keep-me".to_string(),
+        "notes.txt".to_string(),
+        "this-run".to_string(),
+    ];
+    expected.sort();
+
+    assert_eq!(
+        entries, expected,
+        "the two stale run dirs must be pruned; the fresh run dir, the \
+         non-run dir, the plain file, and the newly created run dir must \
+         all survive"
+    );
+}
+
+/// `run_id_timestamp` is [`make_run_id`]'s inverse: round-trips any instant
+/// it produced, and tolerates a collision `-N` suffix (see
+/// `RunLogger::create`'s numeric-suffix fallback) identically to the bare
+/// name.
+#[test]
+fn run_id_timestamp_round_trips_make_run_id_and_tolerates_the_collision_suffix() {
+    let now = SystemTime::UNIX_EPOCH + Duration::new(3723, 0);
+    let expected = time::OffsetDateTime::from(now);
+    let id = make_run_id(now);
+
+    assert_eq!(run_id_timestamp(&id), Some(expected));
+    assert_eq!(
+        run_id_timestamp(&format!("{id}-2")),
+        Some(expected),
+        "a collision-suffixed name must parse identically to the bare one"
+    );
+}
+
+/// `run_id_timestamp` returns `None` not only for digit-shape mismatches
+/// (garbage, too short) but also for a digit-shaped, out-of-range
+/// calendar/clock value (month 13, hour 99) -- stricter than the shell's
+/// original hand-rolled string-slicing parser, which would have happily
+/// emitted a nonsensical RFC3339 string for either.
+#[test]
+fn run_id_timestamp_rejects_garbage_and_out_of_range_calendar_values() {
+    assert_eq!(run_id_timestamp("not-a-run-id"), None);
+    assert_eq!(run_id_timestamp(""), None);
+    assert_eq!(run_id_timestamp("short"), None);
+    assert_eq!(
+        run_id_timestamp("20260113-999999Z"),
+        None,
+        "digit-shaped but out-of-range hour/minute/second must not parse"
+    );
+    assert_eq!(
+        run_id_timestamp("20261399-120000Z"),
+        None,
+        "digit-shaped but out-of-range month/day must not parse"
+    );
+}
+
+/// D35 boundary: exercised directly against `prune_stale_runs` (`create`
+/// always calls `SystemTime::now()` internally, so the cutoff itself is
+/// only deterministically testable here). A run one second inside the
+/// 14-day window survives; one second past it is pruned.
+#[test]
+fn prune_stale_runs_boundary_is_exactly_14_days() {
+    let dir = tempfile::tempdir().unwrap();
+    let runs_root = dir.path().join("runs");
+    std::fs::create_dir_all(&runs_root).unwrap();
+
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(20 * 24 * 60 * 60);
+    let fourteen_days = Duration::from_secs(14 * 24 * 60 * 60);
+    let just_inside = make_run_id(now - (fourteen_days - Duration::from_secs(1)));
+    let just_outside = make_run_id(now - (fourteen_days + Duration::from_secs(1)));
+    std::fs::create_dir(runs_root.join(&just_inside)).unwrap();
+    std::fs::create_dir(runs_root.join(&just_outside)).unwrap();
+
+    prune_stale_runs(&runs_root, now);
+
+    assert!(
+        runs_root.join(&just_inside).exists(),
+        "13d 23h 59m 59s old must survive"
+    );
+    assert!(
+        !runs_root.join(&just_outside).exists(),
+        "14d 0h 0m 1s old must be pruned"
+    );
+}
+
+/// D35 safety: `prune_stale_runs` must never delete through a symlink, even
+/// one named and dated exactly like a stale run directory -- `file_type()`
+/// does not follow symlinks, so `remove_dir_all` is never handed one; a
+/// symlinked directory outside `runs_root` (as this one is) would otherwise
+/// have its contents wiped out from under it.
+#[cfg(unix)]
+#[test]
+fn prune_stale_runs_leaves_a_stale_named_symlink_and_its_target_untouched() {
+    use std::os::unix::fs::symlink;
+
+    let target_dir = tempfile::tempdir().unwrap();
+    std::fs::write(target_dir.path().join("keep.txt"), b"x").unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let runs_root = dir.path().join("runs");
+    std::fs::create_dir_all(&runs_root).unwrap();
+    let link = runs_root.join("20200101-000000Z");
+    symlink(target_dir.path(), &link).unwrap();
+
+    prune_stale_runs(&runs_root, SystemTime::now());
+
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .expect("the symlink entry itself must still be there")
+            .file_type()
+            .is_symlink(),
+        "must still be a symlink, not resolved or replaced"
+    );
+    assert!(
+        target_dir.path().join("keep.txt").exists(),
+        "the symlink's target directory must be untouched"
     );
 }

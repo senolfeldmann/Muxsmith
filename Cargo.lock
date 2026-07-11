@@ -2158,6 +2158,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-os",
  "tempfile",
+ "time",
 ]
 
 [[package]]

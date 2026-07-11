@@ -39,7 +39,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::command::command;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec};
-use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
+use muxsmith_core::executor::joblog::{
+    RunLogger, default_runs_root, make_run_id, run_id_timestamp,
+};
 use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
 use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
@@ -932,22 +934,15 @@ fn run_meta_from_dir(dir: &Path) -> Option<RunMeta> {
 /// `"...Z-2"`) into an RFC3339 timestamp, e.g. `"20260710-153612Z"` ->
 /// `"2026-07-10T15:36:12Z"`. `None` for anything that does not match: a
 /// directory this crate did not itself create.
+///
+/// A thin delegate (D35, reuse-before-writing): the actual parse now lives
+/// once in [`run_id_timestamp`] (core, shared with its pruning), this
+/// function only reformats the resulting instant back to this call site's
+/// own RFC3339-string contract, unchanged from before the delegation.
 fn started_at_from_run_id(run_id: &str) -> Option<String> {
-    let prefix = run_id.get(0..16)?;
-    let b = prefix.as_bytes();
-    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
-    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
-        return None;
-    }
-    Some(format!(
-        "{}-{}-{}T{}:{}:{}Z",
-        &prefix[0..4],
-        &prefix[4..6],
-        &prefix[6..8],
-        &prefix[9..11],
-        &prefix[11..13],
-        &prefix[13..15],
-    ))
+    run_id_timestamp(run_id)?
+        .format(&time::format_description::well_known::Rfc3339)
+        .ok()
 }
 
 fn get_job_log_in(

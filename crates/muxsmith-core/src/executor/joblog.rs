@@ -62,6 +62,90 @@ pub fn make_run_id(now: std::time::SystemTime) -> String {
         .expect("RUN_ID_FORMAT is a fixed, well-formed descriptor; formatting a valid OffsetDateTime never fails")
 }
 
+/// The inverse of [`make_run_id`]: parses its fixed `"YYYYMMDD-HHMMSSZ"`
+/// (UTC) prefix -- the first 16 bytes, present even on a collision-suffixed
+/// name like `"...Z-2"` (see [`RunLogger::create`]) -- back into the
+/// instant it encodes. `None` for anything that does not match, including a
+/// digit-shaped but out-of-range calendar/clock value (e.g. month `13`):
+/// such a name is not one this crate itself produced, exactly like a name
+/// that fails the digit-shape check outright -- [`prune_stale_runs`] relies
+/// on that to never delete a directory it did not create.
+///
+/// Moved here from the shell's own `started_at_from_run_id` (D35): both the
+/// GUI's run history and this module's pruning need the same parse, so it
+/// lives once in core and the shell delegates to it.
+pub fn run_id_timestamp(name: &str) -> Option<OffsetDateTime> {
+    let prefix = name.get(0..16)?;
+    let b = prefix.as_bytes();
+    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| prefix[r].parse::<u32>().ok();
+    let year = n(0..4)? as i32;
+    let month = time::Month::try_from(u8::try_from(n(4..6)?).ok()?).ok()?;
+    let day = u8::try_from(n(6..8)?).ok()?;
+    let hour = u8::try_from(n(9..11)?).ok()?;
+    let minute = u8::try_from(n(11..13)?).ok()?;
+    let second = u8::try_from(n(13..15)?).ok()?;
+    time::Date::from_calendar_date(year, month, day)
+        .and_then(|date| date.with_hms(hour, minute, second))
+        .map(time::PrimitiveDateTime::assume_utc)
+        .ok()
+}
+
+/// D35 (Şenol 2026-07-11, fixed for v1 -- no setting, no CLI flag;
+/// configurability parked as IDEAS #7): run logs are kept for 14 days.
+const RUN_LOG_RETENTION: time::Duration = time::Duration::days(14);
+
+/// Deletes run directories under `runs_root` older than the fixed 14-day
+/// `RUN_LOG_RETENTION` window (D35). Called best-effort by [`RunLogger::create`]
+/// before it creates the new run's own leaf directory, so pruning happens
+/// on every run through the one shared entry point (D26's
+/// core-writes-for-both-surfaces principle) rather than needing each
+/// surface to remember it separately.
+///
+/// Age is decided by the directory NAME alone, via [`run_id_timestamp`],
+/// never by filesystem mtime: a name this crate did not itself produce is
+/// left alone unconditionally (not this crate's directory to judge), and a
+/// name it did produce carries its own age regardless of whatever mtime a
+/// copy, backup, or restore might have given the directory since.
+///
+/// Only actual directories are candidates: `DirEntry::file_type()` does not
+/// follow symlinks, so a symlink is excluded outright, never handed to
+/// `remove_dir_all` -- which would otherwise delete whatever it points at,
+/// possibly well outside `runs_root`.
+///
+/// Every I/O error along the way (`read_dir` failing, a single entry's
+/// `file_type()` failing, a `remove_dir_all` failing) is deliberately
+/// IGNORED. Pruning is housekeeping, not part of a run's own contract, and
+/// its only failure mode -- old logs surviving a little longer -- is
+/// harmless; surfacing the error instead would mean delaying or failing a
+/// run over a stale log directory the run itself does not depend on.
+pub fn prune_stale_runs(runs_root: &Path, now: std::time::SystemTime) {
+    let cutoff = OffsetDateTime::from(now) - RUN_LOG_RETENTION;
+    let Ok(entries) = fs::read_dir(runs_root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let Some(started_at) = run_id_timestamp(&name) else {
+            continue;
+        };
+        if started_at < cutoff {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 /// Formats the current UTC instant as RFC3339, for a job record's
 /// `started_at`/`finished_at` fields.
 fn now_rfc3339() -> String {
@@ -121,11 +205,17 @@ impl RunLogger {
     /// `<run_id>-2`, then `<run_id>-3`, and so on, until an unused name is
     /// found.
     ///
+    /// Also runs [`prune_stale_runs`] (D35) against `runs_root` first,
+    /// best-effort, before the new leaf is created -- see its doc for the
+    /// retention window and failure handling.
+    ///
     /// `specs` seeds one [`JobAccumulator`] per index (its `argv`/`output`),
     /// so a job's identity is known even if it never receives a single
     /// event before the batch ends.
     pub fn create(runs_root: &Path, run_id: &str, specs: &[JobSpec]) -> io::Result<RunLogger> {
         fs::create_dir_all(runs_root)?;
+
+        prune_stale_runs(runs_root, std::time::SystemTime::now());
 
         let mut dir = runs_root.join(run_id);
         let mut suffix = 1u32;
