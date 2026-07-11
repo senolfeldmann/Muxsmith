@@ -112,22 +112,15 @@ implementation entry below.)
   with mkvtoolnix defaults. Vehicle decided at the Plan 5.5 execution go
   (Şenol 2026-07-11): rides Plan 5.5 as added wave-1 stream-A Task 4.5 -
   the milestone gate blocks on this entry until that task lands.
-- **mkvtoolnix version pin in CI**: currently floats with the distro
-  (backlog note in ci.yml, Şenol 2026-07-10). Decided 2026-07-11: resolve
-  in the same touch as the mac/win runner gate below (walkthrough #14).
-- **mkvtoolnix on macOS/Windows CI runners (fired go-public trigger)**:
-  ci.yml:36 still gates the mkvtoolnix install on `runner.os == 'Linux'`
-  ("minute economy" while private, explicit trigger "go-public
-  follow-up" - the repo went public 2026-07-10 and the trigger was
-  missed). All gated integration tests self-skip on windows-2025/macos-15;
-  the Windows kill-mapping fix (75c075f) and platform_candidates()
-  win/mac paths have never run against a real binary in CI, so "3-OS
-  green" currently means compile+unit+fakes on two of three legs. Şenol
-  2026-07-11 (sweep walkthrough #14): FIRST task of the pre-1.0 hardening
-  block - remove the guard, per-OS install steps (choco/brew), decide the
-  version pin in the same touch, and VERIFY the gated tests actually run
-  on all legs by comparing skip counts (otherwise silent skipping is
-  traded for silent skipping).
+- **mkvtoolnix version pin in CI + mac/win runners**: DONE 2026-07-11
+  (Plan 5.5 Task 2, commits 374005a+19deec3+24ac702, verified in run
+  29165610230): per-OS install steps, pins apt 97.0-1build1 /
+  choco 100.0.0 / brew floats (no install-time pin possible), decision
+  comment in ci.yml. The fired go-public trigger is CONSUMED: gated
+  tests run LIVE on all three legs, skip-marker assertion counts 0
+  everywhere ("3-OS green" now means live-binary tests on 3 of 3).
+  First live Windows run immediately surfaced and fixed a real
+  Windows-only defect (read-only handle + set_modified, 24ac702).
 - **`.gitattributes` (`* text=auto eol=lf`)**: promised for Plan 2's
   first commit (2026-07-08 CRLF risk assessment), never created. A public
   repo inherits every contributor's autocrlf config, and the insta
