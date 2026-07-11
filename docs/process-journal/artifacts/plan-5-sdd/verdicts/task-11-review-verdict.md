@@ -1,0 +1,62 @@
+<!--
+Salvaged 2026-07-10 from SDD session transcript; verdict arrived only in context, never materialized as a file.
+  review_target:      task-11  (round 1 of 2)
+  session_uuid:       62503ddd-59d4-469d-99d2-a9f5d85f25a5
+  session_transcript: /home/senol/.claude/projects/-home-senol-agents-peter/62503ddd-59d4-469d-99d2-a9f5d85f25a5.jsonl
+  tool_use_id:        toolu_01DebGDLtrEuTpe3W3zVDQuQ
+  agent_id:           a9c18e9eb097a78cb
+  subagent_transcript:/home/senol/.claude/projects/-home-senol-agents-peter/62503ddd-59d4-469d-99d2-a9f5d85f25a5/subagents/agent-a9c18e9eb097a78cb.jsonl
+  dispatch_desc:      Review Task 11 (spec + quality)
+  agent_internal_round: 1 of 2
+  final_message_ts:   2026-07-10T16:20:24.709Z
+Body below is byte-faithful to the reviewer subagent's final message for this round, except this comment.
+STATUS: NOT COMMITTED until Şenol reviews.
+-->
+
+### Spec Compliance
+
+- ✅ **Step 1 (JobRow + batch header).** `src/components/JobRow.vue:379-407` renders `data-testid="job-row"` + `:data-index`, output filename with `Job N` fallback, state chip, native `<progress>` (D29's explicitly allowed alternative to `role="progressbar"`), per-row cancel wired to `cancelJob(index)` -> `invoke("cancel_job", { index })` (`src/ipc.ts:219`). Batch header (`src/views/JobsView.vue:1082-1093`) shows finished/total and cancel-batch -> `cancelRun()` -> `invoke("cancel_run")`. Warning badges live-update from `warning` events and get overwritten authoritatively on `finished` (`JobsView.vue:931-933,941-943`).
+- ✅ **Step 2 (LiveLog).** `role="log"` region (`LiveLog.vue:489`), fed by `output` events, DOM-capped at exactly 5000 by the caller (`JobsView.vue:944-949`, correct splice-from-front logic), per-job `<select>` filter, sticky-bottom auto-scroll with a 16px threshold (`LiveLog.vue:448-465`) — correct.
+- ✅ **Step 3 (run-finished summary).** `aria-live="polite"` region (`JobsView.vue:1130-1147`) renders ok/warning/failed/cancelled plus the `joblog_status` note; rows finalize unconditionally from `event.jobs[]` (`JobsView.vue:953-970`) — verified against `queue.rs`'s own documented D16 semantics (batch-cancelled jobs "never Started... their Cancelled outcomes appear only in the returned vector") and D25 semantics (per-job-cancel-before-dequeue "still emits `Finished{outcome:Cancelled}` (never `Started`)", `queue.rs:157-160`). Both silent cases are correctly handled by the unconditional overwrites in `onJobEvent`'s `finished` case and `onRunFinished`.
+- ✅ **Step 4 (RunHistory).** `list_runs` is verified newest-first server-side (`run.rs:724`, `sort_by(|a,b| b.run_id.cmp(&a.run_id))`), not re-sorted client-side. Job log fetched via `get_job_log`, shown inline (`<pre>`), copy-to-clipboard and save-as both present — exceeds the D30 "open as text" parity bar, not just meets it.
+- ✅ **Binding event contract.** `ensureListeners()` (`JobsView.vue:976-988`) returns the same `Promise.all([listen(...), listen(...)])` the `pendingRun` watcher `await`s before calling `startRun` (`JobsView.vue:1005-1013`) — genuinely confirms registration, not just textual ordering (`listen()`'s promise only resolves after the Rust-side IPC registration round-trip). `start_run` is never called from the `run-finished` handler. `JobEvent`'s TS union (`ipc.ts:144-150`) matches `queue.rs`'s `#[serde(tag="event", rename_all="snake_case")]` enum field-for-field, verified directly against `crates/muxsmith-core/src/executor/queue.rs:17-66`.
+- ✅ **Wave contract.** Diff touches only `JobsView.vue` + its three components + `jobRowState.ts` + `gui-jobs.ftl` + the fs-plugin wiring files. Read `App.vue` directly: still `<JobsView v-else />`, no props, no `@consumed` — "App.vue untouched" is true. `pendingRun?: RunRequest | null` is a superset-compatible relaxation of `RunRequest | null` (accepts `null` fully, additionally tolerates omission); no forward-compat break once T10 wires `:pending-run`.
+- ✅ **D29 / zero raw strings.** Grepped all four template files: every visible string and every `title`/`aria-label` is `$t(...)`-bound; none are static (would trip `@intlify/vue-i18n/no-raw-text`, confirmed configured for exactly those four attributes in `eslint.config.js`). Matches the established `FirstRun.vue`/`SettingsDialog.vue` conventions (`:title=`, `aria-busy`, `role="alert"`, `<label for>`, `data-testid`) via direct comparison.
+- ✅ **plugin-fs dependency, scrutinized.** Verified against the actual installed sources, not just the report's prose:
+  - `@tauri-apps/plugin-dialog@2.7.1`'s own JS doc (`dist-js/index.js:90-94`): "The selected path is added to the filesystem and asset protocol scopes" — `save()` truly only returns a path and relies on this side effect; confirmed Rust-side too (`tauri-plugin-dialog-2.7.1/src/commands.rs:246-254`, `save()`'s command handler calls `window.try_fs_scope()` + `tauri_scope.allow_file(&path)`).
+  - `fs:allow-write-text-file`'s own permission doc (`tauri-plugin-fs-2.5.1/permissions/autogenerated/commands/write_text_file.toml`): "Enables the write_text_file command **without any pre-configured scope**" — confirms this permission alone grants no static path access; the runtime `CommandScope`/`GlobalScope` check (`tauri-plugin-fs-2.5.1/src/commands.rs:1184-1198`) is what the dialog-injected scope satisfies.
+  - `fs:default` is nowhere in the tree (`grep fs: src-tauri/capabilities/*.json` → only the one line added); `capabilities/default.json` has no other files.
+  - Pins: `package.json`/`pnpm-lock.yaml` and `Cargo.toml`/`Cargo.lock` both pin `2.5.1` exactly (diff lines 138, 165-166, 189, 214, 241).
+  - `.plugin(tauri_plugin_fs::init())` is registered (`lib.rs:319`).
+  All four claims hold up under inspection.
+
+### Strengths
+
+- The event-contract fidelity work is not just asserted but structurally provable: `ensureListeners()`'s returned promise is the literal value the watcher awaits, so "registered before invoke" is enforced by data flow, not convention.
+- Both silent-job edge cases (batch-cancel-before-dequeue, per-job-cancel-before-dequeue) were checked against — and correctly match — the actual documented behavior in `queue.rs`, not just against the task brief's paraphrase of it.
+- The `fs`/`dialog` plugin pairing rationale is accurate down to the Rust implementation detail (`try_fs_scope()` + `allow_file()`), and is arguably the *safer* choice versus a hand-rolled custom write command: a bespoke `save_job_log_text(path, contents)` command would need to reimplement the "path must have come from a real OS save dialog" trust chain by hand to be equally safe, whereas the plugin route gets it from Tauri's own IPC scope layer for free.
+- `LiveLog`'s cap-then-splice and sticky-bottom-scroll logic are both correct on inspection (16px near-bottom threshold, splice-from-front to preserve the newest 5000).
+- `jobRowState.ts`'s shared model correctly separates `output` from `state`, so a `progress`/`finished` state transition never clobbers an already-known output path.
+
+### Issues
+
+#### Critical (Must Fix)
+None found.
+
+#### Important (Should Fix)
+1. **`RunHistory.vue`'s `exportBusy` flag only half-applies to the two export actions it gates.** `saveLog()` (lines 97-119) sets/clears `exportBusy`; `copyLog()` (lines 85-95) never touches it at all. Both buttons are bound to the same flag (`:disabled="exportBusy"` at lines 236 and 245, `:aria-busy="exportBusy"` only on Save at 246). Consequence: clicking "Save as..." disables the unrelated "Copy log" button for the duration of the native save dialog + write (which can be arbitrarily long if the user leaves the OS picker open), while `copyLog()`'s own async gap has no busy-guard at all, so rapid double-clicks can fire overlapping `writeText` calls. Fix: give each action its own busy ref, or if a shared "any export in flight" semantic is intended, have `copyLog()` participate in it too.
+
+#### Minor (Nice to Have)
+- `LiveLog.vue`'s `selected` filter ref is component-local and is not reset when `JobsView.vue` starts a second run in the same mount (`jobs.value = []`/`logLines.value = []` reset on `JobsView.vue:1006-1008`, but `LiveLog` itself is never unmounted between runs, per Vue's synchronous-batch scheduling on the `v-if` guard, so its `selected` ref survives). A per-job filter left selected from a finished run can point at an index that doesn't (yet) exist in the new run, showing an empty pane until that index reappears. Cosmetic, self-heals once matching output lines arrive.
+- Consider a one-line note (ARCHITECTURE or a code comment) on why the officially-maintained `fs`+`dialog` plugin combo was chosen over a bespoke Rust write command mirroring `get_job_log_in`'s existing `fs::read_to_string` pattern (`run.rs:763-780`) — the report's own justification stops at "dialog doesn't write bytes" without addressing that cheaper-looking alternative, even though (per the security analysis above) the plugin route is arguably the better call. Worth capturing so a future reader doesn't re-litigate it from scratch.
+- `withDefaults`/`vue-tsc` quirk: verified no `withDefaults` remains anywhere in `src/`, and the plain optional prop is behaviorally identical to the intended `RunRequest | null` contract for every call site in this diff. Fine as shipped; the implementer's own suggestion (flag it in the plan's tooling-pins section once App.vue actually wires `pending-run` for real) is reasonable and doesn't need action now.
+
+### App.vue view-switch listener loss (implementer-flagged item 3, judged on merits, not counted against this task)
+
+Confirmed real from the code, not just plausible: `App.vue` mounts `<BatchView v-if="activeView === 'batch'" /><JobsView v-else />` (read directly, unchanged by this diff), and `JobsView.vue` registers both `listen()` calls in `onMounted` and tears them down in `onUnmounted` (`JobsView.vue:990-997`). Since `ref()`-based local state (`jobs`, `logLines`, `finishedSummary`, etc.) lives in the component instance, switching tabs away and back genuinely destroys and recreates it — the description in the implementer's "Concerns" section is accurate.
+
+On whether a JobsView-internal mitigation would be sounder than the planned `v-show` fix in `App.vue`: no fix is possible from *inside* `JobsView.vue`'s own instance while `App.vue` continues to `v-if`/unmount it — component-instance state cannot outlive its own unmount by construction. The only way to survive an unmount without touching `App.vue` at all is to lift the live-run state and the `listen()` registrations out of the component instance into a module-level singleton (e.g., a `src/composables/runState.ts` the view merely renders) — decoupling "the one active run" (already a D23 singleton constraint) from "which view happens to be mounted." That is a real, self-contained option and arguably more correct in the general case (survives any number of views/mounts, not just two), but it is a materially larger architectural change than a one-line `v-if`→`v-show` swap in `App.vue`, and per [[feedback_scale_appropriate_design]] is not proportionate to a two-view app where `v-show` fully solves the problem. `v-show`'s only real cost is that both views mount eagerly at startup instead of lazily on first visit — negligible here. Recommend sticking with the planned `v-show` fix; the module-singleton route is worth remembering only if a third or fourth view with the same needs shows up later.
+
+### Assessment
+**Task quality:** Approved
+**Reasoning:** Every binding contract (event ordering, JobEvent shape, silent-job reconciliation, wave-scope, minimal fs/dialog grants) checks out against the actual Rust/plugin sources, not just the report's prose. The one Important finding (`exportBusy` half-applied across `copyLog`/`saveLog`) is a self-contained, low-risk UI polish bug, not a spec or architecture violation.

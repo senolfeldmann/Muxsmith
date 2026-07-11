@@ -1,0 +1,50 @@
+<!--
+Salvaged 2026-07-10 from SDD session transcript; verdict arrived only in context, never materialized as a file.
+  review_target:      task-6  (round 1 of 2)
+  session_uuid:       62503ddd-59d4-469d-99d2-a9f5d85f25a5
+  session_transcript: /home/senol/.claude/projects/-home-senol-agents-peter/62503ddd-59d4-469d-99d2-a9f5d85f25a5.jsonl
+  tool_use_id:        toolu_01Uh1EyTwbE4UodxQfSxrioM
+  agent_id:           a30a32b5b2019498f
+  subagent_transcript:/home/senol/.claude/projects/-home-senol-agents-peter/62503ddd-59d4-469d-99d2-a9f5d85f25a5/subagents/agent-a30a32b5b2019498f.jsonl
+  dispatch_desc:      Review Task 6 (spec + quality)
+  agent_internal_round: 1 of 2
+  final_message_ts:   2026-07-10T13:28:22.697Z
+Body below is byte-faithful to the reviewer subagent's final message for this round, except this comment.
+STATUS: NOT COMMITTED until Şenol reviews.
+-->
+
+### Verdict: Needs fixes
+
+One Important gap in the core deliverable (silent partial data loss in the persisted-log writer, contradicted by the module's own established precedent), plus a Minor report-accuracy issue and a Minor unguarded env-var surface. Spec-level structure (file shapes, skip/silent-cancel cases, tee placement, dependency pinning) is solid and independently verified, including against the actual cached `time` 0.3.53 crate source.
+
+### Spec Compliance
+- ✅ `job-<index>.json` field set matches D26/brief exactly: `index, output, argv, state, exit_code, warnings, errors, duration_ms, lines, started_at, finished_at` (`crates/muxsmith-core/src/executor/joblog.rs:412-424`); `summary.json` is `run_document` written verbatim, no rebuild (`joblog.rs:546-552`). Pinned by field-level assertions in `crates/muxsmith-core/tests/joblog.rs:672-702`.
+- ✅ Finished-without-Started (per-job skip) writes a record with empty `lines`/null `started_at` (`joblog.rs:504-539`; test `skipped_job_without_started_still_writes_a_record_with_empty_lines`, `tests/joblog.rs:727-756`). Batch-cancel-silent jobs get zero events, hence no per-job file, covered only via `summary.json`'s `run_document.jobs` (test `a_job_with_zero_events_never_gets_a_file`, `tests/joblog.rs:763-777`). Both cases distinctly tested, not conflated.
+- ✅ Logger-creation failure never kills the run: `run-joblog-unavailable` to stderr, continue (`crates/muxsmith-cli/src/commands/run.rs:177-189`). Tee is unconditional, placed before the `if json { continue; }` guard (`run.rs:108-119`), so persistence happens under `--json` too.
+- ✅ Pin-everything: `dirs = "6.0.0"`, `time = { version = "0.3.53", features = ["formatting"] }` (`crates/muxsmith-core/Cargo.toml:8,14`). `Cargo.lock`'s diff is only `+2` lines with no new `[[package]]` blocks for `dirs`/`time` or their transitive deps — meaning both were already resolved elsewhere in the workspace at exactly these versions before this task, which independently corroborates the "live-queried, current patch" claim without relying on the report's narrative. `deny.toml` untouched, consistent with "only extend if `cargo deny` reported something."
+- ✅ Core stays prose-free (both Fluent keys live only in `locales/en/cli.ftl:16-17`); every new `pub` item is documented (satisfies `#![deny(missing_docs)]`); diff text is ASCII-only (parenthetical asides use `--`, not em-dash).
+- ✅ `make_run_id` takes `SystemTime` as a parameter, no internal `now()` call (`joblog.rs:382-386`). Verified the underlying API claim directly against the locally cached crate source at `~/.cargo/registry/src/.../time-0.3.53/src/format_description/component.rs`: `Component::CalendarYearFullStandardRange`, `MonthNumerical`, `Hour24` are real (non-hallucinated) variants, and `format_description` is gated `#[cfg(any(feature = "formatting", feature = "parsing"))]` in `lib.rs:104`, matching the single `formatting` feature declared in `Cargo.toml`.
+- ✅ `MUXSMITH_RUNS_ROOT` is applied via `Command::env(...)` on freshly-spawned `Command` objects (`crates/muxsmith-cli/tests/run_cli.rs:219`, `run_live.rs:113,185,248`), which is child-process-scoped, not `std::env::set_var` on the running test binary. The "env vars are process-global, parallel test binaries racing" concern named in the brief does not actually apply to this mechanism — there is no shared mutable state between parallel test threads here.
+- ⚠️ `specs.is_empty()` never creates a run directory (`run.rs:93` — `create_logger` is called only after that early return). No contradiction found in D26 or the plan docs; consistent with the pre-existing, unmodified comment a few lines up in the same function ("fold and exit exactly like dry-run, never touching the queue") and D26's "dry-runs persist nothing." Reasonable default, correctly flagged by the implementer as an open product read rather than silently decided — worth confirming at the whole-branch/product level given it affects Task 8's history view, but not a Task 6 defect.
+- ⚠️ The claim that only three call sites in the *entire* `run_cli.rs`/`run_live.rs` suite reach the queue is unverifiable from the diff alone (confirming it requires reading the full, largely-unchanged test files, which is outside this review's scoped outside-diff checks). If false, a missed test would violate the top-level "never write to the real platform data dir" constraint — flagging the trust boundary, not asserting either way.
+
+### Strengths
+- Field shape, skip-case, and batch-cancel-silent case are each independently and precisely tested, not just asserted in prose.
+- Drain-loop tee correctly ignores `Progress`/`Warning`/`Error` without losing information: verified against `queue.rs`'s own doc comments (`crates/muxsmith-core/src/executor/queue.rs:57-60`, `job.rs:66-70`) that warning/error text is redundantly available via raw `Output`/`lines` and the structured `Finished` outcome, and that `#GUI#progress` lines are structurally excluded from `Output` upstream (never reach `lines`) rather than filtered here.
+- `time`-crate API usage is real and correctly feature-gated, confirmed against the actual cached crate source rather than trusting the report's self-description.
+- CLI wiring preserves the existing "exactly one stdout line under `--json`" contract cleanly: joblog success only prints in human mode (`run.rs:150`), failure reuses the one warning key regardless of mode, no double-print path exists since `logger` is `None` end-to-end once creation fails.
+
+### Issues
+#### Critical (Must Fix)
+None.
+
+#### Important (Should Fix)
+1. **`on_event`'s mid-run `job-<index>.json` write failure is completely invisible, including to `finish()`** (`crates/muxsmith-core/src/executor/joblog.rs:531-534`: `if let Ok(bytes) = serde_json::to_vec_pretty(&record) { let _ = fs::write(path, bytes); }`). Unlike `create`/`finish` failures, which do warn, a write failure here (disk pressure, log dir removed mid-run) leaves no trace anywhere — if the transient condition clears before the run ends, `finish()` still returns `Ok`, and the CLI prints `run-joblog-written` (`run.rs:150-153`), a false-positive success message despite silent, partial data loss in exactly the artifact D26 exists for (post-mortem debugging). This contradicts the project's own established precedent in the same module family: `executor/job.rs`'s `delete_partial` deliberately surfaces its own I/O failure into `errors` specifically *because* "core otherwise has no channel back to the caller for a delete failure" (`job.rs:196-201`). Here a channel already exists — `finish`'s `io::Result<PathBuf>` return, which is surfaced by the caller — and isn't used. Fixable without touching the brief-mandated `on_event(&mut self, ev: &JobEvent)` signature: track an internal `had_write_error: bool` and let `finish` reflect it (e.g. return `Err` even when `summary.json` itself wrote fine). Not plan-mandated — the mandated signature only constrains `on_event`, not `finish`.
+
+#### Minor (Nice to Have)
+1. **Report accuracy**: the report's "manual e2e verification" claims `job-0.json`'s `lines` included the real run's `#GUI#progress` ticks ("all six real mkvmerge output lines verbatim in `lines`... including the `#GUI#progress` ticks"). This contradicts the unmodified event-classification code: a `#GUI#progress NN%` line is parsed into `JobProgress::Percent`/`JobEvent::Progress`, never `OutputLine`/`Output` (`crates/muxsmith-core/src/executor/job.rs:66-70`, `queue.rs:238-244`), so progress ticks cannot structurally reach `lines`. The persisted code itself is correct and D24/D26-compliant; only this specific narrated observation in the report doesn't hold up — likely conflated with `joblog.rs`'s unit test, which manually constructs a synthetic `Output` event carrying that literal text to test that `on_event` applies no special meaning to content (a valid but non-representative unit-test technique). No code change needed.
+2. **`MUXSMITH_RUNS_ROOT` is a permanent, undocumented env-var surface read unconditionally in the shipped binary** (`run.rs:178`), not gated to test/debug builds, invisible to `--help`, and outside D26's spec (which describes the runs location as fixed/documented, not user-overridable). Given `commands::run::run()` is exercised exclusively via subprocess spawn (`Command::cargo_bin`, confirmed no in-process test call site exists) and never in-process, an "injectable runs_root" Rust parameter would be unreachable by any test that needs it — the env var is the only viable mechanism here, and it mirrors the already-established `.env("PATH", ...)` pattern in this same test suite for forcing a "no mkvmerge" condition. Defensible under that constraint; still worth gating behind `#[cfg(debug_assertions)]` or documenting before shipping, so it doesn't stay a silent, permanent knob in release builds.
+
+### Assessment
+**Task quality:** Needs fixes
+**Reasoning:** Structure, field shape, and dependency handling are solid and independently verified; one Important gap (silent mid-run write failures that can produce a false "logs written" success message) sits in the exact subsystem this task exists to deliver and should close before this is trusted as done.
