@@ -43,3 +43,4 @@ empty-match-list = An "any" or "not" list must not be empty; remove it or add at
 unidentifiable-source = A source file exists but could not be identified: { $detail }.
 unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
 suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
+worker-panicked = A worker thread panicked while running this job. This is a Muxsmith bug, not an mkvmerge failure; see the application log for details.

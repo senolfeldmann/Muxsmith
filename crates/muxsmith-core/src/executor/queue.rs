@@ -13,6 +13,7 @@ use serde::Serialize;
 
 use super::job::{JobOutcome, JobProgress, JobSpec, JobState, run_job};
 use super::spawn::{Killer, RunningJob, Spawn, SpawnError};
+use crate::report::DiagCode;
 
 /// Serializable job-engine event (D13): the CLI renders it, Plan 5's Tauri
 /// shell forwards it, a future --json-events streams it.
@@ -126,9 +127,24 @@ impl QueueControl {
         if let Some(flag) = self.jobs.get(index) {
             flag.store(true, Ordering::SeqCst);
         }
-        if let Some(killer) = self.killers.lock().unwrap().get(&index) {
+        if let Some(killer) = self.killers().get(&index) {
             killer();
         }
+    }
+
+    /// Locks `killers`, recovering from poisoning instead of propagating a
+    /// second panic (hardening: a worker panicking mid `insert`/`remove`
+    /// must not also poison every other worker's, and the watcher's, own
+    /// access to this same map, cascading one job's bug into the whole
+    /// batch). Recovery is sound because every write this lock guards is a
+    /// single `HashMap` `insert`/`remove` -- never a multi-step invariant a
+    /// panic could leave half-applied -- so whatever the map held right
+    /// before a panic is exactly what it holds right after: still a valid
+    /// killer registry.
+    fn killers(&self) -> std::sync::MutexGuard<'_, HashMap<usize, Killer>> {
+        self.killers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Whether job `index` is cancelled, either because the whole batch was
@@ -174,12 +190,21 @@ pub fn run_queue(
     let done = AtomicBool::new(false);
     let outcomes: Mutex<Vec<Option<JobOutcome>>> =
         Mutex::new((0..specs.len()).map(|_| None).collect());
+    // One slot per worker, holding the spec index that worker last
+    // dequeued; cleared back to `NO_JOB` only once that job's outcome has
+    // actually been written to `outcomes` (see the worker loop below). A
+    // panic unwinds past every other local inside the worker closure, so
+    // this is the one piece of state that survives it: `handle.join()`
+    // below reads it, once a worker's thread has died, to recover which
+    // job it was running when it did.
+    let current_index: Vec<AtomicUsize> = (0..workers).map(|_| AtomicUsize::new(NO_JOB)).collect();
 
     std::thread::scope(|scope| {
         let next = &next;
         let stop = &stop;
         let done = &done;
         let outcomes = &outcomes;
+        let current_index = &current_index;
 
         // Watcher: polls the batch flag; on batch cancellation flips
         // stop-dequeuing, kills every in-flight job through its registered
@@ -194,7 +219,7 @@ pub fn run_queue(
                 }
                 if ctl.batch.load(Ordering::SeqCst) {
                     stop.store(true, Ordering::SeqCst);
-                    for killer in ctl.killers.lock().unwrap().values() {
+                    for killer in ctl.killers().values() {
                         killer();
                     }
                     return;
@@ -204,7 +229,7 @@ pub fn run_queue(
         });
 
         let handles: Vec<_> = (0..workers)
-            .map(|_| {
+            .map(|worker_id| {
                 scope.spawn(move || {
                     loop {
                         if stop.load(Ordering::SeqCst) || ctl.batch.load(Ordering::SeqCst) {
@@ -214,6 +239,7 @@ pub fn run_queue(
                         if index >= specs.len() {
                             return;
                         }
+                        current_index[worker_id].store(index, Ordering::SeqCst);
                         let spec = &specs[index];
 
                         // A job already cancelled per-job at dequeue time
@@ -251,7 +277,7 @@ pub fn run_queue(
                             &|| ctl.job_cancelled(index),
                             &mut on_progress,
                         );
-                        ctl.killers.lock().unwrap().remove(&index);
+                        ctl.killers().remove(&index);
 
                         if outcome.state == JobState::Failed && opts.fail_fast {
                             stop.store(true, Ordering::SeqCst);
@@ -260,21 +286,30 @@ pub fn run_queue(
                             index,
                             outcome: outcome.clone(),
                         });
-                        outcomes.lock().unwrap()[index] = Some(outcome);
+                        lock_outcomes(outcomes)[index] = Some(outcome);
+                        current_index[worker_id].store(NO_JOB, Ordering::SeqCst);
                     }
                 })
             })
             .collect();
 
-        for handle in handles {
-            let _ = handle.join();
+        for (worker_id, handle) in handles.into_iter().enumerate() {
+            if let Err(payload) = handle.join() {
+                recover_panicked_worker(worker_id, payload, current_index, ctl, outcomes, events);
+            }
         }
         done.store(true, Ordering::SeqCst);
     });
 
+    // Poisoning here is unreachable in practice today (every write above
+    // already recovers instead of panicking while holding this lock), but
+    // `into_inner()` still surfaces a `PoisonError` if that ever changes;
+    // recovering rather than `.unwrap()`-ing keeps a single future
+    // regression elsewhere from taking down this final collection step
+    // too.
     outcomes
         .into_inner()
-        .unwrap()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .into_iter()
         .map(|outcome| {
             outcome.unwrap_or(JobOutcome {
@@ -300,6 +335,83 @@ fn worker_count(jobs: usize, spec_count: usize) -> usize {
     jobs.max(1).min(spec_count.max(1))
 }
 
+/// Sentinel `current_index` value meaning "this worker is between jobs (or
+/// has not dequeued one yet)", never a real spec index.
+const NO_JOB: usize = usize::MAX;
+
+/// Locks `outcomes`, recovering from poisoning instead of propagating a
+/// second panic. Sound for the same reason as [`QueueControl::killers`]:
+/// the one write this lock ever guards (`outcomes[index] = Some(...)`) is a
+/// single slot assignment, never a multi-step invariant a panic could leave
+/// half-applied -- and refusing to recover would turn one worker's panic
+/// into every other, perfectly healthy, worker's inability to ever record
+/// its own outcome once its turn to lock this comes up.
+fn lock_outcomes(
+    outcomes: &Mutex<Vec<Option<JobOutcome>>>,
+) -> std::sync::MutexGuard<'_, Vec<Option<JobOutcome>>> {
+    outcomes
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Recovers from one worker thread's panic (`handle.join()`'s `Err`, in
+/// [`run_queue`]): a bug inside this crate's own job-execution path, never
+/// an mkvmerge failure (a failing mux is `run_job`'s own `Failed` return,
+/// not a panic). Before this existed, the panic was silently swallowed
+/// (`let _ = handle.join();`) and the job's slot in `outcomes` stayed
+/// `None` forever, so [`run_queue`]'s final fallback mislabeled it
+/// `Cancelled` -- indistinguishable from a job that was never dequeued at
+/// all.
+///
+/// `current_index[worker_id]` still holds the spec index that worker last
+/// dequeued (cleared only after a successful outcome write, see the worker
+/// loop in [`run_queue`]), so it is the one piece of state that survives
+/// the unwind and identifies which job died with it; `NO_JOB` means the
+/// panic happened outside any job (no such path exists today, but there is
+/// then nothing to recover).
+///
+/// The panic payload itself (whatever `panic!`/`.unwrap()`/`.expect()` was
+/// called with) is arbitrary developer-diagnostic content, not a stable,
+/// translatable code -- like `job.rs`'s `delete_partial_failed` detail, it
+/// is core's one deliberate prose-free exception (spec 6/7): logged here
+/// for triage, never carried past this function into the user-facing
+/// [`JobOutcome`] beyond the stable `worker-panicked` [`DiagCode`].
+fn recover_panicked_worker(
+    worker_id: usize,
+    payload: Box<dyn std::any::Any + Send>,
+    current_index: &[AtomicUsize],
+    ctl: &QueueControl,
+    outcomes: &Mutex<Vec<Option<JobOutcome>>>,
+    events: &Sender<JobEvent>,
+) {
+    let index = current_index[worker_id].load(Ordering::SeqCst);
+    if index == NO_JOB {
+        return;
+    }
+    let message = payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "<non-string panic payload>".to_string());
+    eprintln!("muxsmith: worker thread panicked while running job {index}: {message}");
+
+    ctl.killers().remove(&index);
+    let outcome = JobOutcome {
+        state: JobState::Failed,
+        exit_code: None,
+        warnings: Vec::new(),
+        errors: vec![format!("{}: job {index}", DiagCode::WorkerPanicked.key())],
+        // The worker died mid-`run_job`, before it could measure its own
+        // elapsed time; there is nothing truthful to report here.
+        duration_ms: 0,
+    };
+    let _ = events.send(JobEvent::Finished {
+        index,
+        outcome: outcome.clone(),
+    });
+    lock_outcomes(outcomes)[index] = Some(outcome);
+}
+
 /// Wraps the caller's spawner so a successful spawn registers the new job's
 /// [`Killer`] into the control's registry under its own spec `index` (D25)
 /// before `run_job` starts streaming, giving [`QueueControl::cancel_job`]
@@ -315,11 +427,7 @@ impl Spawn for RegisteringSpawner<'_> {
     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
         let job = self.inner.spawn(argv)?;
         let killer = job.killer();
-        self.ctl
-            .killers
-            .lock()
-            .unwrap()
-            .insert(self.index, Arc::clone(&killer));
+        self.ctl.killers().insert(self.index, Arc::clone(&killer));
         // Closes the D25 lost-cancellation window: a cancel_job landing
         // between run_job's pre-spawn check and the insert above found no
         // killer to invoke, and a normally-exiting process never reaches
@@ -585,6 +693,110 @@ mod tests {
         assert_eq!(
             outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
             vec![JobState::Failed, JobState::Ok, JobState::Ok]
+        );
+    }
+
+    /// A [`Spawn`] fake whose `spawn` panics for one specific spec index
+    /// (encoded into `argv[0]`, [`ScriptByIndexSpawner`]'s convention) and
+    /// scripts every other index as an ordinary success -- the harness for
+    /// [`worker_panic_is_reported_as_failed_not_cancelled`].
+    struct PanicOnIndexSpawner {
+        panic_index: usize,
+    }
+
+    impl Spawn for PanicOnIndexSpawner {
+        fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
+            let index: usize = argv[0].parse().expect("test spec index encoded in argv[0]");
+            if index == self.panic_index {
+                panic!("scripted worker panic for job {index}");
+            }
+            Ok(Box::new(ScriptedJob {
+                lines: vec!["#GUI#progress 100%".to_string()],
+                cursor: 0,
+                exit: Some(0),
+            }))
+        }
+    }
+
+    /// A worker thread panicking mid-job (a bug in this crate, never an
+    /// mkvmerge failure) used to mislabel that job `Cancelled` --
+    /// indistinguishable from a spec that was never dequeued at all --
+    /// because the panic was silently swallowed (`let _ = handle.join();`)
+    /// before the job's slot in `outcomes` was ever written. This pins the
+    /// fix: the panicked job must be reported `Failed` with the
+    /// `worker-panicked` diagnostic code, the surviving worker must still
+    /// finish the rest of the batch (`jobs: 2` so a second, healthy worker
+    /// is still alive to pick up what the dead one would have), and
+    /// `run_queue` itself must not propagate the panic -- this test
+    /// function would abort the whole process if it did.
+    #[test]
+    fn worker_panic_is_reported_as_failed_not_cancelled() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![
+            spec(0, dir.path().join("a.mkv")),
+            spec(1, dir.path().join("b.mkv")),
+            spec(2, dir.path().join("c.mkv")),
+        ];
+        let fake = PanicOnIndexSpawner { panic_index: 0 };
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        let (tx, rx) = mpsc::channel();
+        let opts = QueueOpts {
+            jobs: 2,
+            fail_fast: false,
+        };
+
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
+        drop(tx);
+        let _events: Vec<JobEvent> = rx.iter().collect();
+
+        assert_eq!(
+            outcomes[0].state,
+            JobState::Failed,
+            "a panicked worker must be reported Failed, not silently Cancelled"
+        );
+        assert!(
+            outcomes[0]
+                .errors
+                .iter()
+                .any(|e| e.starts_with(DiagCode::WorkerPanicked.key())),
+            "expected a worker-panicked entry, got: {:?}",
+            outcomes[0].errors
+        );
+        assert_eq!(
+            outcomes[1].state,
+            JobState::Ok,
+            "a surviving worker must still finish the rest of the batch"
+        );
+        assert_eq!(outcomes[2].state, JobState::Ok);
+    }
+
+    /// Direct regression test for the `unwrap_or_else(|p| p.into_inner())`
+    /// poison-recovery pattern now used throughout this module (`killers`,
+    /// `outcomes`): a panic while holding a `MutexGuard` poisons the
+    /// `Mutex`, but a plain assignment made *before* the panic is a
+    /// completed write, not a half-applied one -- so recovering via
+    /// `into_inner()` must yield exactly that state, never lose or reset
+    /// it. This is the soundness claim documented on
+    /// [`QueueControl::killers`] and [`lock_outcomes`], pinned here so a
+    /// future change to the pattern itself cannot silently regress it.
+    #[test]
+    fn poisoned_mutex_recovers_state_written_before_the_panic() {
+        let mutex = Mutex::new(vec![1, 2, 3]);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut guard = mutex.lock().unwrap();
+            guard.push(4);
+            panic!("simulated poison, deliberately while still holding the guard");
+        }));
+        assert!(mutex.is_poisoned());
+
+        let recovered = mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        assert_eq!(
+            *recovered,
+            vec![1, 2, 3, 4],
+            "recovery must yield the state as it stood right before the panic"
         );
     }
 

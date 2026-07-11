@@ -83,6 +83,25 @@ pub(crate) struct ActiveRun {
     ctl: Arc<QueueControl>,
 }
 
+/// Locks [`AppState::active`], recovering from poisoning instead of
+/// propagating a second panic (hardening, mirrors
+/// `muxsmith_core::executor::queue`'s identical treatment of its own
+/// `killers`/`outcomes` mutexes). Recovery is sound because every write
+/// this lock guards is a single, non-panicking assignment (`*slot =
+/// Some(...)`/`*slot = None`) -- whatever it held right before some
+/// earlier caller panicked while holding it is still a valid
+/// `Option<RunSlot>`, not a half-applied one. The alternative is strictly
+/// worse: an unrecovered poison here would make every future `start_run`,
+/// `cancel_run`, `cancel_job`, and the close-confirmation dialog panic
+/// forever too, wedging the whole app over one earlier bug instead of
+/// just failing the run that triggered it.
+fn lock_active(state: &AppState) -> std::sync::MutexGuard<'_, Option<RunSlot>> {
+    state
+        .active
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// An RAII hold on [`AppState::active`]'s slot for the span of
 /// [`start_run`]'s lock-free planning pass (D23). [`Reservation::acquire`]
 /// installs [`RunSlot::Reserved`] and releases the mutex immediately;
@@ -105,7 +124,7 @@ impl<'a> Reservation<'a> {
     /// this, a flag orphaned by e.g. a mid-callback panic would silently
     /// exit the app after the *next* unrelated run.
     fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
-        let mut slot = state.active.lock().unwrap();
+        let mut slot = lock_active(state);
         if slot.is_some() {
             return Err(IpcError::new("run-already-active"));
         }
@@ -133,7 +152,7 @@ impl<'a> Reservation<'a> {
     /// the queue thread spawns, so the thread's own end-of-run clear
     /// ([`finish_teardown`]) can never race ahead of the install.
     fn commit(mut self, ctl: Arc<QueueControl>) {
-        *self.state.active.lock().unwrap() = Some(RunSlot::Running(ActiveRun { ctl }));
+        *lock_active(self.state) = Some(RunSlot::Running(ActiveRun { ctl }));
         self.committed = true;
     }
 }
@@ -141,7 +160,7 @@ impl<'a> Reservation<'a> {
 impl Drop for Reservation<'_> {
     fn drop(&mut self) {
         if !self.committed {
-            *self.state.active.lock().unwrap() = None;
+            *lock_active(self.state) = None;
         }
     }
 }
@@ -581,7 +600,7 @@ enum CloseDecision {
 /// unit-testable: any occupant of the slot (Reserved or Running) means
 /// "confirm first".
 fn close_decision(state: &AppState) -> CloseDecision {
-    if state.active.lock().unwrap().is_some() {
+    if lock_active(state).is_some() {
         CloseDecision::ConfirmAbort
     } else {
         CloseDecision::Close
@@ -641,7 +660,7 @@ pub fn on_close_requested(window: &Window, event: &WindowEvent) {
 /// is what guarantees a single exit no matter which paths race.
 fn abort_and_quit(state: &AppState, exit: impl FnOnce(i32)) {
     state.quit_after_finished.store(true, Ordering::SeqCst);
-    let already_torn_down = match state.active.lock().unwrap().as_ref() {
+    let already_torn_down = match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(cancel)) => {
             cancel.store(true, Ordering::SeqCst);
             false
@@ -678,7 +697,7 @@ fn quit_if_requested(state: &AppState, exit: impl FnOnce(i32)) {
 /// before `summary.json` is written would lose the run's history (the
 /// exact loss D26/D31 exist to prevent).
 fn finish_teardown(state: &AppState, exit: impl FnOnce(i32)) {
-    *state.active.lock().unwrap() = None;
+    *lock_active(state) = None;
     quit_if_requested(state, exit);
 }
 
@@ -849,7 +868,7 @@ fn resolve_runs_root() -> Option<PathBuf> {
 /// `Cancelled` without spawning, so a cancel in the planning window is
 /// honored, not lost.
 fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
-    match state.active.lock().unwrap().as_ref() {
+    match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(cancel)) => {
             cancel.store(true, Ordering::SeqCst);
             Ok(())
@@ -870,7 +889,7 @@ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
 /// `start_run` returns, and by then the slot is `Running` (commit happens
 /// before `start_run` returns).
 fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
-    match state.active.lock().unwrap().as_ref() {
+    match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(_)) => Ok(()),
         Some(RunSlot::Running(run)) => {
             run.ctl.cancel_job(index);

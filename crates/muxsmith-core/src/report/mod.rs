@@ -146,6 +146,9 @@ diag_codes! {
     UnknownPropertySkew => "unknown-property-skew",
     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
     SuggestionsCapped => "suggestions-capped",
+    // Run-time (executor)
+    /// A queue worker thread panicked while running a job -- a bug in this crate, never an mkvmerge failure (a failing mux is a plain `Failed` outcome, not a panic). The job is reported `Failed`; the panic's own payload is developer-diagnostic content, logged but never carried into this code's params.
+    WorkerPanicked => "worker-panicked",
 }
 
 /// One diagnostic (spec 5.2): a data record, never prose. `code` +
