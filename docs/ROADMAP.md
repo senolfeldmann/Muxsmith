@@ -293,6 +293,14 @@ implementation entry below.)
   AppState.active poison-recovery item promoted out of the v1.x list
   (same hygiene class, both spots in one pass).
 
+- **Two D32 sub-decisions PENDING Şenol** (2026-07-12, T16 review; details
+  in the plan-5.5 memo's D32 addendum): (1) general schema-drift advisory
+  removed with T16 - keep dropped, or reintroduce once-per-batch as its
+  own diagnostic; (2) raw: single-field verbatim lookup vs dual-field
+  (language/language_ietf). Both shipped as-implemented; ruled at the next
+  check-in (bundled with the T21 terminology gate); small follow-up task
+  if either is reversed.
+
 ## Near-1.0
 
 - **Requirements-catalog derivation (product-baseline-desktop)**: at 1.0,
