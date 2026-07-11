@@ -126,7 +126,17 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
         DiagCode::UnidentifiableSource => {
             args.set("detail", "mkvmerge exited with status 2");
         }
-        DiagCode::UnsupportedSource => {}
+        // `unsupported-source`'s message selects on `kind` (planner.rs
+        // `resolve_file`): the `*[primary]` default branch (kind other than
+        // "donor") needs no further params, the `[donor]` branch also
+        // needs `donor`. Only the donor branch has a placeholder to leak,
+        // so it is the one exercised here (same single-fixture-per-code
+        // limitation the doc comment above calls out for
+        // `InvalidPropertyValue`).
+        DiagCode::UnsupportedSource => {
+            args.set("kind", "donor");
+            args.set("donor", "/in/movie.donor.srt");
+        }
         DiagCode::EmptyPlan => {}
         DiagCode::OutputCollision => {
             args.set("path", "/out/movie.mkv");

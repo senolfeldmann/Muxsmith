@@ -120,11 +120,14 @@ diag_codes! {
     AmbiguousExternal => "ambiguous-external",
     /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
     UnidentifiableSource => "unidentifiable-source",
-    /// A primary source mkvmerge identified (exit 0) whose container it does
-    /// not recognize or support, so it cannot be muxed. Distinct from
-    /// `UnidentifiableSource` (mkvmerge exited non-zero). A recognized,
-    /// supported container with zero tracks is NOT this code (stays a
-    /// per-rule `missing-track`).
+    /// A primary source, or an external donor, that mkvmerge identified
+    /// (exit 0) but whose container it does not recognize or support, so it
+    /// cannot be muxed. Distinct from `UnidentifiableSource` (mkvmerge
+    /// exited non-zero). A recognized, supported container with zero tracks
+    /// is NOT this code (stays a per-rule `missing-track`). `kind` selects
+    /// the rendered variant (`primary` or `donor`); the donor variant also
+    /// carries `donor` (the offending donor's path) so the message never
+    /// misdirects the user at the healthy primary (T9.5).
     UnsupportedSource => "unsupported-source",
     /// A plan that survived every finalize pass (no error-severity
     /// diagnostic on the file, local or cross-file) still resolved zero
