@@ -526,12 +526,24 @@ tracks:
 
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let unsupported = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::UnsupportedSource)
+        .unwrap_or_else(|| panic!("diags: {:?}", fr.diagnostics));
+    // T9.5: the diagnostic must name the offending DONOR, not render
+    // against the healthy primary with no disambiguator.
+    assert_eq!(
+        unsupported.params.get("kind").map(String::as_str),
+        Some("donor")
+    );
     assert!(
-        fr.diagnostics
-            .iter()
-            .any(|d| d.code == DiagCode::UnsupportedSource),
-        "diags: {:?}",
-        fr.diagnostics
+        unsupported
+            .params
+            .get("donor")
+            .is_some_and(|d| d.ends_with("Donor.S01E01.srt")),
+        "params: {:?}",
+        unsupported.params
     );
     assert!(
         !fr.diagnostics
@@ -550,12 +562,18 @@ fn unrecognized_container_yields_unsupported_source_not_missing_track() {
     let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
-    let count = fr
+    let unsupported: Vec<_> = fr
         .diagnostics
         .iter()
         .filter(|d| d.code == DiagCode::UnsupportedSource)
-        .count();
-    assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
+        .collect();
+    assert_eq!(unsupported.len(), 1, "diags: {:?}", fr.diagnostics);
+    // T9.5: the primary-side emission must keep selecting the unnamed
+    // ("primary") rendering, not the donor-naming one.
+    assert_eq!(
+        unsupported[0].params.get("kind").map(String::as_str),
+        Some("primary")
+    );
     assert!(
         !fr.diagnostics
             .iter()
@@ -573,12 +591,18 @@ fn unsupported_container_yields_unsupported_source_not_missing_track() {
     let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
     let fr = &batch.files[0];
     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
-    let count = fr
+    let unsupported: Vec<_> = fr
         .diagnostics
         .iter()
         .filter(|d| d.code == DiagCode::UnsupportedSource)
-        .count();
-    assert_eq!(count, 1, "diags: {:?}", fr.diagnostics);
+        .collect();
+    assert_eq!(unsupported.len(), 1, "diags: {:?}", fr.diagnostics);
+    // T9.5: the primary-side emission must keep selecting the unnamed
+    // ("primary") rendering, not the donor-naming one.
+    assert_eq!(
+        unsupported[0].params.get("kind").map(String::as_str),
+        Some("primary")
+    );
     assert!(
         !fr.diagnostics
             .iter()

@@ -451,8 +451,11 @@ fn resolve_file(
     }
 
     if !ident.container_recognized || !ident.container_supported {
-        diagnostics
-            .push(Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(&primary.path));
+        diagnostics.push(
+            Diagnostic::error(DiagCode::UnsupportedSource, "input")
+                .for_file(&primary.path)
+                .with("kind", "primary"),
+        );
         return (
             FileReport {
                 source: primary.path.clone(),
@@ -519,7 +522,9 @@ fn resolve_file(
                                             DiagCode::UnsupportedSource,
                                             format!("{base}.source.external"),
                                         )
-                                        .for_file(&primary.path),
+                                        .for_file(&primary.path)
+                                        .with("kind", "donor")
+                                        .with("donor", donor.display().to_string()),
                                     );
                                     assignments.push(Assignment {
                                         rule_index: ri,

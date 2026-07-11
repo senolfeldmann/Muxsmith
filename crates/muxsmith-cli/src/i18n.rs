@@ -213,4 +213,50 @@ mod tests {
             "unresolved property placeholder leaked into: {rendered}"
         );
     }
+
+    #[test]
+    fn unsupported_source_donor_variant_names_the_donor_file() {
+        use muxsmith_core::report::{DiagCode, Diagnostic};
+
+        let renderer = Renderer::new(Some("en"));
+        let diag = Diagnostic::error(DiagCode::UnsupportedSource, "tracks[0].source.external")
+            .for_file("Show.S01E01.mkv")
+            .with("kind", "donor")
+            .with("donor", "Donor.S01E01.srt");
+        let rendered = renderer.diagnostic(&diag);
+        assert!(
+            rendered.contains("Donor.S01E01.srt"),
+            "expected the donor filename in: {rendered}"
+        );
+    }
+
+    #[test]
+    fn unsupported_source_primary_variant_renders_exactly_as_before() {
+        // Regression guard: adding the donor variant must not change one
+        // character of the primary-side rendering (T9.5).
+        let renderer = Renderer::new(Some("en"));
+        let rendered = renderer.msg("unsupported-source", &[("kind", "primary")]);
+        assert_eq!(
+            rendered,
+            "mkvmerge identified this file but its container is not a supported muxing source."
+        );
+    }
+
+    #[test]
+    fn unsupported_source_kind_omitted_falls_back_to_primary_variant() {
+        // Pin Fluent's default-variant fallback: when kind param is omitted,
+        // the message must render with the primary variant (T9.5 review).
+        // Guards against Fluent version bump or future emitter omitting kind
+        // silently leaking placeholders.
+        let renderer = Renderer::new(Some("en"));
+        let rendered = renderer.msg("unsupported-source", &[]);
+        assert_eq!(
+            rendered,
+            "mkvmerge identified this file but its container is not a supported muxing source."
+        );
+        assert!(
+            !rendered.contains("{$"),
+            "unresolved placeholder leaked into: {rendered}"
+        );
+    }
 }
