@@ -251,15 +251,12 @@ pub fn plan_core(
     let policy = run.on_collision.unwrap_or(profile.output.on_collision);
 
     let mut files: Vec<FileReport> = Vec::new();
+    let mut resolved_sources: Vec<PathBuf> = Vec::new();
     for primary in primaries {
-        files.push(resolve_file(
-            profile,
-            primary,
-            &primary_paths,
-            &output_dir,
-            id,
-            lang,
-        ));
+        let (report, sources) =
+            resolve_file(profile, primary, &primary_paths, &output_dir, id, lang);
+        files.push(report);
+        resolved_sources.extend(sources);
     }
 
     // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
@@ -268,7 +265,7 @@ pub fn plan_core(
     // errors, so collision detection only considers files that will actually
     // produce output; then re-drop any plan that a collision error just
     // invalidated.
-    detect_source_overwrites(&mut files, &primary_paths);
+    detect_source_overwrites(&mut files, &primary_paths, &resolved_sources);
     finalize_plans(&mut files);
     detect_output_collisions(&mut files, policy);
     finalize_plans(&mut files);
@@ -362,6 +359,10 @@ fn walk_exact_languages(
     }
 }
 
+// Returns the file's report alongside every assignment source path it
+// resolved (primaries and donors alike), independent of whether the file's
+// own plan ends up `Some` - `detect_source_overwrites` needs the latter even
+// when this file's own output never renders (Plan-2 FINAL M2 / #7).
 fn resolve_file(
     profile: &Profile,
     primary: &PrimaryFile,
@@ -369,7 +370,7 @@ fn resolve_file(
     output_dir: &Path,
     id: &mut dyn Identify,
     lang: &LanguageIndex,
-) -> FileReport {
+) -> (FileReport, Vec<PathBuf>) {
     let mut diagnostics = Vec::new();
     let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
 
@@ -381,12 +382,15 @@ fn resolve_file(
                     .for_file(&primary.path)
                     .with("detail", format!("{e}")),
             );
-            return FileReport {
-                source: primary.path.clone(),
-                identifier: primary.identifier.whole.clone(),
-                plan: None,
-                diagnostics,
-            };
+            return (
+                FileReport {
+                    source: primary.path.clone(),
+                    identifier: primary.identifier.whole.clone(),
+                    plan: None,
+                    diagnostics,
+                },
+                Vec::new(),
+            );
         }
     };
     if ident.format_version > PINNED_IDENTIFICATION_FORMAT_VERSION {
@@ -400,12 +404,15 @@ fn resolve_file(
     if !ident.container_recognized || !ident.container_supported {
         diagnostics
             .push(Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(&primary.path));
-        return FileReport {
-            source: primary.path.clone(),
-            identifier: primary.identifier.whole.clone(),
-            plan: None,
-            diagnostics,
-        };
+        return (
+            FileReport {
+                source: primary.path.clone(),
+                identifier: primary.identifier.whole.clone(),
+                plan: None,
+                diagnostics,
+            },
+            Vec::new(),
+        );
     }
 
     let mut assignments = Vec::new();
@@ -581,6 +588,11 @@ fn resolve_file(
         crate::profile::model::KeepDrop::Keep
     );
 
+    // Captured before `assignments` moves into `Plan` below: every source
+    // this file resolved (primary or donor) is known at this point already,
+    // regardless of whether `output` renders successfully.
+    let resolved_sources: Vec<PathBuf> = assignments.iter().map(|a| a.source.clone()).collect();
+
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
         output,
@@ -593,12 +605,15 @@ fn resolve_file(
         primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
     });
 
-    FileReport {
-        source: primary.path.clone(),
-        identifier: primary.identifier.whole.clone(),
-        plan,
-        diagnostics,
-    }
+    (
+        FileReport {
+            source: primary.path.clone(),
+            identifier: primary.identifier.whole.clone(),
+            plan,
+            diagnostics,
+        },
+        resolved_sources,
+    )
 }
 
 // Builds the AppliedChange list for a track a rule resolved to, from the
@@ -915,18 +930,34 @@ fn resolve_attachments(
 // A rendered output must never equal an input path anywhere in the batch:
 // every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
 // Batch-wide because one primary's output can equal a donor a *different*
-// primary reads from; `Assignment.source` already carries that donor path
-// (or the primary path, for a primary-source rule), so the union of every
-// file's assignment sources plus the primaries is the complete input set.
-// Runs before `finalize_plans` drops anything, so every file's assignments
-// are still present to gather from.
-fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf]) {
+// primary reads from; `resolved_sources` (built in `resolve_file`, before
+// that file's own output ever renders) already carries every assignment's
+// source path - donor or primary - independent of whether the file's own
+// plan survives, so the union of `resolved_sources` plus the primaries is
+// the complete input set. Runs before `finalize_plans` drops anything.
+//
+// Plan-2 FINAL M2 / #7: sources are known before rendering, so a file whose
+// own output fails to render (`plan == None`) must still contribute its
+// donors here - the previous version read `plan.assignments`, which does
+// not exist once `plan` is `None`, so a donor referenced solely by such a
+// file escaped protection and a colliding output could overwrite it
+// silently.
+//
+// S11 guard: `resolve_file`'s `AmbiguousExternal` branch (2+ candidate
+// donors for one locator) deliberately pushes a placeholder assignment
+// sourced at the primary path, not at any of the n candidates - which one
+// is "the" donor is genuinely unknown, so none of them is protected here.
+// Safe only because `AmbiguousExternal` is unconditionally Error-severity
+// (that file's own plan never survives regardless, per `finalize_plans`);
+// if it is ever downgraded to non-fatal, this function needs to start
+// protecting all n candidates explicitly (F5 report).
+fn detect_source_overwrites(
+    files: &mut [FileReport],
+    primary_paths: &[PathBuf],
+    resolved_sources: &[PathBuf],
+) {
     let mut inputs: BTreeSet<PathBuf> = primary_paths.iter().cloned().collect();
-    for f in files.iter() {
-        if let Some(plan) = &f.plan {
-            inputs.extend(plan.assignments.iter().map(|a| a.source.clone()));
-        }
-    }
+    inputs.extend(resolved_sources.iter().cloned());
     for f in files.iter_mut() {
         let Some(plan) = &f.plan else { continue };
         if inputs.contains(&plan.output) {
