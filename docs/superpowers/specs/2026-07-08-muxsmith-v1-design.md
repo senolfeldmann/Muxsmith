@@ -227,7 +227,7 @@ Example: `match_pattern: 'staffel0*{season:int}episode0*{episode:int}'` matches 
 
 ### 4.9 Attachments, chapters, tags, title
 
-- `attachments.unmatched`: `keep | drop`, default `keep`. Deliberate asymmetry with tracks (unmatched tracks are always dropped): attachments are auxiliary payload and dropping fonts silently breaks ASS rendering.
+- `attachments.unmatched`: `keep | drop`, default `keep`. Deliberate asymmetry of DEFAULTS with tracks (`tracks.unmatched` defaults to `drop`, see 4.5; both are configurable since D20 - this parenthesis predated D20 and stale-claimed "always dropped" until 2026-07-11): attachments are auxiliary payload and dropping fonts silently breaks ASS rendering.
 - `attachments.rules`: ordered list; each rule either selects (keeps) or drops attachments matching an expression over `file_name`, `content_type`, `description` (same algebra, `exact`/`substring`/`regex`/`any`/`not`), or adds an external file as attachment via a locator. Selection rules here are not uniqueness-constrained: an attachment rule may match several attachments (fonts come in sets); rules resolve in list order, first matching rule wins per attachment.
 - `chapters`: `keep | drop` or an external locator resolving to exactly one chapters file per primary (XML or simple format, as mkvmerge accepts).
 - `tags.global`, `tags.track`: `keep | drop` (mapped to `--no-global-tags`, `--no-track-tags`).
