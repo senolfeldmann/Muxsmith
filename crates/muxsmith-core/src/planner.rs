@@ -1096,7 +1096,9 @@ fn candidates_for_rule(
             continue;
         }
         for t in &matched {
-            // Own the property list, including the top-level `type` pseudo-prop.
+            // Own the property list, including the top-level `type`/`codec`/
+            // `id` pseudo-props (spec 4.4 flattens these over `properties`;
+            // R1 iv makes `codec` and `id` discriminator dimensions too).
             let mut props: Vec<(String, crate::identify::PropValue)> = t
                 .properties
                 .iter()
@@ -1105,6 +1107,14 @@ fn candidates_for_rule(
             props.push((
                 "type".to_string(),
                 crate::identify::PropValue::Str(t.kind.clone()),
+            ));
+            props.push((
+                "codec".to_string(),
+                crate::identify::PropValue::Str(t.codec.clone()),
+            ));
+            props.push((
+                "id".to_string(),
+                crate::identify::PropValue::Int(t.id as i64),
             ));
             for (prop, val) in &props {
                 if crate::capability::matchable_type(prop).is_none() {

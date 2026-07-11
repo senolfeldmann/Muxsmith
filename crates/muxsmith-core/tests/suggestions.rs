@@ -464,3 +464,66 @@ fn ambiguous_external_source_rule_gets_suggestions_like_a_primary_rule() {
         batch.suggestions.iter().map(|s| &s.edit).collect::<Vec<_>>()
     );
 }
+
+// --- Task 13 step 2: codec and id are narrowing dimensions (R1 iv) ---
+
+// Two subtitle tracks identical in every matchable property EXCEPT `codec`
+// (and `id`, which always differs per track). `codec_id` is deliberately the
+// same on both, so the ambiguity is resolvable ONLY via the top-level `codec`
+// or `id` fields -- exactly the dimensions candidate generation used to omit.
+const CODEC_ID_ONLY: &str = r#"
+{
+  "attachments": [], "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
+  "identification_format_version": 20, "track_tags": [],
+  "tracks": [
+    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
+    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+        "language": "eng", "language_ietf": "en" } },
+    { "codec": "SubStationAlpha/ASS", "id": 2, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+        "language": "eng", "language_ietf": "en" } }
+  ]
+}
+"#;
+
+const P_SUBS_BY_LANGUAGE: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, language: en } }
+"#;
+
+#[test]
+fn ambiguity_resolvable_only_by_codec_or_id_yields_those_dimensions() {
+    let (batch, _dir) = plan_multi(P_SUBS_BY_LANGUAGE, &[("Show.S01E01.mkv", CODEC_ID_ONLY)]);
+
+    assert!(
+        batch.files[0]
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::AmbiguousRule),
+        "expected the two same-language subtitle tracks to be ambiguous"
+    );
+    assert!(
+        batch
+            .suggestions
+            .iter()
+            .all(|s| s.resolves == DiagCode::AmbiguousRule),
+    );
+
+    let has_codec = batch.suggestions.iter().any(|s| {
+        matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "codec")
+    });
+    let has_id = batch.suggestions.iter().any(|s| {
+        matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "id")
+    });
+    assert!(
+        has_codec && has_id,
+        "expected both a codec-based and an id-based suggestion, got {:?}",
+        batch.suggestions.iter().map(|s| &s.edit).collect::<Vec<_>>()
+    );
+}
