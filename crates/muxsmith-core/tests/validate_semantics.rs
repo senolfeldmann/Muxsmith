@@ -147,6 +147,99 @@ attachments:
     assert!(codes(&p).contains(&DiagCode::AttachmentRuleShape));
 }
 
+// D32 / Task 16: `raw:` opt-in acceptance cases B-1..B-4 (config-time).
+
+// B-1 (regression pin): a bare (unprefixed) typo still hard-rejects exactly as
+// before; the raw: feature must not weaken plain-namespace typo protection.
+#[test]
+fn b1_bare_typo_still_hard_rejects_unchanged() {
+    let p = profile("  - match: { exact: { langauge: de } }");
+    let diags = validate(&p);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::UnknownProperty)
+        .expect("bare typo must still be UnknownProperty");
+    assert_eq!(d.severity, Severity::Error);
+    assert_eq!(d.config_path, "tracks[0].match.exact.langauge");
+    assert_eq!(d.params["property"], "langauge");
+    assert!(!codes(&p).contains(&DiagCode::RawProperty));
+}
+
+// B-2: a raw:-prefixed unknown property under `exact` emits RawProperty (info),
+// no UnknownProperty, and no ValueTypeMismatch (the integer value is accepted
+// untyped). config_path keeps the literal `raw:`-prefixed key; the `property`
+// param carries the bare (stripped) name.
+#[test]
+fn b2_raw_unknown_exact_is_raw_property_info_untyped() {
+    let p = profile("  - match: { exact: { raw:dolby_complexity_index: 3 } }");
+    let diags = validate(&p);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::RawProperty)
+        .expect("raw: unknown property must emit RawProperty");
+    assert_eq!(d.severity, Severity::Info);
+    assert_eq!(
+        d.config_path,
+        "tracks[0].match.exact.raw:dolby_complexity_index"
+    );
+    assert_eq!(d.params["property"], "dolby_complexity_index");
+    let cs = codes(&p);
+    assert!(!cs.contains(&DiagCode::UnknownProperty));
+    assert!(!cs.contains(&DiagCode::ValueTypeMismatch));
+}
+
+// B-3: raw: under `substring` on an unknown property emits RawProperty (info),
+// no UnknownProperty and no NotStringProperty (untyped, assumed string-capable
+// for substring).
+#[test]
+fn b3_raw_unknown_substring_is_raw_property_info_no_type_error() {
+    let p = profile("  - match: { substring: { raw:new_text_field: foo } }");
+    let diags = validate(&p);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::RawProperty)
+        .expect("raw: under substring must emit RawProperty");
+    assert_eq!(d.severity, Severity::Info);
+    assert_eq!(d.params["property"], "new_text_field");
+    let cs = codes(&p);
+    assert!(!cs.contains(&DiagCode::UnknownProperty));
+    assert!(!cs.contains(&DiagCode::NotStringProperty));
+}
+
+// B-4: raw: on a KNOWN property with special matching semantics (language /
+// codec_kind) emits RawOnKnownProperty (warning) instead of RawProperty; the
+// prefix bypasses ISO-639/BCP-47 normalization (language) or alias expansion
+// (codec_kind), degrading the match to byte-literal equality.
+#[test]
+fn b4_raw_on_language_is_raw_on_known_property_warning() {
+    let p = profile("  - match: { exact: { raw:language: de } }");
+    let diags = validate(&p);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::RawOnKnownProperty)
+        .expect("raw:language must emit RawOnKnownProperty");
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.params["property"], "language");
+    let cs = codes(&p);
+    assert!(!cs.contains(&DiagCode::RawProperty));
+    assert!(!cs.contains(&DiagCode::InvalidPropertyValue));
+}
+
+#[test]
+fn b4_raw_on_codec_kind_is_raw_on_known_property_warning() {
+    let p = profile("  - match: { exact: { raw:codec_kind: srt } }");
+    let diags = validate(&p);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::RawOnKnownProperty)
+        .expect("raw:codec_kind must emit RawOnKnownProperty");
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.params["property"], "codec_kind");
+    // The bare codec_kind exact-only guard must not fire on the raw: form; raw:
+    // bypasses the alias machinery entirely.
+    assert!(!codes(&p).contains(&DiagCode::CodecKindExactOnly));
+}
+
 #[test]
 fn attachment_match_uses_attachment_property_set() {
     let y = r#"

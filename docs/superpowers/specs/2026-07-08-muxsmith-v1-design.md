@@ -139,7 +139,7 @@ expr := {
 - Multiple entries inside one condition map are AND.
 - `any` / `not` recurse; arbitrary depth is legal, typical profiles stay flat.
 - A present-but-empty `any` or `not` list is a config-time error (`EmptyMatchList`): an empty OR/NOR group is always a mistake (an unfinished edit or a generator artifact), never a meaningful "no constraint"; omit the key instead.
-- `substring` and `regex` on a non-string property are config-time type errors.
+- `substring` and `regex` on a non-string property are config-time type errors, unless the property is `raw:`-prefixed (4.4), which opts out of the type check and matches untyped.
 - Case sensitivity: `exact` compares strings case-sensitively (language values are normalized per 4.4); `substring` is case-insensitive; `regex` is taken as written (use `(?i)` for case-insensitive matching).
 - Semantics carrier of the whole product; specified exhaustively by the property model (4.4) plus this evaluation rule, and covered by property-based tests.
 
@@ -173,6 +173,7 @@ Conveniences:
 - `sub_charset`: validated leniently (iconv names are open-ended); passed through to mkvmerge.
 - **Closed-domain values.** For properties whose value set is closed, an `exact` value outside the domain is `InvalidPropertyValue` (not a silent never-match): `type` and `codec_kind` at config time (against the pinned schema enum and the alias table respectively), `language` at plan time (against `mkvmerge --list-languages`). Open-ended values (`sub_charset`, free-text `track_name`) are exempt.
 - **Boolean flags, absent = false.** For `exact` matching, a boolean-typed matchable property that a track's `-J` output omits compares equal to `false`. mkvmerge emits the vanity flags (`flag_hearing_impaired`, `flag_visual_impaired`, `flag_commentary`, `flag_original`) only when set, and Matroska defines them false-when-absent; so `exact: { flag_hearing_impaired: false }` matches a track that never set the flag, mirroring mkvmerge's own semantics rather than requiring the `not: [ exact: { flag: true } ]` idiom.
+- **`raw:` opt-in (forward compatibility, D32).** A match property not in the pinned model is rejected at config time (`UnknownProperty`), which protects against typos: a mistyped name that would silently never-match is the worst failure mode for a declarative batch tool. To match a property the local mkvmerge reports but this build's schema does not yet carry (a newer identification schema), prefix the name with `raw:` inside `exact`/`substring`/`regex`, e.g. `exact: { raw:dolby_complexity_index: 3 }`. A `raw:` property bypasses the existence/type/domain checks and is matched untyped (byte-literal value equality against the property named verbatim, no `language` normalization or `codec_kind` aliasing, no false-when-absent Boolean shortcut). Config time flags the bypass (`RawProperty`, info; `RawOnKnownProperty`, warning, on `language`/`codec_kind`), and plan time raises `UnknownPropertySkew` per consumed `raw:` property (9.2). The prefix is a matching opt-in only; it is not accepted in `changes`, where an unknown key stays `UnknownSettableProperty`. YAML parses the prefix as part of the key (a colon not followed by a space stays inside the plain scalar), so no quoting is needed.
 
 ### 4.5 Track rules
 
@@ -269,11 +270,13 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
 | `IgnoredFile` | info | extension matches but `input.pattern` does not |
 | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
-| `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`) |
+| `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`); a `raw:`-prefixed name opts out (4.4, 9.2) |
+| `RawProperty` | info | a match condition uses a `raw:`-prefixed property: an explicit opt-in that bypasses the capability checks and matches untyped; `property` carries the bare name (config-time; 4.4, 9.2) |
+| `RawOnKnownProperty` | warning | `raw:` applied to a model property with special matching semantics (`language`, `codec_kind`), degrading it to byte-literal untyped equality (config-time; 4.4, 9.2) |
 | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
 | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
 | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
-| `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
+| `UnknownPropertySkew` | warning | a `raw:`-opted property was consumed at plan time and matched untyped; `property`/`found_version`/`pinned` params report the property and the runtime-vs-pinned schema versions, one code covering both a genuinely newer schema and a same-version untyped match (9.2) |
 | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
 | `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
 
@@ -287,7 +290,7 @@ Algorithm (closed edit grammar, discriminator generation, batch simulation via t
 
 ### 5.4 Static lint
 
-Best-effort, file-independent checks at validate time: regex/template compilation, type errors, unknown properties, closed-domain value checks (`type`, `codec_kind`; `language`'s domain needs runtime and is checked at plan time), `codec_kind` exact-only, and provable rule overlaps (rule A's condition set logically subsumes rule B's, so any track matching B must overlap A). Static analysis never replaces the dry run; it catches what is decidable without looking at files.
+Best-effort, file-independent checks at validate time: regex/template compilation, type errors, unknown properties (unless `raw:`-opted, 4.4/9.2), closed-domain value checks (`type`, `codec_kind`; `language`'s domain needs runtime and is checked at plan time), `codec_kind` exact-only, and provable rule overlaps (rule A's condition set logically subsumes rule B's, so any track matching B must overlap A). Static analysis never replaces the dry run; it catches what is decidable without looking at files.
 
 ### 5.5 Operation levels
 
@@ -393,7 +396,7 @@ Localization readiness is structural, not deferred polish:
 ## 9. Capability model and version skew
 
 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code, including the closed value domains of enum-typed properties (e.g. `type`) for config-time `InvalidPropertyValue` checks. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
-2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownPropertySkew` warning instead of failing (forward compatibility without lying about type safety).
+2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`. A property name unknown to the pinned model is a config-time `UnknownProperty` error (typo protection) unless the profile opts in with a `raw:` prefix (D32). A `raw:`-prefixed property bypasses the capability existence/type/domain checks and is matched untyped: byte-literal value equality against the property named verbatim, with no `language` normalization, no `codec_kind` alias expansion, and no false-when-absent Boolean shortcut. The opt-in is announced at config time by `RawProperty` (info), or by `RawOnKnownProperty` (warning) when the bare name is a model property with special matching semantics (`language`, `codec_kind`) that `raw:` degrades to byte-literal equality. At plan time each `raw:` property consumed while resolving a rule raises an `UnknownPropertySkew` warning carrying `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so the untyped match is visible whether the runtime schema is genuinely newer than pinned or the same. Forward compatibility without lying about type safety: the untyped path is opt-in and declared, never inferred from a version bump. Upgrading the pinned schema (item 1) remains the typed path for a property that should become first-class.
 
 ## 10. Testing
 

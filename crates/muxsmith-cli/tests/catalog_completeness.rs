@@ -65,6 +65,12 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
         DiagCode::UnknownProperty => {
             args.set("property", "bogus_property");
         }
+        DiagCode::RawProperty => {
+            args.set("property", "dolby_complexity_index");
+        }
+        DiagCode::RawOnKnownProperty => {
+            args.set("property", "language");
+        }
         DiagCode::CodecKindExactOnly => {
             args.set("condition", "substring");
         }
@@ -153,7 +159,9 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
             args.set("name", "movie.1080p.1080p.mkv");
         }
         DiagCode::UnknownPropertySkew => {
-            args.set("version", "42");
+            args.set("property", "new_prop");
+            args.set("found_version", "21");
+            args.set("pinned", "20");
         }
         DiagCode::UnknownExtension => {
             args.set("extension", "avi");

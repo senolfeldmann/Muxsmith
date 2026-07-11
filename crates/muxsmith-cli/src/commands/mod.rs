@@ -180,9 +180,11 @@ mod tests {
             identifier: "S01E01".into(),
             plan: None,
             diagnostics: vec![
-                Diagnostic::warning(DiagCode::UnknownPropertySkew, "input")
+                Diagnostic::warning(DiagCode::UnknownPropertySkew, "tracks[0].match")
                     .for_file(file)
-                    .with("version", "42"),
+                    .with("property", "new_prop")
+                    .with("found_version", "21")
+                    .with("pinned", "20"),
                 Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(file),
             ],
         };

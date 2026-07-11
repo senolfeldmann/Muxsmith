@@ -442,14 +442,6 @@ fn resolve_file(
             );
         }
     };
-    if ident.format_version > PINNED_IDENTIFICATION_FORMAT_VERSION {
-        diagnostics.push(
-            Diagnostic::warning(DiagCode::UnknownPropertySkew, "input")
-                .for_file(&primary.path)
-                .with("version", ident.format_version.to_string()),
-        );
-    }
-
     if !ident.container_recognized || !ident.container_supported {
         diagnostics
             .push(Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(&primary.path));
@@ -573,6 +565,21 @@ fn resolve_file(
                 }
             }
         };
+
+        // UnknownPropertySkew (spec 9.2, D32): one warning per `raw:` property
+        // consumed while evaluating this rule against its resolved source,
+        // carrying the source file's `identification_format_version`
+        // (`found_version`) and this build's `pinned` schema. Emitted before
+        // the match-count branch, so it fires regardless of whether the rule
+        // resolves, matches nothing (still a MissingTrack, B-11), or is
+        // ambiguous - the untyped match was attempted either way.
+        emit_raw_property_skew(
+            &rule.match_expr,
+            &format!("{base}.match"),
+            &primary.path,
+            source_ident.format_version,
+            &mut diagnostics,
+        );
 
         let matched: Vec<(u64, String)> = source_ident
             .tracks
@@ -705,6 +712,48 @@ fn resolve_file(
         },
         resolved_sources,
     )
+}
+
+// Emits one UnknownPropertySkew warning (spec 9.2, D32) per distinct `raw:`
+// property referenced anywhere in this rule's match expression, at the rule's
+// `.match` path. `found_version` is the resolved source's schema version, so
+// the message can show it against `pinned` whether the runtime schema is
+// genuinely newer (B-9) or the same (B-10). Deduplicated per rule via the
+// BTreeSet, which also fixes the emission order.
+fn emit_raw_property_skew(
+    expr: &MatchExpr,
+    match_path: &str,
+    file: &Path,
+    found_version: u64,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut raw_props: BTreeSet<String> = BTreeSet::new();
+    collect_raw_props(expr, &mut raw_props);
+    for prop in raw_props {
+        diags.push(
+            Diagnostic::warning(DiagCode::UnknownPropertySkew, match_path.to_string())
+                .for_file(file)
+                .with("property", prop)
+                .with("found_version", found_version.to_string())
+                .with("pinned", PINNED_IDENTIFICATION_FORMAT_VERSION.to_string()),
+        );
+    }
+}
+
+// Collects the bare (prefix-stripped) names of every `raw:`-prefixed property
+// used in `expr`'s exact/substring/regex maps, recursing into `any`/`not`.
+fn collect_raw_props(expr: &MatchExpr, out: &mut BTreeSet<String>) {
+    let exact_keys = expr.exact.iter().flat_map(|m| m.keys());
+    let substring_keys = expr.substring.iter().flat_map(|m| m.keys());
+    let regex_keys = expr.regex.iter().flat_map(|m| m.keys());
+    for key in exact_keys.chain(substring_keys).chain(regex_keys) {
+        if let Some(bare) = key.strip_prefix("raw:") {
+            out.insert(bare.to_string());
+        }
+    }
+    for sub in expr.any.iter().flatten().chain(expr.not.iter().flatten()) {
+        collect_raw_props(sub, out);
+    }
 }
 
 // Builds the AppliedChange list for a track a rule resolved to, from the

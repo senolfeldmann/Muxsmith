@@ -204,13 +204,27 @@ mod tests {
     }
 
     #[test]
-    fn unknown_property_skew_uses_only_the_supplied_version_param() {
+    fn unknown_property_skew_renders_property_and_versions() {
         let renderer = Renderer::new(Some("en"));
-        let rendered = renderer.msg("unknown-property-skew", &[("version", "42")]);
-        assert!(rendered.contains("42"), "expected version in: {rendered}");
+        let rendered = renderer.msg(
+            "unknown-property-skew",
+            &[
+                ("property", "new_prop"),
+                ("found_version", "21"),
+                ("pinned", "20"),
+            ],
+        );
         assert!(
-            !rendered.contains("{$property}") && !rendered.contains("$property"),
-            "unresolved property placeholder leaked into: {rendered}"
+            rendered.contains("new_prop"),
+            "expected property in: {rendered}"
+        );
+        assert!(
+            rendered.contains("21") && rendered.contains("20"),
+            "expected versions in: {rendered}"
+        );
+        assert!(
+            !rendered.contains("{$"),
+            "unresolved placeholder leaked into: {rendered}"
         );
     }
 }
