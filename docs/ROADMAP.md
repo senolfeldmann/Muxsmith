@@ -254,6 +254,19 @@ memo; policy set and verified.)
   a decode-degraded line; TWO regression tests: truncation and no-hang
   (the hang path additionally assumes run_job's post-None wait(),
   spawn.rs-verified, job.rs loop to be pinned by the test).
+- **Whole-codebase idiomacy review**: one large, deliberately costly review
+  pass before the 1.0 tag - Rust workspace, TS/Vue frontend, configs -
+  against ecosystem idiom. Dimensions: unidiomatic constructs;
+  near-duplicate reimplementations (reuse violations); hand-rolled code
+  where the stdlib or an established library is the human-normal solution;
+  the inverse dependency sweep (is every current dependency earned and
+  healthy). Multi-agent review per the process package, findings triaged
+  with Şenol. Decided 2026-07-11 (Şenol: important, so weird
+  LLM-shaped code does not slip through the cracks before release; the
+  conventions idiomacy directive only governs code written AFTER it
+  existed - this pass covers everything written before). Timing anchor:
+  after the feature plans (5.5, 6) land, immediately before the
+  release-facing gates.
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: the
   queue swallows worker panics (`let _ = handle.join()`, queue.rs:270) -
   a panicked worker's job is backfilled as Cancelled (wrong label), and a
@@ -267,6 +280,12 @@ memo; policy set and verified.)
 
 ## Near-1.0
 
+- **Requirements-catalog derivation (product-baseline-desktop)**: at 1.0,
+  mine this repo's registers, memos, and spec into a NEW
+  product-baseline-desktop skill - the desktop-app counterpart to
+  product-baseline-saas (renamed from product-baseline 2026-07-11; stays
+  SaaS-scoped and is NOT fed from here). D34 (CSP for webview apps) is a
+  named input. Decided 2026-07-11.
 - **Dependabot/Renovate activation**: Şenol's call, timing "when 1.0 is
   essentially done". Free since the repo went public; SHA-pinned actions
   and exact dep pins are ready for it. Two riders (2026-07-11, docs-tree
