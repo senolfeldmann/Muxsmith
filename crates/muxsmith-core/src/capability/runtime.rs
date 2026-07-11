@@ -107,8 +107,9 @@ impl Mkvmerge {
     /// `override_path` (if given) is authoritative, probed with
     /// `--version` and returned or failed outright, PATH and platform
     /// candidates are never consulted. Without an override, tries PATH via
-    /// [`Mkvmerge::locate`], then each of [`platform_candidates`] in order;
-    /// the first one that answers `--version` with a parseable version wins.
+    /// [`Mkvmerge::locate`], then each of the private `platform_candidates`
+    /// in order; the first one that answers `--version` with a parseable
+    /// version wins.
     /// A found mkvmerge below [`MIN_SUPPORTED`] stops the ladder immediately
     /// with `TooOld` rather than being silently skipped in favor of another
     /// candidate: that is real, actionable signal ("upgrade this install"),

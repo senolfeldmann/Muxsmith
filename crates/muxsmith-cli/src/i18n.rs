@@ -50,13 +50,13 @@ impl Renderer {
         self.render(id, fargs)
     }
 
-    /// Renders one Fluent message like [`msg`], but sets `count_key` as a
+    /// Renders one Fluent message like [`Self::msg`], but sets `count_key` as a
     /// numeric `FluentValue::Number` rather than a string. Fluent's plural
     /// selector (`[one]`/`*[other]`) resolves CLDR plural categories only
     /// against `FluentValue::Number`; a `FluentValue::String` selector
     /// always falls through to `*[other]`, so a message with a `{ $count ->
     /// [one] ... *[other] ... }` selector needs its count passed through
-    /// this method instead of [`msg`].
+    /// this method instead of [`Self::msg`].
     pub fn msg_with_count(
         &self,
         id: &str,
