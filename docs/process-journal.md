@@ -577,3 +577,22 @@ the session.
   in HANDOFF as open user actions).
 - Four README placeholder(1.0) comments; WIP banner drops at the tag.
 - Whole-codebase idiomacy review scheduled after Plans 5.5/6.
+
+## 2026-07-11 | session 8 addendum: HANDOFF snapshot gap | session 8
+
+**Scope.** Post-close incident, same evening, after the session-8 entry.
+**Failure.** Şenol caught a process hole minutes after close: the
+session-8 HANDOFF rewrite overwrote the session-7-close state without
+snapshotting it - the exact loss class the 2026-07-10/11 recovery effort
+existed to fix. Root cause: the snapshot rule lived in the HANDOFF's
+intro prose and PROMPT.md fires it only at plan closes, so session closes
+fell through the gap. Human caught what the gates missed.
+**Recovery.** Transcript scan across all sessions found 10 full HANDOFF
+states ever written; 8 were already in artifacts/handoffs/. The two lost
+states recovered: session-6 close (plan-5-close content plus its single
+recorded edit, deterministic reconstruction over a unique anchor) and
+session-7 close (byte-exact from the transcript Write op, md5-verified).
+**Countermeasure.** New SI-5 in the HANDOFF standing-instruction block:
+EVERY HANDOFF rewrite snapshots the new state in the same turn to
+artifacts/handoffs/; the publication-grade rule moved from intro prose
+into the same SI. Session-8-close state snapshotted under the new rule.
