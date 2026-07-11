@@ -17,6 +17,8 @@
 //! background thread with a bounded `recv_timeout` so a regression fails
 //! the test cleanly instead of hanging the suite.
 
+#![cfg(unix)]
+
 use std::io::Write as _;
 use std::sync::mpsc;
 use std::time::Duration;
