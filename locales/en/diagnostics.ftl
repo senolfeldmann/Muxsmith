@@ -43,3 +43,9 @@ empty-match-list = An "any" or "not" list must not be empty; remove it or add at
 unidentifiable-source = A source file exists but could not be identified: { $detail }.
 unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
 suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
+suggestion-partition = { $kind ->
+    [overflow] { $dropped } further resolution group(s) were capped at 5 and not shown.
+   *[group] These { $count } file(s) need their own refinement; apply:
+{ $fix }
+    to: { $files }
+}

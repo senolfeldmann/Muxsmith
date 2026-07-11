@@ -146,6 +146,8 @@ diag_codes! {
     UnknownPropertySkew => "unknown-property-skew",
     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
     SuggestionsCapped => "suggestions-capped",
+    /// No single refinement resolves a conflicted rule across the whole batch, so the engine reports the no-single-fix partition instead (spec 5.3, D6 step 6): the affected files grouped by the per-file refinement that would resolve each. `kind=group` carries a group's `fix` (the refinement) and `files`; `kind=overflow` carries `dropped` when more than five groups were capped.
+    SuggestionPartition => "suggestion-partition",
 }
 
 /// One diagnostic (spec 5.2): a data record, never prose. `code` +

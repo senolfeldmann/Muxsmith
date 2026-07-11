@@ -969,6 +969,7 @@ fn finalize_plans(files: &mut [FileReport]) {
 }
 
 // A candidate refinement plus the concrete delta to splice into the rule.
+#[derive(Clone)]
 struct Candidate {
     edit: StructuredEdit,
     apply: MatchExpr,
@@ -976,14 +977,16 @@ struct Candidate {
 }
 
 /// Generates and validates suggestions for every `AmbiguousRule` conflict
-/// (spec 5.3, D6). For each conflicted primary-source rule: gather the matched
-/// (conflicting) tracks across all affected files, derive discriminator
-/// candidates, simulate each against the whole batch via [`plan_core`], and
-/// keep only those that resolve the ambiguity everywhere with no new
-/// diagnostic. Deterministic; capped at 3 per rule, with a `SuggestionsCapped`
-/// diagnostic recording how many were dropped when more were accepted, so the
-/// cap is never silent. OverlappingRules suggestions and the no-single-fix
-/// partition report are deferred (Plan 2 scope note).
+/// (spec 5.3, D6). For each conflicted rule (primary or external source):
+/// gather the matched (conflicting) tracks across all affected files, derive
+/// discriminator candidates, simulate each against the whole batch via
+/// [`plan_core`], and keep only those that resolve the ambiguity everywhere
+/// with no new diagnostic. Deterministic; capped at 3 per rule, with a
+/// `SuggestionsCapped` diagnostic recording how many were dropped when more
+/// were accepted, so the cap is never silent. When no candidate resolves a
+/// rule batch-wide, the no-single-fix partition ([`partition_for_rule`]) is
+/// reported instead. OverlappingRules suggestions remain deferred (Plan 2
+/// scope note).
 #[allow(clippy::too_many_arguments)]
 fn suggest(
     profile: &Profile,
@@ -1008,21 +1011,34 @@ fn suggest(
     let mut out = Vec::new();
     let mut cap_diagnostics = Vec::new();
     for ri in conflicted {
-        let Some(rule) = profile.tracks.rules.get(ri) else {
-            continue;
-        };
-        // Only primary-source rules get suggestions in v1 (external deferred).
-        if matches!(rule.source, SourceCfg::External(_)) {
+        if profile.tracks.rules.get(ri).is_none() {
             continue;
         }
         let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
         let mut accepted: Vec<Candidate> = Vec::new();
-        for cand in candidates {
+        for cand in &candidates {
             let edited = with_rule_match(profile, ri, &cand.apply);
             let sim = plan_core(&edited, run, primaries, id, lang);
             if resolves_without_regression(&sim, ri, &base_sig) {
-                accepted.push(cand);
+                accepted.push(cand.clone());
             }
+        }
+        // No single refinement resolves the rule batch-wide: report the
+        // no-single-fix partition instead of empty suggestions (spec 5.3, D6
+        // step 6).
+        if accepted.is_empty() {
+            cap_diagnostics.extend(partition_for_rule(
+                profile,
+                run,
+                primaries,
+                id,
+                lang,
+                ri,
+                &candidates,
+                baseline,
+                &base_sig,
+            ));
+            continue;
         }
         accepted.sort_by(|a, b| a.rank.cmp(&b.rank));
         let total_accepted = accepted.len();
@@ -1047,6 +1063,115 @@ fn suggest(
     (out, cap_diagnostics)
 }
 
+// The no-single-fix partition report cap (spec 5.3, D6 step 6): at most this
+// many resolution groups are rendered per rule, the surplus recorded in an
+// overflow note, mirroring `SuggestionsCapped`'s never-silent cap philosophy.
+const PARTITION_GROUP_CAP: usize = 5;
+
+// Reports the no-single-fix partition for rule `ri` (spec 5.3, D6 step 6):
+// when no candidate resolves the rule batch-wide, group the affected files by
+// the per-file refinement that WOULD resolve each in isolation (its
+// top-ranked resolving candidate), so the report states "these files need one
+// narrowing, those another". One `SuggestionPartition` info diagnostic per
+// group, deterministically ordered and capped at [`PARTITION_GROUP_CAP`] with
+// an overflow note. Reuses the discriminator candidates already generated for
+// the batch-wide pass.
+#[allow(clippy::too_many_arguments)]
+fn partition_for_rule(
+    profile: &Profile,
+    run: &RunInputs,
+    primaries: &[PrimaryFile],
+    id: &mut dyn Identify,
+    lang: &LanguageIndex,
+    ri: usize,
+    candidates: &[Candidate],
+    baseline: &Batch,
+    base_sig: &BTreeMap<String, usize>,
+) -> Vec<Diagnostic> {
+    // Files whose baseline report carries an AmbiguousRule for this rule.
+    let affected: Vec<&PrimaryFile> = primaries
+        .iter()
+        .filter(|p| {
+            baseline.files.iter().any(|f| {
+                f.source == p.path
+                    && f.diagnostics.iter().any(|d| {
+                        d.code == DiagCode::AmbiguousRule
+                            && rule_index_of(&d.config_path) == Some(ri)
+                    })
+            })
+        })
+        .collect();
+
+    // group fragment (the per-file refinement, rendered once) -> member files.
+    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for primary in affected {
+        let single = std::slice::from_ref(primary);
+        let mut best: Option<&Candidate> = None;
+        for cand in candidates {
+            let edited = with_rule_match(profile, ri, &cand.apply);
+            let sim = plan_core(&edited, run, single, id, lang);
+            if resolves_without_regression(&sim, ri, base_sig)
+                && best.is_none_or(|b| cand.rank < b.rank)
+            {
+                best = Some(cand);
+            }
+        }
+        if let Some(cand) = best {
+            groups
+                .entry(yaml_fragment(ri, &cand.apply))
+                .or_default()
+                .push(primary.path.display().to_string());
+        }
+    }
+
+    let total_groups = groups.len();
+    let mut diagnostics = Vec::new();
+    for (fragment, mut files) in groups.into_iter().take(PARTITION_GROUP_CAP) {
+        files.sort();
+        diagnostics.push(
+            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
+                .with("kind", "group")
+                .with("count", files.len().to_string())
+                .with("fix", fragment)
+                .with("files", files.join(", ")),
+        );
+    }
+    if total_groups > PARTITION_GROUP_CAP {
+        diagnostics.push(
+            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
+                .with("kind", "overflow")
+                .with("dropped", (total_groups - PARTITION_GROUP_CAP).to_string()),
+        );
+    }
+    diagnostics
+}
+
+// The identification a rule reads for one primary: the primary itself for a
+// keyword source, the single located+identified donor for an external source.
+// `None` when no single donor resolves (zero, ambiguous, or unidentifiable),
+// mirroring `resolve_file`'s source resolution so candidate generation draws
+// discriminators from the same tracks the planner matched against. This is
+// what makes the engine source-agnostic (spec 5.3, D6): an external rule's
+// ambiguity lives in its donor's tracks, not the primary's.
+fn rule_source_ident(
+    rule: &TrackRule,
+    primary: &PrimaryFile,
+    id: &mut dyn Identify,
+) -> Option<Identification> {
+    match &rule.source {
+        SourceCfg::Keyword(_) => id.identify(&primary.path).ok(),
+        SourceCfg::External(block) => {
+            let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
+            let hits =
+                discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
+            match hits.as_slice() {
+                [donor] => id.identify(donor).ok(),
+                _ => None,
+            }
+        }
+    }
+}
+
 // Discriminator candidates for a rule, drawn from the property vectors of the
 // tracks it ambiguously matches, across every affected file.
 fn candidates_for_rule(
@@ -1062,7 +1187,7 @@ fn candidates_for_rule(
         std::collections::BTreeSet::new();
 
     for primary in primaries {
-        let Ok(ident) = id.identify(&primary.path) else {
+        let Some(ident) = rule_source_ident(rule, primary, id) else {
             continue;
         };
         let matched: Vec<&crate::identify::Track> = ident
@@ -1074,7 +1199,9 @@ fn candidates_for_rule(
             continue;
         }
         for t in &matched {
-            // Own the property list, including the top-level `type` pseudo-prop.
+            // Own the property list, including the top-level `type`/`codec`/
+            // `id` pseudo-props (spec 4.4 flattens these over `properties`;
+            // R1 iv makes `codec` and `id` discriminator dimensions too).
             let mut props: Vec<(String, crate::identify::PropValue)> = t
                 .properties
                 .iter()
@@ -1083,6 +1210,14 @@ fn candidates_for_rule(
             props.push((
                 "type".to_string(),
                 crate::identify::PropValue::Str(t.kind.clone()),
+            ));
+            props.push((
+                "codec".to_string(),
+                crate::identify::PropValue::Str(t.codec.clone()),
+            ));
+            props.push((
+                "id".to_string(),
+                crate::identify::PropValue::Int(t.id as i64),
             ));
             for (prop, val) in &props {
                 if crate::capability::matchable_type(prop).is_none() {
@@ -1215,10 +1350,13 @@ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
 
 // Accept iff rule `ri` has no AmbiguousRule anywhere in the simulation and no
 // diagnostic in the simulation is absent from the baseline (no regression).
+// The signature is a multiset (R1 v): a candidate that introduces a SECOND
+// copy of an already-present (code, config_path, file) diagnostic is a
+// regression, so containment compares counts, not mere membership.
 fn resolves_without_regression(
     sim: &Batch,
     ri: usize,
-    base_sig: &std::collections::BTreeSet<String>,
+    base_sig: &std::collections::BTreeMap<String, usize>,
 ) -> bool {
     let still_ambiguous = sim
         .files
@@ -1228,12 +1366,17 @@ fn resolves_without_regression(
     if still_ambiguous {
         return false;
     }
-    diag_signature(sim).iter().all(|s| base_sig.contains(s))
+    diag_signature(sim)
+        .iter()
+        .all(|(sig, count)| base_sig.get(sig).is_some_and(|base| count <= base))
 }
 
-// A comparable signature set of all diagnostics: code + config_path + file.
-fn diag_signature(batch: &Batch) -> std::collections::BTreeSet<String> {
-    let mut set = std::collections::BTreeSet::new();
+// A comparable signature multiset of all diagnostics: (code + config_path +
+// file) -> occurrence count. A multiset, not a set, so two diagnostics that
+// share a signature but describe different tracks (e.g. two OverlappingRules
+// on one rule) stay counted separately (R1 v, D6 acceptance criterion b).
+fn diag_signature(batch: &Batch) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
     let all = batch
         .batch_diagnostics
         .iter()
@@ -1244,9 +1387,11 @@ fn diag_signature(batch: &Batch) -> std::collections::BTreeSet<String> {
             .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
-        set.insert(format!("{}|{}|{}", d.code.key(), d.config_path, file));
+        *counts
+            .entry(format!("{}|{}|{}", d.code.key(), d.config_path, file))
+            .or_insert(0) += 1;
     }
-    set
+    counts
 }
 
 fn rule_index_of(config_path: &str) -> Option<usize> {
@@ -1305,4 +1450,52 @@ fn yaml_fragment(ri: usize, delta: &MatchExpr) -> String {
     let body = yaml_serde::to_string(&MatchFragment { expr: delta })
         .expect("a MatchExpr delta always serializes to YAML");
     format!("# tracks[{ri}] - add:\n{body}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn batch_with(diags: Vec<Diagnostic>) -> Batch {
+        Batch {
+            files: vec![FileReport {
+                source: PathBuf::from("Show.S01E01.mkv"),
+                identifier: "S01E01".to_string(),
+                plan: None,
+                diagnostics: diags,
+            }],
+            batch_diagnostics: vec![],
+            suggestions: vec![],
+        }
+    }
+
+    // R1 v: two diagnostics sharing (code, config_path, file) but differing
+    // only in a param (here `track`) are distinct occurrences. A set-valued
+    // signature collapses them, so a candidate that introduces a SECOND copy
+    // of a pre-existing diagnostic reads as no regression and is wrongly
+    // accepted. The signature must be a multiset.
+    #[test]
+    fn duplicate_signature_diagnostic_is_a_regression_not_a_collapse() {
+        let one = || {
+            Diagnostic::error(DiagCode::OverlappingRules, "tracks[1]")
+                .for_file("Show.S01E01.mkv")
+                .with("track", "5")
+        };
+        let two = || {
+            Diagnostic::error(DiagCode::OverlappingRules, "tracks[1]")
+                .for_file("Show.S01E01.mkv")
+                .with("track", "6")
+        };
+
+        let base = batch_with(vec![one()]);
+        let base_sig = diag_signature(&base);
+        // The simulation grew a second overlap with the same signature; rule 0
+        // carries no AmbiguousRule, so only the multiset check decides.
+        let sim = batch_with(vec![one(), two()]);
+
+        assert!(
+            !resolves_without_regression(&sim, 0, &base_sig),
+            "a newly duplicated diagnostic must count as a regression"
+        );
+    }
 }
