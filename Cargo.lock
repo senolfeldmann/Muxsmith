@@ -2118,6 +2118,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "fluent-bundle",
+ "fluent-syntax",
  "muxsmith-core",
  "predicates",
  "schemars 1.2.1",
