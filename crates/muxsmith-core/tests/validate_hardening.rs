@@ -61,6 +61,24 @@ fn empty_not_list_is_empty_match_list() {
 }
 
 #[test]
+fn empty_any_list_reports_only_empty_match_list_not_empty_match_expression() {
+    // A `{ any: [] }` match is "empty" solely because of the empty list, which
+    // already gets the more specific EmptyMatchList error; the generic
+    // EmptyMatchExpression warning must not also fire for the same node.
+    let y = format!("{HEAD}    - match: {{ any: [] }}\n");
+    let c = codes(&y);
+    assert!(
+        !c.contains(&DiagCode::EmptyMatchExpression),
+        "EmptyMatchExpression must be suppressed when EmptyMatchList fires: {c:?}"
+    );
+    assert_eq!(
+        c,
+        vec![DiagCode::EmptyMatchList],
+        "expected exactly one diagnostic for an empty any list: {c:?}"
+    );
+}
+
+#[test]
 fn populated_any_and_not_are_not_empty_match_list() {
     let y = format!(
         "{HEAD}    - match: {{ any: [{{ exact: {{ type: subtitles }} }}], not: [{{ exact: {{ type: audio }} }}] }}\n"

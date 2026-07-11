@@ -63,10 +63,19 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     for (i, rule) in profile.tracks.rules.iter().enumerate() {
         let base = format!("tracks[{i}]");
         if rule.match_expr.is_empty() {
-            diags.push(Diagnostic::warning(
-                DiagCode::EmptyMatchExpression,
-                format!("{base}.match"),
-            ));
+            // Suppress the generic EmptyMatchExpression when the emptiness is
+            // caused by an empty top-level `any`/`not` list, which already
+            // gets its own, more specific EmptyMatchList error for the same
+            // node (validate_expr below). Otherwise a `{ any: [] }` match
+            // double-reports.
+            let empty_list_here = rule.match_expr.any.as_ref().is_some_and(|v| v.is_empty())
+                || rule.match_expr.not.as_ref().is_some_and(|v| v.is_empty());
+            if !empty_list_here {
+                diags.push(Diagnostic::warning(
+                    DiagCode::EmptyMatchExpression,
+                    format!("{base}.match"),
+                ));
+            }
         }
         validate_expr(
             &rule.match_expr,
