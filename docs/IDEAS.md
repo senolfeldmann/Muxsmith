@@ -132,3 +132,58 @@ grouping), never auto-guessed.
 
 **When to reconsider.** Community request from users with disc-split rips
 (older DVD rips, some anime releases) who expect CD1/CD2 rejoining.
+
+## 5. Zero-track outcome options: skip or error instead of empty MKV
+
+**Idea.** When a file's plan resolves to zero output tracks, offer
+alternatives to writing the valid-but-empty MKV: skip the file entirely
+(reported as skipped, not success), or treat it as a per-file error (honoring
+fail-fast) - e.g. a profile-level `on_empty_plan: write|skip|error`.
+
+**mkvtoolnix behavior.** mkvmerge itself exits 0 and writes the empty file
+(verified live against the binary in the Plan-3 whole-branch review).
+mkvtoolnix-gui's zero-selected-tracks UX has not been audited yet - check it
+(SI-3) when building this.
+
+**Why deferred.** Şenol 2026-07-11 (sweep walkthrough #6): v1 emits a
+per-file warning and still writes the file - one sane default; more choices
+would confuse. No user demand yet for skip/error.
+
+**What building it would take (if ever).** The `on_empty_plan` enum in the
+profile model, a planner/executor branch for skip and error, batch-report
+representation for "skipped", tests for all three paths, docs. Small,
+well-contained once the v1 warning (ROADMAP pre-1.0 gate) exists.
+
+**When to reconsider.** First real-world report of unwanted empty outputs in
+large batches, or a user asking to fail a batch on empty plans.
+
+## 6. Un-dispositioned parity extras from the Plan-3.5 mkvtoolnix audit
+
+**What this is.** The audit's reference-extraction pass listed mkvtoolnix-gui
+behaviors "a bulk tool could get observably wrong"; the synthesis
+dispositioned only part of them (ideas 1-4 plus one tier-4 match). Seven were
+never classified into a tier. Recorded 2026-07-11 (sweep walkthrough #22) as
+a collective entry; none has been individually audited against the mkvtoolnix
+source per the SI-3 method - "presumed" below is deliberate honesty.
+
+- Audio delay derived from filename (`m_setAudioDelayFromFileName`, default
+  on): presumed magic-guess class (same rationale as ideas 1-2).
+- Track-enabled-flag auto-repair: presumed magic-guess class.
+- Dialog normalization gain removal: presumed magic-guess class (a silent
+  audio mutation is exactly what unattended batch must not guess at).
+- Bluray cover art handling: presumed magic-guess class.
+- Subtitle default-track suppression: presumed magic-guess class.
+- Output naming from title (reference §6): genuine naming divergence, never
+  tiered.
+- **Missing-audio warning**: NOT input guessing - an output plausibility
+  check ("this output has no audio track - sure?"), conceptual sibling of
+  the zero-track warning (ROADMAP pre-1.0 gate). Deserves its own review
+  whenever output-plausibility diagnostics are extended.
+
+**Source situation.** The audit's full raw corpus (~120 inventory items)
+died with the task outputs (the "save recon corpora as artifacts" learning
+postdates it); it remains reconstructable from the Plan-3.5 session
+transcript if a deeper disposition round is ever wanted.
+
+**When to reconsider.** At the next parity-audit round, or when
+output-plausibility diagnostics are extended.
