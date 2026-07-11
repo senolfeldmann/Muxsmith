@@ -861,6 +861,115 @@ attachments:
     );
 }
 
+// Plan-5.5 Task 7.6: #7 class closure. T7 and T7.5 above cover a track-rule
+// donor and an attachment donor; this is the same class through the
+// chapters donor (`profile.chapters.external`, resolved by
+// `resolve_chapters`). Same three-way constellation, adapted for chapters'
+// stricter uniqueness rule (spec 4.9: unlike a track rule's external
+// source, there is no `optional` escape - zero matches is always
+// `MissingExternal`) - so, unlike T7/T7.5 where B's own locator finds
+// nothing because its sibling "donors" directory does not exist at all,
+// here B needs its OWN successful chapters resolution (a distinct,
+// harmless donor under its own "donors" directory) so its plan survives
+// long enough to reach `detect_source_overwrites`. Primary A's chapters
+// locator resolves donor D (real, on disk), but A's own filename template
+// renders empty (EmptyRenderedName), so A.plan is None; primary B's own
+// chapters locator resolves its own distinct donor (`b_dir/donors/Z.mkv`),
+// yet B's rendered output lands on D's exact path (`a_dir/donors/Z.mkv`).
+// D is referenced SOLELY through A's (render-failed)
+// `ChapterSource::External` - before this fix, `resolved_sources` never
+// gathered chapters at all (only `Assignment.source` and, since Task 7.5,
+// `AttachmentPlan.add_files`), so this collision went undetected and B
+// would have silently overwritten D.
+#[test]
+fn source_overwrite_protects_chapters_donor_of_render_failed_file() {
+    let root = tempfile::tempdir().unwrap();
+    let a_dir = root.path().join("a_dir");
+    let b_dir = root.path().join("b_dir");
+    let a_donors = a_dir.join("donors");
+    let b_donors = b_dir.join("donors");
+    std::fs::create_dir_all(&a_donors).unwrap();
+    std::fs::create_dir_all(&b_donors).unwrap();
+    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
+    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
+    std::fs::write(a_donors.join("Z.mkv"), b"d").unwrap(); // chapters donor D, resolved only by A
+    std::fs::write(b_donors.join("Z.mkv"), b"e").unwrap(); // B's own distinct chapters donor
+
+    // `tag` is optional and only present in B's own filename: A's template
+    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
+    // basename. The chapters locator (no `match_pattern`/`match_to_source`,
+    // same as T7's track-rule locator) matches every file in its target
+    // directory; each primary's "donors" subdirectory holds exactly one
+    // `.mkv` file of its own, so each resolves to exactly one hit and
+    // neither triggers chapters' `MissingExternal`.
+    let profile_yaml = r#"
+profile_version: 1
+input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
+output:
+  filename: { template: '{tag}' }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+chapters:
+  external: { path: 'donors', extensions: [mkv] }
+"#;
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: root.path().to_path_buf(),
+        // Every primary's output lands in a_donors, so B's rendered
+        // "Z.mkv" collides byte-for-byte with the chapters donor A alone
+        // resolved.
+        output: Some(a_donors.clone()),
+        // Overwrite, not the Error default: proves SourceOverwrite is what
+        // stops this, not the ordinary on-disk-collision path (same
+        // reasoning as T7's and T7.5's tests above).
+        on_collision: Some(CollisionPolicy::Overwrite),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Prime.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "PrimeZ.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let a = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Prime.mkv"))
+        .unwrap();
+    let b = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("PrimeZ.mkv"))
+        .unwrap();
+
+    // A's own render fails on its own terms, independent of this fix.
+    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+    assert!(
+        a.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        a.diagnostics
+    );
+
+    // B's rendered output collides with the chapters donor A resolved;
+    // must be caught even though A's own plan never rendered.
+    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
+    assert!(
+        b.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        b.diagnostics
+    );
+}
+
 #[test]
 fn empty_rendered_name_when_template_renders_to_dot() {
     let p = r#"
