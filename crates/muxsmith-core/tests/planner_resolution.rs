@@ -483,6 +483,66 @@ tracks:
 }
 
 #[test]
+fn unmuxable_donor_yields_unsupported_source_not_unidentifiable() {
+    // A donor that identifies cleanly but whose container is not a supported
+    // muxing source must get the same UnsupportedSource treatment as a primary
+    // (spec 5.1), not silently resolve to nothing and not be mislabelled
+    // UnidentifiableSource (which is for identify() outright failing).
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Donor.S01E01.srt"), b"y").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: '.', extensions: [srt], match_to_source: true }
+      match: { exact: { type: subtitles } }
+      optional: true
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    // The donor identifies fine, but its container is recognized-yet-unsupported.
+    let donor_json = r#"{ "container": { "recognized": true, "supported": false },
+                          "file_name": "Donor.S01E01.srt", "identification_format_version": 20,
+                          "tracks": [] }"#;
+    by_name.insert(
+        "Donor.S01E01.srt".to_string(),
+        Identification::from_json(donor_json).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnsupportedSource),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+    assert!(
+        !fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnidentifiableSource),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}
+
+#[test]
 fn unrecognized_container_yields_unsupported_source_not_missing_track() {
     let json = r#"{ "container": { "recognized": false, "supported": true },
                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,

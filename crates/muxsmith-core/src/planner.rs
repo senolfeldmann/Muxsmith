@@ -508,7 +508,30 @@ fn resolve_file(
                             );
                         }
                         match id.identify(&donor) {
-                            Ok(di) => (donor, di),
+                            Ok(di) => {
+                                // Same predicate as the primary branch: a donor
+                                // that identifies but whose container is not a
+                                // supported muxing source is UnsupportedSource,
+                                // not a silent skip (spec 5.1).
+                                if !di.container_recognized || !di.container_supported {
+                                    diagnostics.push(
+                                        Diagnostic::error(
+                                            DiagCode::UnsupportedSource,
+                                            format!("{base}.source.external"),
+                                        )
+                                        .for_file(&primary.path),
+                                    );
+                                    assignments.push(Assignment {
+                                        rule_index: ri,
+                                        source: primary.path.clone(),
+                                        track_id: None,
+                                        track_kind: None,
+                                        changes: vec![],
+                                    });
+                                    continue;
+                                }
+                                (donor, di)
+                            }
                             Err(e) => {
                                 diagnostics.push(
                                     Diagnostic::error(
