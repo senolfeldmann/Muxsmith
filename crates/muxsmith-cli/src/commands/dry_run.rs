@@ -119,7 +119,7 @@ pub fn run(
         for d in &config_diags {
             println!("{}", renderer.diagnostic(d));
         }
-        print_batch_human(&batch, renderer);
+        print_batch_human(&batch, &run.source, &profile.input.extensions, renderer);
     }
     diag_exit_code(&config_diags, &batch)
 }

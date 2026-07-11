@@ -11,6 +11,7 @@ dry-run-file = { $file } (identifier: { $id })
 dry-run-assignment =   rule { $rule } -> track { $track }
 dry-run-output =   output: { $path }
 dry-run-suggestion = Suggestion for { $config_path }:
+dry-run-summary = { $count } files matched (searched { $root }, extensions { $extensions })
 run-job-start = [{ $index }/{ $total }] { $output } ... start
 run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
 run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }

@@ -201,6 +201,56 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
     }
 }
 
+/// Task 8 (#8): human mode must speak even when nothing matched, not stay
+/// silent on a clean exit. A clean profile over an empty source directory
+/// plans zero primaries; asserts the batch summary line names the zero
+/// count, the searched root, and the configured extensions (compare
+/// `run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent`
+/// in run_cli.rs).
+#[test]
+fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
+    if !have_mkvmerge() {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    let out = Command::cargo_bin("muxsmith")
+        .unwrap()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "exit: {:?}, stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("0 files matched"),
+        "expected the zero-count batch summary line, got stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(&dir.path().display().to_string()),
+        "expected the searched root in the summary line, got stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("mkv"),
+        "expected the configured extensions in the summary line, got stdout: {stdout}"
+    );
+}
+
 /// Points a child process's PATH at a directory with no `mkvmerge`, so
 /// `Mkvmerge::locate()` fails deterministically regardless of whether the
 /// real mkvmerge is installed on the machine running the test. Confirmed by

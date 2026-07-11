@@ -150,7 +150,12 @@ pub fn run(
         for d in &config_diags {
             println!("{}", renderer.diagnostic(d));
         }
-        print_batch_human(&batch, renderer);
+        print_batch_human(
+            &batch,
+            &run_inputs.source,
+            &profile.input.extensions,
+            renderer,
+        );
     }
 
     // error-severity files already carry `plan: None` (spec 5.1), so this
