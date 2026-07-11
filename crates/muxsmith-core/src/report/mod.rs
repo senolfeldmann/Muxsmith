@@ -148,6 +148,9 @@ diag_codes! {
     SuggestionsCapped => "suggestions-capped",
     /// No single refinement resolves a conflicted rule across the whole batch, so the engine reports the no-single-fix partition instead (spec 5.3, D6 step 6): the affected files grouped by the per-file refinement that would resolve each. `kind=group` carries a group's `fix` (the refinement) and `files`; `kind=overflow` carries `dropped` when more than five groups were capped.
     SuggestionPartition => "suggestion-partition",
+    // Run-time (executor)
+    /// A queue worker thread panicked while running a job -- a bug in this crate, never an mkvmerge failure (a failing mux is a plain `Failed` outcome, not a panic). The job is reported `Failed`; the panic's own payload is developer-diagnostic content, logged but never carried into this code's params.
+    WorkerPanicked => "worker-panicked",
 }
 
 /// One diagnostic (spec 5.2): a data record, never prose. `code` +

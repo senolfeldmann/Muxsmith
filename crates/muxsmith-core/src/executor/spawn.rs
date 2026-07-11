@@ -100,11 +100,7 @@ struct LiveJob {
 
 impl RunningJob for LiveJob {
     fn next_line(&mut self) -> Option<String> {
-        let mut line = String::new();
-        match self.reader.read_line(&mut line) {
-            Ok(0) | Err(_) => None,
-            Ok(_) => Some(line.trim_end().to_string()),
-        }
+        read_next_line(&mut self.reader)
     }
     fn wait(&mut self) -> Option<i32> {
         let raw_code = self
@@ -126,6 +122,31 @@ impl RunningJob for LiveJob {
             killed.store(true, Ordering::SeqCst);
             let _ = child.lock().unwrap().kill();
         })
+    }
+}
+
+/// Reads one line from `r`, byte-wise, lossily decoding it rather than
+/// failing the whole stream on the first non-UTF-8 byte (#9): mkvmerge can
+/// echo a source filename or an OS error string that is not valid UTF-8
+/// (e.g. a Windows codepage leftover), and the read loop must survive that
+/// line instead of silently ending as if the process had exited. `Ok(0)`
+/// (true EOF) is the only case that ends the stream; a decode-degraded line
+/// comes back as `Some` with `U+FFFD` standing in for the bad bytes, exactly
+/// like [`String::from_utf8_lossy`]. Extracted out of [`LiveJob::next_line`]
+/// so the decode behavior is unit-testable against a plain `Cursor` without
+/// a real child process.
+fn read_next_line<R: BufRead>(r: &mut R) -> Option<String> {
+    let mut buf = Vec::new();
+    match r.read_until(b'\n', &mut buf) {
+        Ok(0) => None,
+        Ok(_) => Some(String::from_utf8_lossy(&buf).trim_end().to_string()),
+        // A genuine I/O error on the underlying reader (`read_until` reads
+        // raw bytes, so it cannot itself fail on decoding - that path is
+        // `Ok` with lossy replacement above). Kept a distinct match arm
+        // rather than folded into `Ok(0)` so "true EOF" and "read error"
+        // stay distinguishable in the code even though both currently map
+        // to the same `None` return.
+        Err(_) => None,
     }
 }
 
@@ -264,6 +285,24 @@ impl ConcurrencyTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #9 RED (Task 3, plan 5.5): a single non-UTF-8 line must not truncate
+    /// the stream. Drives the extracted `read_next_line` directly against a
+    /// `Cursor` rather than a real child, so the decode behavior is
+    /// testable without spawning a process.
+    #[test]
+    fn read_next_line_survives_non_utf8_bytes_without_truncating() {
+        let mut cursor = std::io::Cursor::new(b"ok line\n\xFF\xFE broken\nafter\n".to_vec());
+        assert_eq!(read_next_line(&mut cursor).as_deref(), Some("ok line"));
+        let degraded =
+            read_next_line(&mut cursor).expect("a lossy-decoded line, not a truncated stream");
+        assert!(
+            degraded.contains('\u{FFFD}'),
+            "expected a U+FFFD replacement char in the decode-degraded line, got: {degraded:?}"
+        );
+        assert_eq!(read_next_line(&mut cursor).as_deref(), Some("after"));
+        assert_eq!(read_next_line(&mut cursor), None);
+    }
 
     #[test]
     fn fake_spawner_scripts_lines_and_exit() {

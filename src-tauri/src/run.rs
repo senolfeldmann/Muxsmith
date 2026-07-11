@@ -39,7 +39,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::command::command;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec};
-use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
+use muxsmith_core::executor::joblog::{
+    RunLogger, default_runs_root, make_run_id, run_id_timestamp,
+};
 use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
 use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
 use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
@@ -83,6 +85,25 @@ pub(crate) struct ActiveRun {
     ctl: Arc<QueueControl>,
 }
 
+/// Locks [`AppState::active`], recovering from poisoning instead of
+/// propagating a second panic (hardening, mirrors
+/// `muxsmith_core::executor::queue`'s identical treatment of its own
+/// `killers`/`outcomes` mutexes). Recovery is sound because every write
+/// this lock guards is a single, non-panicking assignment (`*slot =
+/// Some(...)`/`*slot = None`) -- whatever it held right before some
+/// earlier caller panicked while holding it is still a valid
+/// `Option<RunSlot>`, not a half-applied one. The alternative is strictly
+/// worse: an unrecovered poison here would make every future `start_run`,
+/// `cancel_run`, `cancel_job`, and the close-confirmation dialog panic
+/// forever too, wedging the whole app over one earlier bug instead of
+/// just failing the run that triggered it.
+fn lock_active(state: &AppState) -> std::sync::MutexGuard<'_, Option<RunSlot>> {
+    state
+        .active
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// An RAII hold on [`AppState::active`]'s slot for the span of
 /// [`start_run`]'s lock-free planning pass (D23). [`Reservation::acquire`]
 /// installs [`RunSlot::Reserved`] and releases the mutex immediately;
@@ -105,7 +126,7 @@ impl<'a> Reservation<'a> {
     /// this, a flag orphaned by e.g. a mid-callback panic would silently
     /// exit the app after the *next* unrelated run.
     fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
-        let mut slot = state.active.lock().unwrap();
+        let mut slot = lock_active(state);
         if slot.is_some() {
             return Err(IpcError::new("run-already-active"));
         }
@@ -133,7 +154,7 @@ impl<'a> Reservation<'a> {
     /// the queue thread spawns, so the thread's own end-of-run clear
     /// ([`finish_teardown`]) can never race ahead of the install.
     fn commit(mut self, ctl: Arc<QueueControl>) {
-        *self.state.active.lock().unwrap() = Some(RunSlot::Running(ActiveRun { ctl }));
+        *lock_active(self.state) = Some(RunSlot::Running(ActiveRun { ctl }));
         self.committed = true;
     }
 }
@@ -141,7 +162,7 @@ impl<'a> Reservation<'a> {
 impl Drop for Reservation<'_> {
     fn drop(&mut self) {
         if !self.committed {
-            *self.state.active.lock().unwrap() = None;
+            *lock_active(self.state) = None;
         }
     }
 }
@@ -581,7 +602,7 @@ enum CloseDecision {
 /// unit-testable: any occupant of the slot (Reserved or Running) means
 /// "confirm first".
 fn close_decision(state: &AppState) -> CloseDecision {
-    if state.active.lock().unwrap().is_some() {
+    if lock_active(state).is_some() {
         CloseDecision::ConfirmAbort
     } else {
         CloseDecision::Close
@@ -641,7 +662,7 @@ pub fn on_close_requested(window: &Window, event: &WindowEvent) {
 /// is what guarantees a single exit no matter which paths race.
 fn abort_and_quit(state: &AppState, exit: impl FnOnce(i32)) {
     state.quit_after_finished.store(true, Ordering::SeqCst);
-    let already_torn_down = match state.active.lock().unwrap().as_ref() {
+    let already_torn_down = match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(cancel)) => {
             cancel.store(true, Ordering::SeqCst);
             false
@@ -678,7 +699,7 @@ fn quit_if_requested(state: &AppState, exit: impl FnOnce(i32)) {
 /// before `summary.json` is written would lose the run's history (the
 /// exact loss D26/D31 exist to prevent).
 fn finish_teardown(state: &AppState, exit: impl FnOnce(i32)) {
-    *state.active.lock().unwrap() = None;
+    *lock_active(state) = None;
     quit_if_requested(state, exit);
 }
 
@@ -849,7 +870,7 @@ fn resolve_runs_root() -> Option<PathBuf> {
 /// `Cancelled` without spawning, so a cancel in the planning window is
 /// honored, not lost.
 fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
-    match state.active.lock().unwrap().as_ref() {
+    match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(cancel)) => {
             cancel.store(true, Ordering::SeqCst);
             Ok(())
@@ -870,7 +891,7 @@ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
 /// `start_run` returns, and by then the slot is `Running` (commit happens
 /// before `start_run` returns).
 fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
-    match state.active.lock().unwrap().as_ref() {
+    match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(_)) => Ok(()),
         Some(RunSlot::Running(run)) => {
             run.ctl.cancel_job(index);
@@ -913,22 +934,15 @@ fn run_meta_from_dir(dir: &Path) -> Option<RunMeta> {
 /// `"...Z-2"`) into an RFC3339 timestamp, e.g. `"20260710-153612Z"` ->
 /// `"2026-07-10T15:36:12Z"`. `None` for anything that does not match: a
 /// directory this crate did not itself create.
+///
+/// A thin delegate (D35, reuse-before-writing): the actual parse now lives
+/// once in [`run_id_timestamp`] (core, shared with its pruning), this
+/// function only reformats the resulting instant back to this call site's
+/// own RFC3339-string contract, unchanged from before the delegation.
 fn started_at_from_run_id(run_id: &str) -> Option<String> {
-    let prefix = run_id.get(0..16)?;
-    let b = prefix.as_bytes();
-    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
-    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
-        return None;
-    }
-    Some(format!(
-        "{}-{}-{}T{}:{}:{}Z",
-        &prefix[0..4],
-        &prefix[4..6],
-        &prefix[6..8],
-        &prefix[9..11],
-        &prefix[11..13],
-        &prefix[13..15],
-    ))
+    run_id_timestamp(run_id)?
+        .format(&time::format_description::well_known::Rfc3339)
+        .ok()
 }
 
 fn get_job_log_in(
