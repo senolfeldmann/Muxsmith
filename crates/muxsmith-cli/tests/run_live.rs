@@ -146,7 +146,8 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
 /// reference the later assertion compares against).
 fn backdate_mtime(path: &Path) -> SystemTime {
     let target = SystemTime::now() - Duration::from_secs(3600);
-    let file = fs::File::open(path).unwrap();
+    // Open with write access: Windows requires FILE_WRITE_ATTRIBUTES to set_modified.
+    let file = fs::OpenOptions::new().write(true).open(path).unwrap();
     file.set_modified(target).unwrap();
     fs::metadata(path).unwrap().modified().unwrap()
 }
