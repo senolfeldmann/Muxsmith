@@ -713,7 +713,11 @@ fn resolve_changes(
                         )
                         .for_file(primary_path)
                         .with("property", "language")
-                        .with("value", scalar_display(value)),
+                        .with("value", scalar_display(value))
+                        // `invalid-property-value` requires `allowed`; the
+                        // sibling emitter in `walk_exact_languages` sets it, so
+                        // this site must too or `{$allowed}` leaks to the user.
+                        .with("allowed", "a valid ISO 639/BCP-47 language code"),
                     );
                 }
             }

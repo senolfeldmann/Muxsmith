@@ -8,9 +8,14 @@
 //! below, so a new catalog entry can never go silently unwired.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
 use fluent_syntax::ast::Entry;
+use muxsmith_core::capability::runtime::LanguageIndex;
+use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+use muxsmith_core::planner::{RunInputs, plan_batch};
+use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::report::DiagCode;
 
 #[test]
@@ -35,8 +40,11 @@ fn every_diag_code_has_a_catalog_message() {
 /// over emitter sites per variant. It renders one fixture per code, which
 /// proves the fixture matches the template; a single emitter site that omits
 /// a param its siblings set will leak `{$param}` in production while this
-/// guard stays green (known case found in review: `planner.rs:600` emits
-/// `InvalidPropertyValue` without `allowed`, caught separately).
+/// guard stays green. The one known instance -- `resolve_changes` emitting
+/// `InvalidPropertyValue` without `allowed` while its `walk_exact_languages`
+/// sibling set it -- is fixed and pinned by
+/// [`invalid_changes_language_diagnostic_renders_without_placeholder_leak`],
+/// which renders the real emitter-site diagnostic rather than a fixture.
 fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
     let mut args = FluentArgs::new();
     match code {
@@ -428,4 +436,80 @@ fn string_pairs<'a>(args: &'a FluentArgs<'a>) -> Vec<(&'a str, &'a str)> {
             other => panic!("fixture value for {k:?} is not a string: {other:?}"),
         })
         .collect()
+}
+
+/// Returns the same `Identification` for any path: enough to drive
+/// `plan_batch` past identification so a rule resolves and its `changes`
+/// apply.
+struct OneIdent(Identification);
+
+impl Identify for OneIdent {
+    fn identify(&mut self, _path: &Path) -> Result<Identification, IdentifyError> {
+        Ok(self.0.clone())
+    }
+}
+
+/// Regression guard for the emitter-site divergence the two guards above are
+/// structurally blind to (they render one hand-written fixture per code, so a
+/// single emitter that omits a param its siblings set stays green there). This
+/// drives the REAL `resolve_changes` emitter -- the plan-time invalid
+/// `changes.language` path -- through `plan_batch`, then renders the diagnostic
+/// it actually produced. Before the fix that added `.with("allowed", ...)` to
+/// match its `walk_exact_languages` sibling, the `{ $allowed }` placeholder in
+/// `invalid-property-value` reached the user verbatim; this asserts it no
+/// longer does, from the emitter's own params rather than a fixture's.
+#[test]
+fn invalid_changes_language_diagnostic_renders_without_placeholder_leak() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    let profile = from_str(
+        "profile_version: 1\n\
+         input: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\n\
+         tracks:\n  rules:\n\
+         \x20   - match: { exact: { type: audio, language: en } }\n\
+         \x20     changes: { language: 'zz!' }\n",
+        Format::Yaml,
+    )
+    .unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let series = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/identify/series-s01e01.json"
+    ));
+    let lang = LanguageIndex::from_rows(&[
+        ["English", "eng", "eng", "en"],
+        ["German", "ger", "ger", "de"],
+        ["Turkish", "tur", "tur", "tr"],
+    ]);
+    let mut ident = OneIdent(Identification::from_json(series).unwrap());
+    let batch = plan_batch(&profile, &run, &mut ident, &lang);
+
+    let diag = batch
+        .files
+        .iter()
+        .flat_map(|f| &f.diagnostics)
+        .find(|d| {
+            d.code == DiagCode::InvalidPropertyValue && d.config_path.ends_with(".changes.language")
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected an InvalidPropertyValue from the changes.language emitter site; diags: {:?}",
+                batch
+                    .files
+                    .iter()
+                    .flat_map(|f| &f.diagnostics)
+                    .collect::<Vec<_>>()
+            )
+        });
+
+    let renderer = muxsmith_cli::i18n::Renderer::new(Some("en"));
+    let rendered = renderer.diagnostic(diag);
+    assert!(
+        !rendered.contains("{$"),
+        "the changes.language InvalidPropertyValue leaked a placeholder: {rendered}"
+    );
 }
