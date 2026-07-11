@@ -427,3 +427,74 @@ Decisions and why:
 - Discovered: HANDOFF.md was never actually gitignored, only untracked - noted in the new HANDOFF as a git add -A hazard.
 
 Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 sessions by customTitle, proposal list to Senol), collection Sichtung -> commit, then Plan 6.
+
+## 2026-07-11 | Session 7: forensic audit, sweep walkthrough, process doctrine, Plan 5.5 authored | session 7
+
+1. Scope: session 2026-07-10/11 (started as "HANDOFF-Bergung + ROADMAP-Sweep"
+   per session-6 handoff, grew into a full process audit on Senol's direction);
+   commits fe7119d..7fa01b3.
+2. Decisions and why:
+   - Senol walked all 23 sweep findings plus residue rounds individually
+     (decisions with provenance in ROADMAP entries). Pattern: every
+     spec-anchored gap -> implement pre-1.0 (spec is a binding contract);
+     zero-track -> warning-only, one sane default, options parked in IDEAS #5;
+     diagnostics polish moved v1.x -> pre-1.0 mid-walkthrough; de locale
+     before 1.0 (bilingual launch); coverage tooling -> v1.x discussion anchor.
+   - Process doctrine from the audit root causes: mechanism-not-appeal +
+     durable-as-history-is-not-durable-as-backlog. Packaged as
+     software-dev-process skill + doctrine file after Senol rejected
+     eager-memory ambience: behavior-as-package (self-contained, liftable,
+     PROJECT-scoped binding; new projects get an adopt-or-not question at
+     kickoff). feedback_superpowers_throughout memory deleted, content
+     integrated as doctrine section 0.
+   - Recovery style: byte-verified verbatim (handoffs cross-checked against
+     next-session reads; 78 verdicts against subagent transcripts).
+3. What the process caught:
+   - Controller cross-check refuted two "meanwhile resolved" claims by a sweep
+     agent (load.rs at-param, invalid-template selector) - both still in code.
+   - Distillate review caught the controller's own condensation loss:
+     regex-recompile silently dropped from the 23-point consolidation (the M3
+     mechanism catching its own auditor).
+   - Severity escalation on walkthrough #9 via code read: read_line Err=EOF is
+     not just log truncation; pipe stays open during wait(), pipe-full hang
+     possible (spawn.rs verified).
+   - SI-4's "mechanically solved" permission claim was false on disk: the two
+     allow rules were absent from settings.local.json. Booked, never verified.
+   - Doctrine pressure tests 3/3 pass; one refactor from testing (fourth
+     roll-up category "recorded").
+4. Mechanics/metrics (approx): ~20 subagent dispatches - 5 ROADMAP sweepers,
+   7 dual-lens bok auditors (opus), verdict-rescue agent (78 files), docs-tree
+   closing-net (opus), 3 doctrine pressure tests, public audit (86/86, five
+   sub-readers), distillate drafter (opus). Single session, context ~470k
+   tokens. Recovered: 8 handoff states, 78 verdicts, ~70 lost/orphaned items
+   beyond the 23 baseline (tiering in the Nextcloud distillate).
+5. Friction and failure:
+   - Audit root findings: frozen archives treated as backlog; "cleanup pass"
+     deferral target without vehicle (D18); go-public trigger fired unconsumed
+     (mkvmerge mac/win CI; leak audit ran after the flip).
+   - Senol's criticism of the controller: inverting a concrete complaint into
+     a universal rule (black-and-white thinking). Correction: persistence
+     scope is a case-by-case decision, ask when unclear ->
+     _shared/memory-convention.md amended.
+   - Auto-mode classifier blocked all agent git until Senol added the two
+     allow rules himself (agent cannot self-edit permissions).
+   - md2html subset rejects wrapped list items; needed an unwrap pass.
+6. Moments:
+   - The 23-point walkthrough ran while six opus auditors swept transcripts in
+     background; each decision was persisted to ROADMAP in the same turn
+     (write-at-creation practiced live before the doctrine was even tested).
+   - A doctrine pressure-test agent independently derived "verdict file before
+     anything else" from section 2 (Tonmeister plan-close scenario).
+   - Senol's "wie dumm ist das bitte schoen?" on the CI-runner miss - the
+     sentence that started the audit.
+7. Deltas: session plan was Bergung + sweep; grew into audit + doctrine +
+   skill + distillate + Plan 5.5 by explicit direction. Plan 5.5 written
+   anchor-precise instead of plan-1-3 full-code style (documented deviation,
+   approved before writing).
+8. Open threads:
+   - Plan 5.5 execution awaits Senol's go (fresh session; 23 tasks, 4 waves).
+   - Senol commits pending: ~/agents (doctrine, memory edits/deletion,
+     memory-convention), dotfiles-private (skill; cleanupPeriodDays).
+   - HANDOFF SIs now reference the doctrine package; SI-4 corrected.
+   - Behavior-as-package statement lives in Senol's Joplin, deliberately not
+     in this repo.
