@@ -6,6 +6,8 @@ pub mod identify;
 pub mod run;
 pub mod validate;
 
+use std::path::Path;
+
 use muxsmith_core::planner::Batch;
 use muxsmith_core::report::{Diagnostic, Severity};
 
@@ -40,10 +42,21 @@ pub(crate) fn diag_exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 
 
 /// Prints a planned [`Batch`] in dry-run's human format (spec 5.5): per file
 /// its identifier, its assignments and output path when it has a plan, then
-/// its diagnostics; then batch-level diagnostics and suggestions. Shared
-/// verbatim by `dry-run` and `run`: spec 5.5 requires `run` to re-plan and
-/// print exactly this report before executing.
-pub(crate) fn print_batch_human(batch: &Batch, renderer: &Renderer) {
+/// its diagnostics; then batch-level diagnostics and suggestions; then a
+/// trailing batch summary line naming how many files matched, `root`, and
+/// `extensions` (ROADMAP "Empty-batch human output" gap, ticket #8).
+/// Unconditional: the empty batch (zero files, zero diagnostics, zero
+/// suggestions) still prints this one line ("0 files matched (searched
+/// ..., extensions ...)"), so human mode never exits clean and silent the
+/// way it did before. Shared verbatim by `dry-run` and `run`: spec 5.5
+/// requires `run` to re-plan and print exactly this report before
+/// executing.
+pub(crate) fn print_batch_human(
+    batch: &Batch,
+    root: &Path,
+    extensions: &[String],
+    renderer: &Renderer,
+) {
     for f in &batch.files {
         println!(
             "{}",
@@ -91,4 +104,15 @@ pub(crate) fn print_batch_human(batch: &Batch, renderer: &Renderer) {
         );
         println!("{}", s.yaml_fragment);
     }
+    println!(
+        "{}",
+        renderer.msg(
+            "dry-run-summary",
+            &[
+                ("count", &batch.files.len().to_string()),
+                ("root", &root.display().to_string()),
+                ("extensions", &extensions.join(", ")),
+            ],
+        )
+    );
 }

@@ -325,6 +325,53 @@ fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_su
     );
 }
 
+/// Task 8 (#8): human mode must speak even when nothing matched, not stay
+/// silent on a clean exit. Same empty-source-dir fixture as the `--json`
+/// sibling above, without `--json`: asserts the batch summary line names
+/// the zero count, the searched root, and the configured extensions.
+#[test]
+fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
+    if !have_mkvmerge() {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+    )
+    .unwrap();
+
+    let out = muxsmith()
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "exit: {:?}, stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("0 files matched"),
+        "expected the zero-count batch summary line, got stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(&dir.path().display().to_string()),
+        "expected the searched root in the summary line, got stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("mkv"),
+        "expected the configured extensions in the summary line, got stdout: {stdout}"
+    );
+}
+
 /// Task 9 (D15): the mkvmerge-not-found path must surface the same document
 /// dry-run's `config_only_json` builds for the same condition (spec 5.5
 /// superset-of-validate guarantee), extended with an empty `jobs` array and
