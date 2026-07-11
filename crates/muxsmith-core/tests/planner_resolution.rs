@@ -11,8 +11,9 @@ mod support;
 use support::{FakeIdent, lang};
 
 const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
-// Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
-// id2 "cover.jpg"), the fixture the brief's attachment-rule test cases use.
+// Task 8: one video track plus three attachments (id1 "a.ttf", id2 "b.otf",
+// id3 "cover.jpg" - 1-based, mkvmerge -J wire format), the fixture the
+// brief's attachment-rule test cases use.
 const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
 
 fn plan_one(
@@ -1215,7 +1216,8 @@ tracks:
 }
 
 // Task 8: a `select` rule keeps only the attachments it matches; `unmatched:
-// drop` removes everything else, reducing to `Subset` of just the matched id.
+// drop` removes everything else, reducing to `Subset` of just the matched id
+// (1-based: WITH_ATTACHMENTS' "a.ttf" is id 1, mkvmerge -J wire format).
 #[test]
 fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
     let p = r#"
@@ -1235,7 +1237,7 @@ attachments:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments.primary,
-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0])
+        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1])
     );
 }
 
@@ -1285,8 +1287,10 @@ attachments:
     );
 }
 
-// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
-// `unmatched: keep` keeps the other two, reducing to `Subset([0, 1])`.
+// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id 3);
+// `unmatched: keep` keeps the other two, reducing to `Subset([1, 2])`
+// (1-based: WITH_ATTACHMENTS' "a.ttf"/"b.otf" are ids 1/2, mkvmerge -J wire
+// format).
 #[test]
 fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
     let p = r#"
@@ -1306,7 +1310,7 @@ attachments:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments.primary,
-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0, 1])
+        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1, 2])
     );
 }
 

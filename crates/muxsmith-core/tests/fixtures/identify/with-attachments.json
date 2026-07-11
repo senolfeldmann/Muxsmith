@@ -1,8 +1,9 @@
 {
+  "_comment": "Ids mirror real mkvmerge -J wire format (source of truth), verified against mkvmerge v100: attachment ids are 1-based, track ids stay 0-based. Ignored by Identification::from_json, which reads only named keys.",
   "attachments": [
-    { "id": 0, "file_name": "a.ttf", "size": 100 },
-    { "id": 1, "file_name": "b.otf", "size": 100 },
-    { "id": 2, "file_name": "cover.jpg", "size": 100 }
+    { "id": 1, "file_name": "a.ttf", "size": 100 },
+    { "id": 2, "file_name": "b.otf", "size": 100 },
+    { "id": 3, "file_name": "cover.jpg", "size": 100 }
   ],
   "chapters": [],
   "container": { "recognized": true, "supported": true, "type": "Matroska" },

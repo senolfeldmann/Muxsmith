@@ -513,4 +513,46 @@ mod tests {
         assert_eq!(a.get("size"), Some(PropValue::Int(10)));
         assert_eq!(a.get("nope"), None);
     }
+
+    // parse_attachment's contract (identify.rs:224-225): required fields
+    // (id, file_name, size) missing OR WRONG-TYPED drop the entry. A
+    // string-typed id fails the `as_u64` extraction, so the whole attachment
+    // is filtered out by `from_json`'s `filter_map`, not just its id field.
+    #[test]
+    fn attachment_with_wrong_typed_id_is_dropped() {
+        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
+          "container": { "recognized": true, "supported": true }, "tracks": [],
+          "attachments": [
+            { "id": "not-a-number", "file_name": "bad.ttf", "size": 10 },
+            { "id": 5, "file_name": "good.ttf", "size": 20 }
+          ] }"#;
+        let id = Identification::from_json(json).unwrap();
+        assert_eq!(id.attachments.len(), 1);
+        assert_eq!(id.attachments[0].id, 5);
+    }
+
+    // Chapters is a sum over each edition's `num_entries` (from_json). A
+    // non-numeric value fails `as_u64` and is filtered out by the sum's
+    // `filter_map`, contributing 0 rather than erroring or panicking.
+    #[test]
+    fn chapters_non_numeric_num_entries_is_skipped_not_erroring() {
+        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
+          "container": { "recognized": true, "supported": true }, "tracks": [],
+          "chapters": [ { "num_entries": "twelve" }, { "num_entries": 5 } ] }"#;
+        let id = Identification::from_json(json).unwrap();
+        assert_eq!(id.chapters, 5);
+    }
+
+    // parse_attachment's uid lookup chains `.get("properties")` before
+    // `.get("uid")`; an attachment with no "properties" key at all (not even
+    // an empty object) must still parse, with uid defaulting to None.
+    #[test]
+    fn attachment_without_properties_key_has_no_uid() {
+        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
+          "container": { "recognized": true, "supported": true }, "tracks": [],
+          "attachments": [ { "id": 1, "file_name": "f.ttf", "size": 10 } ] }"#;
+        let id = Identification::from_json(json).unwrap();
+        assert_eq!(id.attachments.len(), 1);
+        assert_eq!(id.attachments[0].uid, None);
+    }
 }

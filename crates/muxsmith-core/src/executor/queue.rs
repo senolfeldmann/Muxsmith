@@ -588,6 +588,58 @@ mod tests {
         );
     }
 
+    /// `soft_fail_fast_cancels_queued_but_not_inflight` only exercises a
+    /// failure at spec index 0 -- the FIRST spec ever dequeued -- so it
+    /// cannot tell a `stop.store(true, ...)` genuinely gated on "the most
+    /// recently finished job failed" apart from one accidentally gated on
+    /// "index == 0". Job 0 succeeds, job 1 (the second dequeued, not the
+    /// first) fails, job 2 must never spawn.
+    #[test]
+    fn fail_fast_triggers_on_a_non_first_failing_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![
+            spec(0, dir.path().join("a.mkv")),
+            spec(1, dir.path().join("b.mkv")),
+            spec(2, dir.path().join("c.mkv")),
+        ];
+        let fake = ScriptByIndexSpawner {
+            scripts: vec![
+                (vec!["#GUI#progress 100%".to_string()], Some(0)),
+                (vec!["#GUI#error boom".to_string()], Some(2)),
+                (vec!["#GUI#progress 100%".to_string()], Some(0)),
+            ],
+        };
+        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        let (tx, rx) = mpsc::channel();
+        let opts = QueueOpts {
+            jobs: 1,
+            fail_fast: true,
+        };
+
+        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
+        drop(tx);
+        let events: Vec<JobEvent> = rx.iter().collect();
+
+        assert_eq!(
+            outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
+            vec![JobState::Ok, JobState::Failed, JobState::Cancelled],
+            "fail-fast must trigger on the failing job regardless of its \
+             position in the queue, not only when it is dequeued first"
+        );
+        let started: Vec<usize> = events
+            .iter()
+            .filter_map(|e| match e {
+                JobEvent::Started { index, .. } => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            started,
+            vec![0, 1],
+            "job 2, queued after the non-first failure, must never start"
+        );
+    }
+
     #[test]
     fn outcomes_index_aligned() {
         let dir = tempfile::tempdir().unwrap();

@@ -209,6 +209,144 @@ fn unmatched_donor_rule_opens_no_input_group() {
     assert_eq!(track_order, Some("0:0"));
 }
 
+// Golden pin (gap T-i): drop-mode `--track-order` when `track_id: None`
+// assignments are interleaved BETWEEN `Some` ones across the primary and two
+// distinct donors, not just trailing a single donor as in
+// `unmatched_donor_rule_opens_no_input_group`. Pins two facts about
+// `push_track_order`/`input_groups` together: (1) `None` assignments are
+// skipped in place without shifting the ordering of the `Some` ones around
+// them, wherever they sit in profile order; (2) a group's index is assigned
+// by first-appearance of a `Some` assignment on that source, so a donor
+// hit only by a later rule (donor A, rule 3) gets a HIGHER group index than
+// one first hit earlier (donor B, rule 2), even though donor A is also
+// referenced (unsuccessfully) by an earlier, `None` rule (rule 1). A wholly
+// unreferenced-by-any-Some donor (rule 4) opens no group at all, confirming
+// that holds even amid this denser mix.
+#[test]
+fn donor_ordering_drop_mode_with_mixed_none_and_some_assignments() {
+    let plan = Plan {
+        source: p("/m/e.mkv"),
+        output: p("/out/e.mkv"),
+        keep_unmatched: false,
+        primary_track_ids: vec![0],
+        assignments: vec![
+            Assignment {
+                rule_index: 0,
+                source: p("/m/e.mkv"),
+                track_id: Some(0),
+                track_kind: Some("video".into()),
+                changes: vec![],
+            },
+            Assignment {
+                rule_index: 1,
+                source: p("/m/e.en.srt"),
+                track_id: None,
+                track_kind: None,
+                changes: vec![],
+            },
+            Assignment {
+                rule_index: 2,
+                source: p("/m/e.ac3"),
+                track_id: Some(0),
+                track_kind: Some("audio".into()),
+                changes: vec![],
+            },
+            Assignment {
+                rule_index: 3,
+                source: p("/m/e.en.srt"),
+                track_id: Some(0),
+                track_kind: Some("subtitles".into()),
+                changes: vec![],
+            },
+            Assignment {
+                rule_index: 4,
+                source: p("/m/e.commentary.ac3"),
+                track_id: None,
+                track_kind: None,
+                changes: vec![],
+            },
+        ],
+        attachments: AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        },
+        chapters: ChapterSource::Keep,
+        tags: TagFlags {
+            global_keep: true,
+            track_keep: true,
+        },
+        title: TitleAction::Clear,
+    };
+    let argv = muxsmith_core::command::command(&plan);
+
+    assert!(
+        !argv.iter().any(|a| a == "/m/e.commentary.ac3"),
+        "a source with only None assignments must never open an input group: {argv:?}"
+    );
+
+    let track_order = argv
+        .iter()
+        .position(|a| a == "--track-order")
+        .map(|i| argv[i + 1].as_str());
+    assert_eq!(
+        track_order,
+        Some("0:0,1:0,2:0"),
+        "None assignments must be skipped in place; groups indexed by \
+         first-Some-appearance (primary=0, e.ac3=1, e.en.srt=2), got {argv:?}"
+    );
+}
+
+// Golden pin (gap T-i): keep-mode counterpart. D20's primary-then-donors
+// order (`push_track_order_keep`) must also skip a `None` donor assignment
+// in place rather than emitting a bogus entry for it, while still listing
+// every REAL donor assignment that follows, in profile order.
+#[test]
+fn donor_ordering_keep_mode_with_mixed_none_and_some_assignments() {
+    let plan = Plan {
+        source: p("/m/show.mkv"),
+        output: p("/out/show.mkv"),
+        keep_unmatched: true,
+        primary_track_ids: vec![0, 1],
+        assignments: vec![
+            Assignment {
+                rule_index: 0,
+                source: p("/m/missing.srt"),
+                track_id: None,
+                track_kind: None,
+                changes: vec![],
+            },
+            Assignment {
+                rule_index: 1,
+                source: p("/m/donor.srt"),
+                track_id: Some(0),
+                track_kind: Some("subtitles".into()),
+                changes: vec![],
+            },
+        ],
+        attachments: AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
+            add_files: vec![],
+        },
+        chapters: ChapterSource::Keep,
+        tags: TagFlags {
+            global_keep: true,
+            track_keep: true,
+        },
+        title: TitleAction::Keep,
+    };
+    let argv = muxsmith_core::command::command(&plan);
+    let track_order = argv
+        .iter()
+        .position(|a| a == "--track-order")
+        .map(|i| argv[i + 1].as_str());
+    assert_eq!(
+        track_order,
+        Some("0:0,0:1,1:0"),
+        "keep-mode must skip the None donor assignment and still list the \
+         real donor trailing every primary track (D20), got {argv:?}"
+    );
+}
+
 #[test]
 fn per_track_properties_and_multi_group() {
     let plan = Plan {

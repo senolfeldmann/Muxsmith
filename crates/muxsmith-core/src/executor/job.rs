@@ -253,9 +253,15 @@ mod tests {
     }
 
     #[test]
-    fn exit_one_is_warning_with_captured_lines() {
+    fn exit_one_is_warning_with_captured_lines_and_output_kept() {
         let dir = tempfile::tempdir().unwrap();
-        let spec = spec(dir.path().join("out.mkv"));
+        let output = dir.path().join("out.mkv");
+        // A real mkvmerge exit-1 mux still writes the output (spec 6, job.rs
+        // module doc: "warning, output kept"); `finish` only deletes on
+        // Failed/Cancelled, so the earlier version of this test (no file
+        // ever written) could not tell "kept" apart from "never produced".
+        std::fs::write(&output, b"muxed with warnings").unwrap();
+        let spec = spec(output);
         let fake = FakeSpawner::script(
             vec![
                 "#GUI#warning 'seed.srt': A track with the ID 9 was requested but not found."
@@ -272,6 +278,10 @@ mod tests {
         assert_eq!(
             outcome.warnings,
             vec!["'seed.srt': A track with the ID 9 was requested but not found.".to_string()]
+        );
+        assert!(
+            spec.output.exists(),
+            "exit-1 output must be kept, not deleted"
         );
     }
 

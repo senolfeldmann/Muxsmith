@@ -278,7 +278,11 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
 /// pre-existing file at the planned output path exits 2; passing
 /// `--on-collision skip` downgrades the same collision to a warning and
 /// exits 1, with the JSON report carrying an `output-collision` diagnostic
-/// at `warning` severity.
+/// at `warning` severity; passing `--on-collision overwrite` downgrades it
+/// further to Info severity and exits 0 -- `diag_exit_code`'s (mod.rs) match
+/// has only two named arms (`Error` => 2, `Warning` => 1); every other
+/// severity, Info included, falls through its `_ => 0` default arm, which
+/// this case is what actually exercises.
 #[test]
 fn dry_run_on_collision_flag_overrides_default_error_policy() {
     if !have_mkvmerge() {
@@ -376,6 +380,44 @@ fn dry_run_on_collision_flag_overrides_default_error_policy() {
         .find(|d| d["code"] == "output-collision")
         .unwrap_or_else(|| panic!("expected an output-collision diagnostic, got: {report}"));
     assert_eq!(diag["severity"], "warning");
+
+    // --on-collision overwrite: downgrades to Info, exits 0 -- the
+    // `diag_exit_code` default-branch case (gap T-iii): neither the `Error`
+    // nor the `Warning` arm fires, so the worst-of fold must fall through to
+    // its `_ => 0` arm rather than defaulting to a nonzero exit by omission.
+    let overwrite_out = Command::cargo_bin("muxsmith")
+        .unwrap()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(src_dir.path())
+        .args(["--output"])
+        .arg(out_dir.path())
+        .args(["--on-collision", "overwrite"])
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert_eq!(
+        overwrite_out.status.code(),
+        Some(0),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&overwrite_out.stdout),
+        String::from_utf8_lossy(&overwrite_out.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&overwrite_out.stdout).unwrap_or_else(|e| {
+            panic!(
+                "json report: {e}, stderr: {}",
+                String::from_utf8_lossy(&overwrite_out.stderr)
+            )
+        });
+    let diag = report["files"][0]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "output-collision")
+        .unwrap_or_else(|| panic!("expected an output-collision diagnostic, got: {report}"));
+    assert_eq!(diag["severity"], "info");
 }
 
 /// Same forced-missing-mkvmerge condition as above, human (non-`--json`)
