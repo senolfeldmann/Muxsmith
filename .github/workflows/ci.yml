@@ -29,12 +29,31 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      # Linux-only: gated integration tests self-skip on other platforms.
-      # mkvtoolnix version floats with the distro; pinning it is in the
-      # backlog (Şenol 2026-07-10).
-      - name: Install mkvtoolnix (gated integration tests)
+      # mkvtoolnix on every leg (2026-07-11, Plan 5.5 Task 2 / #14): gated
+      # integration tests previously ran live on Linux only and silently
+      # self-skipped on Windows/macOS. Version-pin decision (registries
+      # checked 2026-07-11, Şenol's standing preference is pin per-manager
+      # unless impossible): apt on ubuntu-26.04 "resolute" (the actual
+      # matrix OS, not 24.04) ships mkvtoolnix 97.0-1build1; choco and
+      # brew both currently track 100.0(.0) - majors diverge, so pin
+      # where the manager allows an install-time version. apt and choco
+      # do; both are pinned below. Homebrew's core tap keeps no versioned
+      # mkvtoolnix formula and no install-time version selector (`brew
+      # pin` only locks an already-installed version against a later
+      # `brew upgrade`), so brew floats on latest stable - the one
+      # manager where pinning is not idiomatically possible. The apt pin
+      # is an exact build (`-1build1`); an archive rebuild can supersede
+      # that string and will need a bump, same maintenance shape as the
+      # SHA-pin policy above.
+      - name: Install mkvtoolnix (gated integration tests, Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y mkvtoolnix
+        run: sudo apt-get update && sudo apt-get install -y mkvtoolnix=97.0-1build1
+      - name: Install mkvtoolnix (gated integration tests, Windows)
+        if: runner.os == 'Windows'
+        run: choco install mkvtoolnix --version=100.0.0 -y
+      - name: Install mkvtoolnix (gated integration tests, macOS)
+        if: runner.os == 'macOS'
+        run: brew install mkvtoolnix
       # Tauri 2 Linux build headers (spec: current v2.tauri.app prerequisites
       # page, Task 4). Windows/macOS runners need none of this: WebView2 and
       # the system webview ship with the OS.
@@ -52,6 +71,26 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # Task 2 (#14): assert the gated tests actually exercised mkvmerge
+      # instead of silently self-skipping, now that mkvtoolnix is
+      # installed on every leg. --nocapture is required: cargo test
+      # captures stdout/stderr of PASSING tests by default, so the
+      # self-skip eprintln would be invisible without it. --test-threads=1
+      # avoids --nocapture output from concurrent test threads interleaving
+      # and corrupting the marker line. A genuinely missing mkvmerge
+      # (install regression) trips the count above zero and fails the
+      # step - "otherwise silent skipping is traded for silent skipping"
+      # (walkthrough #14).
+      - name: Assert no gated tests silently skip (mkvmerge missing)
+        shell: bash
+        run: |
+          cargo test --workspace -- --nocapture --test-threads=1 2>&1 | tee gated-test-output.log
+          count="$(grep -c 'mkvmerge not found; skipping' gated-test-output.log || true)"
+          echo "Skip-marker occurrences: $count"
+          if [ "$count" -ne 0 ]; then
+            echo "::error::$count gated integration test(s) silently skipped (mkvmerge not found on PATH) - expected 0 now that mkvtoolnix is installed on every leg."
+            exit 1
+          fi
       - run: pnpm lint
       - run: pnpm build
       # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
