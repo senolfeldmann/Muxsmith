@@ -71,6 +71,16 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # Plan 5.5 Task 12 (#18b): rustdoc correctness as the ninth gate part.
+      # #![deny(missing_docs)] already gates presence; it says nothing about
+      # correctness, so a broken intra-doc link (queue.rs:73, linking a
+      # private item) rotted silently since Plan 4 until this task. All
+      # legs, matching the cross-target lint rule (cfg-gated items can
+      # differ per platform).
+      - name: cargo doc (rustdoc warnings as errors)
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
       # Task 2 (#14): assert the gated tests actually exercised mkvmerge
       # instead of silently self-skipping, now that mkvtoolnix is
       # installed on every leg. --nocapture is required: cargo test

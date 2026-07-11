@@ -394,8 +394,8 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 /// Builds and runs the Tauri application: registers the `dialog`,
 /// `clipboard-manager`, `os`, and `fs` plugins (capabilities in
 /// `capabilities/default.json` gate what each grants to the *frontend*; the
-/// shell's own Rust-side dialog use in [`run::on_close_requested`] bypasses
-/// the IPC permission layer and needs no capability entry), manages the
+/// shell's own Rust-side dialog use in the private `run::on_close_requested`
+/// bypasses the IPC permission layer and needs no capability entry), manages the
 /// single unified [`AppState`], registers both tasks' IPC commands under
 /// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
 /// type, so the read-only/settings commands and the run-lifecycle commands

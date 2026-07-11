@@ -70,8 +70,9 @@ pub enum JobEvent {
 #[derive(Debug, Clone, Copy)]
 pub struct QueueOpts {
     /// Requested worker count; clamped to >= 1, then further capped at the
-    /// batch's spec count (see [`worker_count`]) so a `--jobs` far larger
-    /// than the batch never spawns idle OS threads. Default 1 (sequential).
+    /// batch's spec count (see the private `worker_count` helper) so a
+    /// `--jobs` far larger than the batch never spawns idle OS threads.
+    /// Default 1 (sequential).
     pub jobs: usize,
     /// Soft fail-fast (D14): on the first Failed, dequeue nothing further;
     /// in-flight jobs finish; queued jobs become Cancelled.

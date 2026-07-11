@@ -121,9 +121,9 @@ impl RunLogger {
     /// `<run_id>-2`, then `<run_id>-3`, and so on, until an unused name is
     /// found.
     ///
-    /// `specs` seeds one [`JobAccumulator`] per index (its `argv`/`output`),
-    /// so a job's identity is known even if it never receives a single
-    /// event before the batch ends.
+    /// `specs` seeds one private `JobAccumulator` per index (its
+    /// `argv`/`output`), so a job's identity is known even if it never
+    /// receives a single event before the batch ends.
     pub fn create(runs_root: &Path, run_id: &str, specs: &[JobSpec]) -> io::Result<RunLogger> {
         fs::create_dir_all(runs_root)?;
 
