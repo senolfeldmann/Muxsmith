@@ -50,7 +50,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y mkvtoolnix=97.0-1build1
       - name: Install mkvtoolnix (gated integration tests, Windows)
         if: runner.os == 'Windows'
-        run: choco install mkvtoolnix --version=100.0.0 -y
+        shell: pwsh
+        run: |
+          choco install mkvtoolnix --version=100.0.0 -y
+          if (-not (Test-Path 'C:\Program Files\MKVToolNix\mkvmerge.exe')) {
+            Write-Error "mkvmerge.exe not found at C:\Program Files\MKVToolNix\mkvmerge.exe after choco install"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\MKVToolNix'
       - name: Install mkvtoolnix (gated integration tests, macOS)
         if: runner.os == 'macOS'
         run: brew install mkvtoolnix
