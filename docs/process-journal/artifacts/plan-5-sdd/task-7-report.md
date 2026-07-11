@@ -1,3 +1,8 @@
+<!-- STALE-REPORT NOTE (2026-07-11, docs-tree audit S18): this file is a MISDIRECTED
+     foreign report - it describes plan-4 task 7 (richer gated live test), NOT plan-5
+     task 7 (Shell IPC read-only commands + settings, see task-7-brief.md). The real
+     plan-5 T7 outcome survives only in progress.md and the merge report. Same
+     stale-same-named-report trap as T1/T3/T5/T6, here unmarked until this note. -->
 # Task 7 report: richer gated live test (attachment + changes round trip)
 
 ## What was implemented

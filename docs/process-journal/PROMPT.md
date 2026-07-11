@@ -19,19 +19,27 @@ memory of *why* decays within a session. You are writing for a future writer
   ASCII punctuation only (no em-dashes, no curly quotes). It is raw material,
   not prose for publication; incomplete sentences are fine, vagueness is not.
 
-## First run only: salvage pass
+## Salvage pass (EVERY plan close, not only the first run)
 
-Before writing the first entry, check what survived and preserve it:
-1. `.superpowers/sdd/` in the repo dir (progress ledger, task briefs/reports,
-   review packages, fix reports): if present, copy the whole directory to
-   `docs/process-journal/artifacts/<phase>-sdd/` and commit it. These files are
-   the authentic per-task record (TDD evidence, reviewer verdicts, fix waves).
-   Remove any `.gitignore` inside the copied directory first and verify the
-   file count in the COMMIT, not the working tree (a copied ignore file once
-   silently excluded all 49 artifacts).
-2. If parts are missing, say so in the entry ("lost: X, reconstructed from Y").
-3. Write the entry retroactively from: the ledger, `git log`, the spec and
-   plan docs, and whatever the current session still knows firsthand.
+At every plan/phase close, before the journal entry:
+1. `.superpowers/sdd/` (or `.superpowers/sdd/plan-N/`) in the repo dir
+   (progress ledger, task briefs/reports, review packages, fix reports,
+   REVIEWER VERDICT files): copy the whole directory to
+   `docs/process-journal/artifacts/<phase>-sdd/` and commit it. These files
+   are the authentic per-task record (TDD evidence, reviewer verdicts, fix
+   waves). Remove any `.gitignore` inside the copied directory first and
+   verify the file count in the COMMIT, not the working tree (a copied
+   ignore file once silently excluded all 49 artifacts).
+2. Snapshot the current `HANDOFF.md` to
+   `docs/process-journal/artifacts/handoffs/<date>-<phase>-close.md` with a
+   one-line provenance comment (the HANDOFF itself is untracked and
+   replace-in-place; without the snapshot its states are only recoverable
+   by transcript mining - 2026-07-10/11 that recovery took a session).
+3. If parts are missing, say so in the entry ("lost: X, reconstructed
+   from Y").
+4. On a first/retroactive run: write the entry from the ledger, `git log`,
+   the spec and plan docs, and whatever the current session still knows
+   firsthand.
 
 ## What an entry captures (in this order, omit empty sections)
 

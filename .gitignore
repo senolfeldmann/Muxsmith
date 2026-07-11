@@ -2,6 +2,10 @@
 .superpowers/
 gh-log.md
 
+# session resume state: replace-in-place, snapshotted to
+# docs/process-journal/artifacts/handoffs/ at plan closes; never committed live
+/HANDOFF.md
+
 # parallel SDD worktree streams
 .worktrees/
 

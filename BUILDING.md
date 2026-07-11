@@ -88,3 +88,34 @@ CI (`.github/workflows/ci.yml`) runs the same four-part Rust gate plus
 `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and `pnpm test:e2e` on every
 push/PR; `cargo deny check` runs as an
 independent job.
+
+## Tooling quirks
+
+- vue-tsc + `withDefaults` with `T | null`-typed props has a known quirk
+  (surfaced in Plan 5, task 11; details in the archived task-11 report,
+  docs/process-journal/artifacts/plan-5-sdd/). Check there before fighting
+  a TS error on a withDefaults call.
+
+## Documentation standard
+
+- Rustdoc states MEANING, not a name echo: what the item is for, its
+  contract, its edge cases. `#![deny(missing_docs)]` enforces presence
+  only; this line carries the quality bar (agreed Plan 1, previously
+  chat-only).
+
+## Deliberately not used
+
+Recorded so they are not re-litigated without their reasons (Plan-1
+tooling stock-take, 2026-07-08):
+
+- `just` runner: xtask covers every dev task; a second entry point drifts.
+- `sccache`: no compile-time pain at this workspace size.
+- `cargo-outdated`: Renovate/Dependabot replaces it once activated.
+- Coverage tooling (cargo-llvm-cov): revisit at v1.x planning (ROADMAP).
+
+## Cross-target lint rule
+
+Before the first push that hits a new OS leg in CI: run clippy
+cross-target locally (`-D warnings` workspaces need cfg-gated imports for
+cfg-gated tests) - two Windows-CI red rounds of exactly this class in
+Plan 5.
