@@ -1008,11 +1008,7 @@ fn suggest(
     let mut out = Vec::new();
     let mut cap_diagnostics = Vec::new();
     for ri in conflicted {
-        let Some(rule) = profile.tracks.rules.get(ri) else {
-            continue;
-        };
-        // Only primary-source rules get suggestions in v1 (external deferred).
-        if matches!(rule.source, SourceCfg::External(_)) {
+        if profile.tracks.rules.get(ri).is_none() {
             continue;
         }
         let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
@@ -1047,6 +1043,32 @@ fn suggest(
     (out, cap_diagnostics)
 }
 
+// The identification a rule reads for one primary: the primary itself for a
+// keyword source, the single located+identified donor for an external source.
+// `None` when no single donor resolves (zero, ambiguous, or unidentifiable),
+// mirroring `resolve_file`'s source resolution so candidate generation draws
+// discriminators from the same tracks the planner matched against. This is
+// what makes the engine source-agnostic (spec 5.3, D6): an external rule's
+// ambiguity lives in its donor's tracks, not the primary's.
+fn rule_source_ident(
+    rule: &TrackRule,
+    primary: &PrimaryFile,
+    id: &mut dyn Identify,
+) -> Option<Identification> {
+    match &rule.source {
+        SourceCfg::Keyword(_) => id.identify(&primary.path).ok(),
+        SourceCfg::External(block) => {
+            let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
+            let hits =
+                discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
+            match hits.as_slice() {
+                [donor] => id.identify(donor).ok(),
+                _ => None,
+            }
+        }
+    }
+}
+
 // Discriminator candidates for a rule, drawn from the property vectors of the
 // tracks it ambiguously matches, across every affected file.
 fn candidates_for_rule(
@@ -1062,7 +1084,7 @@ fn candidates_for_rule(
         std::collections::BTreeSet::new();
 
     for primary in primaries {
-        let Ok(ident) = id.identify(&primary.path) else {
+        let Some(ident) = rule_source_ident(rule, primary, id) else {
             continue;
         };
         let matched: Vec<&crate::identify::Track> = ident
