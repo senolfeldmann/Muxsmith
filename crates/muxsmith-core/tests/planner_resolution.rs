@@ -122,6 +122,86 @@ tracks:
     );
 }
 
+// D32 / Task 16: `raw:` opt-in plan-time skew warning cases B-9..B-11.
+// PINNED = 20. `UnknownPropertySkew` fires per consumed `raw:` property with
+// property / found_version / pinned params, independent of match outcome.
+
+const P_RAW_NEW_PROP: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { raw:new_prop: foo } }
+"#;
+
+fn raw_skew_diag(fr: &muxsmith_core::planner::FileReport) -> &muxsmith_core::report::Diagnostic {
+    fr.diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::UnknownPropertySkew)
+        .unwrap_or_else(|| panic!("expected UnknownPropertySkew; diags: {:?}", fr.diagnostics))
+}
+
+// B-9: newer schema (21 > 20), the raw: property present on a track; the rule
+// resolves and a plan is produced, with an UnknownPropertySkew naming the
+// property and the version gap.
+#[test]
+fn b9_raw_skew_newer_schema_resolves_with_warning() {
+    let ident = r#"{ "file_name": "Show.S01E01.mkv", "identification_format_version": 21,
+      "container": { "recognized": true, "supported": true },
+      "tracks": [ { "id": 0, "type": "video", "codec": "AVC",
+        "properties": { "new_prop": "foo" } } ] }"#;
+    let (batch, _dir) = plan_one(P_RAW_NEW_PROP, "Show.S01E01.mkv", ident);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let d = raw_skew_diag(fr);
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.params["property"], "new_prop");
+    assert_eq!(d.params["found_version"], "21");
+    assert_eq!(d.params["pinned"], "20");
+}
+
+// B-10: same-version schema (20 == 20); the match is untyped regardless of
+// version, so the skew warning still fires (params let the message distinguish
+// the cases) and the plan is produced.
+#[test]
+fn b10_raw_skew_same_version_still_warns_and_resolves() {
+    let ident = r#"{ "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+      "container": { "recognized": true, "supported": true },
+      "tracks": [ { "id": 0, "type": "video", "codec": "AVC",
+        "properties": { "new_prop": "foo" } } ] }"#;
+    let (batch, _dir) = plan_one(P_RAW_NEW_PROP, "Show.S01E01.mkv", ident);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let d = raw_skew_diag(fr);
+    assert_eq!(d.params["property"], "new_prop");
+    assert_eq!(d.params["found_version"], "20");
+    assert_eq!(d.params["pinned"], "20");
+}
+
+// B-11: the raw: property is absent on every track; a non-optional rule still
+// fails with MissingTrack (raw: does not suppress a genuine no-match) AND the
+// skew warning still fires (the property was consumed at plan time). No plan.
+#[test]
+fn b11_raw_absent_missing_track_but_still_warns_no_plan() {
+    let ident = r#"{ "file_name": "Show.S01E01.mkv", "identification_format_version": 21,
+      "container": { "recognized": true, "supported": true },
+      "tracks": [ { "id": 0, "type": "video", "codec": "AVC",
+        "properties": { "codec_id": "V_MPEG4/ISO/AVC" } } ] }"#;
+    let (batch, _dir) = plan_one(P_RAW_NEW_PROP, "Show.S01E01.mkv", ident);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let d = raw_skew_diag(fr);
+    assert_eq!(d.params["property"], "new_prop");
+    assert_eq!(d.params["found_version"], "21");
+    assert!(
+        fr.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::MissingTrack),
+        "expected MissingTrack alongside the skew warning; diags: {:?}",
+        fr.diagnostics
+    );
+}
+
 // Task 5: a settable `language` value validated at plan time (D2), at the
 // point of application, distinct from the batch-level `match.exact.language`
 // walk (`bad_language_value_is_batch_invalid_property_value`).

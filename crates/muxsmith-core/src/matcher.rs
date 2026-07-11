@@ -57,7 +57,7 @@ pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -
     }
     if let Some(sub) = &expr.substring {
         for (prop, needle) in sub {
-            match item_str(prop, item) {
+            match item_str(strip_raw(prop), item) {
                 Some(hay) if hay.to_lowercase().contains(&needle.to_lowercase()) => {}
                 _ => return false,
             }
@@ -65,7 +65,7 @@ pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -
     }
     if let Some(rx) = &expr.regex {
         for (prop, pattern) in rx {
-            let hay = match item_str(prop, item) {
+            let hay = match item_str(strip_raw(prop), item) {
                 Some(h) => h,
                 None => return false,
             };
@@ -92,6 +92,18 @@ pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -
 }
 
 fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &LanguageIndex) -> bool {
+    if let Some(bare) = prop.strip_prefix("raw:") {
+        // `raw:` opt-in (D32, spec 9.2): untyped byte-literal value equality
+        // against the property named verbatim. It bypasses the `language`
+        // normalization and `codec_kind` alias arms below, and it takes no
+        // false-when-absent Boolean shortcut - the bare name's type is unknown
+        // to the capability model (`matchable_type` is `None`), so an absent
+        // raw: property simply does not match (B-6).
+        return match item.get(bare) {
+            Some(have) => scalar_eq(want, &have),
+            None => false,
+        };
+    }
     match prop {
         // language matches against both `language` and `language_ietf`,
         // normalized so `de` and `ger` are equal (spec 4.4).
@@ -166,6 +178,12 @@ fn canonical_tag(s: &str) -> Option<String> {
         .canonicalize()
         .ok()
         .map(|t| t.as_str().to_string())
+}
+
+/// Strips a leading `raw:` opt-in prefix (D32, spec 9.2) so the lookup uses
+/// the bare property name; a name without the prefix is returned unchanged.
+fn strip_raw(prop: &str) -> &str {
+    prop.strip_prefix("raw:").unwrap_or(prop)
 }
 
 /// The string form of a matchable item's property, for substring/regex/
@@ -384,6 +402,71 @@ mod tests {
             &t,
             &lang()
         ));
+    }
+
+    // D32 / Task 16: `raw:` opt-in matcher cases B-5..B-8 (untyped comparison).
+
+    // B-5: a raw: unknown property present on the track compares untyped by
+    // value; scalar_eq(Int, Int) holds.
+    #[test]
+    fn b5_raw_unknown_present_matches_untyped() {
+        let t = track("audio", &[("dolby_complexity_index", PropValue::Int(3))]);
+        assert!(matches(
+            &expr("exact: { raw:dolby_complexity_index: 3 }"),
+            &t,
+            &lang()
+        ));
+        assert!(!matches(
+            &expr("exact: { raw:dolby_complexity_index: 4 }"),
+            &t,
+            &lang()
+        ));
+    }
+
+    // B-6: an absent raw: property has no false-when-absent shortcut (its type
+    // is unknown to the capability model), so it does not match - contrast a
+    // known Boolean flag, which matches `false` when absent.
+    #[test]
+    fn b6_raw_absent_unknown_does_not_match_no_false_when_absent() {
+        let t = track("audio", &[]);
+        assert!(!matches(
+            &expr("exact: { raw:new_flag: true }"),
+            &t,
+            &lang()
+        ));
+        assert!(!matches(
+            &expr("exact: { raw:new_flag: false }"),
+            &t,
+            &lang()
+        ));
+    }
+
+    // B-7: int/float cross-comparison works through the raw: path.
+    #[test]
+    fn b7_raw_int_float_cross_compare() {
+        let t = track("audio", &[("new_gain", PropValue::Float(6.0))]);
+        assert!(matches(&expr("exact: { raw:new_gain: 6 }"), &t, &lang()));
+    }
+
+    // B-8: raw:language opts out of language normalization and dual-field
+    // (language / language_ietf) lookup: it byte-literally compares against the
+    // `language` property alone. Here `language` is "ger", so `raw:language: de`
+    // does NOT match (documents the B-4 footgun), whereas normal `language: de`
+    // matches via normalization.
+    #[test]
+    fn b8_raw_language_is_byte_literal_no_normalization() {
+        let t = track(
+            "audio",
+            &[
+                ("language", PropValue::Str("ger".into())),
+                ("language_ietf", PropValue::Str("de".into())),
+            ],
+        );
+        assert!(!matches(&expr("exact: { raw:language: de }"), &t, &lang()));
+        // Byte-literal against the `language` field itself still works.
+        assert!(matches(&expr("exact: { raw:language: ger }"), &t, &lang()));
+        // Contrast: normal language matching normalizes de == ger.
+        assert!(matches(&expr("exact: { language: de }"), &t, &lang()));
     }
 
     #[test]

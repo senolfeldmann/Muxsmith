@@ -229,6 +229,14 @@ fn validate_expr(
     if let Some(exact) = &expr.exact {
         for (prop, value) in exact {
             let p = format!("{path}.exact.{prop}");
+            if let Some(bare) = prop.strip_prefix("raw:") {
+                // Explicit `raw:` opt-in (D32, spec 9.2): bypass the
+                // existence/type/domain checks and match untyped. The bare
+                // name is not looked up in the capability model, so no
+                // UnknownProperty / ValueTypeMismatch / InvalidPropertyValue.
+                diags.push(raw_opt_in_diagnostic(&p, bare));
+                continue;
+            }
             match prop_type(prop) {
                 None => diags.push(unknown_property(&p, prop)),
                 Some(t) => {
@@ -263,6 +271,23 @@ fn validate_expr(
         if let Some(map) = map {
             for (prop, value) in map.iter() {
                 let p = format!("{path}.{kind}.{prop}");
+                if let Some(bare) = prop.strip_prefix("raw:") {
+                    // `raw:` opt-in (D32): bypass property existence/type
+                    // checks (including the codec_kind exact-only guard, which
+                    // raw: sidesteps entirely). A value-level regex-compile
+                    // error is still reported: an uncompilable pattern is a
+                    // config error independent of the property.
+                    diags.push(raw_opt_in_diagnostic(&p, bare));
+                    if kind == "regex"
+                        && let Err(e) = regex::Regex::new(value)
+                    {
+                        diags.push(
+                            Diagnostic::error(DiagCode::InvalidRegex, p)
+                                .with("detail", flatten_regex_error(&e)),
+                        );
+                    }
+                    continue;
+                }
                 // codec_kind is a curated alias, matchable only under exact
                 // (D1). Guard before the string-type check so it reports
                 // CodecKindExactOnly rather than the misleading (codec_kind is
@@ -352,6 +377,22 @@ fn validate_changes(changes: &BTreeMap<String, Scalar>, path: &str, diags: &mut 
 
 fn unknown_property(path: &str, prop: &str) -> Diagnostic {
     Diagnostic::error(DiagCode::UnknownProperty, path.to_string()).with("property", prop)
+}
+
+/// The config-time diagnostic for a `raw:`-prefixed match property (D32, spec
+/// 9.2). `RawOnKnownProperty` (warning) when the bare name is one of the two
+/// capability properties with special matching semantics - `language`
+/// (ISO-639/BCP-47 normalization) and `codec_kind` (alias expansion), exactly
+/// the arms `matcher::exact_matches` special-cases - which `raw:` degrades to
+/// byte-literal equality; otherwise `RawProperty` (info), the visible escape
+/// valve announcing the untyped bypass. `path` keeps the literal
+/// `raw:`-prefixed key; the `property` param carries the stripped bare name.
+fn raw_opt_in_diagnostic(path: &str, bare: &str) -> Diagnostic {
+    if matches!(bare, "language" | "codec_kind") {
+        Diagnostic::warning(DiagCode::RawOnKnownProperty, path.to_string()).with("property", bare)
+    } else {
+        Diagnostic::info(DiagCode::RawProperty, path.to_string()).with("property", bare)
+    }
 }
 
 fn scalar_fits(value: &Scalar, t: PropType) -> bool {

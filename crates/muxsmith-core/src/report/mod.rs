@@ -79,6 +79,10 @@ diag_codes! {
     InvalidRegex => "invalid-regex",
     /// A match condition references a property absent from the capability model's matchable set (config-time error, spec 5.2).
     UnknownProperty => "unknown-property",
+    /// A match condition uses a `raw:`-prefixed property name: an explicit opt-in that bypasses the capability existence/type/domain checks and is matched untyped (config-time info, spec 9.2). The visible escape valve for forward compatibility; the bare name (prefix stripped) is in the `property` param.
+    RawProperty => "raw-property",
+    /// A `raw:` prefix was applied to a property that IS in the capability model and has special matching semantics (`language` normalization, `codec_kind` aliasing); the prefix degrades it to byte-literal untyped equality, bypassing those semantics (config-time warning, spec 9.2).
+    RawOnKnownProperty => "raw-on-known-property",
     /// `codec_kind` was used under a `substring`/`regex` condition; it is a curated alias and matchable only under `exact` (spec 4.4). Pattern-match `codec_id` instead. `condition` param names the misused condition.
     CodecKindExactOnly => "codec-kind-exact-only",
     /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender, `allowed` a hint sample.
@@ -154,7 +158,7 @@ diag_codes! {
     IgnoredFile => "ignored-file",
     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
     MultipleIdentifierMatches => "multiple-identifier-matches",
-    /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
+    /// A `raw:`-opted property was consumed at plan time and matched untyped against a source's tracks (spec 9.2). Emitted per consumed `raw:` property with `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so one code covers both a genuinely newer runtime schema and a same-version untyped match.
     UnknownPropertySkew => "unknown-property-skew",
     /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
     UnknownExtension => "unknown-extension",

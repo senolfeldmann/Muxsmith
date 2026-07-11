@@ -119,9 +119,10 @@ impl Attachment {
 pub struct Identification {
     /// The `file_name` mkvmerge echoed back.
     pub file_name: String,
-    /// `identification_format_version`; compared against
-    /// [`crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION`] to detect
-    /// schema skew (spec 9.2).
+    /// `identification_format_version`; reported as the `found_version` param
+    /// of an `UnknownPropertySkew` warning (against the pinned
+    /// [`crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION`]) whenever a
+    /// `raw:`-opted property is consumed matching this file (spec 9.2, D32).
     pub format_version: u64,
     /// `container.recognized`.
     pub container_recognized: bool,
