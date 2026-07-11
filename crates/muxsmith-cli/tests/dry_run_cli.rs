@@ -650,19 +650,22 @@ fn dry_run_json_emits_a_document_when_the_language_query_fails() {
     );
 }
 
-/// Same forced-broken-mkvmerge condition, human mode: pins down that
-/// today's behavior (bare stderr message, empty stdout, exit 2) is
-/// untouched by the `--json` fix; no earlier test in this file covered the
-/// human-mode side of this branch.
+/// Same forced-broken-mkvmerge condition, human mode. The query-failed branch
+/// is a pre-planning failure where the config-time validate pass already ran,
+/// and spec 5.5's superset-of-validate guarantee is unconditional: human mode
+/// must surface those config diagnostics on stdout before the stderr failure
+/// line, exactly as the sibling locate()-failure branch does. (This branch
+/// used to drop them, stderr only; item vii.)
 #[test]
 #[cfg(unix)]
-fn dry_run_human_mode_still_just_reports_the_language_query_failure_on_stderr() {
+fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
     let fake_path = fake_mkvmerge_that_fails_queries();
     let dir = tempfile::tempdir().unwrap();
     let profile = dir.path().join("p.yaml");
+    // An empty match expression is a config-time warning; it must reach stdout.
     std::fs::write(
         &profile,
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: {}\n",
     )
     .unwrap();
 
@@ -677,10 +680,10 @@ fn dry_run_human_mode_still_just_reports_the_language_query_failure_on_stderr() 
         .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        out.stdout.is_empty(),
-        "stdout: {}",
-        String::from_utf8_lossy(&out.stdout)
+        stdout.contains("tracks[0].match"),
+        "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
