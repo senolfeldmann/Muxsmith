@@ -81,22 +81,31 @@ implementation entry below.)
   lose").
   - Content anchors (append every "README-worthy" remark HERE the moment
     it is uttered; fold into the README on next touch): none open.
-- **Guide + blog posts (process + product)**: 1.0 deliverables, written in
-  fresh sessions from the process journal as primary source. Named input
-  for the format interview (Şenol 2026-07-11): user-docs architecture -
-  the README now carries the full CLI usage reference (tool is thin, no
-  other user docs exist); decide at the interview whether the guide
-  absorbs it, deepens it, or the reference splits into its own markdown
-  "man page" if it outgrows the front page. Şenol has
-  specific ideas about how he wants these - PROPOSALS welcome, but the
-  format/scope/voice interview with him comes FIRST. Not to be produced
-  unprompted. Source note (residue R3): the strategic rationale behind
-  the journaling/blog split (decay-rate argument, fresh-reader-vs-
-  Betriebsblindheit, disjoint audiences) was never persisted - it is
-  reconstructable from the Plan-1 session transcript (2026-07-08, late
-  morning) and worth mining when the format interview happens. The
-  process-learnings distillate in Şenol's Nextcloud project folder is a
-  second primary source.
+- **Guide + blog posts (process + product)**: 1.0 deliverables, produced
+  at 1.0 on Şenol's go. Format interview DONE 2026-07-11; decisions:
+  - **Guide**: single `docs/GUIDE.md`, English, maximal scope - cookbook/
+    workflows AND architecture/contributor part AND exhaustive reference;
+    Şenol prunes at review ("I want them all, I decide what I keep").
+    Deepens the README CLI reference without duplicating it; splits into
+    its own "man page" file only if it outgrows one file.
+  - **Blog posts**: two, separate and cross-linked (process + product),
+    written at 1.0 as markdown into the blog project folder, published
+    when the blog launches (platform decision open there). English first,
+    German versions additionally.
+  - **Authoring pipeline** (per recovered R3): three FRESH sessions at
+    1.0, one per deliverable, each fed the process journal + repo + git
+    history + artifact archive - not raw transcripts, not the sessions
+    that did the work (Betriebsblindheit; the guide especially wants a
+    fresh reader who stumbles where contributors would).
+  - **R3 recovered 2026-07-11** (transcript mined, quotes verified;
+    discussion was 15:49-15:55 CEST 2026-07-08, not "late morning"):
+    docs/process-journal/artifacts/r3-journal-blog-rationale.md carries
+    the verbatim extract + condensation. Core: deliverables decay at
+    different rates (process story fast and irreproducibly -> journal
+    immediately; product docs pre-1.0 describe a torso -> write at 1.0);
+    disjoint audiences and half-lives -> two posts.
+  - The process-learnings distillate in Şenol's Nextcloud project folder
+    remains a second primary source.
 - **Run-log auto-prune implementation (D35)**: decided 2026-07-11 (D35,
   pre-1.0 memo) - core auto-prunes run dirs older than 14 days, fixed, no
   configuration in v1 (configurability parked in IDEAS #7); parity match
