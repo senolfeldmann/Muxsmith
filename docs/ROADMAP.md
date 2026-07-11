@@ -104,7 +104,7 @@ implementation entry below.)
     different rates (process story fast and irreproducibly -> journal
     immediately; product docs pre-1.0 describe a torso -> write at 1.0);
     disjoint audiences and half-lives -> two posts.
-  - The process-learnings distillate in Şenol's Nextcloud project folder
+  - The process-learnings distillate kept with the project's non-repo material
     remains a second primary source.
 - **Run-log auto-prune implementation (D35)**: decided 2026-07-11 (D35,
   pre-1.0 memo) - core auto-prunes run dirs older than 14 days, fixed, no

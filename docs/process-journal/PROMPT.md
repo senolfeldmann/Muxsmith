@@ -14,10 +14,27 @@ memory of *why* decays within a session. You are writing for a future writer
   note if absent). Git-TRACKED deliberately: git-ignored artifacts are how
   process history nearly got lost once. Never rewrite or reorder old entries;
   append only. Commit the entry: `journal: <plan/phase> entry`.
-- Entry header: `## <ISO date> | <phase, e.g. "Plan 1 complete"> | session <n or label>`
+  One carve-out: bringing an old entry up to publication grade (removing
+  personal specifics per the bullet below, fixing orthography) is allowed as
+  an explicitly labeled correction commit; content rewrites and reordering
+  remain forbidden.
+- Entry header: `## <ISO date> | <phase, e.g. "Plan 1 complete"> | session <n or label> (<agent>, <main-loop model>)` - agent persona and the session's
+  main-loop model ALWAYS in the header, e.g. `session 9 (Peter, Fable 5)`;
+  a mid-session model switch is recorded inline (`Peter, Fable 5 -> Opus
+  4.8 1M mid-session`).
 - Register: lab notebook, not marketing. Terse, factual, past tense. English.
-  ASCII punctuation only (no em-dashes, no curly quotes). It is raw material,
-  not prose for publication; incomplete sentences are fine, vagueness is not.
+  ASCII punctuation only (no em-dashes, no curly quotes) - proper names keep
+  their real orthography (Şenol, not Senol). It is raw material, not prose
+  for publication; incomplete sentences are fine, vagueness is not: every
+  line must be understandable by the future writer WITHOUT session context.
+  A fragment that needs the session to decode ("tiering in the X document",
+  a bare file path as a sentence) fails that bar - write the one extra
+  clause that makes it self-contained.
+- PUBLICATION-GRADE (the journal is committed to the public repo): no
+  personal systems or apps, no private-repo state or pending private
+  commits, no personal paths. Framework-side events are named generically
+  ("the agents-framework memory convention was amended"); the specifics
+  live agent-side, outside this repo. Same posture as the HANDOFF's SI-5.
 
 ## Salvage pass (EVERY plan close, not only the first run)
 
@@ -58,7 +75,11 @@ At every plan/phase close, before the journal entry:
    later: tasks executed, subagent dispatches (implementer/reviewer/fixer),
    models used per role, fix waves, re-review cycles, wall-clock feel, token
    counts if visible, CI minutes if relevant. Approximations are fine if
-   labeled as such.
+   labeled as such. Models are NEVER left implicit: name the model for
+   every dispatch role, and when dispatches ran without an override -
+   i.e. on the same model as the controller/main session - say exactly
+   that ("reviewers on the controller model, Fable 5"), because a blank
+   is unreconstructable later while "same as controller" is a fact.
 5. **Friction and failure.** What went wrong or was awkward in the
    collaboration itself: tool failures, misdispatches, wrong assumptions,
    instructions that had to be repeated, anything the human had to correct.

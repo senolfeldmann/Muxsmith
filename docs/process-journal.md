@@ -4,7 +4,7 @@ Raw material for a future process-focused writeup: decisions with their why,
 what the review process caught, mechanics, friction. Append-only; entries are
 lab-notebook register, not publication prose. See the entry prompt for rules.
 
-## 2026-07-08 | Spec + Plan 1 complete, repo live | session 1
+## 2026-07-08 | Spec + Plan 1 complete, repo live | session 1 (Peter, Fable 5)
 
 **Scope.** Entire first session: requirements interview, spec, Plan 1
 authoring, subagent-driven execution of all 13 tasks, rustdoc backfill,
@@ -24,9 +24,9 @@ salvage pass done: all 49 files of `.superpowers/sdd/` survived a reboot
   survive the next dry run. Turned a hint feature into a verified-edit feature.
 - Full MKV-structure control in v1 (attachments/chapters/tags/title) against
   agent recommendation of global toggles; his scope call.
-- Stack: Tauri 2 + Rust core + React/TS over Wails v3 (alpha risk vs his Go
-  learning goal) and Avalonia (delivery certainty, smaller OSS pull). Rust
-  accepted although not on his learning list. MIT over Apache-2.0.
+- Stack: Tauri 2 + Rust core + React/TS over Wails v3 (alpha risk) and
+  Avalonia (delivery certainty, smaller OSS pull). Rust accepted although
+  only recently picked up. MIT over Apache-2.0.
 - mkvmerge identification schema: build-time fact extraction via xtask with
   committed generated.rs; schema never vendored (licensing sidestep), no
   build.rs network dependency. Runtime skew handled as untyped-match warning.
@@ -61,7 +61,9 @@ suite; that verification never contradicted a green claim, only the counts.
   waves, 1 docs pass, 1 final whole-branch review + confirmation.
 - Model split: haiku for transcription implementers (plan contained complete
   code), sonnet for judgment implementers (T9, T12, fix wave, docs) and all
-  task reviewers, fable for the final review. Subagent token use 37k-210k
+  task reviewers, fable for the final review; controller main loop Fable 5;
+  the per-role models above cover every dispatch, none ran on the
+  controller model. Subagent token use 37k-210k
   each; largest was the docs backfill (~209k).
 - Tests 0 -> 81; fmt + clippy -D warnings clean throughout; first CI run
   green on all 3 OSes in 2m44s; trimmed run verified as exactly one job.
@@ -110,7 +112,7 @@ excluding all 49 artifacts; caught by reading the commit stat line, fixed in
 411087f. Lesson recorded: after any archive/copy commit, verify the file
 count in the commit, not the working tree.
 
-## 2026-07-09 | Plan 2 written and implemented | session (Peter, Opus 4.8)
+## 2026-07-09 | Plan 2 written and implemented | session 2 (Peter, Fable 5 -> Opus 4.8 mid-session)
 
 **Scope.** Plan 2 design finalization, plan authoring, and full implementation.
 Commits `3b71a71..e1bfba7`. Design memo + spec fold-in, the 12-task plan doc,
@@ -128,7 +130,7 @@ then all 12 tasks executed. 125 workspace tests green; CI green at e1bfba7
   as a plain string (no enum) and only `aac_is_sbr` carries a schema enum, so
   generating value domains for one irrelevant field was an abstraction the scale
   had not earned. `type`/`codec_kind` domains are curated in `capability`
-  instead. Grounded in the source Şenol dropped at ~/Downloads/mkvtoolnix.
+  instead. Grounded in the mkvtoolnix source tree Şenol provided locally.
 - Execution deviated from Plan 1's subagent-driven-development: the controller
   (Opus) executed the tasks inline with live `cargo` verification, rather than
   dispatching a fresh subagent per task. Rationale: the plan's code was fully
@@ -175,7 +177,7 @@ tags/title, command generation, executor); `--list-types` extension validation
 (no diag code yet); CI does not install mkvtoolnix so the gated tests self-skip
 there. See HANDOFF.md.
 
-## 2026-07-09 | Plan 2 fix pass (SDD, corrective) | session (Peter, Opus 4.8)
+## 2026-07-09 | Plan 2 fix pass (SDD, corrective) | session 2 (cont.) (Peter, Opus 4.8)
 
 **Scope.** Corrective pass after Plan 2 was executed inline (no independent review) and then given a retrofit review that found ~11 bugs + 3 design questions. Commits `847b476..59d24c8`. Executed via subagent-driven-development this time: fresh implementer subagent per task, independent reviewer subagent for the substantive tasks, fix waves, final whole-branch review on opus. Artifacts archived at docs/process-journal/artifacts/plan-2-fixes-sdd/ (the per-task trail inline Plan 2 never produced).
 
@@ -189,7 +191,7 @@ there. See HANDOFF.md.
 - FINAL whole-branch review (opus) caught what EVERY per-task review missed: a template rendering to literal `.mkv` yields a hidden empty-stem `.mkv` output at exit 0 (F6 checked the pre-append value, not the final stem). This is the whole-branch stage earning its place. Fixed (59d24c8).
 - F4, F7 passed per-task review clean. F2, F3, F9 controller-verified (mechanical), covered by the final review. 6 Minor items from the final review recorded in the archived FINAL-review.md for a follow-up.
 
-**Process mechanics.** 9 planned tasks (F1-F9) + 1 final-review fix. ~13 implementer/fixer dispatches, 6 reviewer dispatches (F4/F5/F6/F7/F8 per-task + 1 final). Models: sonnet for implementers and per-task reviewers, opus for the final whole-branch review. Fix waves on F1, F5, F6, F8, and the final catch. Controller verified every task's suite itself (never trusted report arithmetic). 164 tests green at close, fmt/clippy/deny clean, CI green (test + deny) at 59d24c8. One transient: the F2 implementer died on a 500 mid-commit; its edits were complete, controller finished the commit.
+**Process mechanics.** 9 planned tasks (F1-F9) + 1 final-review fix. ~13 implementer/fixer dispatches, 6 reviewer dispatches (F4/F5/F6/F7/F8 per-task + 1 final). Models: sonnet for implementers and per-task reviewers, opus for the final whole-branch review; controller Opus 4.8 (post-switch); the two roles above cover every dispatch, none ran on the controller model. Fix waves on F1, F5, F6, F8, and the final catch. Controller verified every task's suite itself (never trusted report arithmetic). 164 tests green at close, fmt/clippy/deny clean, CI green (test + deny) at 59d24c8. One transient: the F2 implementer died on a 500 mid-commit; its edits were complete, controller finished the commit.
 
 **Contrast with inline Plan 2.** Same author-quality implementers, but the independent reviewer/controller separation turned "125 tests green, shipped ~11 bugs" into caught-before-merge. This is the concrete before/after for the multi-stage-review claim.
 
@@ -197,7 +199,7 @@ there. See HANDOFF.md.
 
 **Open threads.** 6 Minor final-review items (see archived FINAL-review.md); the mkvmerge-query-failed path still drops config diags (same class as the F1 fix, logged in the ledger); nits from the original review (OverlappingRules >=3 claimants, lint-vs-planner rule-ref formatting, regex recompiled per call, proptest coverage). Plan 3 (attachments/chapters/tags/title, command generation, executor, run) is next - execute via SDD per the HANDOFF standing instruction.
 
-## 2026-07-09 | Plan 3 complete (pure layer: resolution + command) | session 3
+## 2026-07-09 | Plan 3 complete (pure layer: resolution + command) | session 3 (Peter, Opus 4.8)
 
 **Scope.** Plan 3 impl `62d4956..7d46547` (14 commits); design docs `497502e` (D7-D11), `d039e24` (plan), `62d4956` (D12). First Muxsmith plan executed fully via superpowers subagent-driven-development (SI-1), in contrast to Plan 2's inline execution.
 
@@ -213,7 +215,7 @@ there. See HANDOFF.md.
 - Whole-branch review (opus) drove real mkvmerge v100 beyond the goldens: confirmed the `-J` attachment `id` equals the `--attachments` selector id (the one silent-wrong-file risk), all 26 flag spellings, rich argv exit 0. Also found a comment stating a FALSE reason (mkvmerge rejects empty groups - it does not; the exclusion is still right). Real bug: none survived. Noise separated: several "minors" were pre-existing test conventions.
 - Task 3 reviewer flagged a trait DOC-COMMENT edit under "no trait changes"; controller adjudicated accept (a truthfulness fix, not a contract change).
 
-**Mechanics/metrics.** 12 tasks. Dispatches: 12 implementers + 1 fix (T9) + 1 final-minor-fix = 14 build; 12 task reviews + 1 T9 re-review + 1 whole-branch = 14 reviews. Models: sonnet for all implementers and task reviewers, opus for the whole-branch review. Fix waves: 1 (T9 Important) + 1 (3 final-review minors). Tests 164 -> 204. Controller re-ran the gate after every task (SI-1: never trust the report's arithmetic); all green each time. No CI runs during the loop (commits local; single push at completion).
+**Mechanics/metrics.** 12 tasks. Dispatches: 12 implementers + 1 fix (T9) + 1 final-minor-fix = 14 build; 12 task reviews + 1 T9 re-review + 1 whole-branch = 14 reviews. Models: sonnet for all implementers and task reviewers, opus for the whole-branch review; controller Opus 4.8; the two roles above cover every dispatch, none ran on the controller model. Fix waves: 1 (T9 Important) + 1 (3 final-review minors). Tests 164 -> 204. Controller re-ran the gate after every task (SI-1: never trust the report's arithmetic); all green each time. No CI runs during the loop (commits local; single push at completion).
 
 **Friction/failure.**
 - `.superpowers/sdd/` still held Plan-1/2 reports at the same task-N-report.md paths; every implementer overwrote a stale same-named report and noted it. The salvage pass had to select Plan 3 files by name and drop a 2-byte `.gitignore` (the same ignore-file trap that nearly lost Plan 1's artifacts).
@@ -228,7 +230,7 @@ there. See HANDOFF.md.
 
 **Open threads (Plan 4 inherits).** Deferred minors: richer gated live test (attachment + changes) - highest value; zero-track-plan renders an empty MKV with no diagnostic (planner empty-plan warning?); FakeIdent+lang() duplicated 3x -> tests/support.rs; tests `std::mem::forget(tempdir)` leaks; with-attachments.json uses 0-based ids (mkvmerge is 1-based; code id-agnostic); optional batch-level settable-language check. Next: Plan 4 = executor + run subcommand + FIFO queue + SIGINT cleanup; job-log persistence deferred to Plan 5 (GUI). mkvtoolnix still not installed in CI (gated integration tests self-skip there).
 
-## 2026-07-09 | Plan 3.5 complete (mkvtoolnix parity fixes) | session 4 (Peter; Fable 5 -> Opus 4.8 1M mid-session)
+## 2026-07-09 | Plan 3.5 complete (mkvtoolnix parity fixes) | session 4 (Peter, Fable 5 -> Opus 4.8 1M mid-session)
 
 **Scope.** Plan 3.5 (D19-D21), commits 91b19eb..aa75025 (8). Inserted BEFORE Plan 4: three parity fixes to the pure layer, surfaced by a from-scratch mkvtoolnix parity audit. 7 SDD tasks + 1 review-fix.
 
@@ -246,7 +248,7 @@ there. See HANDOFF.md.
 - Task 7 review (Important): keep+donor track-order had only the gated live test (skips w/o mkvmerge -> unguarded in CI). Fix aa75025 = deterministic unit test; implementer verified it as a real guard by scratch-reverting the branch two ways. Origin: implementer.
 - D21 gate = `!container_recognized || !container_supported`, NOT is_identifiable() (recognized zero-track stays MissingTrack); confirmatory test asserts both directions.
 
-**Mechanics.** 7 tasks + 1 fix. ~3 recon + 7 implementer + 1 fixer dispatches; 7 task reviews + 1 whole-branch. Models: sonnet implementers/task-reviewers, opus whole-branch. 1 fix wave. Tests 204 -> ~214, 0 failed each gate; controller re-ran full gate (test/fmt/clippy -D warnings/deny) after every task. New dep language-tags 0.3.2 (MIT/Apache-2.0, no transitive deps, deny.toml untouched). Single push at completion.
+**Mechanics.** 7 tasks + 1 fix. ~3 recon + 7 implementer + 1 fixer dispatches; 7 task reviews + 1 whole-branch. Models: sonnet implementers/task-reviewers, opus whole-branch; controller per the header switch; four dispatches ran on the then-active controller model (Fable 5 or Opus 4.8, depending on when they fired), the rest on the roles' named models. 1 fix wave. Tests 204 -> ~214, 0 failed each gate; controller re-ran full gate (test/fmt/clippy -D warnings/deny) after every task. New dep language-tags 0.3.2 (MIT/Apache-2.0, no transitive deps, deny.toml untouched). Single push at completion.
 
 **Friction/failure.**
 - STRICTLY SERIAL execution. After Task 1 the D19/D20/D21 streams were independent (disjoint planner.rs regions), parallelizable in worktrees. Şenol: "I am waiting for something that could have been faster." SI-1 rewritten (Superpowers-throughout + parallelize-independent) + cross-project memory feedback_superpowers_throughout. The clearest miss of the session.
@@ -262,7 +264,7 @@ there. See HANDOFF.md.
 
 **Open threads (Plan 4 inherits).** Plan 4 memo (D13-D18) written, parked, UNREVIEWED by Şenol - review first. Standing Plan 1-3 minors still open (FakeIdent/lang() 3x dup, mem::forget tempdir leaks, mkvtoolnix in CI). docs/IDEAS.md holds 4 shelved parity features. Parallelize Plan 4's independent tasks per new SI-1.
 
-## 2026-07-09 | Session close: Plan 4 designed and planned, execution deferred | session 4 (cont.)
+## 2026-07-09 | Session close: Plan 4 designed and planned, execution deferred | session 4 (cont.) (Peter, Fable 5 - the tail switched back from Opus)
 
 **Scope.** Post-Plan-3.5 tail of session 4: commits 7ba90ee (Plan 4 memo, Şenol-approved "lgtm") and c0c0ef7 (Plan 4 implementation plan). No implementation.
 
@@ -272,7 +274,7 @@ there. See HANDOFF.md.
 
 **Open threads.** Next session: execute Plan 4 (plan c0c0ef7), wave 1 fan-out first; T1 must probe the real --gui-mode grammar before T2 writes the parser; verify T6's CI effect post-push in the Actions log.
 
-## 2026-07-10 | Plan 4 complete (executor + run + queue) | session 5
+## 2026-07-10 | Plan 4 complete (executor + run + queue) | session 5 (Peter, Fable 5)
 
 **Scope.** Plan 4 end to end: 11 tasks, 2 mid-chain fixes, 5-commit final fix
 wave. Commits 7aec492..9009d34 (26 commits incl. 5 wave-1 merges) plus the SDD
@@ -317,7 +319,9 @@ archive commit. Suite 215 -> 269 tests, gate green throughout.
 **Mechanics/metrics.**
 - 11 implementer dispatches (sonnet x10, haiku x1), 11 task reviews (opus x4
   for T1/T2/T3/T8, sonnet x7), 1 whole-branch review + 1 fix-wave verification
-  (fable), 3 fix dispatches + 1 five-commit final wave. Controller re-ran the
+  (fable), 3 fix dispatches (sonnet) + 1 five-commit final wave; controller
+  main loop Fable 5; the per-role models above cover every dispatch,
+  none ran on the controller model. Controller re-ran the
   4-command gate itself ~9 times (every merge, every acceptance).
 - Wave-1 wall clock ~7 min for 5 tasks (longest stream T1); serial chain
   dominated total time. ~16k lines of SDD artifacts archived.
@@ -359,23 +363,23 @@ archive commit. Suite 215 -> 269 tests, gate green throughout.
 - Windows kill fix must be re-verified when the 3-OS matrix activates.
 - Plan 5 (Tauri GUI) is next; parked deps unchanged in HANDOFF.
 
-## 2026-07-10 | Session 5 close (post-push addendum) | session 5
+## 2026-07-10 | Session 5 close (post-push addendum) | session 5 (Peter, Fable 5)
 
 **Scope.** Closes the two open threads from the Plan 4 entry above; commits since 88512c1: this entry only.
 
-- Push 7aec492..88512c1 landed after Şenol added repo-scoped git allow-rules to ~/agents/peter/.claude/settings.local.json (`Bash(cd /home/senol/Git/Muxsmith && git *)` and `git -C` form). Notable friction: the harness classifier had blocked BOTH the push AND the agent editing the settings file itself - self-escalation of permissions is hard-denied regardless of user consent in chat, so the mechanical fix required Şenol's own hands (a jq one-liner). Correct behavior by the classifier; recorded because the SI-4 workaround loop is now closed for good.
+- Push 7aec492..88512c1 landed after Şenol added repo-scoped git allow-rules to the agent-side permission settings (both git invocation forms, the cd-into-repo form and `git -C`). Notable friction: the harness classifier had blocked BOTH the push AND the agent editing the settings file itself - self-escalation of permissions is hard-denied regardless of user consent in chat, so the mechanical fix required Şenol's own hands. Correct behavior by the classifier; recorded because the SI-4 workaround loop is now closed for good.
 - T6 deferred verification DONE: CI run 29059480785 green (test 1m5s, deny 54s), mkvtoolnix install step executed, 0 "mkvmerge not found" skip markers in the full job log, gated tests (live_run_*, executor_live, attachment round trip) ran and passed. Evidence and commands in gh-log.md.
 - CI annotation noted for backlog: actions/checkout@v4 targets deprecated Node 20; bump to v5 is a one-liner.
 - Next session starts Plan 5 (Tauri GUI) from a clean, pushed master at 88512c1.
 
-## 2026-07-10 | Plan 5 complete (GUI run path) + go-public | session 6
+## 2026-07-10 | Plan 5 complete (GUI run path) + go-public | session 6 (Peter, Fable 5)
 
 **Scope.** Plan 5 end to end in one session: design memo D22-D31, plan authoring, waves 0-7 (T0-T13), final fix wave, repo taken public. Commits 735c723..226fa06 (+journal/artifacts commits after). Docs: specs/2026-07-10-plan-5-gui-design-decisions.md, plans/2026-07-10-plan-5-gui-run-path.md.
 
 **Decisions and why.**
-- Vue 3 replaced React mid-design (Senol veto; spec section 7 amended). Steelman-then-decide: nothing GUI-side was React-specific; Vue is equally in his stack, SFC over JSX.
-- Toolchain philosophy set by Senol: newest-over-LTS for dev-only runtimes (node 26.5.0, pnpm 11.10.0 via mise; eslint 10.6.0 bumped mid-review when peer ceilings proved absent), pin-everything (rust 1.96.1 over floating stable, all CI actions SHA-pinned, runners pinned incl. ubuntu-26.04 preview at his call, ctrlc full-pin).
-- D31 (close-with-active-run) was net-new scope from a plan-mandated review finding: Senol asked "what does mkvtoolnix do", source check showed confirm-then-abort-then-quit-after-finished, he chose full parity. Memo amended, T8 extended.
+- Vue 3 replaced React mid-design (Şenol veto; spec section 7 amended). Steelman-then-decide: nothing GUI-side was React-specific; Vue is equally in his stack, SFC over JSX.
+- Toolchain philosophy set by Şenol: newest-over-LTS for dev-only runtimes (node 26.5.0, pnpm 11.10.0 via mise; eslint 10.6.0 bumped mid-review when peer ceilings proved absent), pin-everything (rust 1.96.1 over floating stable, all CI actions SHA-pinned, runners pinned incl. ubuntu-26.04 preview at his call, ctrlc full-pin).
+- D31 (close-with-active-run) was net-new scope from a plan-mandated review finding: Şenol asked "what does mkvtoolnix do", source check showed confirm-then-abort-then-quit-after-finished, he chose full parity. Memo amended, T8 extended.
 - Suggestions in GUI = show+copy only (apply deferred to Plan 6 with the editor, which owns YAML mutation). Job logs JSON-per-job written by core for BOTH surfaces (spec-6 wording read as job-engine property).
 - Go-public decided mid-close-out when the 3-OS verification cost question came up ("GitHub gives more resources; reversible"). Pulled two gates forward: ConcurrencyTracker doc(hidden), static 3-OS matrix.
 
@@ -390,12 +394,12 @@ archive commit. Suite 215 -> 269 tests, gate green throughout.
 - T12's claimed type-drift protection was unwired (tsc never invoked); reviewer proved it with the repo's own tooling. Origin: implementer report vs reality.
 - Noise separated: ~16 accumulated Minors triaged FIX-NOW (3) vs DEFER (13) by the whole-branch reviewer.
 
-**Mechanics/metrics (approx).** 14 tasks, 7 waves; 3 parallel worktree waves (4+2+2 streams), zero real merge conflicts except the planned T7/T8 AppState/IpcError reconciliation (dedicated subagent, nothing lost, 72 gui tests after union). Dispatches: 12 implementers + 12 task reviewers (all sonnet) + 1 explore + 1 merge-reconciler + 1 whole-branch reviewer (fable) + 1 final fixer; ~14 fix rounds total, every task Approved within 2 review cycles. Test suite 269 -> 369 tests + 3 Playwright scenarios + axe + i18n gate. Eight-gate discipline from T4 on. Wall clock: one long session incl. one Claude Code restart (context7 auth) and a mid-session pause.
+**Mechanics/metrics (approx).** 14 tasks, 7 waves; 3 parallel worktree waves (4+2+2 streams), zero real merge conflicts except the planned T7/T8 AppState/IpcError reconciliation (dedicated subagent, nothing lost, 72 gui tests after union). Dispatches: 12 implementers + 12 task reviewers (all sonnet) + 1 explore + 1 merge-reconciler + 1 whole-branch reviewer (fable) + 1 final fixer (sonnet, like everything not marked otherwise); controller main loop Fable 5; one dispatch ran on the controller model, Fable 5, all others on the models named here. ~14 fix rounds total, every task Approved within 2 review cycles. Test suite 269 -> 369 tests + 3 Playwright scenarios + axe + i18n gate. Eight-gate discipline from T4 on. Wall clock: one long session incl. one Claude Code restart (context7 auth) and a mid-session pause.
 
 **Friction/failure.**
 - Harness permission classifier blocked agent commits/pushes early despite the SI-4 standing grant (three denials, then passed; one line noted each time, work continued). Mechanical friction, not revocation.
-- Controller initially proposed dnf/corepack for node - Senol corrected to mise (now a Peter memory + repo mise.toml). Same class: node 24-LTS proposal overturned by his newest-when-nothing-blocks policy; plan repinned twice (24 -> 26 -> 26.5.0 exact).
-- context7 required auth mid-wave; no browser window in-session; T4 agent rerouted to WebFetch, auth later verified working without the restart Senol did anyway.
+- Controller initially proposed dnf/corepack for node - Şenol corrected to mise (now a Peter memory + repo mise.toml). Same class: node 24-LTS proposal overturned by his newest-when-nothing-blocks policy; plan repinned twice (24 -> 26 -> 26.5.0 exact).
+- context7 required auth mid-wave; no browser window in-session; T4 agent rerouted to WebFetch, auth later verified working without the restart Şenol did anyway.
 - The final fixer flagged the controller's legitimate mid-task scope addendum as suspected prompt injection and refused it (healthy reflex, false positive); controller applied the one-attribute change himself.
 - Worktree removal timed out on node_modules trees; rm -rf + worktree prune is the pattern now.
 - Plan-4 leftovers in .superpowers/sdd got swept into the plan-5 artifact archive (duplication accepted over loss).
@@ -408,33 +412,33 @@ archive commit. Suite 215 -> 269 tests, gate green throughout.
 
 **Deltas.** Brief said platform() lives in @tauri-apps/api (stale; plugin-os since Tauri 2). eslint@9 in the plan was a default, not a constraint - owner policy overrode. The killer registry was per-worker-slot, not per-job (plan assumed re-keyable; it was, plus one real race). D31 grew the plan mid-flight by a full product decision; the memo-amendment path handled it cleanly.
 
-**Open threads.** First 3-OS CI run (public, free) pending at close - Windows/macOS have never compiled; red legs are in-plan follow-ups. Deferred triage: mutex poison recovery, joblog atomic writes, i18n warn-noise for IpcError codes, RunMeta cannot express joblog_status. Pre-first-RELEASE gates (not go-public): real CSP (csp:null carried since T4), log pruning, dialog-suppression setting, mkvtoolnix CI pin. Dependabot/Renovate now unlocked by public visibility - Senol's call. Plan 6: profile editor, help mode, apply-suggestion, packaging.
+**Open threads.** First 3-OS CI run (public, free) pending at close - Windows/macOS have never compiled; red legs are in-plan follow-ups. Deferred triage: mutex poison recovery, joblog atomic writes, i18n warn-noise for IpcError codes, RunMeta cannot express joblog_status. Pre-first-RELEASE gates (not go-public): real CSP (csp:null carried since T4), log pruning, dialog-suppression setting, mkvtoolnix CI pin. Dependabot/Renovate now unlocked by public visibility - Şenol's call. Plan 6: profile editor, help mode, apply-suggestion, packaging.
 
-## 2026-07-10 | Plan 5 close addendum (3-OS verified) | session 6
+## 2026-07-10 | Plan 5 close addendum (3-OS verified) | session 6 (Peter, Fable 5)
 
 First-ever Windows/macOS compile+test of the workspace, via the post-go-public static matrix. Run 1 (29113642425): ubuntu+macos+deny green, windows red - clippy -D warnings on an unused import consumed only by cfg(unix) tests. Run 2: same class, second instance (test helper in run.rs). Both fixed (fdf220b, 12e96ea-class commit); the second fix was preceded by a local cross-target clippy sweep (rustup target add x86_64-pc-windows-msvc; cargo clippy --target ...) proving the class empty instead of iterating through CI. Run 3 (29114394929): ALL GREEN - windows-2025 and macos-15 pass cargo test/fmt/clippy incl. the Plan-4 Windows kill-mapping unit tests that had never executed on Windows. Plan 5 cross-platform verification complete. Lesson recorded: for -D warnings workspaces, cross-target clippy locally before the first foreign-OS CI run; cfg-gated tests need cfg-gated imports/helpers.
 
-## 2026-07-10 | Session 6 close (post-Plan-5 housekeeping) | session 6
+## 2026-07-10 | Session 6 close (post-Plan-5 housekeeping) | session 6 (Peter, Fable 5)
 
 Scope: the tail of session "Done: Muxsmith Plan 5" after the 3-OS addendum. Commits 705f735 + docs commits (c9bd6b4 ROADMAP, this entry).
 
 Decisions and why:
-- docs/ROADMAP.md created as the living forward-tracker (pre-1.0 gates / near-1.0 / v1.x) after Senol asked where deferred items live; taxonomy argument: spec=contract, memos=frozen decisions, IDEAS=unbuilt product ideas, journal=history - the forward slot was empty and HANDOFF (untracked, superseded) was silently lossy for it. Items are discussion anchors, not execution licenses; README/guide/blogposts explicitly require a format interview with Senol first.
-- Public-docs leak audit (4 parallel auditors, all 258 tracked docs files + BUILDING.md): 0 secrets, 0 personal-data leaks. Senol ruled: Peter persona name stays public ("kann ich doch nennen wie ich will"), gmail commit identity stays, mkv-batch-tools reference stays (controller's own re-weighing: the Ruby prototype is already deliberately public in the spec decision log, so the flag was rubric reflex). Only real defect: stale Cargo.toml repository URL (senolf/muxsmith) - fixed 705f735.
-- SI-3 gained a licensing boundary (Senol asked whether GPL-source parity reading is compatible with MIT): behavior/facts/interfaces yes, literal expression no, modeled wordings recorded as explicit memo decisions. Persisted in HANDOFF SI-3 + project_muxsmith memory.
+- docs/ROADMAP.md created as the living forward-tracker (pre-1.0 gates / near-1.0 / v1.x) after Şenol asked where deferred items live; taxonomy argument: spec=contract, memos=frozen decisions, IDEAS=unbuilt product ideas, journal=history - the forward slot was empty and HANDOFF (untracked, superseded) was silently lossy for it. Items are discussion anchors, not execution licenses; README/guide/blogposts explicitly require a format interview with Şenol first.
+- Public-docs leak audit (4 parallel auditors, within the session-6 dispatch accounting above - sonnet unless noted): 0 secrets, 0 personal-data leaks across all 258 tracked docs files + BUILDING.md. Şenol ruled: Peter persona name stays public ("kann ich doch nennen wie ich will"), gmail commit identity stays, mkv-batch-tools reference stays (controller's own re-weighing: the Ruby prototype is already deliberately public in the spec decision log, so the flag was rubric reflex). Only real defect: stale Cargo.toml repository URL (senolf/muxsmith) - fixed 705f735.
+- SI-3 gained a licensing boundary (Şenol asked whether GPL-source parity reading is compatible with MIT): behavior/facts/interfaces yes, literal expression no, modeled wordings recorded as explicit memo decisions. Persisted in HANDOFF SI-3 + project_muxsmith memory.
 - Claude Code transcript retention raised to cleanupPeriodDays=36500 (no off switch exists; max is 2^53-1 days) so session transcripts survive for the planned HANDOFF-Bergung.
-- HANDOFF-Bergung + ROADMAP-Sweep deferred to the next session by Senol; this session (62503ddd, "Done: Muxsmith Plan 5") is excluded from the sweep since its content is already extracted. Two HANDOFFs recovered into docs/process-journal/artifacts/handoffs/ (plan-4-close verbatim from session context, plan-5-close disk snapshot) - deliberately UNCOMMITTED until Senol reviews the collection.
+- HANDOFF-Bergung + ROADMAP-Sweep deferred to the next session by Şenol; this session (62503ddd, "Done: Muxsmith Plan 5") is excluded from the sweep since its content is already extracted. Two HANDOFFs recovered into docs/process-journal/artifacts/handoffs/ (plan-4-close verbatim from session context, plan-5-close disk snapshot) - deliberately UNCOMMITTED until Şenol reviews the collection.
 - Discovered: HANDOFF.md was never actually gitignored, only untracked - noted in the new HANDOFF as a git add -A hazard.
 
-Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 sessions by customTitle, proposal list to Senol), collection Sichtung -> commit, then Plan 6.
+Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 sessions by customTitle, proposal list to Şenol), collection Sichtung -> commit, then Plan 6.
 
-## 2026-07-11 | Session 7: forensic audit, sweep walkthrough, process doctrine, Plan 5.5 authored | session 7
+## 2026-07-11 | Session 7: forensic audit, sweep walkthrough, process doctrine, Plan 5.5 authored | session 7 (Peter, Fable 5)
 
 1. Scope: session 2026-07-10/11 (started as "HANDOFF-Bergung + ROADMAP-Sweep"
-   per session-6 handoff, grew into a full process audit on Senol's direction);
+   per session-6 handoff, grew into a full process audit on Şenol's direction);
    commits fe7119d..7fa01b3.
 2. Decisions and why:
-   - Senol walked all 23 sweep findings plus residue rounds individually
+   - Şenol walked all 23 sweep findings plus residue rounds individually
      (decisions with provenance in ROADMAP entries). Pattern: every
      spec-anchored gap -> implement pre-1.0 (spec is a binding contract);
      zero-track -> warning-only, one sane default, options parked in IDEAS #5;
@@ -442,7 +446,7 @@ Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 session
      before 1.0 (bilingual launch); coverage tooling -> v1.x discussion anchor.
    - Process doctrine from the audit root causes: mechanism-not-appeal +
      durable-as-history-is-not-durable-as-backlog. Packaged as
-     software-dev-process skill + doctrine file after Senol rejected
+     software-dev-process skill + doctrine file after Şenol rejected
      eager-memory ambience: behavior-as-package (self-contained, liftable,
      PROJECT-scoped binding; new projects get an adopt-or-not question at
      kickoff). feedback_superpowers_throughout memory deleted, content
@@ -465,18 +469,22 @@ Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 session
 4. Mechanics/metrics (approx): ~20 subagent dispatches - 5 ROADMAP sweepers,
    7 dual-lens bok auditors (opus), verdict-rescue agent (78 files), docs-tree
    closing-net (opus), 3 doctrine pressure tests, public audit (86/86, five
-   sub-readers), distillate drafter (opus). Single session, context ~470k
-   tokens. Recovered: 8 handoff states, 78 verdicts, ~70 lost/orphaned items
-   beyond the 23 baseline (tiering in the Nextcloud distillate).
+   sub-readers), distillate drafter (opus). Controller main loop Fable 5;
+   10 dispatches ran on opus, the remaining 8 on the controller model,
+   Fable 5. Single session,
+   context ~470k tokens. Recovered: 8 handoff states, 78 verdicts, ~70 lost/orphaned items
+   beyond the 23 baseline; the full recovery inventory, tiered by
+   disposition, lives in the process-learnings distillate kept with the
+   project's non-repo material.
 5. Friction and failure:
    - Audit root findings: frozen archives treated as backlog; "cleanup pass"
      deferral target without vehicle (D18); go-public trigger fired unconsumed
      (mkvmerge mac/win CI; leak audit ran after the flip).
-   - Senol's criticism of the controller: inverting a concrete complaint into
+   - Şenol's criticism of the controller: inverting a concrete complaint into
      a universal rule (black-and-white thinking). Correction: persistence
-     scope is a case-by-case decision, ask when unclear ->
-     _shared/memory-convention.md amended.
-   - Auto-mode classifier blocked all agent git until Senol added the two
+     scope is a case-by-case decision, ask when unclear; the
+     agents-framework memory convention was amended accordingly.
+   - Auto-mode classifier blocked all agent git until Şenol added the two
      allow rules himself (agent cannot self-edit permissions).
    - md2html subset rejects wrapped list items; needed an unwrap pass.
 6. Moments:
@@ -485,21 +493,20 @@ Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 session
      (write-at-creation practiced live before the doctrine was even tested).
    - A doctrine pressure-test agent independently derived "verdict file before
      anything else" from section 2 (Tonmeister plan-close scenario).
-   - Senol's "wie dumm ist das bitte schoen?" on the CI-runner miss - the
+   - Şenol's "wie dumm ist das bitte schön?" on the CI-runner miss - the
      sentence that started the audit.
 7. Deltas: session plan was Bergung + sweep; grew into audit + doctrine +
    skill + distillate + Plan 5.5 by explicit direction. Plan 5.5 written
    anchor-precise instead of plan-1-3 full-code style (documented deviation,
    approved before writing).
 8. Open threads:
-   - Plan 5.5 execution awaits Senol's go (fresh session; 23 tasks, 4 waves).
-   - Senol commits pending: ~/agents (doctrine, memory edits/deletion,
-     memory-convention), dotfiles-private (skill; cleanupPeriodDays).
+   - Plan 5.5 execution awaits Şenol's go (fresh session; 23 tasks, 4 waves).
+   - Framework-side follow-ups from this session (process-doctrine and
+     memory-convention updates in the agent framework, plus local tooling
+     configuration) are tracked agent-side, outside this repo.
    - HANDOFF SIs now reference the doctrine package; SI-4 corrected.
-   - Behavior-as-package statement lives in Senol's Joplin, deliberately not
-     in this repo.
 
-## 2026-07-11 | non-code pre-1.0 gates | session 8 (close)
+## 2026-07-11 | non-code pre-1.0 gates | session 8 close (Peter, Fable 5)
 
 **Scope.** Session 8, evening 2026-07-11: the four non-code pre-1.0 gates
 (CSP, log pruning, README, guide/blog format interview) plus framework
@@ -545,7 +552,8 @@ touched (verified byte-identical to salvaged artifacts).
   transcript before persisting.
 
 **Mechanics.** 3 subagent dispatches (CSP surface scan, claude-code-guide
-docs verification, R3 transcript miner). 1 debug production build; CSP
+docs verification, R3 transcript miner), all three on the controller model,
+Fable 5. 1 debug production build; CSP
 verified via screenshot plus App.vue boot-gate logic (Batch shell only
 renders after a clean detect_mkvmerge IPC round-trip). Eight-part gate run
 once plus a corrective part-3 rerun. 7 commits pushed, CI green through
@@ -573,12 +581,12 @@ the session.
 **Open threads.**
 - Plan 5.5 execution awaiting Şenol's go; D35 implementation vehicle
   decided at that moment (ride the plan or standalone).
-- Şenol's uncommitted changes in ~/agents and ~/dotfiles-private (listed
-  in HANDOFF as open user actions).
+- Framework-side follow-ups tracked agent-side as open user actions,
+  outside this repo.
 - Four README placeholder(1.0) comments; WIP banner drops at the tag.
 - Whole-codebase idiomacy review scheduled after Plans 5.5/6.
 
-## 2026-07-11 | session 8 addendum: HANDOFF snapshot gap | session 8
+## 2026-07-11 | session 8 addendum: HANDOFF snapshot gap | session 8 (Peter, Fable 5)
 
 **Scope.** Post-close incident, same evening, after the session-8 entry.
 **Failure.** Şenol caught a process hole minutes after close: the
