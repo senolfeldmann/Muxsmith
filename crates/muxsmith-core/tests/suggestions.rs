@@ -652,3 +652,364 @@ fn no_single_fix_produces_a_two_group_partition() {
     assert!(lang.params["files"].contains("S01E02"));
     assert!(!lang.params["files"].contains("S01E01"));
 }
+
+// ===========================================================================
+// Task 18 / D33: OverlappingRules auto-narrowing suggestions.
+//
+// Symmetric generation for ALL overlap claimants, NOT-polarity seed from the
+// shared track's property vector, acceptance-filtered on the target overlap
+// INSTANCE disappearing. Reuses the AmbiguousRule machinery
+// (candidates_for_rule / resolves_without_regression / partition) with the
+// four D33 touch-points; no new edit variant, DiagCode, or Fluent message.
+// TC-A..TC-D are the D33 acceptance cases.
+// ===========================================================================
+
+fn overlap_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
+    batch
+        .files
+        .iter()
+        .flat_map(|f| f.diagnostics.iter())
+        .filter(|d| d.code == DiagCode::OverlappingRules)
+        .collect()
+}
+
+// --- TC-A: optional yielding rule -> NOT-narrowings on the optional rule ----
+
+const P_OVERLAP_OPTIONAL_YIELDS: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, forced_track: true } }
+    - match: { exact: { codec_id: 'S_TEXT/UTF8', forced_track: true } }
+      optional: true
+"#;
+
+#[test]
+fn tc_a_overlap_optional_rule_yields_not_narrowings_on_that_rule() {
+    let (batch, _dir) = plan(P_OVERLAP_OPTIONAL_YIELDS);
+
+    // Baseline: R0 and R1 both claim SERIES id2 (the forced subtitle).
+    let overlaps = overlap_diags(&batch);
+    assert_eq!(overlaps.len(), 1, "expected one overlap on id2");
+    assert_eq!(overlaps[0].params["track"], "2");
+    assert!(batch.files[0].plan.is_none(), "overlap drops the plan");
+
+    // Symmetric generation + acceptance auto-select the OPTIONAL rule: every
+    // emitted suggestion edits tracks[1] (narrowing tracks[0], the required
+    // rule, regresses to MissingTrack and is rejected).
+    assert!(
+        !batch.suggestions.is_empty(),
+        "expected overlap suggestions"
+    );
+    assert!(
+        batch
+            .suggestions
+            .iter()
+            .all(|s| s.resolves == DiagCode::OverlappingRules),
+        "overlap suggestions must carry resolves=OverlappingRules: {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.resolves)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        batch
+            .suggestions
+            .iter()
+            .all(|s| s.config_path.starts_with("tracks[1]")),
+        "every accepted suggestion must edit the optional rule tracks[1], got {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.config_path)
+            .collect::<Vec<_>>()
+    );
+
+    // NOT-polarity seed from the shared track: a NOT-exact on forced_track=true
+    // (a property id2 HAS) is among the accepted narrowings.
+    assert!(
+        batch.suggestions.iter().any(|s| matches!(
+            &s.edit,
+            StructuredEdit::AddNotExact { property, value }
+                if property == "forced_track" && value == "true"
+        )),
+        "expected AddNotExact{{forced_track,true}} on the optional rule, got {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.edit)
+            .collect::<Vec<_>>()
+    );
+
+    // Post-application: overlap gone, R1 empty-but-optional, plan produced.
+    let edited = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, forced_track: true } }
+    - match: { exact: { codec_id: 'S_TEXT/UTF8', forced_track: true } }
+      optional: true
+      not: [ { exact: { forced_track: true } } ]
+"#;
+    // (the `not` above is spliced under `match`; render the real applied form)
+    let applied = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, forced_track: true } }
+    - match:
+        exact: { codec_id: 'S_TEXT/UTF8', forced_track: true }
+        not: [ { exact: { forced_track: true } } ]
+      optional: true
+"#;
+    let _ = edited;
+    let (re, _d) = plan(applied);
+    assert!(
+        overlap_diags(&re).is_empty(),
+        "applying the forced_track NOT must clear the overlap: {:?}",
+        re.files[0].diagnostics
+    );
+    assert!(
+        re.files[0].plan.is_some(),
+        "after clearing the overlap a plan must be produced: {:?}",
+        re.files[0].diagnostics
+    );
+}
+
+// --- TC-B: two required rules, single file -> no suggestion, no-fix report --
+
+const P_OVERLAP_TWO_REQUIRED: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
+"#;
+
+#[test]
+fn tc_b_two_required_overlap_yields_no_suggestion_and_names_all_claimants() {
+    let (batch, _dir) = plan(P_OVERLAP_TWO_REQUIRED);
+
+    let overlaps = overlap_diags(&batch);
+    assert_eq!(overlaps.len(), 1, "expected one overlap on id0");
+    assert_eq!(overlaps[0].params["track"], "0");
+
+    // The common case: narrowing either required rule regresses to
+    // MissingTrack, so NOTHING survives -> zero suggestions.
+    assert!(
+        batch.suggestions.is_empty(),
+        "two required rules must yield no suggestion: {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.edit)
+            .collect::<Vec<_>>()
+    );
+
+    // No SuggestionPartition group is fabricated for an unresolvable overlap
+    // (no narrowing resolves it even in isolation).
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SuggestionPartition),
+        "an unresolvable overlap must not fabricate a partition group: {:?}",
+        batch.batch_diagnostics
+    );
+
+    // The no-fix report is the standing OverlappingRules diagnostic, which
+    // names every claimant (T9 $rules list).
+    let rules = &overlaps[0].params["rules"];
+    for expected in ["tracks[0]", "tracks[1]"] {
+        assert!(
+            rules.contains(expected),
+            "claimant {expected} missing from the no-fix report: {rules:?}"
+        );
+    }
+}
+
+// --- TC-C: batch regression rejection (multiset nothing-new guard) ----------
+
+// File A: a video plus one forced English subtitle. Under the TC-C rules both
+// R0 (forced subtitles) and R1 (English subtitles) claim the subtitle -> an
+// overlap; the video keeps the file non-empty after any fix.
+const OVERLAP_A_VIDEO_PLUS_FORCED_ENG_SUB: &str = r#"
+{
+  "attachments": [], "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
+  "identification_format_version": 20, "track_tags": [],
+  "tracks": [
+    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
+    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": true,
+        "language": "eng", "language_ietf": "en", "track_name": "English forced" } }
+  ]
+}
+"#;
+
+// File B: a SINGLE non-forced English subtitle and nothing else. Only R1
+// (English subtitles) claims it; there is no overlap here. It is R1's sole
+// output on this file, so any narrowing that drops it empties the file.
+const OVERLAP_B_ONLY_NONFORCED_ENG_SUB: &str = r#"
+{
+  "attachments": [], "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [], "file_name": "Show.S01E02.mkv", "global_tags": [],
+  "identification_format_version": 20, "track_tags": [],
+  "tracks": [
+    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+        "language": "eng", "language_ietf": "en", "track_name": "English" } }
+  ]
+}
+"#;
+
+const P_OVERLAP_BATCH: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, forced_track: true } }
+      optional: true
+    - match: { exact: { type: subtitles, language: en } }
+      optional: true
+"#;
+
+#[test]
+fn tc_c_batch_unsafe_overlap_narrowing_is_rejected_by_the_multiset_guard() {
+    let files = [
+        ("Show.S01E01.mkv", OVERLAP_A_VIDEO_PLUS_FORCED_ENG_SUB),
+        ("Show.S01E02.mkv", OVERLAP_B_ONLY_NONFORCED_ENG_SUB),
+    ];
+    let (batch, _dir) = plan_multi(P_OVERLAP_BATCH, &files);
+
+    // Baseline: overlap only on file A (id2); file B is clean (only R1 claims).
+    let overlaps = overlap_diags(&batch);
+    assert_eq!(
+        overlaps.len(),
+        1,
+        "overlap must be on file A only: {overlaps:?}"
+    );
+    assert!(
+        overlaps[0]
+            .file
+            .as_ref()
+            .unwrap()
+            .ends_with("Show.S01E01.mkv")
+    );
+
+    // The language-keyed NOT on R1 (tracks[1]) clears file A but would empty
+    // file B (its only track is English) -> EmptyPlan on B -> a new diagnostic
+    // -> the multiset "nothing-new" guard rejects it batch-wide. It must NOT
+    // appear as a suggestion.
+    assert!(
+        !batch.suggestions.iter().any(|s| matches!(
+            &s.edit,
+            StructuredEdit::AddNotExact { property, value }
+                if property == "language" && value == "eng"
+        )),
+        "a batch-unsafe language narrowing must be rejected, got {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| (&s.config_path, &s.edit))
+            .collect::<Vec<_>>()
+    );
+
+    // Batch-SAFE narrowings still survive (e.g. NOT forced_track, which does
+    // not touch B's non-forced track), so the engine is not simply silent.
+    assert!(
+        !batch.suggestions.is_empty(),
+        "batch-safe narrowings must still be emitted"
+    );
+
+    // Proof the rejection is specifically the batch collateral, not general
+    // infeasibility: the same language NOT resolves file A in isolation ...
+    let a_only = [(files[0].0, files[0].1)];
+    let applied = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, forced_track: true } }
+      optional: true
+    - match:
+        exact: { type: subtitles, language: en }
+        not: [ { exact: { language: eng } } ]
+      optional: true
+"#;
+    let (a_iso, _d1) = plan_multi(applied, &a_only);
+    assert!(
+        overlap_diags(&a_iso).is_empty(),
+        "the language NOT resolves file A in isolation: {:?}",
+        a_iso.files[0].diagnostics
+    );
+
+    // ... but on the full batch it empties file B (the collateral the guard saw).
+    let (both, _d2) = plan_multi(applied, &files);
+    let b = both
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Show.S01E02.mkv"))
+        .unwrap();
+    assert!(
+        b.diagnostics.iter().any(|d| d.code == DiagCode::EmptyPlan),
+        "the language NOT must empty file B (the batch collateral): {:?}",
+        b.diagnostics
+    );
+}
+
+// --- TC-D: >=3 claimants -> single narrowing insufficient -> names all three -
+
+const P_OVERLAP_THREE_CLAIMANTS: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
+    - match: { exact: { default_track: true, type: video } }
+"#;
+
+#[test]
+fn tc_d_three_claimant_overlap_yields_no_suggestion_and_names_all_three() {
+    let (batch, _dir) = plan(P_OVERLAP_THREE_CLAIMANTS);
+
+    let overlaps = overlap_diags(&batch);
+    assert_eq!(overlaps.len(), 1, "expected one 3-way overlap on id0");
+    assert_eq!(overlaps[0].params["track"], "0");
+
+    // A single narrowing can never clear a 3-rule overlap (removing one leaves
+    // a 2-rule overlap), and all three are required -> zero suggestions.
+    assert!(
+        batch.suggestions.is_empty(),
+        "a 3-claimant overlap yields no single-narrowing suggestion: {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.edit)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SuggestionPartition),
+        "no partition group is fabricated for the unresolvable 3-way overlap"
+    );
+
+    // The no-fix report names ALL THREE claimants (T9 $rules list).
+    let rules = &overlaps[0].params["rules"];
+    for expected in ["tracks[0]", "tracks[1]", "tracks[2]"] {
+        assert!(
+            rules.contains(expected),
+            "claimant {expected} missing from the no-fix report: {rules:?}"
+        );
+    }
+}
