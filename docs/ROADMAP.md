@@ -109,10 +109,9 @@ implementation entry below.)
 - **Run-log auto-prune implementation (D35)**: decided 2026-07-11 (D35,
   pre-1.0 memo) - core auto-prunes run dirs older than 14 days, fixed, no
   configuration in v1 (configurability parked in IDEAS #7); parity match
-  with mkvtoolnix defaults. Small core task with regression tests;
-  vehicle open (Şenol's call at the Plan 5.5 go: ride the plan as an added
-  wave-1 task, or standalone) - the milestone gate blocks on this entry
-  either way.
+  with mkvtoolnix defaults. Vehicle decided at the Plan 5.5 execution go
+  (Şenol 2026-07-11): rides Plan 5.5 as added wave-1 stream-A Task 4.5 -
+  the milestone gate blocks on this entry until that task lands.
 - **mkvtoolnix version pin in CI**: currently floats with the distro
   (backlog note in ci.yml, Şenol 2026-07-10). Decided 2026-07-11: resolve
   in the same touch as the mac/win runner gate below (walkthrough #14).
