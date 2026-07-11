@@ -1247,10 +1247,13 @@ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
 
 // Accept iff rule `ri` has no AmbiguousRule anywhere in the simulation and no
 // diagnostic in the simulation is absent from the baseline (no regression).
+// The signature is a multiset (R1 v): a candidate that introduces a SECOND
+// copy of an already-present (code, config_path, file) diagnostic is a
+// regression, so containment compares counts, not mere membership.
 fn resolves_without_regression(
     sim: &Batch,
     ri: usize,
-    base_sig: &std::collections::BTreeSet<String>,
+    base_sig: &std::collections::BTreeMap<String, usize>,
 ) -> bool {
     let still_ambiguous = sim
         .files
@@ -1260,12 +1263,17 @@ fn resolves_without_regression(
     if still_ambiguous {
         return false;
     }
-    diag_signature(sim).iter().all(|s| base_sig.contains(s))
+    diag_signature(sim)
+        .iter()
+        .all(|(sig, count)| base_sig.get(sig).is_some_and(|base| count <= base))
 }
 
-// A comparable signature set of all diagnostics: code + config_path + file.
-fn diag_signature(batch: &Batch) -> std::collections::BTreeSet<String> {
-    let mut set = std::collections::BTreeSet::new();
+// A comparable signature multiset of all diagnostics: (code + config_path +
+// file) -> occurrence count. A multiset, not a set, so two diagnostics that
+// share a signature but describe different tracks (e.g. two OverlappingRules
+// on one rule) stay counted separately (R1 v, D6 acceptance criterion b).
+fn diag_signature(batch: &Batch) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
     let all = batch
         .batch_diagnostics
         .iter()
@@ -1276,9 +1284,11 @@ fn diag_signature(batch: &Batch) -> std::collections::BTreeSet<String> {
             .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
-        set.insert(format!("{}|{}|{}", d.code.key(), d.config_path, file));
+        *counts
+            .entry(format!("{}|{}|{}", d.code.key(), d.config_path, file))
+            .or_insert(0) += 1;
     }
-    set
+    counts
 }
 
 fn rule_index_of(config_path: &str) -> Option<usize> {
@@ -1337,4 +1347,52 @@ fn yaml_fragment(ri: usize, delta: &MatchExpr) -> String {
     let body = yaml_serde::to_string(&MatchFragment { expr: delta })
         .expect("a MatchExpr delta always serializes to YAML");
     format!("# tracks[{ri}] - add:\n{body}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn batch_with(diags: Vec<Diagnostic>) -> Batch {
+        Batch {
+            files: vec![FileReport {
+                source: PathBuf::from("Show.S01E01.mkv"),
+                identifier: "S01E01".to_string(),
+                plan: None,
+                diagnostics: diags,
+            }],
+            batch_diagnostics: vec![],
+            suggestions: vec![],
+        }
+    }
+
+    // R1 v: two diagnostics sharing (code, config_path, file) but differing
+    // only in a param (here `track`) are distinct occurrences. A set-valued
+    // signature collapses them, so a candidate that introduces a SECOND copy
+    // of a pre-existing diagnostic reads as no regression and is wrongly
+    // accepted. The signature must be a multiset.
+    #[test]
+    fn duplicate_signature_diagnostic_is_a_regression_not_a_collapse() {
+        let one = || {
+            Diagnostic::error(DiagCode::OverlappingRules, "tracks[1]")
+                .for_file("Show.S01E01.mkv")
+                .with("track", "5")
+        };
+        let two = || {
+            Diagnostic::error(DiagCode::OverlappingRules, "tracks[1]")
+                .for_file("Show.S01E01.mkv")
+                .with("track", "6")
+        };
+
+        let base = batch_with(vec![one()]);
+        let base_sig = diag_signature(&base);
+        // The simulation grew a second overlap with the same signature; rule 0
+        // carries no AmbiguousRule, so only the multiset check decides.
+        let sim = batch_with(vec![one(), two()]);
+
+        assert!(
+            !resolves_without_regression(&sim, 0, &base_sig),
+            "a newly duplicated diagnostic must count as a regression"
+        );
+    }
 }
