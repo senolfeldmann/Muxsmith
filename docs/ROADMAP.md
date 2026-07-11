@@ -285,7 +285,10 @@ memo; policy set and verified.)
   product-baseline-desktop skill - the desktop-app counterpart to
   product-baseline-saas (renamed from product-baseline 2026-07-11; stays
   SaaS-scoped and is NOT fed from here). D34 (CSP for webview apps) is a
-  named input. Decided 2026-07-11.
+  named input. Decided 2026-07-11. Safety requirement (Şenol, same day):
+  both skills carry mutually pointing, mutually exclusive descriptions -
+  each names the other for the out-of-scope case - so skill selection
+  never rests on inference alone.
 - **Dependabot/Renovate activation**: Şenol's call, timing "when 1.0 is
   essentially done". Free since the repo went public; SHA-pinned actions
   and exact dep pins are ready for it. Two riders (2026-07-11, docs-tree
