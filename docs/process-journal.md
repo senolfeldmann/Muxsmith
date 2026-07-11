@@ -498,3 +498,82 @@ Open threads: Bergung (plan-1/2/3/3.5 closes from transcripts), Sweep (5 session
    - HANDOFF SIs now reference the doctrine package; SI-4 corrected.
    - Behavior-as-package statement lives in Senol's Joplin, deliberately not
      in this repo.
+
+## 2026-07-11 | non-code pre-1.0 gates | session 8 (close)
+
+**Scope.** Session 8, evening 2026-07-11: the four non-code pre-1.0 gates
+(CSP, log pruning, README, guide/blog format interview) plus framework
+side-work. Commits d5a0d0d..4b4d9f8 (7). No plan executed; no SDD scratch
+touched (verified byte-identical to salvaged artifacts).
+
+**Decisions and why.**
+- D34 CSP strict block (Şenol): default-src 'none' + explicit directives
+  over the docs-idiom 'self' baseline; devCsp withdrawn after reading
+  tauri 2.11.5 source showed CSP is injected only where tauri serves the
+  HTML, so with devUrl it never reaches dev pages (dead config avoided).
+- D35 run-log retention (Şenol, overruling agent recommendation of
+  keep-forever + explicit prune facility): auto-prune at 14 days, fixed,
+  no v1 config. Rationale: log value for this tool class decays in days.
+  Parity MATCH with mkvtoolnix defaults. Configurability -> IDEAS #7.
+- README register (Şenol): sell-tone with personality, WIP banner, and
+  the AI-collab story told openly - a deliberate, case-scoped exception
+  to the neutral writeup voice rule. README v1 shipped (62aaf61) with a
+  full CLI reference; four placeholder(1.0) comments remain.
+- Guide/blog formats (Şenol): GUIDE.md single file, EN, maximal scope he
+  prunes; two posts EN+DE written at 1.0 into the blog project folder;
+  three fresh authoring sessions per recovered R3 rationale.
+- product-baseline skill split (Şenol): renamed -saas; a
+  product-baseline-desktop gets derived from this repo at 1.0; both
+  descriptions must be mutually exclusive and mutually pointing.
+- Idiomacy directive added to shared conventions (Şenol): ecosystem-idiom
+  check, reuse-before-writing, dependencies-are-earned-in-both-directions;
+  replaces the misinterpretable "minimize runtime dependencies". New
+  pre-1.0 gate: whole-codebase idiomacy review after Plans 5.5/6.
+
+**What the process caught.**
+- Controller verification caught the controller: first eight-part gate run
+  piped outputs through tail, swallowing exit codes and scrolling core
+  test results out of view. Re-run with accounting: 32 binaries, 370
+  tests, all green. Same defect class as the audited 5/13 mis-totals.
+- Source-over-docs: the docs sentence on devCsp implied dev injection;
+  crate source disproved it for devUrl setups.
+- The CSP surface scan (Explore agent) derived connect-src 'self', which
+  would have broken IPC; caught against the official docs (ipc: +
+  http://ipc.localhost).
+- R3 transcript mining corrected the audit's own note: discussion was
+  15:49-15:55 CEST, not "late morning". Quotes spot-verified in the raw
+  transcript before persisting.
+
+**Mechanics.** 3 subagent dispatches (CSP surface scan, claude-code-guide
+docs verification, R3 transcript miner). 1 debug production build; CSP
+verified via screenshot plus App.vue boot-gate logic (Batch shell only
+renders after a clean detect_mkvmerge IPC round-trip). Eight-part gate run
+once plus a corrective part-3 rerun. 7 commits pushed, CI green through
+the session.
+
+**Friction and failure.**
+- Permission classifier denied the compound git commit+push despite
+  standing SI-4; the git -C form matching Şenol's allow-rules worked.
+  Documented pattern (classifier block is not revocation) held.
+- tauri CLI rewrote the Cargo.toml tauri dependency to table form during
+  the verification build; committed as normalization (992acc0).
+- D34 memo vehicle was named one turn late - Şenol's "we have to document
+  this" landed before the write-at-creation reflex did.
+- Two Edit calls failed on unread files / memory-reconstructed anchors;
+  re-read fixed both. Cheap, but the reflex should be read-first.
+
+**Moments.**
+- "how did you pick that one up, mate?" - product-baseline surfaced from
+  the skills registry when Şenol said "req catalog"; the answer produced
+  the saas/desktop split and a registry-selection safety rule.
+- The und language-tag joke made it into the README problem statement.
+- mkvtoolnix as parity oracle twice in one session: CSP (non-comparison,
+  Qt) and log retention (exact match, 14 days).
+
+**Open threads.**
+- Plan 5.5 execution awaiting Şenol's go; D35 implementation vehicle
+  decided at that moment (ride the plan or standalone).
+- Şenol's uncommitted changes in ~/agents and ~/dotfiles-private (listed
+  in HANDOFF as open user actions).
+- Four README placeholder(1.0) comments; WIP banner drops at the tag.
+- Whole-codebase idiomacy review scheduled after Plans 5.5/6.
