@@ -1576,3 +1576,72 @@ attachments:
     assert_eq!(d.config_path, "attachments.rules[0].add");
     assert_eq!(d.severity, Severity::Warning);
 }
+
+// Task 6 (#6, ROADMAP "Zero-track plan warning"): a plan resolving to zero
+// output tracks used to mux a valid-but-empty MKV silently (exit 0, no
+// diagnostic - verified live against mkvmerge in the Plan-3 whole-branch
+// review). Decided (Şenol 2026-07-11, sweep walkthrough #6): a per-file
+// WARNING, one sane default, no error/skip alternative (that variance is
+// parked in IDEAS.md #5, deliberately not built).
+#[test]
+fn empty_plan_warns_when_all_optional_rules_match_nothing() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: audio, language: de } }
+      optional: true
+"#;
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    // The plan still renders, unchanged: a satisfied `optional` rule is not
+    // an error (spec 5.1), just an unmatched assignment.
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.assignments.len(), 1);
+    assert_eq!(plan.assignments[0].track_id, None);
+    let empty_plan_warnings: Vec<_> = fr
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::EmptyPlan)
+        .collect();
+    assert_eq!(empty_plan_warnings.len(), 1, "diags: {:?}", fr.diagnostics);
+    assert_eq!(empty_plan_warnings[0].severity, Severity::Warning);
+    assert_eq!(
+        empty_plan_warnings[0].file.as_deref(),
+        Some(fr.source.as_path())
+    );
+}
+
+// Task 6 (D20 semantics): under `tracks.unmatched: keep`, the primary's own
+// tracks always pass through untouched, even when the only rule is
+// optional and matches nothing itself - D20's "keep = match to what is
+// already there" means that passthrough already counts as matched, so
+// `EmptyPlan` naturally cannot fire on a keep-mode plan (as long as the
+// primary itself has at least one track, always true here via SERIES).
+// Same zero-rule-match profile as the warning test above, plus `unmatched:
+// keep`, to isolate the one variable that changes the outcome.
+#[test]
+fn empty_plan_does_not_fire_under_keep_unmatched_primary_passthrough() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  unmatched: keep
+  rules:
+    - match: { exact: { type: audio, language: de } }
+      optional: true
+"#;
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert!(plan.keep_unmatched);
+    assert!(!plan.primary_track_ids.is_empty());
+    assert!(
+        !fr.diagnostics.iter().any(|d| d.code == DiagCode::EmptyPlan),
+        "diags: {:?}",
+        fr.diagnostics
+    );
+}

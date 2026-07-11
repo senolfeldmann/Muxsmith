@@ -126,6 +126,14 @@ diag_codes! {
     /// supported container with zero tracks is NOT this code (stays a
     /// per-rule `missing-track`).
     UnsupportedSource => "unsupported-source",
+    /// A rendered plan (no error-severity diagnostic on the file) resolved
+    /// zero track assignments: mkvmerge exits 0 and writes a valid but
+    /// track-less MKV (verified live, Plan 3 whole-branch review), which
+    /// would otherwise pass silently. Does not fire for a `tracks.unmatched:
+    /// keep` plan whose primary carries at least one track (D20: "keep =
+    /// match to what is already there", so the passthrough counts as
+    /// matched).
+    EmptyPlan => "empty-plan",
     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
     OutputCollision => "output-collision",
     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.

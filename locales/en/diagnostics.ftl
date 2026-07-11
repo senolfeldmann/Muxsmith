@@ -43,4 +43,5 @@ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name
 empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
 unidentifiable-source = A source file exists but could not be identified: { $detail }.
 unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
+empty-plan = This plan resolves to zero output tracks; mkvmerge will still write a valid but track-less MKV.
 suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.

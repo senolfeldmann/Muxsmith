@@ -575,6 +575,19 @@ fn resolve_file(
         &mut diagnostics,
     );
 
+    let keep_unmatched = matches!(
+        profile.tracks.unmatched,
+        crate::profile::model::KeepDrop::Keep
+    );
+    // Whether the plan-to-be carries at least one output track: either a
+    // rule matched (`Assignment::track_id` is `Some`), or, under `keep`,
+    // the primary's own tracks pass through untouched regardless of rule
+    // matches (D20: "keep = match to what is already there", so a
+    // non-empty primary counts as matched even when no rule fired).
+    // Computed before `assignments` moves into `Plan` below.
+    let has_tracks = assignments.iter().any(|a| a.track_id.is_some())
+        || (keep_unmatched && !ident.tracks.is_empty());
+
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
         output,
@@ -583,12 +596,19 @@ fn resolve_file(
         chapters,
         tags,
         title,
-        keep_unmatched: matches!(
-            profile.tracks.unmatched,
-            crate::profile::model::KeepDrop::Keep
-        ),
+        keep_unmatched,
         primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
     });
+
+    // EmptyPlan (spec 5.2, D18/#6): only for a plan that will actually
+    // render (no error-severity diagnostic already collected for this
+    // file - an errored file gets `plan: None` from `finalize_plans`
+    // regardless, and warning about "zero tracks" on top of that would be
+    // redundant noise, not new information).
+    if plan.is_some() && !has_tracks && !diagnostics.iter().any(|d| d.severity == Severity::Error) {
+        diagnostics
+            .push(Diagnostic::warning(DiagCode::EmptyPlan, "tracks").for_file(&primary.path));
+    }
 
     FileReport {
         source: primary.path.clone(),
