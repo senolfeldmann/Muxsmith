@@ -63,14 +63,11 @@ action:
 Must be resolved before the first tagged release; none blocks Plan 6 work.
 All CODE gates below are covered by **Plan 5.5**
 (docs/superpowers/plans/2026-07-11-plan-5.5-pre-1.0-hardening.md, authored
-2026-07-11, awaiting Şenol's execution go); the non-code gates (CSP,
-README, guide/blogs, log-pruning decision) remain individually tracked
-here.
+2026-07-11, awaiting Şenol's execution go); the non-code gates (README,
+guide/blogs, log-pruning decision) remain individually tracked here.
+(CSP: resolved 2026-07-11, decision D34 in the pre-1.0 design-decisions
+memo; policy set and verified.)
 
-- **CSP**: `tauri.conf.json` still has `"csp": null` (scaffold default,
-  flagged in the Plan-5 whole-branch review). The IPC surface is real;
-  defense-in-depth wants a real policy. Şenol has not thought it through
-  yet - DISCUSS the policy shape with him when tackled, do not just set one.
 - **README**: definitely 1.0. Absorbs or links BUILDING.md's "building from
   source" (plan-5 T4 note). Şenol has concrete expectations about voice and
   content - PROPOSE, then ASK; never write it freischnauze.
