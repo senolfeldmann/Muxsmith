@@ -969,6 +969,7 @@ fn finalize_plans(files: &mut [FileReport]) {
 }
 
 // A candidate refinement plus the concrete delta to splice into the rule.
+#[derive(Clone)]
 struct Candidate {
     edit: StructuredEdit,
     apply: MatchExpr,
@@ -976,14 +977,16 @@ struct Candidate {
 }
 
 /// Generates and validates suggestions for every `AmbiguousRule` conflict
-/// (spec 5.3, D6). For each conflicted primary-source rule: gather the matched
-/// (conflicting) tracks across all affected files, derive discriminator
-/// candidates, simulate each against the whole batch via [`plan_core`], and
-/// keep only those that resolve the ambiguity everywhere with no new
-/// diagnostic. Deterministic; capped at 3 per rule, with a `SuggestionsCapped`
-/// diagnostic recording how many were dropped when more were accepted, so the
-/// cap is never silent. OverlappingRules suggestions and the no-single-fix
-/// partition report are deferred (Plan 2 scope note).
+/// (spec 5.3, D6). For each conflicted rule (primary or external source):
+/// gather the matched (conflicting) tracks across all affected files, derive
+/// discriminator candidates, simulate each against the whole batch via
+/// [`plan_core`], and keep only those that resolve the ambiguity everywhere
+/// with no new diagnostic. Deterministic; capped at 3 per rule, with a
+/// `SuggestionsCapped` diagnostic recording how many were dropped when more
+/// were accepted, so the cap is never silent. When no candidate resolves a
+/// rule batch-wide, the no-single-fix partition ([`partition_for_rule`]) is
+/// reported instead. OverlappingRules suggestions remain deferred (Plan 2
+/// scope note).
 #[allow(clippy::too_many_arguments)]
 fn suggest(
     profile: &Profile,
@@ -1013,12 +1016,29 @@ fn suggest(
         }
         let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
         let mut accepted: Vec<Candidate> = Vec::new();
-        for cand in candidates {
+        for cand in &candidates {
             let edited = with_rule_match(profile, ri, &cand.apply);
             let sim = plan_core(&edited, run, primaries, id, lang);
             if resolves_without_regression(&sim, ri, &base_sig) {
-                accepted.push(cand);
+                accepted.push(cand.clone());
             }
+        }
+        // No single refinement resolves the rule batch-wide: report the
+        // no-single-fix partition instead of empty suggestions (spec 5.3, D6
+        // step 6).
+        if accepted.is_empty() {
+            cap_diagnostics.extend(partition_for_rule(
+                profile,
+                run,
+                primaries,
+                id,
+                lang,
+                ri,
+                &candidates,
+                baseline,
+                &base_sig,
+            ));
+            continue;
         }
         accepted.sort_by(|a, b| a.rank.cmp(&b.rank));
         let total_accepted = accepted.len();
@@ -1041,6 +1061,89 @@ fn suggest(
         }
     }
     (out, cap_diagnostics)
+}
+
+// The no-single-fix partition report cap (spec 5.3, D6 step 6): at most this
+// many resolution groups are rendered per rule, the surplus recorded in an
+// overflow note, mirroring `SuggestionsCapped`'s never-silent cap philosophy.
+const PARTITION_GROUP_CAP: usize = 5;
+
+// Reports the no-single-fix partition for rule `ri` (spec 5.3, D6 step 6):
+// when no candidate resolves the rule batch-wide, group the affected files by
+// the per-file refinement that WOULD resolve each in isolation (its
+// top-ranked resolving candidate), so the report states "these files need one
+// narrowing, those another". One `SuggestionPartition` info diagnostic per
+// group, deterministically ordered and capped at [`PARTITION_GROUP_CAP`] with
+// an overflow note. Reuses the discriminator candidates already generated for
+// the batch-wide pass.
+#[allow(clippy::too_many_arguments)]
+fn partition_for_rule(
+    profile: &Profile,
+    run: &RunInputs,
+    primaries: &[PrimaryFile],
+    id: &mut dyn Identify,
+    lang: &LanguageIndex,
+    ri: usize,
+    candidates: &[Candidate],
+    baseline: &Batch,
+    base_sig: &BTreeMap<String, usize>,
+) -> Vec<Diagnostic> {
+    // Files whose baseline report carries an AmbiguousRule for this rule.
+    let affected: Vec<&PrimaryFile> = primaries
+        .iter()
+        .filter(|p| {
+            baseline.files.iter().any(|f| {
+                f.source == p.path
+                    && f.diagnostics.iter().any(|d| {
+                        d.code == DiagCode::AmbiguousRule
+                            && rule_index_of(&d.config_path) == Some(ri)
+                    })
+            })
+        })
+        .collect();
+
+    // group fragment (the per-file refinement, rendered once) -> member files.
+    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for primary in affected {
+        let single = std::slice::from_ref(primary);
+        let mut best: Option<&Candidate> = None;
+        for cand in candidates {
+            let edited = with_rule_match(profile, ri, &cand.apply);
+            let sim = plan_core(&edited, run, single, id, lang);
+            if resolves_without_regression(&sim, ri, base_sig)
+                && best.is_none_or(|b| cand.rank < b.rank)
+            {
+                best = Some(cand);
+            }
+        }
+        if let Some(cand) = best {
+            groups
+                .entry(yaml_fragment(ri, &cand.apply))
+                .or_default()
+                .push(primary.path.display().to_string());
+        }
+    }
+
+    let total_groups = groups.len();
+    let mut diagnostics = Vec::new();
+    for (fragment, mut files) in groups.into_iter().take(PARTITION_GROUP_CAP) {
+        files.sort();
+        diagnostics.push(
+            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
+                .with("kind", "group")
+                .with("count", files.len().to_string())
+                .with("fix", fragment)
+                .with("files", files.join(", ")),
+        );
+    }
+    if total_groups > PARTITION_GROUP_CAP {
+        diagnostics.push(
+            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
+                .with("kind", "overflow")
+                .with("dropped", (total_groups - PARTITION_GROUP_CAP).to_string()),
+        );
+    }
+    diagnostics
 }
 
 // The identification a rule reads for one primary: the primary itself for a

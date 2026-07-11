@@ -455,13 +455,15 @@ fn ambiguous_external_source_rule_gets_suggestions_like_a_primary_rule() {
         "an external-source rule must get suggestions like a primary one"
     );
     assert!(
+        batch.suggestions.iter().all(
+            |s| s.resolves == DiagCode::AmbiguousRule && s.config_path.starts_with("tracks[0]")
+        ),
+        "suggestions: {:?}",
         batch
             .suggestions
             .iter()
-            .all(|s| s.resolves == DiagCode::AmbiguousRule
-                && s.config_path.starts_with("tracks[0]")),
-        "suggestions: {:?}",
-        batch.suggestions.iter().map(|s| &s.edit).collect::<Vec<_>>()
+            .map(|s| &s.edit)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -515,15 +517,138 @@ fn ambiguity_resolvable_only_by_codec_or_id_yields_those_dimensions() {
             .all(|s| s.resolves == DiagCode::AmbiguousRule),
     );
 
-    let has_codec = batch.suggestions.iter().any(|s| {
-        matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "codec")
-    });
-    let has_id = batch.suggestions.iter().any(|s| {
-        matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "id")
-    });
+    let has_codec = batch.suggestions.iter().any(
+        |s| matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "codec"),
+    );
+    let has_id = batch
+        .suggestions
+        .iter()
+        .any(|s| matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "id"));
     assert!(
         has_codec && has_id,
         "expected both a codec-based and an id-based suggestion, got {:?}",
-        batch.suggestions.iter().map(|s| &s.edit).collect::<Vec<_>>()
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.edit)
+            .collect::<Vec<_>>()
     );
+}
+
+// --- Task 13 step 4: the no-single-fix partition report (#5) ---
+
+// File A: two subtitle tracks (ids 1, 2) separable only by forced_track.
+const PART_A_FORCED: &str = r#"
+{
+  "attachments": [], "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
+  "identification_format_version": 20, "track_tags": [],
+  "tracks": [
+    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
+    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": true,
+        "language": "eng", "language_ietf": "en" } },
+    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+        "language": "eng", "language_ietf": "en" } }
+  ]
+}
+"#;
+
+// File B: two subtitle tracks (ids 3, 4) separable only by language, both
+// non-forced. The subtitle ids (3, 4) are disjoint from file A's (1, 2), so no
+// single `id`-based narrowing resolves BOTH files -- forcing the no-single-fix
+// case even though each file is individually resolvable.
+const PART_B_LANG: &str = r#"
+{
+  "attachments": [], "chapters": [],
+  "container": { "recognized": true, "supported": true, "type": "Matroska" },
+  "errors": [], "file_name": "Show.S01E02.mkv", "global_tags": [],
+  "identification_format_version": 20, "track_tags": [],
+  "tracks": [
+    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
+    { "codec": "AAC", "id": 1, "type": "audio", "properties": { "codec_id": "A_AAC", "language": "eng" } },
+    { "codec": "AAC", "id": 2, "type": "audio", "properties": { "codec_id": "A_AAC", "language": "ger" } },
+    { "codec": "SubRip/SRT", "id": 3, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+        "language": "eng", "language_ietf": "en" } },
+    { "codec": "SubRip/SRT", "id": 4, "type": "subtitles", "properties": {
+        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+        "language": "ger", "language_ietf": "de" } }
+  ]
+}
+"#;
+
+const P_SUBS_ANY: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles } }
+"#;
+
+fn partition_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
+    batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::SuggestionPartition)
+        .collect()
+}
+
+#[test]
+fn no_single_fix_produces_a_two_group_partition() {
+    let (batch, _dir) = plan_multi(
+        P_SUBS_ANY,
+        &[
+            ("Show.S01E01.mkv", PART_A_FORCED),
+            ("Show.S01E02.mkv", PART_B_LANG),
+        ],
+    );
+
+    // Both files are ambiguous, and no single refinement resolves both.
+    assert!(
+        batch.files.iter().all(|f| f
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::AmbiguousRule)),
+        "both files must be ambiguous"
+    );
+    assert!(
+        batch.suggestions.is_empty(),
+        "no batch-wide suggestion should survive: {:?}",
+        batch
+            .suggestions
+            .iter()
+            .map(|s| &s.edit)
+            .collect::<Vec<_>>()
+    );
+
+    let groups: Vec<_> = partition_diags(&batch)
+        .into_iter()
+        .filter(|d| d.params.get("kind").map(String::as_str) == Some("group"))
+        .collect();
+    assert_eq!(
+        groups.len(),
+        2,
+        "expected a two-group partition, got {:?}",
+        groups.iter().map(|d| &d.params).collect::<Vec<_>>()
+    );
+    assert!(groups.iter().all(|d| d.config_path == "tracks[0].match"
+        && d.severity == muxsmith_core::report::Severity::Info),);
+
+    // One group is the forced_track file, the other the language file, and the
+    // files are partitioned accordingly.
+    let forced = groups
+        .iter()
+        .find(|d| d.params["fix"].contains("forced_track"))
+        .expect("a forced_track group");
+    let lang = groups
+        .iter()
+        .find(|d| d.params["fix"].contains("language"))
+        .expect("a language group");
+    assert!(forced.params["files"].contains("S01E01"));
+    assert!(!forced.params["files"].contains("S01E02"));
+    assert!(lang.params["files"].contains("S01E02"));
+    assert!(!lang.params["files"].contains("S01E01"));
 }

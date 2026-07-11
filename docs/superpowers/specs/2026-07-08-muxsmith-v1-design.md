@@ -275,6 +275,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
 | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
 | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
+| `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
 
 ### 5.3 Suggestion engine
 
