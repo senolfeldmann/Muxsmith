@@ -69,16 +69,25 @@ D35 auto-prune implementation. (Resolved so far: CSP 2026-07-11 -> D34,
 policy set and verified; log-pruning decided 2026-07-11 -> D35,
 implementation entry below.)
 
-- **README**: definitely 1.0. Absorbs or links BUILDING.md's "building from
-  source" (plan-5 T4 note). Şenol has concrete expectations about voice and
-  content - PROPOSE, then ASK; never write it freischnauze.
-  - Content anchors (append every "README-worthy" remark HERE at the
-    moment it is uttered): `exact` means TYPED value-equality, not string
-    comparison (Şenol 2026-07-09 16:26; semantics in spec 4.3; reviewer
-    warning "keep that flag alive - easy to lose"; anchored 2026-07-11,
-    walkthrough #20).
+- **README**: v1 draft shipped 2026-07-11 (sell-tone per Şenol's register
+  override - a case-scoped exception to the writeup-stimme rule; WIP
+  banner; full CLI usage reference; AI-collab story section; links
+  BUILDING.md instead of absorbing it; all four 2026-07-11 content
+  anchors implemented, provenance in this entry's git history). Remaining
+  at the 1.0 tag: resolve the four `placeholder(1.0)` comments (GIF,
+  dry-run output snippet, release artifacts, GUI screenshot), drop the
+  WIP banner, re-check the CLI reference and the exact-typed-matching
+  paragraph against the shipped surface (reviewer warning: "easy to
+  lose").
+  - Content anchors (append every "README-worthy" remark HERE the moment
+    it is uttered; fold into the README on next touch): none open.
 - **Guide + blog posts (process + product)**: 1.0 deliverables, written in
-  fresh sessions from the process journal as primary source. Şenol has
+  fresh sessions from the process journal as primary source. Named input
+  for the format interview (Şenol 2026-07-11): user-docs architecture -
+  the README now carries the full CLI usage reference (tool is thin, no
+  other user docs exist); decide at the interview whether the guide
+  absorbs it, deepens it, or the reference splits into its own markdown
+  "man page" if it outgrows the front page. Şenol has
   specific ideas about how he wants these - PROPOSALS welcome, but the
   format/scope/voice interview with him comes FIRST. Not to be produced
   unprompted. Source note (residue R3): the strategic rationale behind
