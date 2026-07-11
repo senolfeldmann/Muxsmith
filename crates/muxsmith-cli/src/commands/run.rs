@@ -20,7 +20,7 @@ use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
 
-use crate::commands::{diag_exit_code, print_batch_human};
+use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
 use crate::i18n::Renderer;
 
 /// Progress thresholds a job's cumulative percent is checked against, in
@@ -101,7 +101,7 @@ pub fn run(
                     )
                 );
             } else {
-                for d in &config_diags {
+                for d in severity_sorted(&config_diags) {
                     println!("{}", renderer.diagnostic(d));
                 }
                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
@@ -147,7 +147,7 @@ pub fn run(
     let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
 
     if !json {
-        for d in &config_diags {
+        for d in severity_sorted(&config_diags) {
             println!("{}", renderer.diagnostic(d));
         }
         print_batch_human(
