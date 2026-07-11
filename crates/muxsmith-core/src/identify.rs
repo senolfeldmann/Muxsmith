@@ -266,6 +266,13 @@ impl From<RuntimeError> for IdentifyError {
     }
 }
 
+// This `Display` is core-authored English framing ("mkvmerge failed: ...")
+// around inherently unstructured third-party error text (mkvmerge subprocess
+// stderr, serde parse errors, std::io errors). It reaches the user only via
+// the `detail` param of `UnidentifiableSource`, never as a `DiagCode`-templated
+// message. That is a deliberate, documented spec 8.4 exception to "core is
+// prose-free": the payload is not catalog-templatable, and v1 ships
+// English-only. Keep it here rather than routing it through a catalog key.
 impl std::fmt::Display for IdentifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
