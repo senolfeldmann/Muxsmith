@@ -32,8 +32,11 @@ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
             if subset_of(a, b) || subset_of(b, a) {
                 diags.push(
                     Diagnostic::warning(DiagCode::ProvableOverlap, format!("tracks[{b_idx}]"))
-                        .with("rule_a", a_idx.to_string())
-                        .with("rule_b", b_idx.to_string()),
+                        // Rule references use the planner's `tracks[N]` form so
+                        // lint (5.4) and the runtime OverlappingRules (5.2)
+                        // format identically.
+                        .with("rule_a", format!("tracks[{a_idx}]"))
+                        .with("rule_b", format!("tracks[{b_idx}]")),
                 );
             }
         }
@@ -81,8 +84,8 @@ tracks:
         let diags = lint(y);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, DiagCode::ProvableOverlap);
-        assert_eq!(diags[0].params["rule_a"], "0");
-        assert_eq!(diags[0].params["rule_b"], "1");
+        assert_eq!(diags[0].params["rule_a"], "tracks[0]");
+        assert_eq!(diags[0].params["rule_b"], "tracks[1]");
     }
 
     #[test]
@@ -141,8 +144,8 @@ tracks:
 "#;
         let diags = lint(y);
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].params["rule_a"], "0");
-        assert_eq!(diags[0].params["rule_b"], "1");
+        assert_eq!(diags[0].params["rule_a"], "tracks[0]");
+        assert_eq!(diags[0].params["rule_b"], "tracks[1]");
     }
 
     #[test]

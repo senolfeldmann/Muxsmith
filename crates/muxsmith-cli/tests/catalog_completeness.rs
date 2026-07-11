@@ -108,8 +108,8 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
             args.set("found", "0");
         }
         DiagCode::ProvableOverlap => {
-            args.set("rule_a", "0");
-            args.set("rule_b", "1");
+            args.set("rule_a", "tracks[0]");
+            args.set("rule_b", "tracks[1]");
         }
         DiagCode::AmbiguousRule => {
             args.set("count", "2");
