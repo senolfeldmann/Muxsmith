@@ -35,6 +35,7 @@ donor-is-primary = External donor file { $donor } is itself a primary source.
 ignored-file = File matches the extension list but not the input pattern.
 multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
 unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.
+unknown-extension = Extension "{ $extension }" is not among the extensions mkvmerge supports ({ $known }). If this is a typo, matching files are silently never found; if intentional, mkvmerge will not be able to process them.
 codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
 invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
 path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
@@ -42,6 +43,7 @@ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name
 empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
 unidentifiable-source = A source file exists but could not be identified: { $detail }.
 unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
+empty-plan = This plan resolves to zero output tracks; mkvmerge will still write a valid but track-less MKV.
 suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
 suggestion-partition = { $kind ->
     [overflow] { $dropped } further resolution group(s) were capped at 5 and not shown.

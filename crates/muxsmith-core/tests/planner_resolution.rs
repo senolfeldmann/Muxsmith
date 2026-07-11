@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::path::Path;
 
-use muxsmith_core::identify::Identification;
+use muxsmith_core::identify::{Identification, Identify, IdentifyError};
 use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::Scalar;
@@ -653,6 +654,322 @@ tracks:
     );
 }
 
+// Plan-2 FINAL M2 / Plan-5.5 Task 7: a donor resolved only by a file whose
+// own output render fails must still be protected. Three-way constellation:
+// primary A's external rule resolves donor D (real, on disk), but A's own
+// filename template renders empty (EmptyRenderedName), so A.plan is None and
+// its assignments never survive into a `Plan`. Primary B's own external rule
+// finds nothing (its sibling "donors" directory does not exist for B), yet
+// B's rendered output happens to land on D's exact path. D is referenced
+// SOLELY through A's (render-failed) assignments - the pre-fix
+// `detect_source_overwrites` only gathered protected sources from
+// `plan.is_some()` files, so this collision went undetected and B would
+// have silently overwritten D.
+#[test]
+fn source_overwrite_protects_donor_of_render_failed_file() {
+    let root = tempfile::tempdir().unwrap();
+    let a_dir = root.path().join("a_dir");
+    let b_dir = root.path().join("b_dir");
+    let donors_dir = a_dir.join("donors");
+    std::fs::create_dir_all(&donors_dir).unwrap();
+    std::fs::create_dir_all(&b_dir).unwrap();
+    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
+    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
+    std::fs::write(donors_dir.join("Z.mkv"), b"d").unwrap(); // donor D, resolved only by A
+
+    // `tag` is optional and only present in B's own filename: A's template
+    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
+    // basename. The external locator path is relative ("donors"), resolved
+    // against each primary's own directory, so it only finds D for A -
+    // `b_dir/donors` does not exist, and B's rule (optional) finds nothing.
+    let profile_yaml = r#"
+profile_version: 1
+input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
+output:
+  filename: { template: '{tag}' }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: 'donors', extensions: [mkv] }
+      match: { exact: { type: audio } }
+      optional: true
+"#;
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: root.path().to_path_buf(),
+        // Every primary's output lands in donors_dir, so B's rendered
+        // "Z.mkv" collides byte-for-byte with the donor A alone resolved.
+        output: Some(donors_dir.clone()),
+        // Overwrite, not the Error default: proves SourceOverwrite is what
+        // stops this, not the ordinary on-disk-collision path. Under
+        // Overwrite, an on-disk collision that is NOT a batch input is only
+        // Info-severity and does not null the plan (spec 5.2) - exactly the
+        // "silent data loss" M2 described: without the fix, B's plan
+        // survives and a real run overwrites donor D.
+        on_collision: Some(CollisionPolicy::Overwrite),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Prime.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "PrimeZ.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Z.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let a = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Prime.mkv"))
+        .unwrap();
+    let b = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("PrimeZ.mkv"))
+        .unwrap();
+
+    // A's own render fails on its own terms, independent of this fix.
+    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+    assert!(
+        a.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        a.diagnostics
+    );
+
+    // B's rendered output collides with the donor A resolved; must be
+    // caught even though A's own plan never rendered.
+    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
+    assert!(
+        b.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        b.diagnostics
+    );
+}
+
+// Plan-5.5 Task 7.5: #7 completion. T7 above covers a track-rule donor; this
+// is the same class through an attachment donor
+// (`attachments.rules[i].add`, resolved by `resolve_attachments`). Same
+// three-way constellation: primary A's `add` locator resolves donor D (real,
+// on disk), but A's own filename template renders empty
+// (EmptyRenderedName), so A.plan is None; primary B's own `add` locator
+// finds nothing (its sibling "donors" directory does not exist for B), yet
+// B's rendered output lands on D's exact path. D is referenced SOLELY
+// through A's (render-failed) `attachments.add_files` - before this fix,
+// `resolved_sources` only gathered `Assignment.source` (track donors), never
+// `AttachmentPlan.add_files`, so this collision went undetected and B would
+// have silently overwritten D.
+#[test]
+fn source_overwrite_protects_attachment_donor_of_render_failed_file() {
+    let root = tempfile::tempdir().unwrap();
+    let a_dir = root.path().join("a_dir");
+    let b_dir = root.path().join("b_dir");
+    let donors_dir = a_dir.join("donors");
+    std::fs::create_dir_all(&donors_dir).unwrap();
+    std::fs::create_dir_all(&b_dir).unwrap();
+    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
+    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
+    std::fs::write(donors_dir.join("Z.mkv"), b"d").unwrap(); // attachment donor D, resolved only by A
+
+    // `tag` is optional and only present in B's own filename: A's template
+    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
+    // basename. The `add` locator path is relative ("donors"), resolved
+    // against each primary's own directory, so it only finds D for A -
+    // `b_dir/donors` does not exist, and B's own `add` locator finds
+    // nothing (a MissingExternal warning, not an error - spec 4.9).
+    let profile_yaml = r#"
+profile_version: 1
+input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
+output:
+  filename: { template: '{tag}' }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: 'donors', extensions: [mkv] }
+"#;
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: root.path().to_path_buf(),
+        // Every primary's output lands in donors_dir, so B's rendered
+        // "Z.mkv" collides byte-for-byte with the attachment donor A alone
+        // resolved.
+        output: Some(donors_dir.clone()),
+        // Overwrite, not the Error default: proves SourceOverwrite is what
+        // stops this, not the ordinary on-disk-collision path (same
+        // reasoning as T7's test above).
+        on_collision: Some(CollisionPolicy::Overwrite),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Prime.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "PrimeZ.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Z.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let a = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Prime.mkv"))
+        .unwrap();
+    let b = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("PrimeZ.mkv"))
+        .unwrap();
+
+    // A's own render fails on its own terms, independent of this fix.
+    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+    assert!(
+        a.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        a.diagnostics
+    );
+
+    // B's rendered output collides with the attachment donor A resolved;
+    // must be caught even though A's own plan never rendered.
+    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
+    assert!(
+        b.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        b.diagnostics
+    );
+}
+
+// Plan-5.5 Task 7.6: #7 class closure. T7 and T7.5 above cover a track-rule
+// donor and an attachment donor; this is the same class through the
+// chapters donor (`profile.chapters.external`, resolved by
+// `resolve_chapters`). Same three-way constellation, adapted for chapters'
+// stricter uniqueness rule (spec 4.9: unlike a track rule's external
+// source, there is no `optional` escape - zero matches is always
+// `MissingExternal`) - so, unlike T7/T7.5 where B's own locator finds
+// nothing because its sibling "donors" directory does not exist at all,
+// here B needs its OWN successful chapters resolution (a distinct,
+// harmless donor under its own "donors" directory) so its plan survives
+// long enough to reach `detect_source_overwrites`. Primary A's chapters
+// locator resolves donor D (real, on disk), but A's own filename template
+// renders empty (EmptyRenderedName), so A.plan is None; primary B's own
+// chapters locator resolves its own distinct donor (`b_dir/donors/Z.mkv`),
+// yet B's rendered output lands on D's exact path (`a_dir/donors/Z.mkv`).
+// D is referenced SOLELY through A's (render-failed)
+// `ChapterSource::External` - before this fix, `resolved_sources` never
+// gathered chapters at all (only `Assignment.source` and, since Task 7.5,
+// `AttachmentPlan.add_files`), so this collision went undetected and B
+// would have silently overwritten D.
+#[test]
+fn source_overwrite_protects_chapters_donor_of_render_failed_file() {
+    let root = tempfile::tempdir().unwrap();
+    let a_dir = root.path().join("a_dir");
+    let b_dir = root.path().join("b_dir");
+    let a_donors = a_dir.join("donors");
+    let b_donors = b_dir.join("donors");
+    std::fs::create_dir_all(&a_donors).unwrap();
+    std::fs::create_dir_all(&b_donors).unwrap();
+    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
+    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
+    std::fs::write(a_donors.join("Z.mkv"), b"d").unwrap(); // chapters donor D, resolved only by A
+    std::fs::write(b_donors.join("Z.mkv"), b"e").unwrap(); // B's own distinct chapters donor
+
+    // `tag` is optional and only present in B's own filename: A's template
+    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
+    // basename. The chapters locator (no `match_pattern`/`match_to_source`,
+    // same as T7's track-rule locator) matches every file in its target
+    // directory; each primary's "donors" subdirectory holds exactly one
+    // `.mkv` file of its own, so each resolves to exactly one hit and
+    // neither triggers chapters' `MissingExternal`.
+    let profile_yaml = r#"
+profile_version: 1
+input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
+output:
+  filename: { template: '{tag}' }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+chapters:
+  external: { path: 'donors', extensions: [mkv] }
+"#;
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: root.path().to_path_buf(),
+        // Every primary's output lands in a_donors, so B's rendered
+        // "Z.mkv" collides byte-for-byte with the chapters donor A alone
+        // resolved.
+        output: Some(a_donors.clone()),
+        // Overwrite, not the Error default: proves SourceOverwrite is what
+        // stops this, not the ordinary on-disk-collision path (same
+        // reasoning as T7's and T7.5's tests above).
+        on_collision: Some(CollisionPolicy::Overwrite),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Prime.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "PrimeZ.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let a = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Prime.mkv"))
+        .unwrap();
+    let b = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("PrimeZ.mkv"))
+        .unwrap();
+
+    // A's own render fails on its own terms, independent of this fix.
+    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+    assert!(
+        a.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        a.diagnostics
+    );
+
+    // B's rendered output collides with the chapters donor A resolved;
+    // must be caught even though A's own plan never rendered.
+    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
+    assert!(
+        b.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        b.diagnostics
+    );
+}
+
 #[test]
 fn empty_rendered_name_when_template_renders_to_dot() {
     let p = r#"
@@ -1052,6 +1369,348 @@ tracks:
     );
 }
 
+/// A [`FakeIdent`] wrapper that also answers [`Identify::known_extensions`],
+/// standing in for a runtime whose `--list-types` output is known (Task 5,
+/// #3): the batch-validation tests below need to control this independently
+/// of the per-file identification `FakeIdent` already provides.
+struct FakeIdentWithExtensions {
+    inner: FakeIdent,
+    known_extensions: Option<Vec<String>>,
+}
+
+impl Identify for FakeIdentWithExtensions {
+    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+        self.inner.identify(path)
+    }
+
+    fn known_extensions(&mut self) -> Option<Vec<String>> {
+        self.known_extensions.clone()
+    }
+}
+
+fn plan_one_with_extensions(
+    profile_yaml: &str,
+    file_name: &str,
+    ident_json: &str,
+    known_extensions: Option<Vec<&str>>,
+) -> (Batch, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(file_name), b"x").unwrap();
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        file_name.to_string(),
+        Identification::from_json(ident_json).unwrap(),
+    );
+    let mut ident = FakeIdentWithExtensions {
+        inner: FakeIdent { by_name },
+        known_extensions: known_extensions.map(|exts| exts.into_iter().map(String::from).collect()),
+    };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    (batch, dir)
+}
+
+// Task 5 (#3): `input.extensions` checked once per batch against the
+// runtime's `--list-types` output, mirroring
+// `bad_language_value_is_batch_invalid_property_value`'s layout.
+#[test]
+fn unknown_extension_is_batch_warning_naming_the_extension() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "mp4", "avi"]),
+    );
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(unknown[0].severity, Severity::Warning);
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    // Batch continues: the file still resolves to a plan despite the warning.
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5 (#3): the runtime's extension list is unavailable (mkvmerge
+// absent/query failed): the check degrades to a no-op rather than blocking
+// planning, unlike `lang`'s hard batch-planning precondition.
+#[test]
+fn unknown_extension_check_degrades_when_runtime_unavailable() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(p, "Show.S01E01.mkv", SERIES, None);
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnknownExtension),
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5 (#3): extension matching (and its validation) is case-insensitive
+// (model.rs `Input.extensions` doc).
+#[test]
+fn known_extension_case_insensitive_is_not_flagged() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [MKV] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "mp4", "avi"]),
+    );
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnknownExtension),
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+}
+
+// Task 5.9 (spec 4.6): a track rule's external locator's `extensions` is
+// batch-checked against the runtime's `--list-types` output too, same as
+// `input.extensions` (Task 5). `optional: true` keeps the locator's
+// zero-hit resolution from adding its own `MissingExternal` error, so the
+// `UnknownExtension` warning is the only diagnostic under test.
+#[test]
+fn unknown_extension_in_track_rule_locator_is_batch_warning() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: '.', extensions: [srt, mp4a] }
+      match: { exact: { type: subtitles } }
+      optional: true
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "srt", "avi"]),
+    );
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(unknown[0].severity, Severity::Warning);
+    assert_eq!(
+        unknown[0].config_path,
+        "tracks[1].source.external.extensions[1]"
+    );
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    // Batch continues: the file still resolves to a plan despite the warning.
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5.9 (spec 4.6): a `chapters` external locator's `extensions` is
+// checked the same way. A real `.xml` donor keeps chapters resolution from
+// raising its own `MissingExternal` error (chapters has no `optional`
+// escape, unlike a track rule's external source), isolating the
+// `UnknownExtension` warning under test.
+#[test]
+fn unknown_extension_in_chapters_locator_is_batch_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+chapters:
+  external: { path: '.', extensions: [xml, mp4a], match_to_source: true }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdentWithExtensions {
+        inner: FakeIdent { by_name },
+        known_extensions: Some(vec!["mkv".into(), "xml".into()]),
+    };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(unknown[0].config_path, "chapters.external.extensions[1]");
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5.9 (spec 4.6): an `attachments.rules[i].add` locator's `extensions`
+// is checked the same way. An `add` locator's zero-hit case is a warning,
+// not an error (spec 4.9), so no donor file is needed to keep the plan
+// resolving.
+#[test]
+fn unknown_extension_in_attachments_add_locator_is_batch_warning() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: '.', extensions: [ttf, mp4a] }
+"#;
+    let (batch, _dir) = plan_one_with_extensions(
+        p,
+        "Show.S01E01.mkv",
+        SERIES,
+        Some(vec!["mkv", "ttf", "otf"]),
+    );
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        1,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert_eq!(
+        unknown[0].config_path,
+        "attachments.rules[0].add.extensions[1]"
+    );
+    assert_eq!(
+        unknown[0].params.get("extension").map(String::as_str),
+        Some("mp4a")
+    );
+    assert!(
+        batch.files[0].plan.is_some(),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
+// Task 5.9: T5's walk never deduped `input.extensions` occurrences by
+// value (two entries with the same unknown string each get their own
+// diagnostic, keyed by their own index/path); the locator walk keeps that
+// behavior rather than introducing batch-wide dedup by extension value, so
+// the same unknown extension repeated across `input.extensions` and a
+// locator yields two independent warnings.
+#[test]
+fn unknown_extension_repeated_across_input_and_locator_is_not_deduped() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+    - source:
+        external: { path: '.', extensions: [mp4a] }
+      match: { exact: { type: subtitles } }
+      optional: true
+"#;
+    let (batch, _dir) =
+        plan_one_with_extensions(p, "Show.S01E01.mkv", SERIES, Some(vec!["mkv", "srt"]));
+    let unknown: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::UnknownExtension)
+        .collect();
+    assert_eq!(
+        unknown.len(),
+        2,
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    let paths: Vec<&str> = unknown.iter().map(|d| d.config_path.as_str()).collect();
+    assert!(paths.contains(&"input.extensions[1]"), "paths: {paths:?}");
+    assert!(
+        paths.contains(&"tracks[1].source.external.extensions[0]"),
+        "paths: {paths:?}"
+    );
+}
+
 // Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
 #[test]
 fn chapters_drop_keyword_resolves_to_drop() {
@@ -1431,4 +2090,73 @@ attachments:
         .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
     assert_eq!(d.config_path, "attachments.rules[0].add");
     assert_eq!(d.severity, Severity::Warning);
+}
+
+// Task 6 (#6, ROADMAP "Zero-track plan warning"): a plan resolving to zero
+// output tracks used to mux a valid-but-empty MKV silently (exit 0, no
+// diagnostic - verified live against mkvmerge in the Plan-3 whole-branch
+// review). Decided (Şenol 2026-07-11, sweep walkthrough #6): a per-file
+// WARNING, one sane default, no error/skip alternative (that variance is
+// parked in IDEAS.md #5, deliberately not built).
+#[test]
+fn empty_plan_warns_when_all_optional_rules_match_nothing() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: audio, language: de } }
+      optional: true
+"#;
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    // The plan still renders, unchanged: a satisfied `optional` rule is not
+    // an error (spec 5.1), just an unmatched assignment.
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert_eq!(plan.assignments.len(), 1);
+    assert_eq!(plan.assignments[0].track_id, None);
+    let empty_plan_warnings: Vec<_> = fr
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::EmptyPlan)
+        .collect();
+    assert_eq!(empty_plan_warnings.len(), 1, "diags: {:?}", fr.diagnostics);
+    assert_eq!(empty_plan_warnings[0].severity, Severity::Warning);
+    assert_eq!(
+        empty_plan_warnings[0].file.as_deref(),
+        Some(fr.source.as_path())
+    );
+}
+
+// Task 6 (D20 semantics): under `tracks.unmatched: keep`, the primary's own
+// tracks always pass through untouched, even when the only rule is
+// optional and matches nothing itself - D20's "keep = match to what is
+// already there" means that passthrough already counts as matched, so
+// `EmptyPlan` naturally cannot fire on a keep-mode plan (as long as the
+// primary itself has at least one track, always true here via SERIES).
+// Same zero-rule-match profile as the warning test above, plus `unmatched:
+// keep`, to isolate the one variable that changes the outcome.
+#[test]
+fn empty_plan_does_not_fire_under_keep_unmatched_primary_passthrough() {
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  unmatched: keep
+  rules:
+    - match: { exact: { type: audio, language: de } }
+      optional: true
+"#;
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    assert!(plan.keep_unmatched);
+    assert!(!plan.primary_track_ids.is_empty());
+    assert!(
+        !fr.diagnostics.iter().any(|d| d.code == DiagCode::EmptyPlan),
+        "diags: {:?}",
+        fr.diagnostics
+    );
 }

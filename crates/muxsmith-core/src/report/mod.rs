@@ -126,6 +126,15 @@ diag_codes! {
     /// supported container with zero tracks is NOT this code (stays a
     /// per-rule `missing-track`).
     UnsupportedSource => "unsupported-source",
+    /// A plan that survived every finalize pass (no error-severity
+    /// diagnostic on the file, local or cross-file) still resolved zero
+    /// track assignments: mkvmerge exits 0 and writes a valid but
+    /// track-less MKV (verified live, Plan 3 whole-branch review), which
+    /// would otherwise pass silently. Does not fire for a `tracks.unmatched:
+    /// keep` plan whose primary carries at least one track (D20: "keep =
+    /// match to what is already there", so the passthrough counts as
+    /// matched).
+    EmptyPlan => "empty-plan",
     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
     OutputCollision => "output-collision",
     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
@@ -144,6 +153,8 @@ diag_codes! {
     MultipleIdentifierMatches => "multiple-identifier-matches",
     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
     UnknownPropertySkew => "unknown-property-skew",
+    /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
+    UnknownExtension => "unknown-extension",
     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
     SuggestionsCapped => "suggestions-capped",
     /// No single refinement resolves a conflicted rule across the whole batch, so the engine reports the no-single-fix partition instead (spec 5.3, D6 step 6): the affected files grouped by the per-file refinement that would resolve each. `kind=group` carries a group's `fix` (the refinement) and `files`; `kind=overflow` carries `dropped` when more than five groups were capped.

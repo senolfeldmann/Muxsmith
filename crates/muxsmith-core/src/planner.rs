@@ -239,6 +239,8 @@ pub fn plan_core(
 ) -> Batch {
     let mut batch_diagnostics = Vec::new();
     validate_language_values(profile, lang, &mut batch_diagnostics);
+    let known_extensions = id.known_extensions();
+    validate_extension_values(profile, known_extensions.as_deref(), &mut batch_diagnostics);
 
     let primary_paths: Vec<PathBuf> = primaries.iter().map(|p| p.path.clone()).collect();
     let output_dir = run
@@ -249,15 +251,12 @@ pub fn plan_core(
     let policy = run.on_collision.unwrap_or(profile.output.on_collision);
 
     let mut files: Vec<FileReport> = Vec::new();
+    let mut resolved_sources: Vec<PathBuf> = Vec::new();
     for primary in primaries {
-        files.push(resolve_file(
-            profile,
-            primary,
-            &primary_paths,
-            &output_dir,
-            id,
-            lang,
-        ));
+        let (report, sources) =
+            resolve_file(profile, primary, &primary_paths, &output_dir, id, lang);
+        files.push(report);
+        resolved_sources.extend(sources);
     }
 
     // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
@@ -266,10 +265,11 @@ pub fn plan_core(
     // errors, so collision detection only considers files that will actually
     // produce output; then re-drop any plan that a collision error just
     // invalidated.
-    detect_source_overwrites(&mut files, &primary_paths);
+    detect_source_overwrites(&mut files, &primary_paths, &resolved_sources);
     finalize_plans(&mut files);
     detect_output_collisions(&mut files, policy);
     finalize_plans(&mut files);
+    detect_empty_plans(&mut files);
 
     Batch {
         files,
@@ -297,6 +297,79 @@ pub fn plan_batch(
 fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
     for (i, rule) in profile.tracks.rules.iter().enumerate() {
         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
+    }
+}
+
+// Batch-wide, once per plan_core call (spec 4.2, 4.6, walkthrough #3):
+// checks `profile.input.extensions` and every locator's `extensions` (a
+// track rule's external source, `chapters`, each `attachments.rules[i].add`)
+// against the runtime's `--list-types` output, mirroring
+// `validate_language_values`'s structure. `known` is `None` when the
+// capability is unavailable (mkvmerge absent or the query failed); the
+// check then degrades to a no-op rather than blocking planning, unlike
+// `validate_language_values`'s `lang`, which callers must always resolve
+// before planning can start at all. No dedup by extension value: the same
+// unknown extension repeated across `input.extensions` and a locator (or
+// across two locators) gets one diagnostic per occurrence, each at its own
+// `config_path`, exactly as two repeated `input.extensions` entries always
+// did.
+fn validate_extension_values(
+    profile: &Profile,
+    known: Option<&[String]>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(known) = known else { return };
+    validate_extension_list(known, "input.extensions", &profile.input.extensions, diags);
+
+    for (i, rule) in profile.tracks.rules.iter().enumerate() {
+        if let SourceCfg::External(block) = &rule.source {
+            validate_extension_list(
+                known,
+                &format!("tracks[{i}].source.external.extensions"),
+                &block.external.extensions,
+                diags,
+            );
+        }
+    }
+    if let ChaptersCfg::External(block) = &profile.chapters {
+        validate_extension_list(
+            known,
+            "chapters.external.extensions",
+            &block.external.extensions,
+            diags,
+        );
+    }
+    for (i, rule) in profile.attachments.rules.iter().enumerate() {
+        if let Some(locator) = &rule.add {
+            validate_extension_list(
+                known,
+                &format!("attachments.rules[{i}].add.extensions"),
+                &locator.extensions,
+                diags,
+            );
+        }
+    }
+}
+
+// Shared per-list core (Task 5.9 reuse): checks one `extensions` list
+// against `known`, raising `UnknownExtension` at `{path_prefix}[i]` per
+// offending entry. Backs both `input.extensions` and every locator
+// position in `validate_extension_values`.
+fn validate_extension_list(
+    known: &[String],
+    path_prefix: &str,
+    extensions: &[String],
+    diags: &mut Vec<Diagnostic>,
+) {
+    for (i, ext) in extensions.iter().enumerate() {
+        let normalized = ext.to_ascii_lowercase();
+        if !known.contains(&normalized) {
+            diags.push(
+                Diagnostic::warning(DiagCode::UnknownExtension, format!("{path_prefix}[{i}]"))
+                    .with("extension", ext.clone())
+                    .with("known", known.join(", ")),
+            );
+        }
     }
 }
 
@@ -334,6 +407,11 @@ fn walk_exact_languages(
     }
 }
 
+// Returns the file's report alongside every source path it resolved -
+// assignment sources (primaries and track donors) plus attachment `add`
+// donors (Task 7.5) - independent of whether the file's own plan ends up
+// `Some`; `detect_source_overwrites` needs the latter even when this file's
+// own output never renders (Plan-2 FINAL M2 / #7).
 fn resolve_file(
     profile: &Profile,
     primary: &PrimaryFile,
@@ -341,7 +419,7 @@ fn resolve_file(
     output_dir: &Path,
     id: &mut dyn Identify,
     lang: &LanguageIndex,
-) -> FileReport {
+) -> (FileReport, Vec<PathBuf>) {
     let mut diagnostics = Vec::new();
     let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
 
@@ -353,12 +431,15 @@ fn resolve_file(
                     .for_file(&primary.path)
                     .with("detail", format!("{e}")),
             );
-            return FileReport {
-                source: primary.path.clone(),
-                identifier: primary.identifier.whole.clone(),
-                plan: None,
-                diagnostics,
-            };
+            return (
+                FileReport {
+                    source: primary.path.clone(),
+                    identifier: primary.identifier.whole.clone(),
+                    plan: None,
+                    diagnostics,
+                },
+                Vec::new(),
+            );
         }
     };
     if ident.format_version > PINNED_IDENTIFICATION_FORMAT_VERSION {
@@ -372,12 +453,15 @@ fn resolve_file(
     if !ident.container_recognized || !ident.container_supported {
         diagnostics
             .push(Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(&primary.path));
-        return FileReport {
-            source: primary.path.clone(),
-            identifier: primary.identifier.whole.clone(),
-            plan: None,
-            diagnostics,
-        };
+        return (
+            FileReport {
+                source: primary.path.clone(),
+                identifier: primary.identifier.whole.clone(),
+                plan: None,
+                diagnostics,
+            },
+            Vec::new(),
+        );
     }
 
     let mut assignments = Vec::new();
@@ -548,6 +632,33 @@ fn resolve_file(
         &mut diagnostics,
     );
 
+    let keep_unmatched = matches!(
+        profile.tracks.unmatched,
+        crate::profile::model::KeepDrop::Keep
+    );
+
+    // Captured before `assignments`, `attachments` and `chapters` move into
+    // `Plan` below: every source this file resolved is known at this point
+    // already, regardless of whether `output` renders successfully.
+    // Completeness (Task 7.6, #7 class closure): every donor kind reaches
+    // this chain - track rules (`Assignment.source`), attachment `add`
+    // donors (`AttachmentPlan.add_files`, Task 7.5), and now chapters
+    // (`ChapterSource::External`, Task 7.6). `model.rs` has exactly two
+    // `Locator` field sites feeding these three kinds:
+    // `ExternalBlock.external` (shared by `SourceCfg::External` and
+    // `ChaptersCfg::External`) and `AttachmentRule.add`. A future third
+    // `Locator` field site must be chained in here too, or it silently
+    // re-opens this class.
+    let resolved_sources: Vec<PathBuf> = assignments
+        .iter()
+        .map(|a| a.source.clone())
+        .chain(attachments.add_files.iter().cloned())
+        .chain(match &chapters {
+            ChapterSource::External(path) => Some(path.clone()),
+            ChapterSource::Keep | ChapterSource::Drop => None,
+        })
+        .collect();
+
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
         output,
@@ -556,19 +667,19 @@ fn resolve_file(
         chapters,
         tags,
         title,
-        keep_unmatched: matches!(
-            profile.tracks.unmatched,
-            crate::profile::model::KeepDrop::Keep
-        ),
+        keep_unmatched,
         primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
     });
 
-    FileReport {
-        source: primary.path.clone(),
-        identifier: primary.identifier.whole.clone(),
-        plan,
-        diagnostics,
-    }
+    (
+        FileReport {
+            source: primary.path.clone(),
+            identifier: primary.identifier.whole.clone(),
+            plan,
+            diagnostics,
+        },
+        resolved_sources,
+    )
 }
 
 // Builds the AppliedChange list for a track a rule resolved to, from the
@@ -883,20 +994,43 @@ fn resolve_attachments(
 }
 
 // A rendered output must never equal an input path anywhere in the batch:
-// every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
-// Batch-wide because one primary's output can equal a donor a *different*
-// primary reads from; `Assignment.source` already carries that donor path
-// (or the primary path, for a primary-source rule), so the union of every
-// file's assignment sources plus the primaries is the complete input set.
-// Runs before `finalize_plans` drops anything, so every file's assignments
-// are still present to gather from.
-fn detect_source_overwrites(files: &mut [FileReport], primary_paths: &[PathBuf]) {
+// every primary, plus every donor any file's rules resolved - track donors
+// (`Assignment.source`), attachment donors (`AttachmentPlan.add_files`,
+// Task 7.5), and chapters donors (`ChapterSource::External`, Task 7.6)
+// alike (spec 4.8, 5.2). Batch-wide because one primary's output can equal
+// a donor a *different* primary reads from; `resolved_sources` (built in
+// `resolve_file`, before that file's own output ever renders) already
+// carries every one of those source paths - donor or primary - independent
+// of whether the file's own plan survives, so the union of
+// `resolved_sources` plus the primaries is the complete input set. Runs
+// before `finalize_plans` drops anything.
+//
+// Plan-2 FINAL M2 / #7: sources are known before rendering, so a file whose
+// own output fails to render (`plan == None`) must still contribute its
+// donors here - the previous version read `plan.assignments`, which does
+// not exist once `plan` is `None`, so a donor referenced solely by such a
+// file escaped protection and a colliding output could overwrite it
+// silently. Task 7.5 closed the same gap for attachment donors, Task 7.6
+// for chapters donors: neither was ever in `resolved_sources` at all
+// (gathered only from `Assignment`), regardless of render outcome. #7 is
+// now closed by construction (see the completeness comment at
+// `resolved_sources`'s gathering site in `resolve_file`).
+//
+// S11 guard: `resolve_file`'s `AmbiguousExternal` branch (2+ candidate
+// donors for one locator) deliberately pushes a placeholder assignment
+// sourced at the primary path, not at any of the n candidates - which one
+// is "the" donor is genuinely unknown, so none of them is protected here.
+// Safe only because `AmbiguousExternal` is unconditionally Error-severity
+// (that file's own plan never survives regardless, per `finalize_plans`);
+// if it is ever downgraded to non-fatal, this function needs to start
+// protecting all n candidates explicitly (F5 report).
+fn detect_source_overwrites(
+    files: &mut [FileReport],
+    primary_paths: &[PathBuf],
+    resolved_sources: &[PathBuf],
+) {
     let mut inputs: BTreeSet<PathBuf> = primary_paths.iter().cloned().collect();
-    for f in files.iter() {
-        if let Some(plan) = &f.plan {
-            inputs.extend(plan.assignments.iter().map(|a| a.source.clone()));
-        }
-    }
+    inputs.extend(resolved_sources.iter().cloned());
     for f in files.iter_mut() {
         let Some(plan) = &f.plan else { continue };
         if inputs.contains(&plan.output) {
@@ -955,6 +1089,33 @@ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
         // explicitly rather than relying on that pass.
         if !planned_twice && policy == CollisionPolicy::Skip {
             f.plan = None;
+        }
+    }
+}
+
+// EmptyPlan (spec 5.2, D18/#6): a plan that survived both finalize_plans
+// passes above still resolved zero output tracks. Runs last, after the
+// cross-file passes (`detect_source_overwrites`, `detect_output_collisions`)
+// and their finalize calls, so `f.plan.is_some()` here already means "no
+// error, local or cross-file, doomed this file's plan" - a file that
+// resolves to zero tracks locally but then loses its plan to a cross-file
+// error never gets this warning stacked on top of that error. `Plan`'s
+// `assignments`/`keep_unmatched`/`primary_track_ids` are public, so
+// has-tracks is fully recomputable from the surviving plan alone; no
+// severity scan needed.
+fn detect_empty_plans(files: &mut [FileReport]) {
+    for f in files.iter_mut() {
+        let Some(plan) = &f.plan else { continue };
+        // Either a rule matched (`Assignment::track_id` is `Some`), or,
+        // under `keep`, the primary's own tracks pass through untouched
+        // regardless of rule matches (D20: "keep = match to what is
+        // already there", so a non-empty primary counts as matched even
+        // when no rule fired).
+        let has_tracks = plan.assignments.iter().any(|a| a.track_id.is_some())
+            || (plan.keep_unmatched && !plan.primary_track_ids.is_empty());
+        if !has_tracks {
+            f.diagnostics
+                .push(Diagnostic::warning(DiagCode::EmptyPlan, "tracks").for_file(&f.source));
         }
     }
 }

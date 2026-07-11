@@ -183,6 +183,15 @@ impl Mkvmerge {
         Ok(parse_list_types(&self.run(&["--list-types"])?))
     }
 
+    /// [`Mkvmerge::list_types`], degrading a query failure to `None` (spec
+    /// 4.2). Unlike identification or [`Mkvmerge::list_languages`], whose
+    /// failure blocks planning outright, `profile.input.extensions`
+    /// validation is advisory: a missing or broken mkvmerge should not stop
+    /// batch planning, only skip the typo check (walkthrough #3).
+    pub fn known_extensions(&self) -> Option<Vec<String>> {
+        self.list_types().ok()
+    }
+
     /// The language normalization index from `--list-languages` (spec 4.4).
     pub fn list_languages(&self) -> Result<LanguageIndex, RuntimeError> {
         Ok(parse_list_languages(&self.run(&["--list-languages"])?))

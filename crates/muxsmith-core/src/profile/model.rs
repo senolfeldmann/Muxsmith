@@ -70,9 +70,12 @@ pub struct Input {
     /// identifier (spec 3) and populate template fields (`{match}`,
     /// `{g1}`, named groups).
     pub pattern: String,
-    /// Candidate file extensions, matched case-insensitively and validated
-    /// at runtime against the local `mkvmerge --list-types` (spec 4.2); not
-    /// restricted to MKV.
+    /// Candidate file extensions, matched case-insensitively; not restricted
+    /// to MKV. Checked once per batch against the local `mkvmerge
+    /// --list-types` (spec 4.2): an entry absent from that list is still
+    /// used for matching (so a typo silently excludes candidates) but
+    /// raises `UnknownExtension`. Skipped, not raised, when the runtime
+    /// capability is unavailable.
     pub extensions: Vec<String>,
     /// Whether the source directory walk descends into subdirectories.
     /// Defaults to `true`.
