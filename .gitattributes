@@ -1,0 +1,6 @@
+* text=auto eol=lf
+# binary test assets must never be normalized; extend as assets appear
+*.png -text
+*.ico -text
+*.icns -text
+*.wav -text
