@@ -280,6 +280,38 @@ tracks:
 }
 
 #[test]
+fn overlapping_rules_names_every_claimant_not_just_the_first_two() {
+    // Three rules each resolve to the single audio track (track 1): the
+    // OverlappingRules diagnostic must name all three, not only the first
+    // pair. The `rules` param is the rendered claimant list.
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: audio } }
+    - match: { exact: { codec_id: A_AAC } }
+    - match: { exact: { type: audio, language: en } }
+"#;
+    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+    let overlap = fr
+        .diagnostics
+        .iter()
+        .find(|d| d.code == DiagCode::OverlappingRules)
+        .unwrap_or_else(|| panic!("expected OverlappingRules, got: {:?}", fr.diagnostics));
+    let rules = &overlap.params["rules"];
+    for expected in ["tracks[0]", "tracks[1]", "tracks[2]"] {
+        assert!(
+            rules.contains(expected),
+            "claimant {expected} missing from rules list {rules:?}"
+        );
+    }
+    assert_eq!(overlap.params["track"], "1");
+}
+
+#[test]
 fn keep_filename_renders_mkv_output() {
     let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
     let plan = batch.files[0].plan.as_ref().unwrap();

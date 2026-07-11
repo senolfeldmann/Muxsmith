@@ -115,8 +115,7 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
             args.set("count", "2");
         }
         DiagCode::OverlappingRules => {
-            args.set("rule_a", "tracks[0]");
-            args.set("rule_b", "tracks[1]");
+            args.set("rules", "tracks[0], tracks[1], tracks[2]");
             args.set("track", "3");
         }
         DiagCode::MissingTrack => {}
