@@ -578,18 +578,22 @@ fn run_json_emits_a_document_when_the_language_query_fails() {
     );
 }
 
-/// Same forced-broken-mkvmerge condition, human mode: pins down that
-/// today's behavior (bare stderr message, empty stdout, exit 2, no job
-/// ever runs) is untouched by the `--json` fix.
+/// Same forced-broken-mkvmerge condition, human mode. Like dry-run, `run`
+/// runs the config-time validate pass before the mkvmerge query, and spec
+/// 5.5's superset-of-validate guarantee is unconditional: human mode must
+/// surface those config diagnostics on stdout, before the stderr failure
+/// line and without ever touching the queue. (This branch used to drop them,
+/// stderr only; item vii.)
 #[test]
 #[cfg(unix)]
-fn run_human_mode_still_just_reports_the_language_query_failure_on_stderr() {
+fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
     let fake_path = fake_mkvmerge_that_fails_queries();
     let dir = tempfile::tempdir().unwrap();
     let profile = dir.path().join("p.yaml");
+    // An empty match expression is a config-time warning; it must reach stdout.
     std::fs::write(
         &profile,
-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: {}\n",
     )
     .unwrap();
 
@@ -605,7 +609,10 @@ fn run_human_mode_still_just_reports_the_language_query_failure_on_stderr() {
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8_lossy(&out.stdout);
     asserts_no_job_ran(&stdout);
-    assert!(stdout.is_empty(), "stdout: {stdout}");
+    assert!(
+        stdout.contains("tracks[0].match"),
+        "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
 }

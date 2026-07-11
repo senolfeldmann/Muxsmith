@@ -20,7 +20,7 @@ use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
 
-use crate::commands::{diag_exit_code, print_batch_human};
+use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
 use crate::i18n::Renderer;
 
 /// Progress thresholds a job's cumulative percent is checked against, in
@@ -101,7 +101,7 @@ pub fn run(
                     )
                 );
             } else {
-                for d in &config_diags {
+                for d in severity_sorted(&config_diags) {
                     println!("{}", renderer.diagnostic(d));
                 }
                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
@@ -117,7 +117,11 @@ pub fn run(
             // gets the same config-only, empty-jobs/zeroed-summary document
             // shape the locate()-failure branch above builds, but with
             // `mkvmerge_found: true` - the binary WAS found, only the query
-            // failed; human mode is unchanged (stderr only).
+            // failed. Human mode surfaces the config-time diagnostics on
+            // stdout before the failure line, the same as the locate()-failure
+            // branch: spec 5.5's superset-of-validate guarantee is
+            // unconditional, so this pre-planning path must not drop them
+            // (item vii). The queue is never touched.
             if json {
                 println!(
                     "{}",
@@ -128,6 +132,9 @@ pub fn run(
                     )
                 );
             } else {
+                for d in severity_sorted(&config_diags) {
+                    println!("{}", renderer.diagnostic(d));
+                }
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
             }
             return 2;
@@ -147,7 +154,7 @@ pub fn run(
     let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
 
     if !json {
-        for d in &config_diags {
+        for d in severity_sorted(&config_diags) {
             println!("{}", renderer.diagnostic(d));
         }
         print_batch_human(

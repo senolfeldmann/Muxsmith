@@ -92,6 +92,22 @@ impl Renderer {
     /// message resolved from `code`/`params` (spec 5.2, 8.4), composed via
     /// the `diagnostic-line` catalog entry.
     pub fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+        self.render_diagnostic(d, true)
+    }
+
+    /// Renders a diagnostic WITHOUT its file prefix (always `diagnostic-line`,
+    /// even when `d.file` is set), for contexts where an enclosing header
+    /// already named the file -- dry-run/run's per-file block prints the
+    /// filename once in its `dry-run-file` line, so repeating it on every
+    /// diagnostic under it is noise.
+    pub fn diagnostic_no_file(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+        self.render_diagnostic(d, false)
+    }
+
+    /// Shared body of [`Self::diagnostic`] and [`Self::diagnostic_no_file`]:
+    /// `show_file` selects the `diagnostic-line-file` template (when a file is
+    /// present) over the file-less `diagnostic-line`.
+    fn render_diagnostic(&self, d: &muxsmith_core::report::Diagnostic, show_file: bool) -> String {
         let params: Vec<(&str, &str)> = d
             .params
             .iter()
@@ -99,7 +115,7 @@ impl Renderer {
             .collect();
         let message = self.msg(d.code.key(), &params);
         let severity = self.msg(severity_key(d.severity), &[]);
-        match &d.file {
+        match d.file.as_ref().filter(|_| show_file) {
             Some(file) => {
                 let file = file.to_string_lossy();
                 self.msg(

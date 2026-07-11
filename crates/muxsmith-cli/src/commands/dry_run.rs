@@ -11,7 +11,7 @@ use muxsmith_core::profile::model::CollisionPolicy;
 use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::json::{batch_document, config_only_document};
 
-use crate::commands::{diag_exit_code, print_batch_human};
+use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
 use crate::i18n::Renderer;
 
 /// Runs `muxsmith dry-run`. Returns the mkvmerge-style exit code.
@@ -72,7 +72,7 @@ pub fn run(
                     config_only_document(&config_diags, Some(false), renderer)
                 );
             } else {
-                for d in &config_diags {
+                for d in severity_sorted(&config_diags) {
                     println!("{}", renderer.diagnostic(d));
                 }
                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
@@ -87,14 +87,20 @@ pub fn run(
             // installation): planning never runs here either, so json mode
             // gets the same config-only document shape the locate()-failure
             // branch above builds, but with `mkvmerge_found: true` - the
-            // binary WAS found, only the query failed; human mode is
-            // unchanged (stderr only).
+            // binary WAS found, only the query failed. Human mode surfaces the
+            // config-time diagnostics on stdout before the failure line, the
+            // same as the locate()-failure branch: spec 5.5's superset-of-
+            // validate guarantee is unconditional, so this pre-planning path
+            // must not drop them (item vii).
             if json {
                 println!(
                     "{}",
                     config_only_document(&config_diags, Some(true), renderer)
                 );
             } else {
+                for d in severity_sorted(&config_diags) {
+                    println!("{}", renderer.diagnostic(d));
+                }
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
             }
             return 2;
@@ -116,7 +122,7 @@ pub fn run(
     if json {
         println!("{}", batch_document(&config_diags, &batch, renderer));
     } else {
-        for d in &config_diags {
+        for d in severity_sorted(&config_diags) {
             println!("{}", renderer.diagnostic(d));
         }
         print_batch_human(&batch, &run.source, &profile.input.extensions, renderer);

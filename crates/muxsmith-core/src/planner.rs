@@ -508,7 +508,30 @@ fn resolve_file(
                             );
                         }
                         match id.identify(&donor) {
-                            Ok(di) => (donor, di),
+                            Ok(di) => {
+                                // Same predicate as the primary branch: a donor
+                                // that identifies but whose container is not a
+                                // supported muxing source is UnsupportedSource,
+                                // not a silent skip (spec 5.1).
+                                if !di.container_recognized || !di.container_supported {
+                                    diagnostics.push(
+                                        Diagnostic::error(
+                                            DiagCode::UnsupportedSource,
+                                            format!("{base}.source.external"),
+                                        )
+                                        .for_file(&primary.path),
+                                    );
+                                    assignments.push(Assignment {
+                                        rule_index: ri,
+                                        source: primary.path.clone(),
+                                        track_id: None,
+                                        track_kind: None,
+                                        changes: vec![],
+                                    });
+                                    continue;
+                                }
+                                (donor, di)
+                            }
                             Err(e) => {
                                 diagnostics.push(
                                     Diagnostic::error(
@@ -607,13 +630,15 @@ fn resolve_file(
     }
 
     // OverlappingRules: one track claimed by two or more rules (spec 5.2).
+    // Names every claimant, not just the first pair: three rules colliding on
+    // one track is one diagnostic listing all three.
     for ((_src, tid), rules) in &claims {
         if rules.len() >= 2 {
+            let refs: Vec<String> = rules.iter().map(|r| format!("tracks[{r}]")).collect();
             diagnostics.push(
                 Diagnostic::error(DiagCode::OverlappingRules, format!("tracks[{}]", rules[0]))
                     .for_file(&primary.path)
-                    .with("rule_a", format!("tracks[{}]", rules[0]))
-                    .with("rule_b", format!("tracks[{}]", rules[1]))
+                    .with("rules", refs.join(", "))
                     .with("track", tid.to_string()),
             );
         }
@@ -713,7 +738,11 @@ fn resolve_changes(
                         )
                         .for_file(primary_path)
                         .with("property", "language")
-                        .with("value", scalar_display(value)),
+                        .with("value", scalar_display(value))
+                        // `invalid-property-value` requires `allowed`; the
+                        // sibling emitter in `walk_exact_languages` sets it, so
+                        // this site must too or `{$allowed}` leaks to the user.
+                        .with("allowed", "a valid ISO 639/BCP-47 language code"),
                     );
                 }
             }
