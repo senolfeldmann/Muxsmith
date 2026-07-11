@@ -407,10 +407,11 @@ fn walk_exact_languages(
     }
 }
 
-// Returns the file's report alongside every assignment source path it
-// resolved (primaries and donors alike), independent of whether the file's
-// own plan ends up `Some` - `detect_source_overwrites` needs the latter even
-// when this file's own output never renders (Plan-2 FINAL M2 / #7).
+// Returns the file's report alongside every source path it resolved -
+// assignment sources (primaries and track donors) plus attachment `add`
+// donors (Task 7.5) - independent of whether the file's own plan ends up
+// `Some`; `detect_source_overwrites` needs the latter even when this file's
+// own output never renders (Plan-2 FINAL M2 / #7).
 fn resolve_file(
     profile: &Profile,
     primary: &PrimaryFile,
@@ -636,10 +637,16 @@ fn resolve_file(
         crate::profile::model::KeepDrop::Keep
     );
 
-    // Captured before `assignments` moves into `Plan` below: every source
-    // this file resolved (primary or donor) is known at this point already,
-    // regardless of whether `output` renders successfully.
-    let resolved_sources: Vec<PathBuf> = assignments.iter().map(|a| a.source.clone()).collect();
+    // Captured before `assignments` and `attachments` move into `Plan`
+    // below: every source this file resolved - primary/track-donor
+    // (`Assignment.source`) or attachment donor (`AttachmentPlan.add_files`,
+    // Task 7.5) - is known at this point already, regardless of whether
+    // `output` renders successfully.
+    let resolved_sources: Vec<PathBuf> = assignments
+        .iter()
+        .map(|a| a.source.clone())
+        .chain(attachments.add_files.iter().cloned())
+        .collect();
 
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
@@ -976,20 +983,24 @@ fn resolve_attachments(
 }
 
 // A rendered output must never equal an input path anywhere in the batch:
-// every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
-// Batch-wide because one primary's output can equal a donor a *different*
-// primary reads from; `resolved_sources` (built in `resolve_file`, before
-// that file's own output ever renders) already carries every assignment's
-// source path - donor or primary - independent of whether the file's own
-// plan survives, so the union of `resolved_sources` plus the primaries is
-// the complete input set. Runs before `finalize_plans` drops anything.
+// every primary, plus every donor any file's rules resolved - track donors
+// (`Assignment.source`) and attachment donors (`AttachmentPlan.add_files`,
+// Task 7.5) alike (spec 4.8, 5.2). Batch-wide because one primary's output
+// can equal a donor a *different* primary reads from; `resolved_sources`
+// (built in `resolve_file`, before that file's own output ever renders)
+// already carries every one of those source paths - donor or primary -
+// independent of whether the file's own plan survives, so the union of
+// `resolved_sources` plus the primaries is the complete input set. Runs
+// before `finalize_plans` drops anything.
 //
 // Plan-2 FINAL M2 / #7: sources are known before rendering, so a file whose
 // own output fails to render (`plan == None`) must still contribute its
 // donors here - the previous version read `plan.assignments`, which does
 // not exist once `plan` is `None`, so a donor referenced solely by such a
 // file escaped protection and a colliding output could overwrite it
-// silently.
+// silently. Task 7.5 closed the same gap for attachment donors: they were
+// never in `resolved_sources` at all (gathered only from `Assignment`),
+// regardless of render outcome.
 //
 // S11 guard: `resolve_file`'s `AmbiguousExternal` branch (2+ candidate
 // donors for one locator) deliberately pushes a placeholder assignment

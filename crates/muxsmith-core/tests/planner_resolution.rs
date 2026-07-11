@@ -758,6 +758,109 @@ tracks:
     );
 }
 
+// Plan-5.5 Task 7.5: #7 completion. T7 above covers a track-rule donor; this
+// is the same class through an attachment donor
+// (`attachments.rules[i].add`, resolved by `resolve_attachments`). Same
+// three-way constellation: primary A's `add` locator resolves donor D (real,
+// on disk), but A's own filename template renders empty
+// (EmptyRenderedName), so A.plan is None; primary B's own `add` locator
+// finds nothing (its sibling "donors" directory does not exist for B), yet
+// B's rendered output lands on D's exact path. D is referenced SOLELY
+// through A's (render-failed) `attachments.add_files` - before this fix,
+// `resolved_sources` only gathered `Assignment.source` (track donors), never
+// `AttachmentPlan.add_files`, so this collision went undetected and B would
+// have silently overwritten D.
+#[test]
+fn source_overwrite_protects_attachment_donor_of_render_failed_file() {
+    let root = tempfile::tempdir().unwrap();
+    let a_dir = root.path().join("a_dir");
+    let b_dir = root.path().join("b_dir");
+    let donors_dir = a_dir.join("donors");
+    std::fs::create_dir_all(&donors_dir).unwrap();
+    std::fs::create_dir_all(&b_dir).unwrap();
+    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
+    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
+    std::fs::write(donors_dir.join("Z.mkv"), b"d").unwrap(); // attachment donor D, resolved only by A
+
+    // `tag` is optional and only present in B's own filename: A's template
+    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
+    // basename. The `add` locator path is relative ("donors"), resolved
+    // against each primary's own directory, so it only finds D for A -
+    // `b_dir/donors` does not exist, and B's own `add` locator finds
+    // nothing (a MissingExternal warning, not an error - spec 4.9).
+    let profile_yaml = r#"
+profile_version: 1
+input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
+output:
+  filename: { template: '{tag}' }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+attachments:
+  rules:
+    - add: { path: 'donors', extensions: [mkv] }
+"#;
+    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: root.path().to_path_buf(),
+        // Every primary's output lands in donors_dir, so B's rendered
+        // "Z.mkv" collides byte-for-byte with the attachment donor A alone
+        // resolved.
+        output: Some(donors_dir.clone()),
+        // Overwrite, not the Error default: proves SourceOverwrite is what
+        // stops this, not the ordinary on-disk-collision path (same
+        // reasoning as T7's test above).
+        on_collision: Some(CollisionPolicy::Overwrite),
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Prime.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "PrimeZ.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    by_name.insert(
+        "Z.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let a = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("Prime.mkv"))
+        .unwrap();
+    let b = batch
+        .files
+        .iter()
+        .find(|f| f.source.ends_with("PrimeZ.mkv"))
+        .unwrap();
+
+    // A's own render fails on its own terms, independent of this fix.
+    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
+    assert!(
+        a.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::EmptyRenderedName),
+        "diags: {:?}",
+        a.diagnostics
+    );
+
+    // B's rendered output collides with the attachment donor A resolved;
+    // must be caught even though A's own plan never rendered.
+    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
+    assert!(
+        b.diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SourceOverwrite),
+        "diags: {:?}",
+        b.diagnostics
+    );
+}
+
 #[test]
 fn empty_rendered_name_when_template_renders_to_dot() {
     let p = r#"
