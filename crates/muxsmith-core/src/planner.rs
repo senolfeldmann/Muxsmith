@@ -272,6 +272,7 @@ pub fn plan_core(
     finalize_plans(&mut files);
     detect_output_collisions(&mut files, policy);
     finalize_plans(&mut files);
+    detect_empty_plans(&mut files);
 
     Batch {
         files,
@@ -579,14 +580,6 @@ fn resolve_file(
         profile.tracks.unmatched,
         crate::profile::model::KeepDrop::Keep
     );
-    // Whether the plan-to-be carries at least one output track: either a
-    // rule matched (`Assignment::track_id` is `Some`), or, under `keep`,
-    // the primary's own tracks pass through untouched regardless of rule
-    // matches (D20: "keep = match to what is already there", so a
-    // non-empty primary counts as matched even when no rule fired).
-    // Computed before `assignments` moves into `Plan` below.
-    let has_tracks = assignments.iter().any(|a| a.track_id.is_some())
-        || (keep_unmatched && !ident.tracks.is_empty());
 
     let plan = output.map(|output| Plan {
         source: primary.path.clone(),
@@ -599,16 +592,6 @@ fn resolve_file(
         keep_unmatched,
         primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
     });
-
-    // EmptyPlan (spec 5.2, D18/#6): only for a plan that will actually
-    // render (no error-severity diagnostic already collected for this
-    // file - an errored file gets `plan: None` from `finalize_plans`
-    // regardless, and warning about "zero tracks" on top of that would be
-    // redundant noise, not new information).
-    if plan.is_some() && !has_tracks && !diagnostics.iter().any(|d| d.severity == Severity::Error) {
-        diagnostics
-            .push(Diagnostic::warning(DiagCode::EmptyPlan, "tracks").for_file(&primary.path));
-    }
 
     FileReport {
         source: primary.path.clone(),
@@ -1002,6 +985,33 @@ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
         // explicitly rather than relying on that pass.
         if !planned_twice && policy == CollisionPolicy::Skip {
             f.plan = None;
+        }
+    }
+}
+
+// EmptyPlan (spec 5.2, D18/#6): a plan that survived both finalize_plans
+// passes above still resolved zero output tracks. Runs last, after the
+// cross-file passes (`detect_source_overwrites`, `detect_output_collisions`)
+// and their finalize calls, so `f.plan.is_some()` here already means "no
+// error, local or cross-file, doomed this file's plan" - a file that
+// resolves to zero tracks locally but then loses its plan to a cross-file
+// error never gets this warning stacked on top of that error. `Plan`'s
+// `assignments`/`keep_unmatched`/`primary_track_ids` are public, so
+// has-tracks is fully recomputable from the surviving plan alone; no
+// severity scan needed.
+fn detect_empty_plans(files: &mut [FileReport]) {
+    for f in files.iter_mut() {
+        let Some(plan) = &f.plan else { continue };
+        // Either a rule matched (`Assignment::track_id` is `Some`), or,
+        // under `keep`, the primary's own tracks pass through untouched
+        // regardless of rule matches (D20: "keep = match to what is
+        // already there", so a non-empty primary counts as matched even
+        // when no rule fired).
+        let has_tracks = plan.assignments.iter().any(|a| a.track_id.is_some())
+            || (plan.keep_unmatched && !plan.primary_track_ids.is_empty());
+        if !has_tracks {
+            f.diagnostics
+                .push(Diagnostic::warning(DiagCode::EmptyPlan, "tracks").for_file(&f.source));
         }
     }
 }

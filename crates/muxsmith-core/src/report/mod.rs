@@ -126,8 +126,9 @@ diag_codes! {
     /// supported container with zero tracks is NOT this code (stays a
     /// per-rule `missing-track`).
     UnsupportedSource => "unsupported-source",
-    /// A rendered plan (no error-severity diagnostic on the file) resolved
-    /// zero track assignments: mkvmerge exits 0 and writes a valid but
+    /// A plan that survived every finalize pass (no error-severity
+    /// diagnostic on the file, local or cross-file) still resolved zero
+    /// track assignments: mkvmerge exits 0 and writes a valid but
     /// track-less MKV (verified live, Plan 3 whole-branch review), which
     /// would otherwise pass silently. Does not fire for a `tracks.unmatched:
     /// keep` plan whose primary carries at least one track (D20: "keep =

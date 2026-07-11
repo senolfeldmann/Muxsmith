@@ -201,6 +201,80 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
     }
 }
 
+/// Task 6 review finding 2: an `EmptyPlan`-only batch (a plan resolving to
+/// zero output tracks, warning severity, spec 5.2) must surface end-to-end
+/// through `--json`, not just in the core-crate unit tests. The fixture's
+/// only audio track is tagged `eng`; the profile's only rule is `optional`
+/// and requires `de`, so it is satisfied-but-unmatched and the plan renders
+/// with zero assignments. Exit code mirrors mkvmerge: 1, since the worst
+/// diagnostic present is a warning, not an error.
+#[test]
+fn dry_run_json_surfaces_empty_plan_batch_report() {
+    if !have_mkvmerge() {
+        eprintln!("mkvmerge not found; skipping");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let wav = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+    );
+    let media = dir.path().join("Show.S01E01.mkv");
+    let ok = Command::new("mkvmerge")
+        .args(["-q", "-o"])
+        .arg(&media)
+        .args(["--language", "0:eng"])
+        .arg(wav)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+
+    let profile = dir.path().join("p.yaml");
+    std::fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio, language: de } }\n      optional: true\n",
+    )
+    .unwrap();
+
+    let out = Command::cargo_bin("muxsmith")
+        .unwrap()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .args(["--output"])
+        .arg(dir.path().join("out"))
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let files = report["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1, "expected one file, got: {report}");
+    assert!(
+        files[0]["plan"].is_object(),
+        "expected a rendered (non-null) plan, got: {report}"
+    );
+    let diags = files[0]["diagnostics"].as_array().unwrap();
+    assert!(
+        diags.iter().any(|d| d["code"] == "empty-plan"),
+        "expected an empty-plan diagnostic, got: {report}"
+    );
+}
+
 /// Points a child process's PATH at a directory with no `mkvmerge`, so
 /// `Mkvmerge::locate()` fails deterministically regardless of whether the
 /// real mkvmerge is installed on the machine running the test. Confirmed by
