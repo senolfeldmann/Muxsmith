@@ -441,10 +441,11 @@ fn walk_exact_languages(
 }
 
 // Returns the file's report alongside every source path it resolved -
-// assignment sources (primaries and track donors) plus attachment `add`
-// donors (Task 7.5) - independent of whether the file's own plan ends up
-// `Some`; `detect_source_overwrites` needs the latter even when this file's
-// own output never renders (Plan-2 FINAL M2 / #7).
+// assignment sources (primaries and track donors), attachment `add` donors
+// (Task 7.5), and chapters donors (Task 7.6) - independent of whether the
+// file's own plan ends up `Some`; `detect_source_overwrites` needs the
+// latter even when this file's own output never renders (Plan-2 FINAL M2 /
+// #7).
 fn resolve_file(
     profile: &Profile,
     primary: &PrimaryFile,

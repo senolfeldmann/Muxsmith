@@ -395,7 +395,12 @@ fn recover_panicked_worker(
         .unwrap_or_else(|| "<non-string panic payload>".to_string());
     eprintln!("muxsmith: worker thread panicked while running job {index}: {message}");
 
-    ctl.killers().remove(&index);
+    // Invoke before dropping: a child spawned just before the panic is
+    // still running and would otherwise keep writing to an output this
+    // function is about to report Failed (killer is idempotent/best-effort).
+    if let Some(killer) = ctl.killers().remove(&index) {
+        killer();
+    }
     let outcome = JobOutcome {
         state: JobState::Failed,
         exit_code: None,

@@ -744,17 +744,7 @@ fn tc_a_overlap_optional_rule_yields_not_narrowings_on_that_rule() {
     );
 
     // Post-application: overlap gone, R1 empty-but-optional, plan produced.
-    let edited = r#"
-profile_version: 1
-input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
-tracks:
-  rules:
-    - match: { exact: { type: subtitles, forced_track: true } }
-    - match: { exact: { codec_id: 'S_TEXT/UTF8', forced_track: true } }
-      optional: true
-      not: [ { exact: { forced_track: true } } ]
-"#;
-    // (the `not` above is spliced under `match`; render the real applied form)
+    // `applied` renders the real applied form (the `not` spliced under `match`).
     let applied = r#"
 profile_version: 1
 input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
@@ -766,7 +756,6 @@ tracks:
         not: [ { exact: { forced_track: true } } ]
       optional: true
 "#;
-    let _ = edited;
     let (re, _d) = plan(applied);
     assert!(
         overlap_diags(&re).is_empty(),
