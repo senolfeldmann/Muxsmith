@@ -49,13 +49,11 @@ fn missing_profile_file_exits_two_before_any_planning() {
 }
 
 /// A config-time `invalid-regex` (spec 5.2) leaves `input.pattern`
-/// uncompilable, so discovery finds zero primaries and `run` folds straight
-/// to exit 2 without ever building a `JobSpec` or starting the queue.
-/// Deliberately not gated on a real mkvmerge being installed: whether
-/// mkvmerge is present (plans an empty batch) or missing (stops even
-/// earlier, see the sibling test below), both paths print the same
-/// config-time diagnostic and exit 2 without a single job line, so these
-/// assertions hold regardless of the test machine's mkvmerge situation.
+/// uncompilable, so discovery finds zero primaries and `run` reaches
+/// `plan_batch` (when mkvmerge is present on PATH) and prints the config-time
+/// diagnostic with the batch result, exiting 2 without a single job line.
+/// The snapshot captures this mkvmerge-present behavior; for the mkvmerge-missing
+/// case, see the sibling test below.
 #[test]
 fn bad_regex_profile_exits_two_without_executing_a_job() {
     let dir = tempfile::tempdir().unwrap();
@@ -82,16 +80,6 @@ fn bad_regex_profile_exits_two_without_executing_a_job() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8(out.stdout).unwrap();
-    // Unlike the sibling test right below (mkvmerge forced missing), this
-    // one runs with whatever mkvmerge situation the test machine actually
-    // has (deliberate, see the doc comment above): when mkvmerge IS on
-    // PATH -- true of every CI leg since Plan 5.5 Task 2, and of this dev
-    // machine -- `run` still reaches `plan_batch`/`print_batch_human`
-    // despite the config-time error, so stdout also carries a "0 files
-    // matched (searched {dir}, ...)" line with this test's own real tmp
-    // path, caught here reviewing the first `.snap.new` (an unredacted
-    // absolute path would have made the snapshot fail on every other
-    // machine and CI leg).
     support::insta_settings_with_tmp(dir.path()).bind(|| {
         insta::assert_snapshot!(stdout);
     });
