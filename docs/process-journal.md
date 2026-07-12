@@ -703,3 +703,36 @@ what they never saw.
 (named-input list in the ROADMAP entry); then the mixed-language
 allowed-param polish; README at-tag items unchanged. Plan 6 anchor
 carries five new named inputs from the funnel.
+
+## 2026-07-12 | session 9 close addendum: ponytail mining, rule adoptions | session 9 (Peter, Fable 5)
+
+**Scope.** Post-plan tail of session 9: owner ratifications and an
+external-rule-set mining pass. Commits b535038 + this close block.
+
+**Decisions and why.**
+- Owner approved the T21.5 settings-hint texts unchanged (veto declined).
+- ponytail (a popular minimalism prompt system for coding agents) was
+  mined for the idiomacy/code-sanity rule set on the owner's ask. One
+  opus agent read the actual rule sources against our three rule
+  carriers; verdict: most content already forced by our directive and
+  scale rule, three genuine deltas. Owner adopted all three: a
+  native-platform-before-dependency clause and a comprehension-gate on
+  minimalism (both into the shared conventions, framework-side) and two
+  new review axes (yagni over-abstraction, native platform reinvention)
+  plus ponytail's one-line-per-finding output contract into this repo's
+  idiomacy-review rubric (b535038). Rejected wholesale: the decision
+  ladder (redundant with our set), the laziest-thing-that-works framing
+  (our order is correctness > precision > maintainability, then
+  simplicity), mode/marketplace plumbing.
+- Evidence posture recorded with the analysis: ponytail's agentic
+  benchmark has genuinely good hygiene but n=4 toy tasks on a small
+  model - direction supported, numbers not citable; adoption was on
+  content plausibility.
+
+**Mechanics.** 2 dispatches: mining agent (opus), plus WebFetch recon on
+the controller model, Fable 5. Full analysis persisted with the
+project's non-repo material (md + house-style HTML).
+
+**Open threads.** Idiomacy review is fully prepared (six dimensions, 13
+named inputs, output contract) and awaits the owner's go; then the
+mixed-language allowed-param polish; then Plan 6.

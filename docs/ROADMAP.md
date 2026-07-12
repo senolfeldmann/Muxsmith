@@ -161,7 +161,9 @@ polish entry.
 - **Whole-codebase idiomacy review**: one large, deliberately costly review
   pass before the 1.0 tag - Rust workspace, TS/Vue frontend, configs -
   against ecosystem idiom. SIX dimensions (four original + two adopted
-  2026-07-12 from mining the ponytail rule set, Şenol-approved):
+  2026-07-12 from mining the ponytail rule set, Şenol-approved; the
+  full mining analysis incl. evidence assessment is kept with the
+  project's non-repo material):
   unidiomatic constructs; near-duplicate reimplementations; hand-rolled
   vs stdlib/established library; inverse dependency sweep; `yagni`
   (over-abstraction: interface/trait with one impl, factory with one
