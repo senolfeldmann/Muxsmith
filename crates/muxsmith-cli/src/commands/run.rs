@@ -460,7 +460,7 @@ impl MilestoneState {
                     ("seconds", seconds.as_str()),
                 ],
             ),
-            JobState::Warning => renderer.msg_with_count(
+            JobState::Warning => renderer.msg_with_counts(
                 "run-job-warning",
                 &[
                     ("index", index_s.as_str()),
@@ -468,8 +468,7 @@ impl MilestoneState {
                     ("output", output),
                     ("seconds", seconds.as_str()),
                 ],
-                "count",
-                outcome.warnings.len(),
+                &[("count", outcome.warnings.len())],
             ),
             JobState::Failed => {
                 let code = outcome

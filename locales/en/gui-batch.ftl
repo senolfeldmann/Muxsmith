@@ -28,7 +28,16 @@ batch-output-label = Output directory
 batch-output-hint = Directory the muxed files are written to. Leave empty to use the profile's output directory.
 
 batch-diagnostics-heading = Diagnostics
-batch-diagnostics-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info notice(s).
+batch-diagnostics-summary = { $errors ->
+    [one] 1 error
+   *[other] { $errors } errors
+}, { $warnings ->
+    [one] 1 warning
+   *[other] { $warnings } warnings
+}, { $infos ->
+    [one] 1 info notice
+   *[other] { $infos } info notices
+}.
 batch-diagnostic-line = { $severity }: { $message }
 
 batch-dry-run = Dry run

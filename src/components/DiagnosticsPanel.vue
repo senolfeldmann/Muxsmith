@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Diagnostic } from "../ipc";
+import { diagnosticFluentParams } from "../diagnosticFluentParams";
 
 // Renders one flat list of diagnostics (spec 5.2, 8.4): severity icon
 // (decorative, `aria-hidden`) plus the localized severity word and the
@@ -30,7 +31,7 @@ defineProps<{ diagnostics: Diagnostic[] }>();
       <span>{{
         $t("batch-diagnostic-line", {
           severity: $t(`severity-${d.severity}`),
-          message: $t(d.code, d.params),
+          message: $t(d.code, diagnosticFluentParams(d.code, d.params)),
         })
       }}</span>
     </li>

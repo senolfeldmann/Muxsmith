@@ -49,10 +49,19 @@ unsupported-source = { $kind ->
    *[primary] mkvmerge identified this file but its container is not a supported muxing source.
 }
 empty-plan = This plan resolves to zero output tracks; mkvmerge will still write a valid but track-less MKV.
-suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
+suggestions-capped = { $dropped ->
+    [one] 1 further suggestion for this rule was capped at 3 and not shown.
+   *[other] { $dropped } further suggestions for this rule were capped at 3 and not shown.
+}
 suggestion-partition = { $kind ->
-    [overflow] { $dropped } further resolution group(s) were capped at 5 and not shown.
-   *[group] These { $count } file(s) need their own refinement; apply:
+    [overflow] { $dropped ->
+        [one] 1 further resolution group was capped at 5 and not shown.
+       *[other] { $dropped } further resolution groups were capped at 5 and not shown.
+    }
+   *[group] { $count ->
+        [one] This file needs its own refinement; apply:
+       *[other] These { $count } files need their own refinement; apply:
+    }
 { $fix }
     to: { $files }
 }
