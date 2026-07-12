@@ -569,6 +569,7 @@ test.describe("german locale", () => {
     await page.getByTestId("open-settings").click();
     const reloadedDialog = page.getByTestId("settings-dialog");
     await expect(reloadedDialog.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
-    await expect(reloadedDialog.getByRole("combobox")).toHaveValue("de");
+    const reloadedLocaleSelect = reloadedDialog.getByRole("combobox", { name: "Sprache", exact: true });
+    await expect(reloadedLocaleSelect).toHaveValue("de");
   });
 });
