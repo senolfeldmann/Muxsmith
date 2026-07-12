@@ -10,6 +10,8 @@ use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
 
+mod support;
+
 fn muxsmith() -> Command {
     Command::cargo_bin("muxsmith").unwrap()
 }
@@ -47,13 +49,11 @@ fn missing_profile_file_exits_two_before_any_planning() {
 }
 
 /// A config-time `invalid-regex` (spec 5.2) leaves `input.pattern`
-/// uncompilable, so discovery finds zero primaries and `run` folds straight
-/// to exit 2 without ever building a `JobSpec` or starting the queue.
-/// Deliberately not gated on a real mkvmerge being installed: whether
-/// mkvmerge is present (plans an empty batch) or missing (stops even
-/// earlier, see the sibling test below), both paths print the same
-/// config-time diagnostic and exit 2 without a single job line, so these
-/// assertions hold regardless of the test machine's mkvmerge situation.
+/// uncompilable, so discovery finds zero primaries and `run` reaches
+/// `plan_batch` (when mkvmerge is present on PATH) and prints the config-time
+/// diagnostic with the batch result, exiting 2 without a single job line.
+/// The snapshot captures this mkvmerge-present behavior; for the mkvmerge-missing
+/// case, see the sibling test below.
 #[test]
 fn bad_regex_profile_exits_two_without_executing_a_job() {
     let dir = tempfile::tempdir().unwrap();
@@ -79,11 +79,10 @@ fn bad_regex_profile_exits_two_without_executing_a_job() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("Invalid regular expression"),
-        "expected the config-time diagnostic in stdout, got: {stdout}"
-    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    support::insta_settings_with_tmp(dir.path()).bind(|| {
+        insta::assert_snapshot!(stdout);
+    });
     asserts_no_job_ran(&stdout);
 }
 
@@ -113,12 +112,9 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
         .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = String::from_utf8(out.stdout).unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stdout.contains("Invalid regular expression"),
-        "expected the config-time diagnostic in stdout, got: {stdout}"
-    );
+    insta::assert_snapshot!(stdout);
     assert!(stderr.contains("mkvmerge"), "got stderr: {stderr}");
     asserts_no_job_ran(&stdout);
 }
@@ -357,19 +353,15 @@ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("0 files matched"),
-        "expected the zero-count batch summary line, got stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(&dir.path().display().to_string()),
-        "expected the searched root in the summary line, got stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("mkv"),
-        "expected the configured extensions in the summary line, got stdout: {stdout}"
-    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // The zero-count, searched-root and configured-extensions facts (Task
+    // 8) all live in the one rendered `dry-run-summary` line; a single
+    // redacted snapshot covers all three instead of three separate
+    // substring checks. The searched root is `dir.path()` itself, real and
+    // machine-specific, so it is filtered to a stable placeholder.
+    support::insta_settings_with_tmp(dir.path()).bind(|| {
+        insta::assert_snapshot!(stdout);
+    });
 }
 
 /// Task 9 (D15): the mkvmerge-not-found path must surface the same document
@@ -609,10 +601,17 @@ fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8_lossy(&out.stdout);
     asserts_no_job_ran(&stdout);
+    // `tracks[0].match` is the schema-relative `config_path` the
+    // `diagnostic-line` template echoes verbatim; a structural identifier
+    // from the profile, not translatable wording, so it stays a plain
+    // substring check (superset-of-validate) rather than becoming a
+    // snapshot.
     assert!(
         stdout.contains("tracks[0].match"),
         "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
     );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
+    // `mkvmerge-query-failed`'s fixed, param-free wording ("Querying
+    // mkvmerge failed."): a genuine wording pin, converted to a snapshot.
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    insta::assert_snapshot!(stderr);
 }

@@ -1,5 +1,6 @@
 use assert_cmd::Command;
-use predicates::prelude::*;
+
+mod support;
 
 fn muxsmith() -> Command {
     Command::cargo_bin("muxsmith").unwrap()
@@ -9,26 +10,35 @@ fn fixture(name: &str) -> String {
     format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Spec 10: human-rendered CLI text is snapshot-tested (insta), not pinned
+/// via `predicate::str::contains` on fragments of the wording -- a copy
+/// edit to the Fluent template used to fail unrelated-looking asserts here.
+/// No path/version/duration redaction needed: `validate` never touches
+/// mkvmerge or the queue, and its diagnostics render schema-relative
+/// `config_path`s (e.g. `input.pattern`), never the profile file's own
+/// filesystem location.
 #[test]
 fn valid_profile_exits_zero_with_ok_message() {
-    muxsmith()
+    let out = muxsmith()
         .args(["validate", &fixture("good.yaml")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Profile is valid."));
+        .get_output()
+        .stdout
+        .clone();
+    insta::assert_snapshot!(String::from_utf8(out).unwrap());
 }
 
 #[test]
 fn invalid_profile_exits_two_and_renders_messages() {
-    muxsmith()
+    let out = muxsmith()
         .args(["validate", &fixture("bad.yaml")])
         .assert()
         .code(2)
-        .stdout(
-            predicate::str::contains("Invalid regular expression")
-                .and(predicate::str::contains("input.pattern"))
-                .and(predicate::str::contains("forced_track")),
-        );
+        .get_output()
+        .stdout
+        .clone();
+    insta::assert_snapshot!(String::from_utf8(out).unwrap());
 }
 
 #[test]
@@ -45,11 +55,14 @@ tracks:
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("warn.yaml");
     std::fs::write(&path, y).unwrap();
-    muxsmith()
+    let out = muxsmith()
         .args(["validate", path.to_str().unwrap()])
         .assert()
         .code(1)
-        .stdout(predicate::str::contains("provably overlap"));
+        .get_output()
+        .stdout
+        .clone();
+    insta::assert_snapshot!(String::from_utf8(out).unwrap());
 }
 
 #[test]

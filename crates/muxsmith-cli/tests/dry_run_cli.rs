@@ -6,6 +6,8 @@ use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
 
+mod support;
+
 fn have_mkvmerge() -> bool {
     Command::new("mkvmerge")
         .arg("--version")
@@ -236,19 +238,15 @@ fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() 
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("0 files matched"),
-        "expected the zero-count batch summary line, got stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(&dir.path().display().to_string()),
-        "expected the searched root in the summary line, got stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("mkv"),
-        "expected the configured extensions in the summary line, got stdout: {stdout}"
-    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // The zero-count, searched-root and configured-extensions facts (Task
+    // 8) all live in the one rendered `dry-run-summary` line; a single
+    // redacted snapshot covers all three instead of three separate
+    // substring checks. The searched root is `dir.path()` itself, real and
+    // machine-specific, so it is filtered to a stable placeholder.
+    support::insta_settings_with_tmp(dir.path()).bind(|| {
+        insta::assert_snapshot!(stdout);
+    });
 }
 
 /// Points a child process's PATH at a directory with no `mkvmerge`, so
@@ -496,12 +494,9 @@ fn dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing() {
         .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = String::from_utf8(out.stdout).unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stdout.contains("Invalid regular expression") || stdout.to_lowercase().contains("regex"),
-        "expected the config-time diagnostic in stdout, got stdout: {stdout}, stderr: {stderr}"
-    );
+    insta::assert_snapshot!(stdout);
     assert!(
         stderr.contains("mkvmerge"),
         "expected the mkvmerge-not-found message on stderr, got: {stderr}"
@@ -681,12 +676,19 @@ fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() 
 
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8_lossy(&out.stdout);
+    // `tracks[0].match` is the schema-relative `config_path` the
+    // `diagnostic-line` template echoes verbatim; a structural identifier
+    // from the profile, not translatable wording, so it stays a plain
+    // substring check (superset-of-validate) rather than becoming a
+    // snapshot.
     assert!(
         stdout.contains("tracks[0].match"),
         "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
     );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
+    // `mkvmerge-query-failed`'s fixed, param-free wording ("Querying
+    // mkvmerge failed."): a genuine wording pin, converted to a snapshot.
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    insta::assert_snapshot!(stderr);
 }
 
 /// Task 6 review finding 2: an `EmptyPlan`-only batch (a plan resolving to

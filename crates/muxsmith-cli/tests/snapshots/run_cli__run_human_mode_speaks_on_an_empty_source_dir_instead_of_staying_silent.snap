@@ -1,0 +1,5 @@
+---
+source: crates/muxsmith-cli/tests/run_cli.rs
+expression: stdout
+---
+0 files matched (searched [TMPDIR], extensions mkv)

@@ -1,0 +1,6 @@
+---
+source: crates/muxsmith-cli/tests/cli_validate.rs
+expression: "String::from_utf8(out).unwrap()"
+---
+[warning] tracks[1]: Rules tracks[0] and tracks[1] provably overlap: every track matching one also matches the other. Add a distinguishing condition to one of them.
+0 errors, 1 warning, 0 infos.
