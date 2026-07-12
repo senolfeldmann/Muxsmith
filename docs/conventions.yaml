@@ -1,0 +1,943 @@
+# Muxsmith technical conventions (Tier 2, nature = technical-code)
+#
+# How we write code in this repo. The reviewer checks every diff against this (the house dimension); a lone deviation is the outlier, not a new style.
+#
+# Entry schema (canonical copy in software-dev-process doctrine section 7):
+#   id, kind (pattern|restraint|non-decision), tier (=2 here),
+#   source (user-decree|controller-adr|agent-emergent),
+#   nature (product-scope|technical-code|process|operational),
+#   domain, statement, steelman (restraint), blocked_on (non-decision),
+#   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
+#   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
+# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: user-decree /
+# controller-adr promote at count 1 (authority); agent-emergent promotes at
+# count 3 (recurrence), except agent-emergent x product-scope which escalates
+# to the owner. count is always len(occurrences); an occurrence is a distinct
+# decision EVENT, not a distinct document of one event.
+
+entries:
+- id: core-03-suggestion-verified-edit
+  kind: pattern
+  tier: 2
+  source: user-decree
+  nature: technical-code
+  domain: core
+  statement: "Suggestions are structured edits simulated against the cached identification of the whole batch before being shown; only refinements that resolve every instance and add no new diagnostic are emitted; an applied suggestion survives the next dry run (re-run through the real planning pass, no parallel matcher)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2/§5.3 (Şenol's amendment)"}
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+    - {date: "2026-07-09", kind: decided, ref: "memo D6 steps 3-4"}
+- id: core-06-schema-build-time-extraction
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Matchable property names/types are generated into the capability model at build time by an xtask into a committed generated.rs; only derived facts ship, the identification schema itself is never redistributed, and there is no build.rs network dependency."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 rows 8-9 + §9"}
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+    - {date: "2026-07-08", kind: decided, ref: "commits 830dc47/4750abb/61249f9 (impl set)"}
+    - {date: "2026-07-08", kind: decided, ref: "handoff plan-1-close"}
+- id: core-12-unknown-keys-are-errors
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "An unknown profile key is a config-time hard error, not a warning; #[serde(deny_unknown_fields)] on every profile struct. Enforcement: the attribute was silently ineffective on inline untagged struct variants until the TemplateBlock/ExternalBlock newtype fix restored rejection."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §4 + Plan 1 Global Constraints"}
+    - {date: "2026-07-08", kind: decided, ref: "handoff plan-1-close"}
+    - {date: "2026-07-08", kind: violated-corrected, ref: "task-4 review event"}
+    - {date: "2026-07-08", kind: violated-corrected, ref: "commit b5eaa3d (newtype block variants)"}
+- id: core-31-rendered-filename-invariant
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The planner re-checks the rendered filename independently of the config-time template-text check (no separators, non-empty stem, not ./..); new per-file errors PathSeparatorInRenderedName + EmptyRenderedName. Enforcement: the empty-stem case (template ''.mkv' -> hidden .mkv) slipped through the fix pass because the check ran on the pre-append value; whole-branch review caught what per-task reviews missed."
+  steelman: "Today all template fields are basename-derived so separators cannot occur and the check is dead - rejected: guard the invariant, not the induction proof over field sources."
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D4"}
+    - {date: "2026-07-09", kind: decided, ref: "commit af76a3a"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "FINAL review I1"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit 59d24c8"}
+- id: core-34-suggestion-cap-non-silent
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Deterministic preference order among accepted candidates; emit at most 3 per conflict group; if more were accepted, log the cap (SuggestionsCapped info) - bounded output, no silent truncation. Enforcement: the inline code truncated silently; F7 added the diag code threaded through report.rs + diagnostics.ftl + spec 5.2."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D6 step 5"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F7 review (c)"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit 68ec6aa"}
+- id: core-35-overlap-auto-suggestions
+  kind: pattern
+  tier: 2
+  source: user-decree
+  nature: technical-code
+  domain: core
+  statement: "OverlappingRules auto-narrowing suggestions: generate narrowing candidates for ALL overlap claimants symmetrically (including claimant 0); the existing resolves_without_regression criterion selects the feasible ones - feasibility, not a precedence guess, decides which rule narrows. Deferred out of Plan 2, decided as D33 in Plan 5.5, shipped at T18."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "journal Plan 2 (Open threads)"}
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 (Şenol)"}
+    - {date: "2026-07-11", kind: reinforced, ref: "task-18 verdict"}
+- id: core-37-prose-free-core
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "muxsmith-core emits a diagnostic code + structured params only; all human text lives in the Fluent catalog / an injected DiagnosticRenderer port; core never originates, hardcodes or localizes prose. Recurring enforcement: bug K (identification failure misreported as MissingTrack with an authored English string) fixed to emit UnidentifiableSource carrying only the third-party error text (pass-through allowed)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 10
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent review bug K"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F5 fix (commits 0e141d1/6f475b3)"}
+    - {date: "2026-07-09", kind: deferred, ref: "FINAL review M3 + F5-review Minor #4 (residual English framing accepted)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "Plan 3 Global Constraints"}
+    - {date: "2026-07-10", kind: decided, ref: "task-2 verdict (DiagnosticRenderer port/adapter)"}
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns"}
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §5.2 + §8.4 + journal 2026-07-08 bullet 6 tail"}
+    - {date: "2026-07-08", kind: violated-corrected, ref: "journal 2026-07-08 final review + whole-branch-review-verdict.md (Important #1), round-2 confirmation; fix commit 3c24845"}
+    - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + Task 6 (UnsupportedSource)"}
+    - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + task-3-review-verdict.md"}
+- id: core-38-absent-bool-equals-false
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "An absent boolean-typed matchable property compares equal to false for exact matching (mirrors mkvmerge/Matroska), so exact:{flag:false} matches a track lacking the flag; :true still does not. Scope is any boolean matchable, not just the four vanity flags."
+  steelman: "The reference profile 4.1 dodges it via not:[exact:{flag:true}], so absent-is-never-equal was defensible until the flag:false ergonomic case."
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "independent review decision #1(b)"}
+    - {date: "2026-07-09", kind: decided, ref: "F4 review (SPEC pass)"}
+    - {date: "2026-07-09", kind: decided, ref: "commit 213e1e9"}
+- id: core-40-output-collision-planned-twice
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Two planned outputs colliding is always a hard OutputCollision error (drop both plans) regardless of on_collision; the policy (error/warn+drop/info+keep) governs only pre-existing on-disk files. Corrected an inline deviation that collapsed Overwrite into Error and made skip a no-op; spec 4.8 amended."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "independent review decision #3(c)"}
+    - {date: "2026-07-09", kind: decided, ref: "F6 review"}
+    - {date: "2026-07-09", kind: decided, ref: "commit b5acada"}
+- id: core-41-sourceoverwrite-batch-wide
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Collect all input paths batch-wide (primaries + every resolved track/attachment/chapters donor) before rendering and fire SourceOverwrite if any rendered output equals any of them; capture is independent of render success, so donors of render-failed files are protected too. The protection set was repeatedly found incomplete and progressively closed by construction."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 5
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F5 review (per-primary -> batch-wide, commit 6f475b3)"}
+    - {date: "2026-07-09", kind: deferred, ref: "FINAL review M2 (render-failed-donor gap accepted for v1)"}
+    - {date: "2026-07-11", kind: decided, ref: "task-7 (render-failed donors protected)"}
+    - {date: "2026-07-11", kind: reinforced, ref: "task-7.5 (attachment donors)"}
+    - {date: "2026-07-11", kind: reinforced, ref: "task-7.6 (chapters donors, class closed by exhaustive match)"}
+- id: core-44-suggestion-no-clobber
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "with_rule_match must not overwrite an existing exact/substring key (or_insert semantics); a clobbering candidate becomes a no-op then rejected by the acceptance sim; not-list append stays additive. Bug C: the inline engine merged via BTreeMap::extend, widening an existing track_name substring (violating D6 'never relax')."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent review bug C"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F7 review (a)"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit 68ec6aa"}
+- id: core-45-yaml-fragment-serializer
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Render the suggestion yaml_fragment by serializing the real MatchExpr delta via yaml_serde, not by hand-formatting, so any value (colon/comma/brace, bool/int) round-trips. Bug D: the inline code interpolated values unquoted, breaking the YAML the CLI prints verbatim; the serializer also fixed an unstated bool/int-stringification bug."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent review bug D"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F7 review (b)"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit 68ec6aa"}
+- id: core-47-with-severity-builder
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Add a rustdoc'd Diagnostic::with_severity builder and use it instead of mutating the public severity field directly (Diagnostic::info then .severity = ...)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "fix plan F6"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent review Reviewer 2 #10"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F6 review"}
+- id: core-48-extension-validation
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Profile and locator extensions are validated against mkvmerge --list-types once per batch (not per file), degrading to a warning when mkvmerge is absent, mirroring the language-validation walk; new UnknownExtension warning. Deferred without a diag code in Plan 2, built for profile extensions at T5 and locator extensions (recursive walk reusing validate_extension_values) at T5.9."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "journal Plan 2 (Open threads, no diag code yet)"}
+    - {date: "2026-07-11", kind: decided, ref: "task-5 (profile extensions)"}
+    - {date: "2026-07-11", kind: decided, ref: "task-5.9 (locator extensions)"}
+- id: core-54-reuse-plan2-machinery
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Every new Plan-3 resolution site reuses a Plan-2 mechanism (locator machinery, template engine, LanguageIndex, existing DiagCode variants) rather than introducing a new one; add no new DiagCodes; defaults match spec 4.9 so an omitted section never silently drops data."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D10 (Rationale)"}
+    - {date: "2026-07-09", kind: decided, ref: "Plan 3 Global Constraints"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch verdict (Strengths)"}
+- id: core-59-matchable-trait
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The matcher is genericized over a Matchable trait implemented for both Track and Attachment so one match algebra evaluates both. The plan brief's 'resolves via type inference' regression-guard claim was factually wrong (Iterator::filter hands &&Track); solved with a blanket impl<M: Matchable> Matchable for &M, verified sound and right-sized."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "Plan 3 Architecture + Task 2/3"}
+    - {date: "2026-07-09", kind: decided, ref: "journal Plan 3 (&&Track unification)"}
+    - {date: "2026-07-09", kind: decided, ref: "task-2 verdict (blanket &M impl)"}
+- id: core-63-input-group-membership
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "input_groups = primary always (group 0) + donor sources with at least one track_id=Some assignment; exclude track-less donors. The first impl unconditionally included every distinct assignment.source (misreading the canonical reference's primary-only carve-out). Separately, the exclusion-comment's 'mkvmerge may reject empty groups' rationale was empirically false against v100 and corrected while keeping the guard."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "task-9 verdict (membership fix + test)"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit d55f19d"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "whole-branch verdict Minor 2 (false rationale)"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit 7d46547"}
+- id: core-65-empty-plan-warning
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "A plan resolving to zero track assignments emits EmptyPlan (warning, per-file, batch-visible); keep-mode plans are naturally exempt. A deliberate divergence from mkvtoolnix-gui: an interactive GUI shows selection state by construction, a declarative batch tool must state it. Deferred twice (Plan 3, Plan 4/D18) before being built at T6, where the check was relocated post-finalize (gated on plan.is_some()), closing an unenumerated CollisionPolicy::Skip false-warning case."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch verdict Minor 3 (Plan 3)"}
+    - {date: "2026-07-10", kind: deferred, ref: "memo D18 (Plan-4 cleanup)"}
+    - {date: "2026-07-11", kind: decided, ref: "task-6 (EmptyPlan built)"}
+    - {date: "2026-07-11", kind: violated-corrected, ref: "task-6 fix a60e9a0 (relocation)"}
+- id: core-72-exact-typed-value-equality
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "exact compares each property in its own domain (numbers numerically, languages canonicalized so de==ger, pt-Latn-BR==pt-BR), preserving meaningful distinctions; regex is the byte-literal escape hatch. One of the tool's core semantics; surfaced in spec 4.3 at 1.0."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19 Principle"}
+    - {date: "2026-07-09", kind: decided, ref: "spec 4.3 (Task 5 step 6)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch verdict (load-bearing flag)"}
+- id: core-80-keep-mode-track-order
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Under keep, --track-order lists all primary tracks first in source order (0:id), donors trailing (g:id in rule order). The initial assumption (only matched tracks listed, mkvmerge appending kept-unmatched after) placed a donor-only-keep profile's added track ahead of the primary's video/audio; the whole-branch review flagged this as a usability trap and it was reversed to option B (kept-unmatched primary tracks count as matched). Both variants live-verified against v100."
+  steelman: "The reversed initial assumption was mkvmerge's actual native behavior (--track-order 1:0 yields [DONOR,PRIM0,PRIM1]), the faithful and simplest rendering, live-verified against v100."
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D20 / Plan 3 Task 3 (assumption A)"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "whole-branch verdict Important #1 (donor-first trap)"}
+    - {date: "2026-07-09", kind: decided, ref: "journal + memo D20-B (reversal, commit c1d5614)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "task-7 verdict (option B built, commits 51567d7/aa75025)"}
+- id: core-81-unsupported-source-gate
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "A source mkvmerge identifies (exit 0) but cannot mux emits one clear UnsupportedSource error (distinct code from UnidentifiableSource, different remediation) before rule resolution and skips the file, instead of per-rule MissingTrack noise. The gate fires on !container_recognized || !container_supported only, not is_identifiable(); a recognized+supported zero-track container stays a per-rule MissingTrack."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D21"}
+    - {date: "2026-07-09", kind: reinforced, ref: "task-6 verdict (three corner tests)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch verdict (Strengths)"}
+- id: core-85-report-json-dry
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The batch/config/run JSON report documents (spec 7) are hoisted from the CLI into core::report::json, lifted 1:1, so CLI and GUI render byte-identical report structures from a single core module; neither surface owns document logic."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "Plan T2"}
+    - {date: "2026-07-10", kind: decided, ref: "spec §7"}
+    - {date: "2026-07-10", kind: decided, ref: "task-2 verdict"}
+- id: core-89-homebrew-apple-silicon-path
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "/opt/homebrew/bin/mkvmerge (Apple-Silicon Homebrew) is a detection candidate: a Finder-launched Tauri app does not inherit the shell PATH, so without it detection fails for the most common macOS install route. First excluded under the SI-3 evidence rule (no formula in the mkvtoolnix source tree), then added when the exclusion was found to rest on the wrong authority."
+  steelman: "The exclusion was a defensible read of 'cite paths against mkvtoolnix's own packaging' until the Finder-PATH fact overrode it."
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "task-3 verdict Minor (product-scoping to T7)"}
+    - {date: "2026-07-10", kind: violated-corrected, ref: "whole-branch verdict triage-14 (FIX-NOW)"}
+    - {date: "2026-07-10", kind: violated-corrected, ref: "commit 5e76a15"}
+- id: core-99-schema-drift-advisory
+  kind: pattern
+  tier: 2
+  source: user-decree
+  nature: technical-code
+  domain: core
+  statement: "A newer-schema advisory is its own SchemaDrift diagnostic, once per batch (info severity), message carrying the raw: discovery hint. T16 removed the mis-scoped per-file skew warner (its 'dead code' premise was false) and raised whether any advisory should survive; Şenol ruled it should, rebuilt once-per-batch at T16.5 (single emission site outside the loop, found_version(max)+pinned params, Option-guarded)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-16 verdict (per-file warner dropped, open question)"}
+    - {date: "2026-07-12", kind: decided, ref: "memo D32 addendum RESOLVED / plan T16.5"}
+    - {date: "2026-07-12", kind: reinforced, ref: "task-16.5 verdict (shipped)"}
+- id: exec-19-delete-partial-errsurface
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: executor
+  statement: "Surfacing a failed partial-output delete via outcome.errors was flagged and deferred twice at Plan-4 review (no JobOutcome error channel existed, and a failed remove leaves a broken partial that on_collision:skip would accept), then implemented in T5 as a 'delete_partial_failed: <io error>' passthrough into outcome.errors; NotFound stays silently ignored."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "plan-4 task-2-review-verdict.md"}
+    - {date: "2026-07-11", kind: deferred, ref: "plan-4 whole-branch-review-verdict.md (ledger #2)"}
+    - {date: "2026-07-11", kind: decided, ref: "plan-5 T5 step1.4 / task-5-review-verdict.md"}
+- id: i18n-05-plural-selectors
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: i18n
+  statement: "Count-dependent user-facing messages pluralize via Fluent CLDR plural selectors ({ $n -> [one] ... *[other] ... }), not an error(s)/(s) provisional. First applied to run-job-warning, later extended to five keys replacing the error(s) provisional, with singular+plural renderer assertions."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "task-8-review-verdict.md"}
+    - {date: "2026-07-10", kind: decided, ref: "memo D15 amendment 2026-07-10 + commit 79f0447"}
+    - {date: "2026-07-12", kind: decided, ref: "task-19-verdict.md / plan T19"}
+- id: testing-support-helpers
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: testing
+  statement: "Cross-file test helpers (FakeIdent, lang()) are consolidated into a shared tests/support/mod.rs subdirectory module - deliberately a submodule, not its own tests/*.rs binary, to avoid Cargo autodiscovery - and duplicating a helper within a crate is a defect. Flagged at 3x duplication in Plan 3, scheduled (D18), implemented byte-identical in Plan 4, codified in CONVENTIONS."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch-review-verdict.md (Plan 3, Minor 7) + task-12-review-verdict.md"}
+    - {date: "2026-07-09", kind: decided, ref: "memo D18"}
+    - {date: "2026-07-10", kind: reinforced, ref: "task-5-review-verdict.md"}
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f); idiomacy finding run_cli.rs:L498"}
+- id: testing-command-golden
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: testing
+  statement: "Command generation (Plan -> mkvmerge argv) is verified by golden tests mapping fixture identification JSON to expected argv; built incrementally with full-vector assert_eq goldens where each command task extends and re-locks the prior task's golden as an intended contract change (Task 11 added donor --no-attachments to Task 10's golden), culminating in the full spec 4.1 reference example locked as a pure golden."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10"}
+    - {date: "2026-07-09", kind: decided, ref: "plan Tasks 9-12 + journal Deltas + task-11-review-verdict.md"}
+    - {date: "2026-07-09", kind: decided, ref: "plan Task 12 + task-12-review-verdict.md"}
+- id: testing-rich-gated-live-guard
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: testing
+  statement: "The Plan-3 one-off manual v100 validation is converted into a standing gated live guard: the test builds a primary MKV with a real attachment (--attach-file / --attachment-mime-type text/plain, SI-3 probed), renames/changes a track, keeps the attachment, and re-identifies via -J (asserting track_name==Renamed, default_track true, attachment file_name preserved), guarding the real argv surface rather than only golden string equality. Deferred in Plan 3, scheduled (D18), implemented in Plan 4."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch-review-verdict.md (Plan 3, Minor 1) + journal open threads"}
+    - {date: "2026-07-09", kind: decided, ref: "memo D18"}
+    - {date: "2026-07-10", kind: reinforced, ref: "task-7-review-verdict.md"}
+- id: cli-02-dryrun-config-diags
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: cli
+  statement: "Dry-run must run profile::validate + lint::provable_overlaps and fold config-time diagnostics in on every code path (happy, mkvmerge-not-found, mkvmerge-query-failed) and both renderers (human + JSON), per spec 5.5. Caught and enforced repeatedly across eras as the same defect class - bug A (dry-run never ran validate/lint), the not-found branch dropping them, the query-failed path deferred, then the query-failed human path fixed. Resolved by E7."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent-review-2026-07-09 bug A + journal fix-pass + commit b507f6e"}
+    - {date: "E2 (fix-pass)", kind: violated-corrected, ref: "journal fix-pass F1 + progress.md ledger F1 + commit 09d7244"}
+    - {date: "E2 (fix-pass)", kind: deferred, ref: "plan-2-fixes-sdd/progress.md ledger F1 residual + journal fix-pass Open threads"}
+    - {date: "E7", kind: violated-corrected, ref: "task-9-verdict.md (vii)"}
+- id: cli-09-collision-parity
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: cli
+  statement: "--on-collision <error|skip|overwrite> is exposed on both run and dry-run for parity, via a CLI-local CollisionArg (core stays clap-free) mapping 1:1 to CollisionPolicy and threading into the pre-existing RunInputs.on_collision. run reuses CollisionArg verbatim; the rerun workflow (D14/D17) is where the flag is needed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+    - {date: "E5", kind: reinforced, ref: "task-4-review-verdict.md"}
+    - {date: "E5", kind: reinforced, ref: "task-8-review-verdict.md"}
+- id: core-07-runtime-fetching-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Fetching the identification schema at runtime or over the network at build was rejected."
+  steelman: "Runtime/build-time fetching would keep the property model in lockstep with the local mkvmerge, eliminating skew. Rejected to sidestep schema licensing and avoid a network build dependency; skew is surfaced as an opt-in untyped-match warning instead."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2/§9"}
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+- id: core-27-codec-kind-exact-only
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "codec_kind may appear only under exact conditions; a pattern over the curated alias token is ill-defined, so it is a validate-time error (new CodecKindExactOnly), not a silent never-match."
+  steelman: "Allow substring/regex over codec_kind for loose family matching - rejected because real pattern matching is already available via codec_id and the alias-token semantics are ambiguous."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D1"}
+- id: core-33-suggestion-narrow-only
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The suggestion edit grammar is a deliberately closed StructuredEdit enum (v1): suggestions only ever narrow the conflicted rule's match, never reorder, never touch other rules, never relax; narrow-only guarantees convergence and keeps YAML rendering and simulation trivial."
+  steelman: "A richer grammar (reorder rules, relax over-narrow rules) would auto-resolve more conflict classes - deferred out of v1 for determinism and convergence."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D6"}
+- id: core-70-registry-validate-not-called
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "registry.validate() is deliberately not called on the language accept side; over-accepting a pathological well-formed tag is less harmful than over-rejecting real ones, and mkvmerge rejects it at mux time."
+  steelman: "Calling registry.validate() would catch typos like xx-YY at plan time rather than deferring rejection to mkvmerge at mux time."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19"}
+    - {date: "2026-07-09", kind: decided, ref: "Plan self-review"}
+- id: core-82-donor-side-gate-not-built
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The UnsupportedSource gate is deliberately primary-only; no donor-side gate was built (D21 scope)."
+  steelman: "A donor mkvmerge cannot mux also fails downstream; a symmetric donor gate would surface it earlier with the same clean diagnostic."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "Plan self-review"}
+    - {date: "2026-07-09", kind: decided, ref: "task-6 verdict (deferred-by-decision)"}
+- id: core-92-raw-shape-a-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Shape A (enrich UnknownProperty with a nearest-name did-you-mean suggestion, drop the §9.2 automatic-untyped promise) rejected because the §9.2 forward-compat promise is kept deliberately."
+  steelman: "Maximal typo protection; the cleaner downgrade if forward-compat-without-a-release is YAGNI for this audience."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32"}
+    - {date: "2026-07-11", kind: decided, ref: "d32-analysis.md"}
+- id: core-93-raw-shape-c-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Shape C (unknown name becomes a warning at every level + untyped match, no opt-in) rejected outright - guts typo protection unconditionally, including on non-skewed mkvmerge, and opens the optional-rule and not:-inversion silent holes."
+  steelman: "Forward-compat delivery: full and automatic; the cheapest path to a literally-§9.2-compliant tool."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32"}
+- id: core-94-raw-version-gated-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The obvious version-gated hybrid (error at validate, warning at dry-run) rejected pre-emptively - it inverts spec 5.5's 'dry-run is a strict superset of validate', so the disambiguator must be stable across levels."
+  steelman: "At validate no mkvmerge is present so assume typo; at dry-run format_version is readable so downgrade - matches the actual information available per level."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d32-analysis.md"}
+- id: core-96-rawproperty-minimal-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The minimal variant that omits RawProperty and relies only on plan-time UnknownPropertySkew rejected - it trades validate-time honesty for fewer codes."
+  steelman: "Two fewer DiagCodes and two fewer C1 fixtures to maintain."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d32-analysis.md"}
+- id: core-102-overlap-selection-rejected
+  kind: restraint
+  tier: 2
+  source: user-decree
+  nature: technical-code
+  domain: core
+  statement: "Neither 'later-by-list-order' (narrow rules[1]) nor 'broader-by-match-domain-size' was adopted as the policy for which overlap rule gets narrowed; the model has no rule precedence, both are intent guesses, and the earlier rule is frequently the accidental over-broad one. Both survive only as a rank tiebreak (core-103)."
+  steelman: "Policy 1 is cheapest and fully deterministic and matches a 'first rule wins, later is the intruder' model; policy 2 is the strongest intent heuristic (the rule matching more tracks is the accidental over-claimer). Rejected as primary policies in favor of symmetric generation + acceptance filter."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 / d33-analysis (policy 1 later-by-list)"}
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 / d33-analysis (policy 2 broader-by-domain)"}
+- id: core-105-overlap-seed-positive-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "Mirroring the ambiguous path's both-polarity generation on the overlap path rejected - positive edits cannot redirect and only add near-tie noise to the ranked list."
+  steelman: "Mirror the ambiguous path's both-polarity generation for uniformity; harmless since acceptance filters it."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d33-analysis.md (open taste call 3)"}
+- id: core-106-overlap-specific-dimension-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "A separate overlap-specific dimension (diff the two rules' matched track sets) rejected - on the single contested file the two rules match the identical track so the difference set is empty; reuse candidates_for_rule instead."
+  steelman: "The properties on which the two rules' matched track sets differ would be the natural discriminator in a multi-file batch."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d33-analysis.md"}
+- id: core-109-two-required-no-fix
+  kind: restraint
+  tier: 2
+  source: user-decree
+  nature: technical-code
+  domain: core
+  statement: "Two required rules colliding on one track in one file yield no suggestion, only the explicit no-fix/partition report - an unavoidable property of the narrow-only v1 grammar."
+  steelman: "A user expecting a one-click fix for every overlap will find overlap less helpful than ambiguity."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 Tradeoff (accepted)"}
+- id: core-112-contested-property-dimension-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "A contested-property selection dimension (to honor the memo's default_track-vs-forced_track TC-A illustration) rejected - it would be a new selection mechanism D33 forbids."
+  steelman: "Honor the memo's TC-A illustration where an equal-rank track's forced_track should rank first."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-18 verdict adjudication 1"}
+- id: exec-05-std-threadpool
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: executor
+  statement: "--jobs N uses a bounded std thread pool with no async runtime (tokio), because muxing is external-process / I-O-bound so std suffices and the dependency surface stays minimal."
+  steelman: "An async runtime (tokio) is the conventional, ecosystem-default way to supervise many concurrent child processes with backpressure and cancellation."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D7 (Plan 4 forward decisions)"}
+- id: exec-09-event-delivery-callback-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: executor
+  statement: "A callback/sink trait was rejected for event delivery in favour of the mpsc event stream."
+  steelman: "Workers call directly into a sink; conceptually simpler wiring, but the sink must be Send+Sync and the renderer must lock stdout internally."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13 (alternative rejected)"}
+- id: exec-10-event-delivery-polled-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: executor
+  statement: "Polled shared state was rejected for event delivery in favour of the event stream."
+  steelman: "Simplest to reason about, but loses event granularity and forces a poll cadence."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13 (alternative rejected)"}
+- id: exec-39-raw-output-accumulate-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: executor
+  statement: "Accumulating full output into JobOutcome was rejected in favour of the raw event variant."
+  steelman: "Keeps all output in one already-returned struct with no new event variant to design or version."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D24 (alternative rejected)"}
+- id: exec-41-persist-logs-format-rejected
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: executor
+  statement: "Three persistence alternatives were rejected in favour of JSON-per-job + summary: plain-text log + JSON index (two-artifact consistency burden), GUI-only persistence (spec divergence + CLI loses post-mortem logs), and a single NDJSON journal per run (NDJSON events are deferred to v1.x anyway)."
+  steelman: "A single NDJSON-per-run journal is one append-only artifact and would align with a future event stream."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D26 (alternatives rejected)"}
+- id: gui-08
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: gui
+  statement: "Rejected a sidecar CLI process (parsing --json) and an async/tokio adapter runtime."
+  steelman: "A sidecar reuses the CLI untouched; a tokio bridge yields idiomatic async Tauri commands."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D23 (alternatives rejected)"}
+- id: gui-29
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: gui
+  statement: "The common Tauri default-src 'self'; connect-src ipc string-form baseline was considered and rejected."
+  steelman: "Defensible and common in well-maintained Tauri apps; less config to maintain."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D34 rejected-alternatives"}
+- id: gui-30
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: gui
+  statement: "A separate devCsp block was initially proposed then withdrawn the same day."
+  steelman: "Would give development its own CSP separate from production."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D34; journal session-8 close"}
+- id: gui-31
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: gui
+  statement: "Leaving the scaffold default csp:null (carried since Plan 5 T4) was rejected."
+  steelman: "The shipped status quo; zero configuration."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D34"}
+- id: cli-14-reject-handrolled-signals
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: cli
+  statement: "Hand-rolling libc/WinAPI signal handling across three OSes was rejected in favour of one vetted crate (ctrlc)."
+  steelman: "Zero new dependency, but std has no stable signal API and hand-rolled signal code across three OSes is fragile platform branching the project avoids."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D16"}
+- id: cli-19-reject-indicatif
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: cli
+  statement: "Live ANSI progress bars via indicatif were rejected for run progress rendering."
+  steelman: "Nicer interactive UX, but adds a dependency, needs TTY/non-TTY special-casing, and duplicates what the Plan 5 GUI job view does properly."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+- id: cli-20-reject-quiet-output
+  kind: restraint
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: cli
+  statement: "Quiet start/end-only output was rejected for run progress rendering."
+  steelman: "Minimal output, but gives no liveness signal on long muxes."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+- id: core-20-ondisk-cache
+  kind: non-decision
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The identification cache is in-memory per session (keyed path+mtime+size); an on-disk cache is a future candidate, not built in v1."
+  steelman: null
+  blocked_on: "in-memory per-session cache suffices for v1, no measured need"
+  status: blocked
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec §5.5/§11"}
+    - {date: "2026-07-08", kind: deferred, ref: "handoff plan-1-close"}
+- id: core-84-regex-recompile
+  kind: non-decision
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: core
+  statement: "The regex recompiled per matches call is deferred to a later cleanup pass."
+  steelman: null
+  blocked_on: "later cleanup pass"
+  status: blocked
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "memo D18"}
+- id: exec-03-mkvpropedit-fastpath
+  kind: non-decision
+  tier: 2
+  source: controller-adr
+  nature: technical-code
+  domain: executor
+  statement: "A mkvpropedit fast path for metadata-only changes is deferred; the full remux path ships first."
+  steelman: null
+  blocked_on: "v1.x optimization; full remux path ships first"
+  status: blocked
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec §11"}

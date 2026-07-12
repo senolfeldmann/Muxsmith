@@ -1,0 +1,311 @@
+# Muxsmith process & operational conventions (Tier 2, nature = process + operational)
+#
+# How we work: method, gates, CI, release. Project-specific; complements the general software-dev-process doctrine, it does not restate it.
+#
+# Entry schema (canonical copy in software-dev-process doctrine section 7):
+#   id, kind (pattern|restraint|non-decision), tier (=2 here),
+#   source (user-decree|controller-adr|agent-emergent),
+#   nature (product-scope|technical-code|process|operational),
+#   domain, statement, steelman (restraint), blocked_on (non-decision),
+#   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
+#   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
+# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: user-decree /
+# controller-adr promote at count 1 (authority); agent-emergent promotes at
+# count 3 (recurrence), except agent-emergent x product-scope which escalates
+# to the owner. count is always len(occurrences); an occurrence is a distinct
+# decision EVENT, not a distinct document of one event.
+
+entries:
+- id: proc-01-sdd
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Plans run via subagent-driven-development under a controller: a fresh implementer per task, an independent task reviewer, fix/re-review waves, and a final whole-branch review; the plan never grades its own work. Adopted at Plan 1, deviated to inline once at Plan 2 (self-verified '125 tests green' but shipped ~11 bugs, retrofit review caught them all before merge), then held for every subsequent plan and folded into the packaged doctrine."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 7
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 'Mechanics' + handoff plan-1-close + Plan 1 REQUIRED SUB-SKILL header (E0[3]/E1[14])"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "journal 2026-07-09 Plan 2 Decisions + fix-pass; plan-2-review/independent-review-2026-07-09.md (E2[21]/[22])"}
+    - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 3 complete (Scope) + progress.md (E3[27])"}
+    - {date: "2026-07-09", kind: reinforced, ref: "Plan 3.5 Global Constraints + progress ledger (E4[35])"}
+    - {date: "2026-07-10", kind: reinforced, ref: "Plan 5 waves + journal Plan 5 (E6[50])"}
+    - {date: "2026-07-12", kind: decided, ref: "Plan 5.5 Global Constraints + progress.md (E7[61])"}
+    - {date: "2026-07-12", kind: reinforced, ref: "journal session 7 pt2 (E8[82])"}
+- id: proc-02-whole-branch-review
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A separate final whole-branch review grades the plan's code against its own constraints after every per-task review passes; it repeatedly caught cross-task drift no task-scoped review could see. At close it runs on the strongest model plus a roll-up funnel over reviewer minors."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 'Moments' (E0[4])"}
+    - {date: "2026-07-09", kind: reinforced, ref: "journal fix-pass + plan-2-fixes-sdd/FINAL-review.md I1 + commit 59d24c8 (E2[23])"}
+    - {date: "2026-07-10", kind: reinforced, ref: "whole-branch-review-verdict.md + journal Plan 5 (E6[51])"}
+    - {date: "2026-07-12", kind: decided, ref: "whole-branch-verdict.md + plan T23 (E7[69])"}
+- id: proc-03-model-assignment
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Model strength goes where judgment is, cheaper capacity where transcription is: strongest model for the final review and the decision memos, mid-tier for judgment implementers and every task reviewer, cheapest for tasks whose code the plan already carries."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 model-split bullet (E0[6])"}
+    - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 2 Decisions (E2[19])"}
+    - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 3 complete metrics (E3[28])"}
+- id: proc-04-spec-wins
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "The design spec is the binding contract; on any plan/code/spec conflict the spec wins and the conflict is flagged, not improvised around. Corollaries: normative decisions are folded into the spec (a decision left only in a memo can be silently overridden by stale spec text), a self-contradiction sweep runs after any spec amendment, and code wins only where the spec itself is wrong, after which the spec is amended."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 'What the process caught' + Plan 1 Global Constraints + commits 3c24845, cd3f239/f7afa8d (E0[7]/E1[16])"}
+    - {date: "2026-07-09", kind: decided, ref: "memo 2026-07-09-plan-2-design-decisions.md header + commit d4390d7 (E2[20])"}
+    - {date: "2026-07-12", kind: decided, ref: "Plan 5.5 Global Constraints + T16 + memo D32 (E7[68])"}
+    - {date: "2026-07-12", kind: reinforced, ref: "journal session 7 pt2 (E8[83])"}
+- id: proc-05-commit-signing
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Agent commits and merges are deliberately left unsigned via -c commit.gpgsign=false. Origin was mechanical (GPG blocks agent commits); elevated to policy (SI-4) because a signature is Şenol's authorship claim, applied even when signing would succeed; reinforced after five wave-1 merges were accidentally signed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 'Friction' (E0[9])"}
+    - {date: "2026-07-09", kind: decided, ref: "journal session-4-close + progress-ledger SI-4 (E5[43])"}
+    - {date: "2026-07-10", kind: violated-corrected, ref: "journal Plan-4-complete (E5[44])"}
+- id: proc-06-mkvtoolnix-parity
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Because mkvtoolnix is interactive-GUI and Muxsmith is declarative-batch, only muxing semantics/output are parity targets, not input-time convenience guesses. Comparable behavior is verified against the real mkvtoolnix binary/source (not memory), match or deliberate divergence recorded in the memo. Licensing boundary: reading GPL source for behavior/facts/interfaces is MIT-compatible, literal expression is not, and modeled wordings are recorded as explicit memo decisions."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "Plan 3.5 memo Origin/Grounding + journal (standing method, HANDOFF SI-3) (E4[32]/[33])"}
+    - {date: "2026-07-10", kind: reinforced, ref: "memo D30/D31 (E6[47])"}
+    - {date: "2026-07-10", kind: decided, ref: "journal session-6 close + HANDOFF SI-3 (E6[56])"}
+    - {date: "2026-07-12", kind: decided, ref: "Plan 5.5 Global Constraints + d32-analysis.md SI-3 + task-6-verdict.md (E7[66])"}
+- id: proc-07-verify-against-source
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Load-bearing tooling and dependency behavior is confirmed against the crate's actual source or the registry, never from a brief's claim, a docs sentence, or training-data memory."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "task-5-review-verdict.md + journal Task 5 (E4[34])"}
+    - {date: "2026-07-10", kind: decided, ref: "journal Plan 5 (what the process caught) (E6[49])"}
+    - {date: "2026-07-12", kind: reinforced, ref: "journal session-8 close (E8[88])"}
+- id: proc-08-parallel-worktrees
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Genuinely independent task streams run as parallel git worktrees with a full gate per merge, not strictly serial. Origin was a failure (strictly-serial execution of the independent D19/D20/D21 streams was the clearest miss of Plan 3.5; SI-1 rewritten to parallelize-independent). Only truly independent streams parallelize; a real dependency chain stays serial (challenged mid-Plan-4 and held)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 4
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "journal 2026-07-09 Plan 3.5 (Friction/failure) (E4[36])"}
+    - {date: "2026-07-09", kind: decided, ref: "journal session-4-close (plan c0c0ef7) (E5[39])"}
+    - {date: "2026-07-10", kind: reinforced, ref: "journal Plan-4-complete (E5[40]/[41])"}
+    - {date: "2026-07-12", kind: decided, ref: "progress.md + plan dependency graph (E7[62])"}
+- id: proc-09-idiomacy-review
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A whole-codebase idiomacy review is a distinct pre-1.0 gate scoped to complexity only (correctness/security/perf routed to a separate list). The rubric is six dimensions (idiom, dup, stdlib, dep, yagni/over-abstraction, native/platform-reinvention) with a ranked one-line-per-finding output contract; executed with many finders + seed-verification + a code-level dedup barrier + one adversarial verifier per finding."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "journal session-8 close (E8[86])"}
+    - {date: "2026-07-12", kind: decided, ref: "commit b535038 + ponytail-mining.md candidate 2 (E8[91])"}
+    - {date: "2026-07-12", kind: decided, ref: "journal session 10 + idiomacy-review-findings.md header (E8[96])"}
+- id: ci-01-matrix-strategy
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: operational
+  domain: ci
+  statement: "While the repo is private, branch pushes run Linux only and the full windows/macos/linux matrix runs only on PRs, tags and manual dispatch via a dynamic fromJSON matrix (macOS bills 10x, Windows 2x); the trim was always framed as reverting to a static 3-OS matrix on every push once the repo goes public, and that revert was enacted at go-public."
+  steelman: "Always running the full 3-OS matrix catches cross-platform breaks earlier, at higher Actions-minute cost."
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10 + journal 2026-07-08 'CI while private' + commit 97ae031"}
+    - {date: "2026-07-08", kind: deferred, ref: "journal 2026-07-08 Pending decisions + handoff plan-1-close"}
+    - {date: "2026-07-10", kind: decided, ref: "commit 226fa06 + journal Plan 5"}
+- id: ci-06-per-commit-gate
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: operational
+  domain: ci
+  statement: "Standing house rule: cargo test --workspace, cargo fmt --all --check, cargo clippy --workspace --all-targets -D warnings and cargo deny check must all pass before every commit, never skipped. The CI test job caught fmt-dirty commits when tasks 3 and 5 were pushed after clippy but not fmt --check (run 0e64c1e failed, fixed 72c59d2); a controller-discipline gap, not a plan gap."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "journal 2026-07-09 Plan 2 'What the process caught' + commit 72c59d2"}
+    - {date: "2026-07-09", kind: reinforced, ref: "plan Global Constraints + progress.md (Plan 3)"}
+    - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + progress ledger (Plan 4)"}
+- id: ci-08-gated-tests-run
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: operational
+  domain: ci
+  statement: "The mkvmerge-gated integration tier must run in CI, not self-skip. E2 accepted the self-skip (mkvtoolnix not installed) as a coverage gap; E5 installed mkvtoolnix Linux-only (minute economy) and verified post-push it ran (0 skip markers); go-public extended the install to all three legs (apt/choco/brew) with a skip-marker count-zero assertion per leg (otherwise silent skipping is just traded for silent skipping), which immediately caught 18 silently-skipped Windows tests (choco writes machine PATH the job never re-reads; fixed via GITHUB_PATH) and then a real Windows-only set_modified-on-read-only-handle bug."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 6
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "journal 2026-07-09 Plan 2 Open threads"}
+    - {date: "2026-07-10", kind: decided, ref: "memo D18"}
+    - {date: "2026-07-10", kind: reinforced, ref: "task-6-review-verdict.md"}
+    - {date: "2026-07-10", kind: reinforced, ref: "journal 2026-07-10 session-5-close"}
+    - {date: "2026-07-11", kind: decided, ref: "task-2-verdict.md / plan T2"}
+    - {date: "2026-07-11", kind: reinforced, ref: "progress.md T2 fix waves / journal"}
+- id: ci-10-pin-everything
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: operational
+  domain: ci
+  statement: "Every toolchain and CI input is pinned exactly - rust 1.96.1 over floating stable, all GitHub Actions SHA-pinned, runner images pinned, ctrlc full-pinned, npm save-exact, and mkvmerge CI versions pinned per package manager (standing preference is pin, not float). The cross-leg mkvmerge divergence (apt 97 vs choco/brew 100) is sanctioned and recorded in a ci.yml comment. A floating version is a defect, not a convenience."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-10", kind: reinforced, ref: "commits 2ee2d0c, 45e941a / journal Plan 5"}
+    - {date: "2026-07-11", kind: decided, ref: "plan T2 step 2 / progress.md T2-m3/m4 / whole-branch funnel"}
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f)"}
+- id: testing-si3-run-binary
+  kind: pattern
+  tier: 2
+  source: controller-adr
+  nature: process
+  domain: testing
+  statement: "mkvmerge behavior (flag spellings, argv semantics, -J shape, cross-file donor+keep ordering) is confirmed by running the installed real binary (v100), never asserted from memory; golden tests then lock the exact strings and the -J shape is pinned to identification schema v20. Standing SI-3 house rule, re-issued as a per-plan global constraint and independently upheld by implementers (hand-ran mkvmerge before encoding order assertions, unprompted) and whole-branch reviewers (drove real v100 beyond the goldens, confirming the -J attachment id equals the --attachments selector id - the one silent-wrong-file risk)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 5
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "plan Global Constraints + memo D9/D11 (Plan 3)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch-review-verdict.md (Plan 3, Strengths)"}
+    - {date: "2026-07-09", kind: decided, ref: "plan Global Constraints (Plan 3.5)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch-review-verdict.md (Plan 3.5, header + Important #1)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "journal 2026-07-09 (Moments) + task-3/task-7 verdicts"}
+- id: proc-49-eager-memory-rejected
+  kind: restraint
+  tier: 2
+  source: user-decree
+  nature: process
+  domain: process
+  statement: "Carrying the process doctrine as always-loaded eager persona-memory ambience was rejected by Şenol in favor of the packaged, adopt-or-not skill."
+  steelman: "Always-loaded memory keeps the behavior present every session without an explicit adopt step."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt2 (E8[76])"}
+- id: proc-54-doc-deliverables-deferred
+  kind: non-decision
+  tier: 2
+  source: user-decree
+  nature: process
+  domain: process
+  statement: "1.0 documentation formats are fixed (single-file EN GUIDE.md at maximal scope + two EN+DE blog posts) but the authoring itself is deferred to the 1.0 tag via three fresh sessions."
+  steelman: null
+  blocked_on: "external: awaiting the 1.0 tag"
+  status: blocked
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "journal session-8 close (format interview) (E8[90])"}
+- id: ci-04-dependabot-cadence
+  kind: non-decision
+  tier: 2
+  source: user-decree
+  nature: operational
+  domain: ci
+  statement: "Dependabot/Renovate activation is deferred to Şenol's call; the eventual cadence is a CI-cost decision because every dependency PR triggers the full 3-OS matrix."
+  steelman: null
+  blocked_on: "go-public/1.0 timing (free only once the repo is public); activation remains Şenol's call"
+  status: blocked
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "journal 2026-07-08 open threads + ROADMAP residue R3"}
+- id: ci-13-packaging-deferred
+  kind: non-decision
+  tier: 2
+  source: controller-adr
+  nature: operational
+  domain: ci
+  statement: "Release-tag packaging artifacts (msi/dmg/deb/rpm/AppImage) remain deferred until go-public, because tags trigger the full 3-OS matrix and paid minutes while the repo is private."
+  steelman: null
+  blocked_on: "external - go-public / paid-minutes cost"
+  status: blocked
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "memo D29"}
