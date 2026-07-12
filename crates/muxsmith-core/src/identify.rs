@@ -122,7 +122,8 @@ pub struct Identification {
     /// `identification_format_version`; reported as the `found_version` param
     /// of an `UnknownPropertySkew` warning (against the pinned
     /// [`crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION`]) whenever a
-    /// `raw:`-opted property is consumed matching this file (spec 9.2, D32).
+    /// `raw:`-opted property is consumed matching this file, and checked by the
+    /// `SchemaDrift` batch diagnostic (spec 9.2, D32).
     pub format_version: u64,
     /// `container.recognized`.
     pub container_recognized: bool,

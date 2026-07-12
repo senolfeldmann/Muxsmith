@@ -42,6 +42,7 @@ donor-is-primary = Die externe Spender-Datei { $donor } ist selbst eine Primärq
 ignored-file = Die Datei passt auf die Erweiterungsliste, aber nicht auf das Eingabemuster.
 multiple-identifier-matches = Das Eingabemuster passt mehr als einmal in "{ $name }"; der erste Treffer wird verwendet.
 unknown-property-skew = Die Eigenschaft "{ $property }" wurde über ein raw:-Opt-in untypisiert abgeglichen (unter Umgehung des Fähigkeitsmodells). Dieser Build fixiert die mkvmerge-Identifikationsschema-Version { $pinned }; diese Datei meldet Version { $found_version }.
+schema-drift = Dieser Build fixiert die mkvmerge-Identifikationsschema-Version { $pinned }; mindestens eine identifizierte Datei in diesem Stapel meldet Schema-Version { $found_version }. Jede von der neueren Version hinzugefügte Eigenschaft liegt außerhalb des Fähigkeitsmodells; nutze ein raw:-Präfix, um sie untypisiert abzugleichen.
 unknown-extension = Die Erweiterung "{ $extension }" ist keine der von mkvmerge unterstützten Erweiterungen ({ $known }). Ist dies ein Tippfehler, werden passende Dateien stillschweigend nie gefunden; ist es beabsichtigt, kann mkvmerge sie nicht verarbeiten.
 codec-kind-exact-only = Die Eigenschaft "codec_kind" kann nur mit exact verwendet werden, nicht mit { $condition }. Gleiche stattdessen codec_id mit { $condition } ab.
 invalid-property-value = Der Wert "{ $value }" ist für die Eigenschaft "{ $property }" nicht gültig. Zulässige Werte sind unter anderem: { $allowed }.

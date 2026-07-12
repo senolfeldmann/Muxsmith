@@ -37,6 +37,7 @@ donor-is-primary = External donor file { $donor } is itself a primary source.
 ignored-file = File matches the extension list but not the input pattern.
 multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
 unknown-property-skew = Property "{ $property }" was matched untyped through a raw: opt-in (bypassing the capability model). This build pins mkvmerge identification schema version { $pinned }; this file reports version { $found_version }.
+schema-drift = This build pins mkvmerge identification schema version { $pinned }; at least one identified file in this batch reports schema version { $found_version }. Any property the newer schema adds sits outside the capability model; use a raw: prefix to match it untyped.
 unknown-extension = Extension "{ $extension }" is not among the extensions mkvmerge supports ({ $known }). If this is a typo, matching files are silently never found; if intentional, mkvmerge will not be able to process them.
 codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
 invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.

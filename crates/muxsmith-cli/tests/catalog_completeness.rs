@@ -173,6 +173,10 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
             args.set("found_version", "21");
             args.set("pinned", "20");
         }
+        DiagCode::SchemaDrift => {
+            args.set("found_version", "21");
+            args.set("pinned", "20");
+        }
         DiagCode::UnknownExtension => {
             args.set("extension", "avi");
             args.set("known", "mkv, mp4, ac3");

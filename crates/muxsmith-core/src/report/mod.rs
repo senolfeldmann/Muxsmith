@@ -160,6 +160,8 @@ diag_codes! {
     MultipleIdentifierMatches => "multiple-identifier-matches",
     /// A `raw:`-opted property was consumed at plan time and matched untyped against a source's tracks (spec 9.2). Emitted per consumed `raw:` property with `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so one code covers both a genuinely newer runtime schema and a same-version untyped match.
     UnknownPropertySkew => "unknown-property-skew",
+    /// At least one identified file in the batch reports an `identification_format_version` newer than this build pins (spec 9.2, D32 addendum). Batch-wide, once per batch, info severity; independent of whether any rule actually consumes a `raw:` property (that is `UnknownPropertySkew`'s job, per property). `found_version` carries the max seen across the batch, `pinned` this build's schema.
+    SchemaDrift => "schema-drift",
     /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
     UnknownExtension => "unknown-extension",
     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.

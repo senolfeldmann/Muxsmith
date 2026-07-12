@@ -202,6 +202,123 @@ fn b11_raw_absent_missing_track_but_still_warns_no_plan() {
     );
 }
 
+// D32 addendum (Task 16.5, Şenol 2026-07-12 ruling "das ist ein wichtiger
+// Hinweis"): SchemaDrift, once per batch, decoupled from `raw:` consumption
+// entirely -- fires whenever ANY identified file's own
+// `identification_format_version` exceeds PINNED (20), independent of
+// whether any rule ever reads a `raw:` property (that stays
+// UnknownPropertySkew's job, B-9..B-11 above). found_version is the max
+// seen across the batch; exactly one diagnostic regardless of file count.
+
+fn ident_json_at_version(file_name: &str, version: u64) -> String {
+    format!(
+        r#"{{ "file_name": "{file_name}", "identification_format_version": {version},
+      "container": {{ "recognized": true, "supported": true }},
+      "tracks": [ {{ "id": 0, "type": "video", "codec": "AVC" }} ] }}"#
+    )
+}
+
+fn plan_two_at_versions(a_version: u64, b_version: u64) -> (Batch, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(dir.path().join("Show.S01E02.mkv"), b"x").unwrap();
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(&ident_json_at_version("Show.S01E01.mkv", a_version)).unwrap(),
+    );
+    by_name.insert(
+        "Show.S01E02.mkv".to_string(),
+        Identification::from_json(&ident_json_at_version("Show.S01E02.mkv", b_version)).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    (batch, dir)
+}
+
+#[test]
+fn schema_drift_fires_once_per_batch_with_the_max_found_version() {
+    let (batch, _dir) = plan_two_at_versions(21, 23);
+    let hits: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::SchemaDrift)
+        .collect();
+    assert_eq!(hits.len(), 1, "batch diags: {:?}", batch.batch_diagnostics);
+    assert_eq!(hits[0].severity, Severity::Info);
+    assert_eq!(
+        hits[0].params.get("found_version").map(String::as_str),
+        Some("23"),
+        "expected the max of the two versions, not the first/last seen"
+    );
+    assert_eq!(hits[0].params.get("pinned").map(String::as_str), Some("20"));
+}
+
+#[test]
+fn schema_drift_all_pinned_batch_yields_none() {
+    let (batch, _dir) = plan_two_at_versions(20, 20);
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SchemaDrift),
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+}
+
+// Mirrors `unknown_extension_check_degrades_when_runtime_unavailable`: when
+// no file in the batch identifies at all (mkvmerge absent / every query
+// failed, modeled the same way as
+// `unidentifiable_primary_yields_unidentifiable_source_not_missing_track`'s
+// empty fixture map), SchemaDrift has nothing to report and degrades to a
+// no-op instead of false-firing.
+#[test]
+fn schema_drift_degrades_when_no_file_in_the_batch_identifies() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    let profile = from_str(P_VIDEO_AUDIO, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut ident = FakeIdent {
+        by_name: HashMap::new(),
+    };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    assert!(
+        !batch
+            .batch_diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::SchemaDrift),
+        "batch diags: {:?}",
+        batch.batch_diagnostics
+    );
+    assert!(
+        batch.files[0]
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagCode::UnidentifiableSource),
+        "diags: {:?}",
+        batch.files[0].diagnostics
+    );
+}
+
 // Task 5: a settable `language` value validated at plan time (D2), at the
 // point of application, distinct from the batch-level `match.exact.language`
 // walk (`bad_language_value_is_batch_invalid_property_value`).
