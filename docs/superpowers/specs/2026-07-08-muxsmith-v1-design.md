@@ -262,6 +262,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `MissingExternal` | error | locator (track rule or chapters) finds 0 files for a non-optional use |
 | `AmbiguousExternal` | error | locator (track rule or chapters) finds >= 2 files |
 | `UnidentifiableSource` | error | a discovered primary or resolved donor exists but mkvmerge could not identify it (`detail` carries the underlying error) |
+| `UnsupportedSource` | error | mkvmerge identified the file but its container is not a supported muxing source (D21 gate: `!container_recognized || !container_supported`); fires on the primary (`kind=primary`) or, since Plan 5.5, on an external donor (`kind=donor`, `donor` names the file); the affected file's plan is dropped |
 | `EmptyPlan` | warning | a file's plan survived every finalize pass (no error-severity diagnostic, local or cross-file) but resolved zero track assignments; a `tracks.unmatched: keep` plan whose primary carries at least one track does not fire this (D20: passthrough counts as matched); per-file, reported in the batch like any other diagnostic |
 | `OutputCollision` | error (two planned) / per policy (on-disk) | two plans render to one path (always error), or the rendered path pre-exists on disk (severity per `on_collision`: error/warning-skip/info-overwrite; 4.8) |
 | `PathSeparatorInRenderedName` | error | rendered output filename contains `/` or `\` (checked on all platforms) |
