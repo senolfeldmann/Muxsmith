@@ -80,7 +80,13 @@ implementation entry below.)
   paragraph against the shipped surface (reviewer warning: "easy to
   lose").
   - Content anchors (append every "README-worthy" remark HERE the moment
-    it is uttered; fold into the README on next touch): none open.
+    it is uttered; fold into the README on next touch):
+    - Şenol 2026-07-12: properties with language-like matching MAGIC must
+      be EXPLICITLY LISTED in the README - language (ISO/BCP-47
+      normalization + dual-field language/language_ietf lookup), absent
+      boolean flags comparing false for exact, type/codec_kind curated
+      domains; contrast with raw:'s no-magic byte-exact single-field rule
+      (D32 addendum, B-8 ratification).
 - **Guide + blog posts (process + product)**: 1.0 deliverables, produced
   at 1.0 on Şenol's go. Format interview DONE 2026-07-11; decisions:
   - **Guide**: single `docs/GUIDE.md`, English, maximal scope - cookbook/
@@ -292,14 +298,6 @@ implementation entry below.)
   outcome, poison-recovery instead of unwrap. Bundled with the
   AppState.active poison-recovery item promoted out of the v1.x list
   (same hygiene class, both spots in one pass).
-
-- **Two D32 sub-decisions PENDING Şenol** (2026-07-12, T16 review; details
-  in the plan-5.5 memo's D32 addendum): (1) general schema-drift advisory
-  removed with T16 - keep dropped, or reintroduce once-per-batch as its
-  own diagnostic; (2) raw: single-field verbatim lookup vs dual-field
-  (language/language_ietf). Both shipped as-implemented; ruled at the next
-  check-in (bundled with the T21 terminology gate); small follow-up task
-  if either is reversed.
 
 ## Near-1.0
 
