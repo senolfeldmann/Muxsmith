@@ -46,6 +46,17 @@ function name(id: string, args?: Record<string, FluentVariable>): { name: string
   return { name: en(id, args), exact: true };
 }
 
+/** Strips the U+2068 (FIRST STRONG ISOLATE) / U+2069 (POP DIRECTIONAL
+ * ISOLATE) marks Fluent wraps around every placeable substitution when a
+ * bundle's `useIsolating` option is on -- the GUI catalog's default (unlike
+ * the CLI's `Renderer`, which explicitly turns it off for plain-text
+ * stdout). Invisible to a user but present in `textContent`, so a test
+ * pinning literal rendered text (not derived via `en()`) needs to strip
+ * them before comparing. */
+function visibleText(text: string | null): string {
+  return (text ?? "").replace(/[\u2066-\u2069]/g, "");
+}
+
 /** Fails the test with every axe violation of impact "serious" or
  * "critical" listed (id, impact, help text, offending selectors) -- Task
  * 12 step 2: one scan per view state the smoke actually reaches. */
@@ -224,6 +235,92 @@ test.describe("batch view: dry run", () => {
     const clipboardCalls = recorded.filter((r) => r.cmd === "plugin:clipboard-manager|write_text");
     expect(clipboardCalls).toHaveLength(1);
     expect((clipboardCalls[0].args as { text: string }).text).toBe(SUGGESTION_YAML);
+  });
+
+  // T19 (#17 step 1): `batch-diagnostics-summary`'s three counts each got
+  // their own Fluent plural selector, replacing the provisional "error(s)"
+  // wording; `suggestions-capped` (rendered per-diagnostic by
+  // DiagnosticsPanel) got one too, and needs its own numeric-promotion fix
+  // on the frontend (`diagnosticFluentParams.ts`) since `Diagnostic.params`
+  // arrives over IPC as `Record<string, string>` -- a plain string
+  // argument never matches a Fluent `[one]` selector. Unlike every other
+  // assertion in this file, the expected summary/diagnostic text below is
+  // a LITERAL, not `en(id, args)`: the grammar (singular vs. plural) is
+  // exactly what this test pins, so deriving the expectation through the
+  // same catalog/mechanism under test would prove nothing. `visibleText`
+  // strips the U+2068/U+2069 directional-isolate marks the GUI's
+  // `FluentBundle` wraps around every placeable substitution (unlike the
+  // CLI's, which turns `useIsolating` off) -- invisible to a user, but
+  // present in `textContent`, and pre-existing/out of scope for T19 to
+  // touch (a GUI-wide catalog-loader setting, not a plural-selector one).
+  const pluralReport: ReportDocument = {
+    config_diagnostics: [
+      {
+        code: "unsupported-source",
+        severity: "error",
+        config_path: "tracks[0].match",
+        params: { kind: "primary" },
+        rendered: "unsupported-source",
+      },
+      {
+        code: "empty-match-expression",
+        severity: "warning",
+        config_path: "tracks[0].match",
+        params: {},
+        rendered: "empty-match-expression",
+      },
+      {
+        code: "empty-match-expression",
+        severity: "warning",
+        config_path: "tracks[1].match",
+        params: {},
+        rendered: "empty-match-expression",
+      },
+      {
+        code: "suggestions-capped",
+        severity: "info",
+        config_path: "tracks[0].match",
+        params: { dropped: "1" },
+        rendered: "suggestions-capped",
+      },
+    ],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  test("diagnostics summary and suggestions-capped pluralize their counts (1 error singular, 2 warnings plural, 1 dropped suggestion singular)", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        validate_profile: [resolveWith(emptyReport)],
+        dry_run: [resolveWith(pluralReport)],
+      },
+    });
+
+    await page.goto("/");
+
+    const batch = page.getByTestId("view-batch");
+    await batch.getByRole("button", name("batch-profile-pick")).click();
+    await batch.getByRole("button", name("batch-dry-run")).click();
+
+    const status = batch.getByRole("status");
+    await expect(status).toBeVisible();
+    expect(visibleText(await status.textContent())).toBe(
+      "1 error, 2 warnings, 1 info notice.",
+    );
+
+    const diagnosticsSection = batch.getByRole("region", name("batch-diagnostics-heading"));
+    await expect(diagnosticsSection).toContainText("further suggestion");
+    expect(visibleText(await diagnosticsSection.textContent())).toContain(
+      "info: 1 further suggestion for this rule was capped at 3 and not shown.",
+    );
+
+    await assertNoSeriousA11yViolations(page);
   });
 });
 

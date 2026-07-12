@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// Task 12 i18n completeness gate (spec 8.4). No dependencies beyond Node
-// itself. Two independent checks over the same catalog/source scan:
+// Task 12/20 i18n completeness + cross-locale parity gate (spec 8.4, #17
+// step 2). No dependencies beyond Node itself. Three independent checks
+// over the same catalog/source scan:
 //
 //  1. HARD FAILURE (exit 1): every LITERAL `t('id')`/`$t('id')` call found
 //     in src/**/*.{vue,ts} must resolve to a real message id in the known
 //     catalog (locales/en/gui-*.ftl + diagnostics.ftl -- the same set
 //     src/i18n/index.ts itself globs; cli.ftl is CLI-only vocabulary the
-//     frontend never renders, excluded exactly like the real loader).
+//     frontend never renders, excluded exactly like the real loader. This
+//     exclusion is scoped to checks 1 and 2 only -- see check 3 below for
+//     why cli.ftl is NOT excluded from cross-locale parity.)
 //     A call whose first argument is not a plain quoted string (a
 //     computed key -- `$t(stateKey)`, `$t(err.code, err.params)`, a
 //     template literal `` $t(`severity-${d.severity}`) ``) is dynamic and
@@ -39,13 +42,52 @@
 //     generic `$t(err.code, err.params)` pattern and never spelled out
 //     literally anywhere in src/, so they can surface as "unused" even
 //     though they are genuinely rendered whenever that IPC error occurs.
+//
+//  3. HARD FAILURE (exit 1): cross-locale key parity (Task 20, #17 step
+//     2). `locales/en/` is the reference locale -- src/i18n/index.ts
+//     falls back to it for any message missing from another locale's
+//     bundle, and it is the only locale checks 1/2 validate against -- so
+//     every OTHER `locales/<tag>/` directory must carry exactly the same
+//     set of `.ftl` catalog *files* as `locales/en/`, and within each
+//     shared file, exactly the same message ids. No Fluent attributes
+//     (`.label = ...` style) exist in any catalog today (grepped across
+//     locales/en/*.ftl), so attribute-level parity is not needed yet;
+//     extend this check (and MESSAGE_ID_RE's own note below) if one is
+//     ever added.
+//
+//     UNLIKE checks 1/2, this check covers ALL `.ftl` files under
+//     `locales/en/`, INCLUDING `cli.ftl`. Decision (Task 20, does not
+//     revisit checks 1/2's own exclusion): Task 10's Rust-side
+//     `catalog_completeness.rs` guards only the EN catalog's internal
+//     wiring -- every cli.ftl key resolves to a DiagCode or is
+//     allowlist-fixtured, and renders without a leaked `{$param}` -- it
+//     says nothing about a SECOND locale's cli.ftl tracking en's key set,
+//     because it only ever parses `locales/en/cli.ftl`. Task 21 creates
+//     `locales/de/cli.ftl` as one of its six translated catalogs, so once
+//     it lands, cli.ftl is a real, shipped, translatable catalog like any
+//     gui-*.ftl -- excluding it from parity would leave the one catalog
+//     most likely to visibly regress (CLI-facing text) with no structural
+//     guard against a de/cli.ftl silently drifting out of sync (missing
+//     keys falling back to raw ids, stale keys nobody notices). Keeping
+//     it excluded here would protect against nothing that isn't already
+//     covered elsewhere for the EN side, while leaving a real gap on the
+//     DE side. So cli.ftl participates in check 3 while staying excluded
+//     from checks 1/2, whose exclusion reason ("the frontend never calls
+//     $t() for it") is unrelated and still holds.
+//
+//     With only `locales/en/` present (current tree), the comparison loop
+//     below has no other locale directory to iterate and passes trivially
+//     by construction, not by a special case; it activates the moment a
+//     second `locales/<tag>/` directory (e.g. `locales/de/`, Task 21)
+//     exists.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const LOCALES_EN = join(ROOT, "locales", "en");
+const LOCALES_ROOT = join(ROOT, "locales");
+const LOCALES_EN = join(LOCALES_ROOT, "en");
 const SRC = join(ROOT, "src");
 
 // D31: src-tauri/src/run.rs's `ftl_message()` include_str!s gui-common.ftl
@@ -71,15 +113,18 @@ const RUST_ONLY_IDS = new Set([
 //   - ATTRIBUTES (`.label = ...` lines): NOT registered as ids. If a
 //     catalog ever adds attributes the frontend addresses (fluent-vue's
 //     `$t("msg.attr")` form), this scanner will flag those references as
-//     missing -- extend parseCatalogIds then, don't work around it.
+//     missing -- extend parseCatalogIds then, don't work around it. The
+//     same extension would need to reach check 3's parity comparison
+//     (currently id-set-only, since no catalog has attributes today).
 //   - TERMS (`-brand-name = ...`): NOT registered (leading `-` fails the
 //     regex). Correct as-is: terms are catalog-internal and can never be
 //     a `$t()` argument.
 const MESSAGE_ID_RE = /^([A-Za-z][A-Za-z0-9_-]*)\s*=/;
 
-function parseCatalogIds(file) {
+/** Message ids found in one catalog file, given its full path. */
+function parseCatalogIds(path) {
   const ids = [];
-  const text = readFileSync(join(LOCALES_EN, file), "utf8");
+  const text = readFileSync(path, "utf8");
   for (const line of text.split("\n")) {
     const m = MESSAGE_ID_RE.exec(line);
     if (m) {
@@ -89,15 +134,22 @@ function parseCatalogIds(file) {
   return ids;
 }
 
-const catalogFiles = readdirSync(LOCALES_EN)
-  .filter((f) => f.endsWith(".ftl") && (f.startsWith("gui-") || f === "diagnostics.ftl"))
-  .sort();
+/** All `.ftl` file names directly inside a locale directory, sorted. */
+function listCatalogFiles(dir) {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".ftl"))
+    .sort();
+}
 
-/** id -> source catalog file. */
+const catalogFiles = listCatalogFiles(LOCALES_EN).filter(
+  (f) => f.startsWith("gui-") || f === "diagnostics.ftl",
+);
+
+/** id -> source catalog file (checks 1/2 scope: gui-* + diagnostics.ftl only). */
 const knownIds = new Map();
 const diagnosticsIds = new Set();
 for (const file of catalogFiles) {
-  for (const id of parseCatalogIds(file)) {
+  for (const id of parseCatalogIds(join(LOCALES_EN, file))) {
     knownIds.set(id, file);
     if (file === "diagnostics.ftl") {
       diagnosticsIds.add(id);
@@ -184,10 +236,70 @@ if (unused.length > 0) {
   }
 }
 
-if (missing.length === 0) {
+// --- Check 3: cross-locale key parity (Task 20, #17 step 2) --------------
+// See the header comment for the full cli.ftl inclusion decision. Scope
+// here is deliberately ALL `.ftl` files in locales/en/, not `catalogFiles`
+// (which is checks 1/2's gui-*/diagnostics-only subset).
+
+const referenceCatalogFiles = listCatalogFiles(LOCALES_EN);
+const referenceIdsByFile = new Map(
+  referenceCatalogFiles.map((file) => [
+    file,
+    new Set(parseCatalogIds(join(LOCALES_EN, file))),
+  ]),
+);
+
+const otherLocales = readdirSync(LOCALES_ROOT, { withFileTypes: true })
+  .filter((e) => e.isDirectory() && e.name !== "en")
+  .map((e) => e.name)
+  .sort();
+
+const parityErrors = [];
+
+for (const locale of otherLocales) {
+  const dir = join(LOCALES_ROOT, locale);
+  const localeFiles = new Set(listCatalogFiles(dir));
+
+  for (const file of referenceCatalogFiles) {
+    if (!localeFiles.has(file)) {
+      parityErrors.push(`locales/${locale}/${file}: missing (present in locales/en/)`);
+    }
+  }
+  for (const file of localeFiles) {
+    if (!referenceIdsByFile.has(file)) {
+      parityErrors.push(`locales/${locale}/${file}: unexpected catalog file (no locales/en/${file})`);
+    }
+  }
+
+  for (const file of referenceCatalogFiles) {
+    if (!localeFiles.has(file)) {
+      continue; // already reported as a missing catalog file above
+    }
+    const refIds = referenceIdsByFile.get(file);
+    const localeIds = new Set(parseCatalogIds(join(dir, file)));
+    const missingIds = [...refIds].filter((id) => !localeIds.has(id)).sort();
+    const extraIds = [...localeIds].filter((id) => !refIds.has(id)).sort();
+    for (const id of missingIds) {
+      parityErrors.push(`locales/${locale}/${file}: missing id "${id}" (present in locales/en/${file})`);
+    }
+    for (const id of extraIds) {
+      parityErrors.push(`locales/${locale}/${file}: extra id "${id}" (not present in locales/en/${file})`);
+    }
+  }
+}
+
+if (parityErrors.length > 0) {
+  console.error("check-i18n: cross-locale key parity violations:");
+  for (const line of parityErrors) {
+    console.error(`  ${line}`);
+  }
+}
+
+if (missing.length === 0 && parityErrors.length === 0) {
   console.log(
     `check-i18n: ok (${sourceFiles.length} source files scanned, ${knownIds.size} catalog ids, ` +
-      `${unused.length} unused warning(s)).`,
+      `${unused.length} unused warning(s), ${otherLocales.length} other locale(s) checked for parity ` +
+      `against ${referenceCatalogFiles.length} en/ catalog(s)).`,
   );
   process.exit(0);
 }

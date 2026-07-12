@@ -1,5 +1,14 @@
 validate-ok = Profile is valid.
-validate-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info(s).
+validate-summary = { $errors ->
+    [one] 1 error
+   *[other] { $errors } errors
+}, { $warnings ->
+    [one] 1 warning
+   *[other] { $warnings } warnings
+}, { $infos ->
+    [one] 1 info
+   *[other] { $infos } infos
+}.
 diagnostic-line = [{ $severity }] { $config_path }: { $message }
 diagnostic-line-file = [{ $severity }] { $file } { $config_path }: { $message }
 mkvmerge-not-found = mkvmerge was not found on PATH. Install MKVToolNix or set the mkvmerge path.
@@ -11,7 +20,10 @@ dry-run-file = { $file } (identifier: { $id })
 dry-run-assignment =   rule { $rule } -> track { $track }
 dry-run-output =   output: { $path }
 dry-run-suggestion = Suggestion for { $config_path }:
-dry-run-summary = { $count } files matched (searched { $root }, extensions { $extensions })
+dry-run-summary = { $count ->
+    [one] 1 file matched
+   *[other] { $count } files matched
+} (searched { $root }, extensions { $extensions })
 run-job-start = [{ $index }/{ $total }] { $output } ... start
 run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
 run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }

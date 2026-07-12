@@ -125,13 +125,13 @@ fn batch_human_report(
         line(renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)]));
         line(s.yaml_fragment.clone());
     }
-    line(renderer.msg(
+    line(renderer.msg_with_counts(
         "dry-run-summary",
         &[
-            ("count", &batch.files.len().to_string()),
             ("root", &root.display().to_string()),
             ("extensions", &extensions.join(", ")),
         ],
+        &[("count", batch.files.len())],
     ));
     out
 }
@@ -202,5 +202,52 @@ mod tests {
         let err_at = report.find("[error]").expect("an error line");
         let warn_at = report.find("[warning]").expect("a warning line");
         assert!(err_at < warn_at, "error must precede warning in:\n{report}");
+    }
+
+    fn file_report(source: &str) -> FileReport {
+        FileReport {
+            source: source.into(),
+            identifier: "id".into(),
+            plan: None,
+            diagnostics: vec![],
+        }
+    }
+
+    #[test]
+    fn dry_run_summary_renders_the_singular_form_for_one_matched_file() {
+        let batch = Batch {
+            files: vec![file_report("/in/a.mkv")],
+            batch_diagnostics: vec![],
+            suggestions: vec![],
+        };
+        let report = batch_human_report(
+            &batch,
+            Path::new("/in"),
+            &["mkv".to_string()],
+            &Renderer::new(Some("en")),
+        );
+        assert!(
+            report.contains("1 file matched (searched /in, extensions mkv)"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn dry_run_summary_renders_the_plural_form_for_two_or_more_matched_files() {
+        let batch = Batch {
+            files: vec![file_report("/in/a.mkv"), file_report("/in/b.mkv")],
+            batch_diagnostics: vec![],
+            suggestions: vec![],
+        };
+        let report = batch_human_report(
+            &batch,
+            Path::new("/in"),
+            &["mkv".to_string()],
+            &Renderer::new(Some("en")),
+        );
+        assert!(
+            report.contains("2 files matched (searched /in, extensions mkv)"),
+            "{report}"
+        );
     }
 }

@@ -50,25 +50,29 @@ impl Renderer {
         self.render(id, fargs)
     }
 
-    /// Renders one Fluent message like [`Self::msg`], but sets `count_key` as a
-    /// numeric `FluentValue::Number` rather than a string. Fluent's plural
-    /// selector (`[one]`/`*[other]`) resolves CLDR plural categories only
-    /// against `FluentValue::Number`; a `FluentValue::String` selector
-    /// always falls through to `*[other]`, so a message with a `{ $count ->
-    /// [one] ... *[other] ... }` selector needs its count passed through
-    /// this method instead of [`Self::msg`].
-    pub fn msg_with_count(
+    /// Renders one Fluent message like [`Self::msg`], but sets every
+    /// `(name, count)` pair in `counts` as a numeric `FluentValue::Number`
+    /// rather than a string. Fluent's plural selector (`[one]`/`*[other]`)
+    /// resolves CLDR plural categories only against `FluentValue::Number`;
+    /// a `FluentValue::String` selector always falls through to
+    /// `*[other]`, so any variable a message's `{ $name -> [one] ...
+    /// *[other] ... }` selector reads needs to go through here instead of
+    /// [`Self::msg`]. Takes a slice rather than one `(key, count)` pair so
+    /// a message with several independent selectors (`validate-summary`'s
+    /// errors/warnings/infos) needs one call, not one per selector.
+    pub fn msg_with_counts(
         &self,
         id: &str,
         args: &[(&str, &str)],
-        count_key: &str,
-        count: usize,
+        counts: &[(&str, usize)],
     ) -> String {
         let mut fargs = FluentArgs::new();
         for (k, v) in args {
             fargs.set(*k, *v);
         }
-        fargs.set(count_key, count);
+        for (k, count) in counts {
+            fargs.set(*k, *count);
+        }
         self.render(id, fargs)
     }
 
@@ -108,12 +112,7 @@ impl Renderer {
     /// `show_file` selects the `diagnostic-line-file` template (when a file is
     /// present) over the file-less `diagnostic-line`.
     fn render_diagnostic(&self, d: &muxsmith_core::report::Diagnostic, show_file: bool) -> String {
-        let params: Vec<(&str, &str)> = d
-            .params
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        let message = self.msg(d.code.key(), &params);
+        let message = self.render_diagnostic_message(d);
         let severity = self.msg(severity_key(d.severity), &[]);
         match d.file.as_ref().filter(|_| show_file) {
             Some(file) => {
@@ -138,6 +137,36 @@ impl Renderer {
             ),
         }
     }
+
+    /// Renders `d`'s own message (`d.code`'s template filled with
+    /// `d.params`), promoting any param [`numeric_diagnostic_params`]
+    /// lists for `d.code` from its wire string form back to a number
+    /// before handing it to Fluent. `Diagnostic::params` is
+    /// `BTreeMap<String, String>` by design (core stays prose- and
+    /// type-free on the wire, spec 5.2/8.4), so a diagnostic code whose
+    /// catalog message uses a CLDR plural selector on one of its own
+    /// params (`suggestions-capped`, `suggestion-partition`) needs that
+    /// promotion done once, here, at the render boundary -- everywhere
+    /// else (JSON, core) the param stays a plain string. A listed param
+    /// that fails to parse as a number falls back to rendering as a
+    /// string rather than being dropped, so a surprise non-numeric value
+    /// degrades to the selector's `*[other]`/`*[group]` branch instead of
+    /// leaking `{$name}`.
+    fn render_diagnostic_message(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+        let numeric_keys = numeric_diagnostic_params(d.code);
+        let mut string_params: Vec<(&str, &str)> = Vec::new();
+        let mut counts: Vec<(&str, usize)> = Vec::new();
+        for (k, v) in &d.params {
+            if numeric_keys.contains(&k.as_str())
+                && let Ok(n) = v.parse::<usize>()
+            {
+                counts.push((k.as_str(), n));
+                continue;
+            }
+            string_params.push((k.as_str(), v.as_str()));
+        }
+        self.msg_with_counts(d.code.key(), &string_params, &counts)
+    }
 }
 
 /// Lets `report::json`'s document-assembly functions (spec 7, D15) fill
@@ -154,6 +183,21 @@ fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
         muxsmith_core::report::Severity::Error => "severity-error",
         muxsmith_core::report::Severity::Warning => "severity-warning",
         muxsmith_core::report::Severity::Info => "severity-info",
+    }
+}
+
+/// Names the params of `code`'s catalog message that must reach Fluent as
+/// numbers, not strings, because the template selects on them with a CLDR
+/// plural selector (T19, #17 step 1): `suggestions-capped`'s `dropped`,
+/// `suggestion-partition`'s `dropped` (`[overflow]` branch) and `count`
+/// (`*[group]` branch). Every other `DiagCode` renders its params as plain
+/// strings, unchanged.
+fn numeric_diagnostic_params(code: muxsmith_core::report::DiagCode) -> &'static [&'static str] {
+    use muxsmith_core::report::DiagCode;
+    match code {
+        DiagCode::SuggestionsCapped => &["dropped"],
+        DiagCode::SuggestionPartition => &["dropped", "count"],
+        _ => &[],
     }
 }
 
@@ -272,5 +316,129 @@ mod tests {
             !rendered.contains("{$"),
             "unresolved placeholder leaked into: {rendered}"
         );
+    }
+
+    // T19 (#17 step 1): `SuggestionsCapped`/`SuggestionPartition` are the
+    // one place a plural selector's count arrives through
+    // `Diagnostic::params` (`BTreeMap<String, String>`, spec 5.2) rather
+    // than a call site that holds a real `usize` -- the Plan-4 lesson the
+    // task flagged ("$count reached Fluent as a string once and [one]
+    // never matched"). These pin `render_diagnostic`'s promotion
+    // (`numeric_diagnostic_params`) end to end: a real `Diagnostic` with a
+    // string param in, the correctly-selected CLDR variant out.
+
+    #[test]
+    fn suggestions_capped_renders_singular_and_plural() {
+        use muxsmith_core::report::{DiagCode, Diagnostic};
+
+        let renderer = Renderer::new(Some("en"));
+        let one =
+            Diagnostic::info(DiagCode::SuggestionsCapped, "tracks[0].match").with("dropped", "1");
+        assert_eq!(
+            renderer.diagnostic(&one),
+            "[info] tracks[0].match: 1 further suggestion for this rule was capped at 3 and not shown."
+        );
+
+        let two =
+            Diagnostic::info(DiagCode::SuggestionsCapped, "tracks[0].match").with("dropped", "2");
+        assert_eq!(
+            renderer.diagnostic(&two),
+            "[info] tracks[0].match: 2 further suggestions for this rule were capped at 3 and not shown."
+        );
+    }
+
+    #[test]
+    fn suggestion_partition_group_branch_renders_singular_and_plural() {
+        use muxsmith_core::report::{DiagCode, Diagnostic};
+
+        let renderer = Renderer::new(Some("en"));
+        let one = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
+            .with("kind", "group")
+            .with("count", "1")
+            .with("fix", "tracks[0].match.exact.forced_track: true")
+            .with("files", "/in/a.mkv");
+        assert_eq!(
+            renderer.diagnostic(&one),
+            "[info] tracks[0].match: This file needs its own refinement; apply:\n\
+             tracks[0].match.exact.forced_track: true\n    to: /in/a.mkv"
+        );
+
+        let two = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
+            .with("kind", "group")
+            .with("count", "2")
+            .with("fix", "tracks[0].match.exact.forced_track: true")
+            .with("files", "/in/a.mkv, /in/b.mkv");
+        assert_eq!(
+            renderer.diagnostic(&two),
+            "[info] tracks[0].match: These 2 files need their own refinement; apply:\n\
+             tracks[0].match.exact.forced_track: true\n    to: /in/a.mkv, /in/b.mkv"
+        );
+    }
+
+    #[test]
+    fn suggestion_partition_overflow_branch_renders_singular_and_plural() {
+        use muxsmith_core::report::{DiagCode, Diagnostic};
+
+        let renderer = Renderer::new(Some("en"));
+        let one = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
+            .with("kind", "overflow")
+            .with("dropped", "1");
+        assert_eq!(
+            renderer.diagnostic(&one),
+            "[info] tracks[0].match: 1 further resolution group was capped at 5 and not shown."
+        );
+
+        let two = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
+            .with("kind", "overflow")
+            .with("dropped", "2");
+        assert_eq!(
+            renderer.diagnostic(&two),
+            "[info] tracks[0].match: 2 further resolution groups were capped at 5 and not shown."
+        );
+    }
+
+    // T19 (#17 step 1): Pin the mirrored list contract between `numeric_diagnostic_params`
+    // (Rust side, here) and `NUMERIC_DIAGNOSTIC_PARAMS` (TS side, src/diagnosticFluentParams.ts).
+    // This test mirrors the TS implementation directly; changing either list alone will fail this test.
+    // The expected list exactly replicates `NUMERIC_DIAGNOSTIC_PARAMS` from the TS file.
+    #[test]
+    fn numeric_diagnostic_params_list_is_mirrored_to_ts_side() {
+        use muxsmith_core::report::DiagCode;
+
+        // Expected (code, param_name) pairs. Mirrors src/diagnosticFluentParams.ts's
+        // NUMERIC_DIAGNOSTIC_PARAMS; keep both in lockstep if either changes.
+        let expected = [
+            (DiagCode::SuggestionsCapped, &["dropped"] as &[&str]),
+            (DiagCode::SuggestionPartition, &["dropped", "count"]),
+        ];
+
+        for (code, expected_params) in expected {
+            let actual = numeric_diagnostic_params(code);
+            assert_eq!(
+                actual, expected_params,
+                "numeric_diagnostic_params({:?}): expected {:?}, got {:?}. \
+                 Keep this Rust list in sync with src/diagnosticFluentParams.ts's NUMERIC_DIAGNOSTIC_PARAMS.",
+                code, expected_params, actual
+            );
+        }
+
+        // Ensure no other codes have numeric params (a silent addition would otherwise go unnoticed).
+        let all_codes = [
+            DiagCode::IgnoredFile,
+            DiagCode::UnknownProperty,
+            DiagCode::UnsupportedSource,
+            DiagCode::EmptyMatchExpression,
+        ];
+        for code in all_codes {
+            let params = numeric_diagnostic_params(code);
+            assert_eq!(
+                params.len(),
+                0,
+                "DiagCode::{:?} unexpectedly has numeric params: {:?}. \
+                 Update NUMERIC_DIAGNOSTIC_PARAMS in src/diagnosticFluentParams.ts if this was intentional.",
+                code,
+                params
+            );
+        }
     }
 }
