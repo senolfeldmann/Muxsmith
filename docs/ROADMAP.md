@@ -43,6 +43,15 @@ Fluent (locale-formatting revisit, S16). The help-mode sidebar includes
 the spec-10 help-id completeness guard (CI fail on help-ids without a
 topic file - S17, previously unnamed in this anchor).
 
+Further named inputs (2026-07-12, idiomacy review triage): hoist the
+four-copy planning pipeline into a shared plan_pipeline() core fn - this IS
+the injectable-planner-seam (S4/S5/S6), spec 5.5/7 parity-critical (~100
+lines); hoist run_batch into muxsmith_core::executor (the CLI inlines what
+src-tauri already factored); hoist runs-root resolution to core (D26
+debug-only seam duplicated CLI vs src-tauri). Plus the deferred Fluent
+message-attribute reorganization (widget facets as .attribute instead of
+suffixed siblings; touches frontend $ta + check-i18n parity).
+
 ## Triggers
 
 Observable events with registered consequences - CONSULT AT EVERY
@@ -158,9 +167,12 @@ polish entry.
   §8.4 exception list. Fix catalog-side (kind selector or dedicated
   language-domain message), bilingual. Small task before the tag
   (bilingual launch makes it user-visible).
-- **Whole-codebase idiomacy review**: one large, deliberately costly review
-  pass before the 1.0 tag - Rust workspace, TS/Vue frontend, configs -
-  against ecosystem idiom. SIX dimensions (four original + two adopted
+- **Whole-codebase idiomacy review**: EXECUTED 2026-07-12 (session 10; the
+  journal carries the run + the usage-limit incident; triage routing in
+  the STATUS entry right after this one). Original dispatch spec: one
+  large, deliberately costly review pass before the 1.0 tag - Rust
+  workspace, TS/Vue frontend, configs - against ecosystem idiom. SIX
+  dimensions (four original + two adopted
   2026-07-12 from mining the ponytail rule set, Şenol-approved; the
   full mining analysis incl. evidence assessment is kept with the
   project's non-repo material):
@@ -199,6 +211,47 @@ polish entry.
   existed - this pass covers everything written before). Timing anchor:
   after the feature plans (5.5, 6) land, immediately before the
   release-facing gates.
+- **Whole-codebase idiomacy review - STATUS 2026-07-12 (EXECUTED, triaged
+  with Şenol)**: 74 raw -> 73 deduped findings; 70 confirmed, 1 refuted, 2
+  already-tracked, 11 routed out (correctness/security/perf), 13/13 funnel
+  seeds confirmed still-open; net -483 lines, -0 deps (dep sweep clean -
+  every direct Cargo/npm dep earned and healthy). Ranked findings report
+  kept with the project's non-repo material. Triage routing:
+  - PRE-1.0 idiomacy fix wave (own SDD plan, mechanical + low-risk): the
+    ~58 mechanical findings (byte-identical dups, dead config/flags, local
+    idiom/stdlib cleanups) + self-contained refactors (config-diagnostics
+    helper across 6 sites; the spawn_blocking IPC wrapper, 5 copies; run-id
+    parse via the time crate) + the Fluent comment-level fix (# -> ###) +
+    sharing the same-crate test helper + dropping restated action defaults.
+    The two deprecation-claim config nits (tseslint config(), deny.toml
+    version key) ship after a quick doc re-check (drop-in either way).
+    Funnel seeds folded in by nature; two also appear under tracked -
+    dedupe when planning.
+  - FOLDED INTO PLAN 6 (share the run/plan-orchestration territory of the
+    planner seam): the four-copy planning pipeline (~100 lines, spec 5.5/7
+    parity-critical - a shared plan_pipeline() IS the never-decided
+    injectable-planner-seam S4/S5/S6); run_batch hoist to
+    muxsmith_core::executor; runs-root resolution hoist to core.
+  - DEFERRED (tracked v1.x/Plan-6): the Fluent message-attribute
+    reorganization (widget facets as .attribute vs suffixed siblings) -
+    changes message IDs, needs coordinated frontend $ta + check-i18n parity
+    work; distinct from the comment-level fix that ships now.
+  - KEPT as deliberate scaffold: the ci.yml `v*` tag trigger (Plan 6
+    packaging will consume it).
+  - Refutation accepted: BatchView's withDefaults is not deprecated in Vue
+    3.5, and reactive-props-destructure would make it the lone outlier vs
+    five sibling components (house convention).
+- **Correctness/security/perf review of the idiomacy pass's 11 routed-out
+  items**: a SEPARATE normal review before the 1.0 tag (bug-hunt mindset,
+  deliberately not blended into the idiomacy complexity hunt). Release-
+  relevant heads: mise-action fetches a floating mise binary at CI run time
+  (SHA pin covers the action JS, not the binary - contradicts
+  pin-everything; superseded by the post-1.0 mise-out-of-CI item in v1.x
+  candidates); ci.yml has no workflow `permissions:` block (GITHUB_TOKEN
+  gets the repo default); settings.rs save() claims crash/power-loss safety
+  but never fsyncs before the atomic rename. Full list (incl. non-UTF-8
+  argv lossiness, swallowed ctrlc registration, editorial nits) in the
+  non-repo findings report. Decided 2026-07-12.
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
 ## Near-1.0
@@ -228,6 +281,12 @@ polish entry.
 Deferred with reasons; source: Plan-5 whole-branch triage (ledger, archived
 at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
 
+- **Remove mise from CI (post-1.0, Şenol 2026-07-12)**: mise is a
+  dev-machine runtime manager, not a CI tool; CI should install node/pnpm
+  directly (pinned setup action) rather than fetch a floating mise binary
+  at run time via jdx/mise-action. Supersedes the routed pre-1.0
+  supply-chain finding (the SHA pin covers the action JS, not the mise
+  binary it downloads). Structural, hence post-1.0, not a pre-tag patch.
 - NDJSON `--json-events` stream; `--fail-fast=now` (deferred pre-Plan-5).
 - Joblog atomic writes (settings half was hardened in the Plan-5 fix
   wave). The AppState.active poison-recovery half of this line was
