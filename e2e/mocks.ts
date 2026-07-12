@@ -67,8 +67,20 @@ export interface RecordedInvoke {
  * beyond the `scenario` argument itself (see `global.d.ts` for the ambient
  * `window.__muxsmithE2E__`/`__TAURI_OS_PLUGIN_INTERNALS__`/
  * `__muxsmithRecordInvoke__` typings it relies on).
+ *
+ * Exported so a test can register a SECOND scenario mid-test via its own
+ * `page.addInitScript(installMockIPC, otherScenario)` call, layered on top
+ * of `installTauriMocks`'s own registration: `@tauri-apps/api/mocks`'
+ * `mockIPC` reassigns `window.__TAURI_INTERNALS__.invoke` outright (last
+ * registration wins), so a script added after the first navigation has no
+ * effect until the next one -- exactly what a "settings change takes
+ * effect after the app restarts" case needs (there is no live in-session
+ * catalog swap; `main.ts` resolves the locale once, before mount). Calling
+ * `installTauriMocks` a second time on the same page cannot do this: its
+ * own `page.exposeFunction("__muxsmithRecordInvoke__", ...)` throws on a
+ * second registration for the same name.
  */
-function installMockIPC(scenario: MockScenario): void {
+export function installMockIPC(scenario: MockScenario): void {
   const queues = new Map<string, MockResult[]>(
     Object.entries(scenario.commands).map(([cmd, results]) => [cmd, [...results]]),
   );

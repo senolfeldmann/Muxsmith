@@ -148,6 +148,9 @@ defineExpose({ open });
           <option value="en">
             {{ $t("settings-locale-option-en") }}
           </option>
+          <option value="de">
+            {{ $t("settings-locale-option-de") }}
+          </option>
         </select>
         <p id="settings-locale-hint">
           {{ $t("settings-locale-hint") }}

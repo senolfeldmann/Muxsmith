@@ -19,7 +19,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { emitEvent, installTauriMocks, rejectWith, resolveWith } from "./mocks";
+import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
 import { en } from "./i18n-en";
 import type { FluentVariable } from "@fluent/bundle";
 import {
@@ -468,6 +468,17 @@ test.describe("german locale", () => {
     dir_memory: {},
   };
 
+  // T21.5: the bare "de" tag the settings dialog's new option actually
+  // saves (`<option value="de">`), as opposed to DE_AT_SETTINGS's
+  // region-qualified "de-AT" (T21's own normalization case above).
+  const DE_SETTINGS: AppSettings = {
+    mkvmerge_path: null,
+    default_jobs: 1,
+    locale: "de",
+    recent_profiles: [],
+    dir_memory: {},
+  };
+
   const emptyReport: ReportDocument = {
     config_diagnostics: [],
     batch_diagnostics: [],
@@ -505,5 +516,59 @@ test.describe("german locale", () => {
     expect(visibleText(await profileLine.textContent())).toBe(
       `Ausgewähltes Profil: ${PROFILE_PATH}`,
     );
+  });
+
+  // T21.5 (settings gate follow-up): German reachable from the settings UI
+  // itself, not just via a pre-seeded settings value (the de-AT case
+  // above). `main.ts` resolves the locale exactly once, before mount, and
+  // nothing in the app swaps the live `FluentBundle`s afterwards -- a
+  // saved locale change takes effect on the next start, same as a
+  // restart. This is simulated here rather than invented: `set_settings`
+  // is asserted as the real, load-bearing evidence that the UI action
+  // saved "de" (not a UI echo), and `page.reload()` plus a second,
+  // layered `installMockIPC` registration (see that function's own doc in
+  // mocks.ts) stand in for the app actually restarting with that saved
+  // value. The post-reload assertion is a literal German string
+  // ("Einstellungen"), not `en(id)`/a `de()` helper -- same rationale as
+  // the de-AT case: proving the de bundle is genuinely active, not merely
+  // that a translation function was called correctly.
+  test("selecting German in the settings dialog saves it, and it renders the German catalog on the next start", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+      },
+    });
+
+    await page.goto("/");
+
+    await page.getByTestId("open-settings").click();
+    const dialog = page.getByTestId("settings-dialog");
+    await expect(dialog).toBeVisible();
+
+    const localeSelect = dialog.getByRole("combobox", name("settings-locale-label"));
+    await expect(localeSelect).toHaveValue("en");
+    await localeSelect.selectOption("de");
+
+    await dialog.getByRole("button", name("settings-save")).click();
+    await expect(dialog).toBeHidden();
+
+    const settingsWrites = recorded.filter((r) => r.cmd === "set_settings");
+    expect(settingsWrites).toHaveLength(1);
+    expect((settingsWrites[0].args as { settings: AppSettings }).settings.locale).toBe("de");
+
+    await page.addInitScript(installMockIPC, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(DE_SETTINGS)],
+      },
+    });
+    await page.reload();
+
+    await page.getByTestId("open-settings").click();
+    const reloadedDialog = page.getByTestId("settings-dialog");
+    await expect(reloadedDialog.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
+    await expect(reloadedDialog.getByRole("combobox")).toHaveValue("de");
   });
 });
