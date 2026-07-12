@@ -1,0 +1,5 @@
+---
+source: crates/muxsmith-cli/tests/run_cli.rs
+expression: stdout
+---
+[error] input.pattern: Invalid regular expression: regex parse error: S(?<s>\d{2}E(?<e>\d{2}) ^ error: unclosed group

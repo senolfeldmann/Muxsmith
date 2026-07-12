@@ -22,5 +22,15 @@ unic-langid = "0.9.6"
 [dev-dependencies]
 assert_cmd = "2.2.2"
 fluent-syntax = "0.12.0"
+# Exact-pin per toolchain doctrine; registry-verified current stable
+# (crates.io API, 2026-07-12): insta 1.48.0 is max_stable_version.
+# `filters`: plain-string regex redaction for CLI stdout/stderr snapshots
+# (tempdir paths, mkvmerge version banners, job durations); `redactions`
+# is the wrong feature here, it targets structured (JSON/YAML) snapshots.
+insta = { version = "=1.48.0", features = ["filters"] }
 predicates = "3.1.4"
+# Already pinned identically in muxsmith-core; reused here (not a new
+# dependency in the resolved tree) only for `regex::escape` when building
+# a per-test tempdir filter (tests/support/mod.rs).
+regex = "1.12.4"
 tempfile = "3.27.0"

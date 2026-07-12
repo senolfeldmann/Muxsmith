@@ -10,6 +10,8 @@ use std::process::Command;
 
 use assert_cmd::cargo::CommandCargoExt;
 
+mod support;
+
 fn muxsmith() -> Command {
     Command::cargo_bin("muxsmith").unwrap()
 }
@@ -79,11 +81,20 @@ fn bad_regex_profile_exits_two_without_executing_a_job() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("Invalid regular expression"),
-        "expected the config-time diagnostic in stdout, got: {stdout}"
-    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // Unlike the sibling test right below (mkvmerge forced missing), this
+    // one runs with whatever mkvmerge situation the test machine actually
+    // has (deliberate, see the doc comment above): when mkvmerge IS on
+    // PATH -- true of every CI leg since Plan 5.5 Task 2, and of this dev
+    // machine -- `run` still reaches `plan_batch`/`print_batch_human`
+    // despite the config-time error, so stdout also carries a "0 files
+    // matched (searched {dir}, ...)" line with this test's own real tmp
+    // path, caught here reviewing the first `.snap.new` (an unredacted
+    // absolute path would have made the snapshot fail on every other
+    // machine and CI leg).
+    support::insta_settings_with_tmp(dir.path()).bind(|| {
+        insta::assert_snapshot!(stdout);
+    });
     asserts_no_job_ran(&stdout);
 }
 
@@ -113,12 +124,9 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
         .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = String::from_utf8(out.stdout).unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stdout.contains("Invalid regular expression"),
-        "expected the config-time diagnostic in stdout, got: {stdout}"
-    );
+    insta::assert_snapshot!(stdout);
     assert!(stderr.contains("mkvmerge"), "got stderr: {stderr}");
     asserts_no_job_ran(&stdout);
 }
@@ -357,19 +365,15 @@ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("0 files matched"),
-        "expected the zero-count batch summary line, got stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(&dir.path().display().to_string()),
-        "expected the searched root in the summary line, got stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("mkv"),
-        "expected the configured extensions in the summary line, got stdout: {stdout}"
-    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // The zero-count, searched-root and configured-extensions facts (Task
+    // 8) all live in the one rendered `dry-run-summary` line; a single
+    // redacted snapshot covers all three instead of three separate
+    // substring checks. The searched root is `dir.path()` itself, real and
+    // machine-specific, so it is filtered to a stable placeholder.
+    support::insta_settings_with_tmp(dir.path()).bind(|| {
+        insta::assert_snapshot!(stdout);
+    });
 }
 
 /// Task 9 (D15): the mkvmerge-not-found path must surface the same document
@@ -609,10 +613,17 @@ fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8_lossy(&out.stdout);
     asserts_no_job_ran(&stdout);
+    // `tracks[0].match` is the schema-relative `config_path` the
+    // `diagnostic-line` template echoes verbatim; a structural identifier
+    // from the profile, not translatable wording, so it stays a plain
+    // substring check (superset-of-validate) rather than becoming a
+    // snapshot.
     assert!(
         stdout.contains("tracks[0].match"),
         "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
     );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
+    // `mkvmerge-query-failed`'s fixed, param-free wording ("Querying
+    // mkvmerge failed."): a genuine wording pin, converted to a snapshot.
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    insta::assert_snapshot!(stderr);
 }

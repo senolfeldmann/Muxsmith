@@ -1,0 +1,5 @@
+---
+source: crates/muxsmith-cli/tests/run_live.rs
+expression: summary_line
+---
+2 ok, 0 warning, 0 failed, 0 cancelled

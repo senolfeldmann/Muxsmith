@@ -133,11 +133,22 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
     assert_identifies_as_matroska(&out1);
     assert_identifies_as_matroska(&out2);
 
+    // The run-summary line ("{ok} ok, {warning} warning, ...", `run.rs`'s
+    // `render_summary`) is a genuine wording pin, snapshotted rather than
+    // hardcoded here (spec 10). Only that one line, not the full stdout:
+    // the per-job milestone lines above it carry real elapsed seconds and
+    // (for a near-instant fixture mux) a nondeterministic subset of the 25/
+    // 50/75% progress thresholds, neither safe to pin byte-for-byte even
+    // with duration redaction. `run-joblog-written` may follow it as the
+    // last line instead (a logger is created whenever a real runs-root
+    // resolves), so the summary line is found by its distinctive shape
+    // rather than assumed to be `stdout`'s last line.
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("2 ok, 0 warning, 0 failed, 0 cancelled"),
-        "expected the run-summary line in stdout, got: {stdout}"
-    );
+    let summary_line = stdout
+        .lines()
+        .find(|l| l.contains(" ok, ") && l.contains(" cancelled"))
+        .unwrap_or_else(|| panic!("expected the run-summary line in stdout, got: {stdout}"));
+    insta::assert_snapshot!(summary_line);
 }
 
 /// Backdates `path`'s mtime by an hour and returns the value actually
