@@ -252,12 +252,15 @@ pub fn plan_core(
 
     let mut files: Vec<FileReport> = Vec::new();
     let mut resolved_sources: Vec<PathBuf> = Vec::new();
+    let mut found_versions: Vec<u64> = Vec::new();
     for primary in primaries {
-        let (report, sources) =
+        let (report, sources, format_version) =
             resolve_file(profile, primary, &primary_paths, &output_dir, id, lang);
         files.push(report);
         resolved_sources.extend(sources);
+        found_versions.extend(format_version);
     }
+    detect_schema_drift(&found_versions, &mut batch_diagnostics);
 
     // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
     // resolved donors, not just the current one's, so it runs as its own
@@ -373,6 +376,36 @@ fn validate_extension_list(
     }
 }
 
+// SchemaDrift (D32 addendum, Task 16.5, Şenol 2026-07-12 ruling): once per
+// batch, info severity, decoupled from `raw:` consumption entirely (that
+// stays `UnknownPropertySkew`'s job, emitted per consumed property in
+// `emit_raw_property_skew`). Rebuilds the general "your mkvmerge speaks a
+// newer identification schema" notice T16 dropped when D32 repurposed
+// `UnknownPropertySkew` to the per-property `raw:` path (that removal
+// silenced the signal even for a batch with no `raw:` property in play at
+// all). Fires when ANY identified file in `found_versions` (collected by
+// `plan_core` across every primary `resolve_file` identified, regardless of
+// container support) exceeds `PINNED_IDENTIFICATION_FORMAT_VERSION`;
+// `found_version` carries the max seen, so a mixed batch reports the most
+// skewed file rather than the first. `found_versions` is empty whenever no
+// file in the batch identified at all (mkvmerge absent, every query
+// failed), which degrades this to a no-op exactly like
+// `validate_extension_values` degrades on a `None` capability query.
+fn detect_schema_drift(found_versions: &[u64], diags: &mut Vec<Diagnostic>) {
+    let max_found = found_versions
+        .iter()
+        .copied()
+        .filter(|&v| v > PINNED_IDENTIFICATION_FORMAT_VERSION)
+        .max();
+    if let Some(found) = max_found {
+        diags.push(
+            Diagnostic::info(DiagCode::SchemaDrift, "input")
+                .with("found_version", found.to_string())
+                .with("pinned", PINNED_IDENTIFICATION_FORMAT_VERSION.to_string()),
+        );
+    }
+}
+
 // Recurses match expressions collecting exact `language` values, checking each
 // against the runtime index (plan-time InvalidPropertyValue, D2).
 fn walk_exact_languages(
@@ -419,7 +452,7 @@ fn resolve_file(
     output_dir: &Path,
     id: &mut dyn Identify,
     lang: &LanguageIndex,
-) -> (FileReport, Vec<PathBuf>) {
+) -> (FileReport, Vec<PathBuf>, Option<u64>) {
     let mut diagnostics = Vec::new();
     let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
 
@@ -439,9 +472,16 @@ fn resolve_file(
                     diagnostics,
                 },
                 Vec::new(),
+                None,
             );
         }
     };
+    // Every successful identification contributes its schema version to the
+    // batch-level SchemaDrift walk (`detect_schema_drift` in `plan_core`),
+    // independent of whether the container turns out supported/recognized -
+    // mkvmerge already produced a genuine `identification_format_version`
+    // for this file at this point (D32 addendum, Task 16.5).
+    let format_version = Some(ident.format_version);
     if !ident.container_recognized || !ident.container_supported {
         diagnostics.push(
             Diagnostic::error(DiagCode::UnsupportedSource, "input")
@@ -456,6 +496,7 @@ fn resolve_file(
                 diagnostics,
             },
             Vec::new(),
+            format_version,
         );
     }
 
@@ -716,6 +757,7 @@ fn resolve_file(
             diagnostics,
         },
         resolved_sources,
+        format_version,
     )
 }
 
