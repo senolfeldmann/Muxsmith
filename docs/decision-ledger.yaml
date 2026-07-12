@@ -1,0 +1,3669 @@
+# Muxsmith decision ledger (Tier 1) - reconstructed bootstrap
+#
+# Every considered approach and its outcome; always recorded, on-demand load.
+# Entry schema (canonical copy in software-dev-process doctrine section 7):
+#   id, kind (pattern|restraint|non-decision), tier (1|2), domain,
+#   statement, steelman (restraint only), blocked_on (non-decision only),
+#   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
+#   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
+# count is always len(occurrences); no occurrence, no increment. Promotion to
+# CONVENTIONS.yaml at count 3; the occurrence list migrates and keeps growing.
+#
+# Bootstrapped 2026-07-13 by a retroactive reconstruction sweep over the whole
+# project trail (git, 8 D-memos, the 10-session journal, plan-1..5.5 SDD verdict
+# archives, ROADMAP/IDEAS/spec), walked chronologically. 549 occurrence records
+# -> 358 clusters. Tier-1 counts here are RECONSTRUCTION-STAGE (not individually
+# audited); only the promoted entries (-> CONVENTIONS.yaml) passed the
+# adversarial per-occurrence audit that drops fabricated/duplicate citations.
+
+
+entries:
+- id: core-02-ordered-consumption-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Ordered consumption (first-match-wins with track consumption) and a global constraint solver were both rejected in favor of strict independent uniqueness."
+  steelman: "Ordered consumption would make Şenol's own reference profile work unmodified (no explicit forced_track:false), more ergonomic; a global solver could auto-resolve overlaps. Rejected for maximal explicitness over implicitness."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1 (Decisions and why)"}
+- id: core-05-global-toggles-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Exposing attachments/chapters/tags/title as simple global on/off toggles instead of full declarative control was rejected."
+  steelman: "Global on/off toggles give far less config and UI surface and a simpler v1; the agent recommended them. Overruled as Şenol's scope call."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+- id: core-07-runtime-fetching-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Fetching the identification schema at runtime or over the network at build was rejected."
+  steelman: "Runtime/build-time fetching would keep the property model in lockstep with the local mkvmerge, eliminating skew. Rejected to sidestep schema licensing and avoid a network build dependency; skew is surfaced as an opt-in untyped-match warning instead."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2/§9"}
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+- id: core-08-runtime-skew-untyped
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "E0 sketch: a runtime property the pinned model lacks is matched untyped and warned about rather than hard-failing; later reworked as the D32 raw: opt-in (core-91)."
+  steelman: "Hard-failing on any unknown property is simpler and never silently mismatches."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+    - {date: "2026-07-08", kind: decided, ref: "spec §9"}
+- id: core-09-media-boundary
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Muxsmith never processes media; it only generates and executes mkvmerge commands, like mkvtoolnix-gui's job queue; output always MKV, input anything the local mkvmerge supports."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §1"}
+- id: core-10-declarative-batch
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "The profile expresses the output as declarative selection rules resolved against each file's actual tracks, applied across a whole tree with no per-file review step (unlike interactive mkvtoolnix-gui)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §1"}
+- id: core-11-profile-format
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "One serde model backs YAML and JSON equivalently; the published JSON Schema is generated from the same model via schemars, never hand-written."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §4"}
+- id: core-13-property-model-split
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Two disjoint property sets in capability: matchable (generated from the identification schema at build time) vs settable (curated table mapped to mkvmerge options)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §4.4"}
+- id: core-14-operation-unification
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "validate (static only), dry-run (validate + full planning, -J only) and run (re-plan then execute) share one planning code path; one code path, three entry points."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §5.5"}
+- id: core-15-transcoding-out
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Transcoding is permanently out of scope; the tool only muxes."
+  steelman: "A convert-and-remux step would serve users whose source codecs the target player cannot handle - but that is a fundamentally different tool."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §11"}
+- id: core-16-season-episode-arithmetic-out
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Cross-file season/episode renumbering/offsetting is excluded; identifiers are opaque match keys and transforms are per-file."
+  steelman: "Cross-batch renumbering/offset is a real bulk-rename need mkvtoolnix users hit."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §11"}
+- id: core-17-wildcard-multitrack-out
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "'Keep all remaining audio' wildcard rules are rejected for v1 because they break strict independent uniqueness; a later explicit multi:true form is named but not committed."
+  steelman: "mkvtoolnix's 'keep all remaining tracks of type X' is a common convenience; strict uniqueness forces enumerating every track explicitly."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §11"}
+- id: core-18-blanket-private-doc-lint-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Public items are doc-gated by deny(missing_docs); private items are documented by judgment only, a blanket private-doc lint rejected as comment-noise."
+  steelman: "A blanket private-doc requirement guarantees every item is documented with no judgment calls."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal Docs bullet"}
+    - {date: "2026-07-08", kind: decided, ref: "commit c402914"}
+- id: core-19-sync-delay-stretch
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "Per-file --sync delay/stretch changes deferred; per-file offsets do not generalize to batch rules (v1.x candidate)."
+  steelman: null
+  blocked_on: "no batch-generalizable model for per-file offsets"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec §11"}
+- id: core-20-ondisk-cache
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "The identification cache is in-memory per session (keyed path+mtime+size); an on-disk cache is a future candidate, not built in v1."
+  steelman: null
+  blocked_on: "in-memory per-session cache suffices for v1, no measured need"
+  status: blocked
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec §5.5/§11"}
+    - {date: "2026-07-08", kind: deferred, ref: "handoff plan-1-close"}
+- id: core-23-output-naming
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Output filename is keep-name or a rename template; on_collision = error|skip|overwrite (default error); in-place replacement of source files is a hard, non-configurable exclusion."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2/§4.8/§1"}
+    - {date: "2026-07-08", kind: decided, ref: "commit 61249f9"}
+- id: core-25-match-to-source-false
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "match_to_source:false must not raise LocatorConflict; validate.rs used is_some() but the spec types it ?:true, so conflict only on Some(true) and reject Some(false) explicitly."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "whole-branch verdict Important #3"}
+    - {date: "2026-07-08", kind: violated-corrected, ref: "commit 3c24845"}
+- id: core-27-codec-kind-exact-only
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "codec_kind may appear only under exact conditions; a pattern over the curated alias token is ill-defined, so it is a validate-time error (new CodecKindExactOnly), not a silent never-match."
+  steelman: "Allow substring/regex over codec_kind for loose family matching - rejected because real pattern matching is already available via codec_id and the alias-token semantics are ambiguous."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D1"}
+- id: core-28-closed-domain-value-validation
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "New InvalidPropertyValue diagnostic: validate exact-condition values against closed domains - type (pinned schema, config-time), codec_kind (curated table, config-time), language (mkvmerge --list-languages, plan-time once per config path); a typo'd enum value must be a config-time error, not surface as a misleading MissingTrack on every file."
+  steelman: "Version skew - a new enum value from a newer mkvmerge is rejected at validate with no v1 escape hatch; accepted because track-type enums are extremely stable."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D2"}
+- id: core-30-locator-path-pathbuf
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Locator.path changes String -> PathBuf to match output.directory; the honest type, natural planner joins, serde/schemars treat it as string so the profile format and JSON Schema are unchanged."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D3"}
+    - {date: "2026-07-09", kind: decided, ref: "commit 339c99d"}
+- id: core-32-template-brace-semantics
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Lock current template behavior with golden tests, no code change: {{/}} escape, lone } literal, lone unclosed { is InvalidTemplate (forgiving where unambiguous, strict where ambiguous)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D5"}
+- id: core-33-suggestion-narrow-only
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "The suggestion edit grammar is a deliberately closed StructuredEdit enum (v1): suggestions only ever narrow the conflicted rule's match, never reorder, never touch other rules, never relax; narrow-only guarantees convergence and keeps YAML rendering and simulation trivial."
+  steelman: "A richer grammar (reorder rules, relax over-narrow rules) would auto-resolve more conflict classes - deferred out of v1 for determinism and convergence."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D6"}
+- id: core-36-empirical-verification
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Confirm the -J shape, --list-languages/--list-types formats and the track-type domain by running the installed mkvmerge (v99), not from memory or the schema; both parsers passed real output first try (continues Plan-1 discipline)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "journal Plan 2 (Decisions)"}
+- id: core-39-empty-matchlist-error
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "A present-but-empty any:[] or not:[] is a config-time error (new EmptyMatchList), not silently no-constraint ('at least one of zero holds = false')."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "independent review decision #2(c)"}
+    - {date: "2026-07-09", kind: decided, ref: "commit a67879e"}
+- id: core-43-keep-name-mkv-preserved
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "The keep-name arm appends .mkv unconditionally per-arm (not the unified conditional append), so Show.S01E01.mkv.mkv keeps its full basename; unifying the arms silently truncated inner-.mkv keep names with no diagnostic (spec 4.8 violation)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F6 review Finding 1"}
+    - {date: "2026-07-09", kind: violated-corrected, ref: "commit 550ba59"}
+- id: core-50-command-purity-ir
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "command is a pure Plan -> Vec<String> with no Profile access; the Plan/Assignment carry every resolved decision format-neutrally, so command is the only module below capability that knows mkvmerge's CLI surface - a future backend or flag change touches command alone."
+  steelman: "Threading the Profile through the command layer avoids growing the Plan struct into a fatter value type."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D8"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch verdict (Strengths)"}
+- id: core-51-identify-attachments-chapters
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Identification gains attachments (id/file_name/size/content_type?/description?/uid?) and a summed chapters entry-count, parsed from the -J already fetched (no extra spawn); fields pinned to schema v20 and confirmed against the binary, parse_attachment mirroring parse_track."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D9"}
+    - {date: "2026-07-09", kind: reinforced, ref: "task-1 verdict (Approved)"}
+- id: core-52-chapters-count-only
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Chapters are parsed as a total entry count; only presence (count>0) is consumed for keep/drop in v1, the count parsed for future use - intentional per D9, not a wiring gap."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch verdict (Minor 8)"}
+- id: core-53-attachments-primary-only
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Attachment rules and unmatched apply to the primary's attachments only; donors always get --no-attachments; external files enter as attachments only via an explicit add locator. A donor is a track source, not an attachment source (least-surprise); the one point spec 4.9 left open, flagged for Şenol at the review gate."
+  steelman: "Spec 4.9 does not say per-input; a per-input reading would let donor MKVs contribute their own attachments too, a defensible literal reading."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D10 (Why primary-only)"}
+- id: core-55-settable-language-per-file
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "changes.language values are validated per-file at the matched-branch application point (reuse LanguageIndex + InvalidPropertyValue), not folded into the batch-level walk; an invalid settable language on an optional rule that matched nothing goes uncaught but is inert."
+  steelman: "Folding it into validate_language_values would give batch-level consistency and catch the invalid-language-on-unmatched-optional case the per-file approach misses."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "Plan Task 5"}
+    - {date: "2026-07-09", kind: decided, ref: "memo D10"}
+- id: core-56-batch-level-language-fold
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "Optionally folding settable-language validation into walk_exact_languages (to catch the all-optional-unmatched invalid-language case) left for v1 - low value since the uncaught case is inert."
+  steelman: null
+  blocked_on: "optional refinement, not required for v1 correctness"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch verdict (Recommendations) + progress roll-up"}
+- id: core-57-argv-construction
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Global options + per-input-file groups (one per distinct input path) with track selection/property/attachment flags + --track-order encoding fileidx:trackid, mirroring mkvtoolnix-gui; grouping + --track-order is the only way to express cross-file ordering; argv accepted as-is by real mkvmerge v100, no command.rs correction."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D11"}
+    - {date: "2026-07-09", kind: reinforced, ref: "task-12 verdict (live round trip)"}
+- id: core-60-title-ctx-source-stem
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "resolve_title adds source_stem to the render Ctx so its field set matches validate.rs's title.template allowed fields, closing a validated-but-silently-empty-field bug the brief's literal wording would have produced."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "task-6 verdict + progress Task 6"}
+- id: core-61-primary-ctx-helper-declined
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Declined to extract a shared primary_ctx() helper for a ~4-line, two-instance duplication between render_output and resolve_title (does not clear the codebase's 'three similar lines beat a premature abstraction' bar)."
+  steelman: "Extracting a shared primary_ctx() would remove the duplicated Ctx-building and prevent the two sites drifting apart."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "task-6 verdict (Strengths)"}
+- id: core-62-external-chapters-reuse
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "resolve_chapters mirrors the track-external branch, reuses resolve_locator + Missing/AmbiguousExternal, diverges only where required (no optional escape on 0 hits, no identify() on the 1-hit path), and does not mkvmerge-identify the chapters file."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "task-7 verdict"}
+- id: core-64-donor-group-ordering
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "With a donor whose assignments mix None/Some, its group position is set by its first Some (can differ from a literal first-appearance reading); no golden arbitrates it, left as a conscious choice into Task 12."
+  steelman: null
+  blocked_on: "no golden arbitrates the ordering; pinning left pending"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "task-9 verdict round-2 (Minor) + progress roll-up"}
+- id: core-66-eager-resolution-discarded-plan
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "On a render_output failure, resolve_chapters/resolve_attachments still run (wasted I/O + stray diagnostics on plans that will be discarded); consistent with the deliberate pre-finalize design (detect_source_overwrites needs pre-drop plans), left as-is."
+  steelman: null
+  blocked_on: "tied to detect_source_overwrites pre-finalize design; low priority"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch verdict Minor 6 + progress roll-up"}
+- id: core-68-bcp47-accept-well-formedness
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "A language value is valid if it is a bare ISO code OR a well-formed BCP-47 tag (parse() only), not ISO-index membership, so real regional tags (xx-YY) are accepted and left for mkvmerge to reject at mux time."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19"}
+- id: core-69-bcp47-accept-liberal-match-precise
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Deliberate asymmetry: acceptance uses parse() well-formedness (liberal), matching uses canonicalize() (precise); a well-formed-but-nonexistent tag is accepted and simply never matches."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19"}
+    - {date: "2026-07-09", kind: reinforced, ref: "whole-branch verdict (pt-BR trace)"}
+- id: core-70-registry-validate-not-called
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "registry.validate() is deliberately not called on the language accept side; over-accepting a pathological well-formed tag is less harmful than over-rejecting real ones, and mkvmerge rejects it at mux time."
+  steelman: "Calling registry.validate() would catch typos like xx-YY at plan time rather than deferring rejection to mkvmerge at mux time."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19"}
+    - {date: "2026-07-09", kind: decided, ref: "Plan self-review"}
+- id: core-71-language-tags-crate
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Use the vetted language-tags crate (pure Rust, RFC 5646, bundled IANA registry) for BCP-47 parse/canonicalize rather than a hand-rolled grammar; 0.3.2 vetted clean (MIT/Apache-2.0, no transitive deps, deny.toml untouched)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19 (Şenol)"}
+    - {date: "2026-07-09", kind: reinforced, ref: "task-4 verdict + progress ledger"}
+- id: core-73-language-canonicalize-match
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Match equality canonicalizes both non-ISO operands (case + script suppression + deprecated replacement) so pt-Latn-BR==pt-BR, iw==he while pt-BR!=pt-PT, zh-Hans!=zh-Hant; built now (option B) rather than cut as an apparent no-op, because the cited pt-Latn-BR fragility genuinely needs it."
+  steelman: "The pre-existing raw case-insensitive fallback already matched equal tags, so canonicalize() looked like a no-op that could be skipped."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D19 (Equality for matching)"}
+    - {date: "2026-07-09", kind: decided, ref: "journal Plan 3.5 (option B)"}
+- id: core-74-tracks-unmatched-policy
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "tracks gains an unmatched policy keep|drop defaulting to drop - drop is Muxsmith's declarative/curative essence; keep retained after Şenol questioned it, justified by the one inexpressible case (additive bulk ops under drop are blocked by one-track-per-rule)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D20"}
+    - {date: "2026-07-09", kind: reinforced, ref: "journal Plan 3.5 (keep retained)"}
+- id: core-75-tracks-nested-block
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "tracks is restructured into a { unmatched, rules } block (Şenol drove placement) so the policy lives with its rules, matching attachments and output/tags policy-in-section; the top-level unmatched_tracks ergonomic recommendation conceded on whole-profile consistency."
+  steelman: "A top-level unmatched_tracks key is more ergonomic for the common bare-list case (Peter's initial recommendation)."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D20"}
+    - {date: "2026-07-09", kind: decided, ref: "journal Plan 3.5"}
+- id: core-76-trackscfg-no-default
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Only unmatched defaults (via drop_policy()); rules has no serde default, so tracks: stays a mandatory Profile field - exactly preserving the pre-existing requirement that a list be present."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "task-1 verdict"}
+    - {date: "2026-07-09", kind: decided, ref: "Plan Task 1 Step 3"}
+- id: core-77-keep-scope-primary-only
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "The keep policy passes through only the primary's own unmatched tracks; donors and attachments unaffected (keeping unmatched donor tracks would pull in the donor's video/subs); mirrors D10's primary-only attachment scope."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D20"}
+- id: core-78-keep-donor-isolation
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Donor isolation under keep is structural, not conventional: input_groups always seeds group 0 with the primary, so the source==plan.source suppression guard can never fire for a donor."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "task-2 verdict (Named Risk Check)"}
+- id: core-79-keep-no-reposition
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Under keep, explicit primary rules change properties only, not position; to reorder the primary the user switches to drop mode (held open for veto, not vetoed)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D20 (point held open for veto)"}
+- id: core-82-donor-side-gate-not-built
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "The UnsupportedSource gate is deliberately primary-only; no donor-side gate was built (D21 scope)."
+  steelman: "A donor mkvmerge cannot mux also fails downstream; a symmetric donor gate would surface it earlier with the same clean diagnostic."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "Plan self-review"}
+    - {date: "2026-07-09", kind: decided, ref: "task-6 verdict (deferred-by-decision)"}
+- id: core-83-zero-rule-keep-passthrough
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "Whether a zero-rule keep profile should be a legal pure-passthrough remux is open; the assumption stands that it remains a NoTrackRules error."
+  steelman: null
+  blocked_on: "Şenol veto - whether a pure-passthrough keep profile should be legal instead of a NoTrackRules error"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "memo D20 (Open mechanics, plan-time)"}
+- id: core-84-regex-recompile
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "The regex recompiled per matches call is deferred to a later cleanup pass."
+  steelman: null
+  blocked_on: "later cleanup pass"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "memo D18"}
+- id: core-86-mkvmerge-detection-ladder
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "detect_mkvmerge probes override -> PATH -> platform-standard locations; on failure, per-OS first-run guidance + manual picker + version floor. A configured override is authoritative (early return), never masked by an automatic fallthrough to PATH."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D28"}
+    - {date: "2026-07-10", kind: decided, ref: "task-3 verdict (override-authoritative)"}
+- id: core-88-platform-candidate-paths
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Each Windows/macOS/Linux candidate path is verified against mkvtoolnix's own packaging and cited (correcting the brief's macOS bundle-name glob to MKVToolNix.app), unused ones dropped."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "Plan T3 step 2"}
+    - {date: "2026-07-10", kind: decided, ref: "task-3 verdict"}
+- id: core-90-go-public-gates
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Pulled-forward go-public gate: ConcurrencyTracker (test instrumentation) is doc(hidden) from rustdoc but kept pub for cross-crate tests; static 3-OS matrix pulled forward too."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "commit 7a2bc15"}
+    - {date: "2026-07-10", kind: decided, ref: "journal Plan 5"}
+- id: core-91-raw-opt-in
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Unknown property names stay hard-rejected at config time UNLESS marked with a raw: prefix; a raw: property matches untyped, emits RawProperty info at validate and UnknownPropertySkew at plan time (shape B). Shipped exactly per the binding B-1..B-11 acceptance table."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32 (Şenol)"}
+    - {date: "2026-07-11", kind: reinforced, ref: "task-16 verdict"}
+- id: core-92-raw-shape-a-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Shape A (enrich UnknownProperty with a nearest-name did-you-mean suggestion, drop the §9.2 automatic-untyped promise) rejected because the §9.2 forward-compat promise is kept deliberately."
+  steelman: "Maximal typo protection; the cleaner downgrade if forward-compat-without-a-release is YAGNI for this audience."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32"}
+    - {date: "2026-07-11", kind: decided, ref: "d32-analysis.md"}
+- id: core-93-raw-shape-c-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Shape C (unknown name becomes a warning at every level + untyped match, no opt-in) rejected outright - guts typo protection unconditionally, including on non-skewed mkvmerge, and opens the optional-rule and not:-inversion silent holes."
+  steelman: "Forward-compat delivery: full and automatic; the cheapest path to a literally-§9.2-compliant tool."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32"}
+- id: core-94-raw-version-gated-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "The obvious version-gated hybrid (error at validate, warning at dry-run) rejected pre-emptively - it inverts spec 5.5's 'dry-run is a strict superset of validate', so the disambiguator must be stable across levels."
+  steelman: "At validate no mkvmerge is present so assume typo; at dry-run format_version is readable so downgrade - matches the actual information available per level."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d32-analysis.md"}
+- id: core-95-rawproperty-visible
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "RawProperty (info, config-time) is kept rather than the minimal variant that drops it - the escape valve must be visible at validate; a silent bypass undercuts the point of B over C."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32 (marked assumption)"}
+- id: core-96-rawproperty-minimal-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "The minimal variant that omits RawProperty and relies only on plan-time UnknownPropertySkew rejected - it trades validate-time honesty for fewer codes."
+  steelman: "Two fewer DiagCodes and two fewer C1 fixtures to maintain."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d32-analysis.md"}
+- id: core-97-raw-on-known-property
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "raw: applied to a property with special semantics (language, codec_kind) emits RawOnKnownProperty (warning): it bypasses ISO-639/BCP-47 normalization / alias expansion to byte-literal equality."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D32 (B-4)"}
+- id: core-98-raw-language-single-field
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "raw:X reads exactly the property literally named X, byte-exact (raw:language reads only language, so de vs ger = no match); no language exception. Read as dual-field in the memo, ratified single-field by Şenol, no code change."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-16 verdict (pending ratification)"}
+    - {date: "2026-07-12", kind: decided, ref: "memo D32 addendum RESOLVED (Şenol)"}
+- id: core-100-schemadrift-primaries-only
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "SchemaDrift is emitted from primaries only; extending it to donors rejected as over-engineering for a structurally unreachable case (schema version is a build constant of the one local mkvmerge binary)."
+  steelman: "A donor on a newer schema than the primaries could carry undocumented skew - but impossible since the schema version is a build constant of the one local mkvmerge binary."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-16.5 verdict adjudication 1"}
+- id: core-102-overlap-selection-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Neither 'later-by-list-order' (narrow rules[1]) nor 'broader-by-match-domain-size' was adopted as the policy for which overlap rule gets narrowed; the model has no rule precedence, both are intent guesses, and the earlier rule is frequently the accidental over-broad one. Both survive only as a rank tiebreak (core-103)."
+  steelman: "Policy 1 is cheapest and fully deterministic and matches a 'first rule wins, later is the intruder' model; policy 2 is the strongest intent heuristic (the rule matching more tracks is the accidental over-claimer). Rejected as primary policies in favor of symmetric generation + acceptance filter."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 / d33-analysis (policy 1 later-by-list)"}
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 / d33-analysis (policy 2 broader-by-domain)"}
+- id: core-103-overlap-rank-tiebreak
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Ties between surviving narrowings on different rules break broader-rule-first, then lower rule index (the rejected selection policies survive here as a deterministic ordering)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 (marked assumption)"}
+- id: core-104-overlap-seed-not-only
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Seed overlap narrowing candidates as NOT-polarity only from the shared track's property vector, dropping positive AddExact/AddSubstring on the overlap path - the NOT form is the honest 'this rule should not take that track', and monotone narrowing guarantees convergence; a deliberate departure from the ambiguous path."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33"}
+    - {date: "2026-07-11", kind: decided, ref: "d33-analysis.md"}
+- id: core-105-overlap-seed-positive-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Mirroring the ambiguous path's both-polarity generation on the overlap path rejected - positive edits cannot redirect and only add near-tie noise to the ranked list."
+  steelman: "Mirror the ambiguous path's both-polarity generation for uniformity; harmless since acceptance filters it."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d33-analysis.md (open taste call 3)"}
+- id: core-106-overlap-specific-dimension-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "A separate overlap-specific dimension (diff the two rules' matched track sets) rejected - on the single contested file the two rules match the identical track so the difference set is empty; reuse candidates_for_rule instead."
+  steelman: "The properties on which the two rules' matched track sets differ would be the natural discriminator in a multi-file batch."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "d33-analysis.md"}
+- id: core-107-overlap-reuse-no-new-mechanism
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Overlap suggestions reuse candidates_for_rule / resolves_without_regression / partition_for_rule with no new edit variant, selection mechanism, or DiagCode."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33"}
+- id: core-108-narrow-optional-to-empty
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Narrowing an optional rule to an empty match is a first-class suggestion (the only feasible fix, user sees the exact edit), not down-ranked or annotated as 'disables the rule here'."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 (marked assumptions)"}
+- id: core-109-two-required-no-fix
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Two required rules colliding on one track in one file yield no suggestion, only the explicit no-fix/partition report - an unavoidable property of the narrow-only v1 grammar."
+  steelman: "A user expecting a one-click fix for every overlap will find overlap less helpful than ambiguity."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 Tradeoff (accepted)"}
+- id: core-110-three-claimants-partition
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Three-or-more claimants cannot be resolved by a single narrowing and degrade to the partition/no-fix report, which must name ALL claimants (ties to ROADMAP polish item i)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 (technically-forced list)"}
+    - {date: "2026-07-11", kind: decided, ref: "d33-analysis.md"}
+- id: core-111-overlap-alpha-tiebreak
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Within equal rank on the same rule, overlap suggestions order alphabetically on the property name - a deliberate deterministic tiebreak recorded at the T18 review."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D33 TC-A"}
+    - {date: "2026-07-11", kind: decided, ref: "task-18 verdict adjudication 1"}
+- id: core-112-contested-property-dimension-rejected
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "A contested-property selection dimension (to honor the memo's default_track-vs-forced_track TC-A illustration) rejected - it would be a new selection mechanism D33 forbids."
+  steelman: "Honor the memo's TC-A illustration where an equal-rank track's forced_track should rank first."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-18 verdict adjudication 1"}
+- id: core-113-d6-mechanical-completion
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "D6 completed: external-source suggestions (source-agnostic, skip removed), codec/id narrowing dimensions, multiset diag_signature (BTreeMap<sig,count>), and a §5.3 SuggestionPartition report capped at 5 groups."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-13 verdict"}
+    - {date: "2026-07-11", kind: decided, ref: "Plan T13"}
+- id: core-114-partition-suggestion-keyed
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Partition grouping is keyed on the per-file suggestion (the more literal reading of spec §5.3, which mandates the outcome not a key), superseding D6's conflict-signature-multiset key which could over-report by splitting files that share a resolution."
+  steelman: "D6's own Algorithm-doc wording (§5.3:286) specified the conflict-signature multiset as the grouping key."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-13 verdict ratification 1"}
+    - {date: "2026-07-11", kind: decided, ref: "memo residues"}
+- id: core-115-partition-unresolvable-file
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "A fixless affected file is silently dropped from the partition (best=None skip, unreachable under v1 id-uniqueness); hardening with an invariant comment or an explicit 'unresolvable' group deferred."
+  steelman: null
+  blocked_on: "idiomacy review (internal)"
+  status: blocked
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-13 verdict m1"}
+    - {date: "2026-07-11", kind: deferred, ref: "whole-branch funnel T13-m1"}
+- id: core-116-known-extensions-delivery
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "known_extensions is delivered as an Identify trait default method + IdentifyCache memo, not a plan_core param - zero production edits (a param would break ~20 call sites and collide with parallel streams)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-5 verdict"}
+- id: core-117-known-extensions-make-required
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "known_extensions default-None on Identify inverts the idiom (sole production impl overrides; a future impl silently gets vacuous validation); making the method required deferred."
+  steelman: null
+  blocked_on: "idiomacy review (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-5 verdict m2 + progress T5-m2"}
+- id: core-118-name-all-claimants
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "OverlappingRules names all claimants via a rendered $rules list (deterministic, BTreeMap + ascending rule index) rather than only rules[0]/rules[1] - feeds D33's all-claimants requirement."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-9 verdict (i)"}
+    - {date: "2026-07-11", kind: decided, ref: "Plan T9"}
+- id: core-120-donor-named-unsupported
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Donor-side UnsupportedSource names the offending donor via a new donor param and a single-key $kind selector (mirroring DonorIsPrimary's $donor), landing before T21 translation; primary rendering byte-identical."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-9.5 verdict"}
+    - {date: "2026-07-11", kind: decided, ref: "Plan T9.5"}
+- id: exec-01-output-naming
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Output name is keep-source or a rendered template; filesystem collisions resolve by error|skip|overwrite, defaulting to error."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 row 4 + §4.8"}
+- id: exec-02-no-in-place
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Muxsmith never writes over its inputs; in-place replacement is excluded as a hard, non-configurable rule, and an output path equal to any input is always a hard error."
+  steelman: "In-place metadata editing (mkvpropedit-style) would save disk space and avoid a separate output directory for small tweaks."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §1 + §2 row 4 + §11"}
+- id: exec-03-mkvpropedit-fastpath
+  kind: non-decision
+  tier: 1
+  domain: executor
+  statement: "A mkvpropedit fast path for metadata-only changes is deferred; the full remux path ships first."
+  steelman: null
+  blocked_on: "v1.x optimization; full remux path ships first"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec §11"}
+- id: exec-04-spawn-trait-seam
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Process execution sits behind a Spawn trait mirroring the existing Identify injection (live spawner + scripted fake), so progress-parse, state-machine and exit-code mapping are unit-testable without a real binary; real mkvmerge only in the gated integration tier."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D7 (Plan 4 forward decisions)"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-1-review-verdict.md"}
+- id: exec-05-std-threadpool
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "--jobs N uses a bounded std thread pool with no async runtime (tokio), because muxing is external-process / I-O-bound so std suffices and the dependency surface stays minimal."
+  steelman: "An async runtime (tokio) is the conventional, ecosystem-default way to supervise many concurrent child processes with backpressure and cancellation."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D7 (Plan 4 forward decisions)"}
+- id: exec-06-sigint-cleanup
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "On Ctrl-C the executor kills in-flight children and deletes their partial outputs; this is scoped into Plan 4 rather than deferred."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D7 (Plan 4 forward decisions)"}
+- id: exec-07-queue-in-core
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "The FIFO job queue lives in muxsmith-core's executor layer so the Plan-5 GUI reuses it as-is; interfaces (JobEvent/QueueOpts/run_queue) matched the brief verbatim and the seam chain was drift-free."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-3-review-verdict.md"}
+- id: exec-08-jobevent-mpsc
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Workers emit a serializable JobEvent data enum over std::sync::mpsc (serde tag=event, snake_case: Started/Progress/Warning/Error/Finished), serving the CLI renderer now, the Tauri payload in Plan 5, and the deferred NDJSON stream; per-index event ordering is guaranteed on the single channel."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-3-review-verdict.md"}
+- id: exec-09-event-delivery-callback-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "A callback/sink trait was rejected for event delivery in favour of the mpsc event stream."
+  steelman: "Workers call directly into a sink; conceptually simpler wiring, but the sink must be Send+Sync and the renderer must lock stdout internally."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13 (alternative rejected)"}
+- id: exec-10-event-delivery-polled-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Polled shared state was rejected for event delivery in favour of the event stream."
+  steelman: "Simplest to reason about, but loses event granularity and forces a poll cadence."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13 (alternative rejected)"}
+- id: exec-11-rendering-drain-caller-thread
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "The caller drains the receiver on its own thread and owns all rendering, keeping stdout single-threaded."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13"}
+- id: exec-12-job-state-set
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Terminal job states are Pending -> Running -> {Ok, Warning, Failed, Cancelled}, mirroring mkvtoolnix-gui's DoneOk/DoneWarnings/Failed/Aborted one-to-one (mux_job.cpp:154-159), independently confirming the spec-6 exit-code mapping."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13"}
+- id: exec-13-output-parent-dir
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "The executor ensures the output's parent directory exists (create_dir_all) before spawning; mkvmerge's own directory-creation is not relied on."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D13"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-2-review-verdict.md"}
+- id: exec-14-failfast-soft
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "--fail-fast is soft: on the first Failed job the queue dequeues nothing further, already-running jobs finish, and still-queued jobs become Cancelled."
+  steelman: "A hard-kill variant would stop wasted work sooner on systemic failures (captured as deferred exec-16 and rejected default exec-15)."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D14"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-3-review-verdict.md"}
+- id: exec-15-batch-no-hardkill-default
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Hard-kill of in-flight jobs on first failure was rejected as the batch default; a failure does not abort the batch. mkvtoolnix-gui has no fail-fast (model.cpp:337-380 calls startNextAutoJob unconditionally); make/cargo/GNU-parallel stop scheduling and let running jobs finish; kill+delete-partial is reserved for mkvmerge error or user cancel."
+  steelman: "On systemic failures (disk full, unwritable dir) a hard-kill stops the siblings immediately instead of letting them run seconds longer."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D14"}
+- id: exec-16-failfast-now-deferred
+  kind: non-decision
+  tier: 1
+  domain: executor
+  statement: "A --fail-fast=now value that also kills in-flight jobs (GNU-parallel now,fail=1 analog) is deferred to v1.x pending real usage demand."
+  steelman: null
+  blocked_on: "external: real usage demand"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "memo D14"}
+- id: exec-17-delete-partial-on-fail
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Partial outputs are deleted on mkvmerge error (exit 2) and on cancellation, a deliberate divergence from mkvtoolnix-gui's keep-by-default, because Muxsmith's bulk contract treats any file in the output tree as a valid output and on_collision:skip would otherwise silently accept a broken partial."
+  steelman: "The GUI is interactive, so keeping the partial lets the user see the red job and use it for diagnosis; Muxsmith's bulk contract plus the on_collision:skip footgun overrides that."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D17"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-2-review-verdict.md"}
+- id: exec-18-delete-partial-only-if-ran
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "delete_partial applies only to jobs that actually ran: a spawn failure (and later a skipped/pre-spawn-cancelled job) deletes nothing, so a pre-existing valid output under overwrite is never destroyed. Originally violated (spawn failure routed through delete-partial), fixed to assemble the Err-arm outcome inline, reaffirmed under D25's skip/pre-spawn paths."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "plan-4 task-2-review-verdict.md + commit f394f61"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-5 task-5-review-verdict.md"}
+- id: exec-20-killed-wait-none
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "A killed job must report wait()=None cross-platform; otherwise on Windows Child::kill is TerminateProcess(h,1) so ExitStatus::code() is always Some(1)->Warning->partial kept, never Cancelled. Fixed with a shared Arc<AtomicBool> killed flag set before kill(), folded through a pure resolve_wait returning None when set."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "plan-4 whole-branch-review-verdict.md + commit 75c075f"}
+- id: exec-21-stop-vs-cancel-flags
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Fail-fast (stop) and SIGINT (cancel) are separate flags so the 130 exit override can only come from a real SIGINT; fail-fast never masquerades as cancellation. Held through T3, T8 and T10."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "commit b9960c5 (T3), cited in plan-4 whole-branch-review-verdict.md"}
+- id: exec-22-prespawn-cancel-check
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "A cancel observed before spawn yields Cancelled without invoking the spawner and deletes nothing. Proposed at Plan-4 whole-branch review to close most of the register-after-sweep window and deferred to v1.x, then implemented in T5, closing the HANDOFF backlog item."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "plan-4 whole-branch-review-verdict.md (recommendation #3)"}
+    - {date: "2026-07-11", kind: decided, ref: "plan-5 T5 step1.3"}
+- id: exec-23-loop-resweep-watcher
+  kind: non-decision
+  tier: 1
+  domain: executor
+  statement: "A loop-and-re-sweep watcher that would narrow the register-after-sweep window further (a design change to the one-shot watcher) is deferred; today a job registering its killer after the sweep runs to natural completion under cancel, bounded to one job per worker and recorded honestly."
+  steelman: null
+  blocked_on: "internal: design change if stronger cancel ever wanted"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "plan-4 task-3-review-verdict.md (named-risk 2)"}
+- id: exec-24-midspawn-cancel-not-lost
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "A cancel_job caught in the mid-spawn window (between the pre-spawn check and killer registration) must not be silently lost: it originally set the flag but issued no kill and nothing re-checked, fixed with a post-insert re-check, verified deterministically with a gate spawner (cancel_job_during_spawn_window_is_not_lost) rather than sleeps."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "plan-5 task-5-review-verdict.md + commit e06bda0"}
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-5 whole-branch-review-verdict.md (strengths)"}
+- id: exec-25-perjob-cancel-in-core
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Core's queue gains per-job cancellation now (kill-by-index via the registered Killer plus a queued-skip set), not only batch cancel; confirmed by Şenol."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D25 (confirmed Şenol)"}
+- id: exec-26-perjob-cancel-defer-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Shipping only batch cancel with per-job cancel deferred to a later plan was declined by Şenol (a deviation from spec 8.2)."
+  steelman: "Contains Plan 5 scope; per-job cancel is largely UI sugar and the seam could be extended later without reworking core."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D25 (alternative rejected)"}
+- id: exec-27-skipped-job-finished-no-started
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "A skipped queued job emits a Finished{Cancelled} event with no preceding Started event, deviating from never-dequeued silence because the GUI needs the confirmation; documented in the run_queue rustdoc."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "plan-5 T5 step1 / task-5-review-verdict.md"}
+- id: exec-28-queue-watcher-done-flag
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "The queue watcher needs a done flag set after all workers join so thread::scope terminates on every non-cancelled batch; the plan's pinned watcher (exit only on cancel) would deadlock the scope on any successful run."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: violated-corrected, ref: "plan-4 task-3-review-verdict.md + journal Deltas"}
+- id: exec-29-worker-count-cap
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Worker count is capped at the spec count via a pure worker_count(jobs, spec_count) that clamps >=1 then caps at spec_count.max(1), so --jobs 100000 over 2 files does not spawn 100000 threads."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "plan-4 whole-branch-review-verdict.md + commit 4b1ddbf"}
+- id: exec-30-mkvmerge-empirical
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "mkvmerge behavior is confirmed by running the installed binary, never assumed from memory (SI-3); T1 empirically captured the v100 gui-mode grammar (#GUI#progress, #GUI#warning exit 1, #GUI#error exit 2) before the parser encoded it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-4 task-1-review-verdict.md"}
+- id: exec-31-eventstream-reads-lossy
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Live event-stream reads use read_until(b'\\n') + from_utf8_lossy and treat only Ok(0) as EOF, surviving non-UTF-8 output lines with no truncation and no pipe-full hang. Flagged at Plan-4 review (observed v100 output is ASCII, so deferred) then implemented in T3."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "plan-4 task-1-review-verdict.md + whole-branch Minor"}
+    - {date: "2026-07-12", kind: decided, ref: "plan-5.5 task-3-verdict.md / plan T3"}
+- id: exec-32-percent-clamp-wontfix
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Clamping the 101-255 progress-percent range was deliberately not done (wontfix): the grammar caps at 100 and milestones only compare >=, so no observable harm today; clamp opportunistically only if the parser is next touched."
+  steelman: "Defensive robustness against malformed progress lines; but real grammar caps at 100 and milestones only compare >=, so no observable harm."
+  blocked_on: "internal: only if the parser is next touched"
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "plan-4 whole-branch-review-verdict.md (#3)"}
+- id: exec-33-worker-panic-handling
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Explicit worker-panic handling was declared a v1 non-goal at Plan-4 review (run_job is panic-free by construction) then implemented in T4: a panicking worker is recorded Failed with a worker-panicked code (not Cancelled), poisoned mutexes recovered via unwrap_or_else(|p| p.into_inner()) behind documented getters, and the panic payload flows only to eprintln."
+  steelman: "Defensive robustness (a panicking worker backfills Cancelled silently, a poisoned mutex would panic at into_inner), but run_job is panic-free on valid input - acceptable for v1 at the time."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "plan-4 whole-branch-review-verdict.md (#6)"}
+    - {date: "2026-07-12", kind: decided, ref: "plan-5.5 task-4-verdict.md / plan T4"}
+- id: exec-34-childproc-leak-panic
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "recover_panicked_worker discarded the removed Killer without invoking it, leaking an mkvmerge child that kept writing an output the queue reported Failed; corrected (FIX-NOW) to invoke-then-remove."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "plan-5.5 task-4-verdict.md (m2) / whole-branch-fix-report.md (T4-m2)"}
+- id: exec-35-poison-testlocks-bare
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Test-only lock sites are deliberately left without poison-recovery: a poisoned test lock should fail loudly rather than be recovered by the into_inner idiom used in production code."
+  steelman: "A uniform poison-recovery idiom applied at every lock site for consistency."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "plan-5.5 task-4-verdict.md (concern 2)"}
+- id: exec-36-core-stderr-logging
+  kind: non-decision
+  tier: 1
+  domain: executor
+  statement: "The single eprintln! in core (queue.rs) is the first direct stderr I/O in core; the idiomatic fix is a log/tracing facade the binaries route, deferred."
+  steelman: null
+  blocked_on: "Plan 6 (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "plan-5.5 task-4-verdict.md (I1) / whole-branch-verdict.md (I3)"}
+- id: exec-37-panicked-msg-catalog
+  kind: non-decision
+  tier: 1
+  domain: executor
+  statement: "The rich worker-panicked message renders on no live surface (only JSON carries the token); routing JobOutcome.errors codes through the diagnostics catalog was deferred."
+  steelman: null
+  blocked_on: "Plan 6 (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "plan-5.5 task-4-verdict.md (I2) / whole-branch-verdict.md (I3)"}
+- id: exec-38-raw-output-event-variant
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Full mkvmerge output is captured as a new additive raw-line Output{index,line} JobEvent/JobProgress variant carrying every non-#GUI#progress line verbatim (warn/error lines also keep stripped variants); it feeds the job-queue live log pane and the persisted job log, while progress ticks stay transient."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D24"}
+- id: exec-39-raw-output-accumulate-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Accumulating full output into JobOutcome was rejected in favour of the raw event variant."
+  steelman: "Keeps all output in one already-returned struct with no new event variant to design or version."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D24 (alternative rejected)"}
+- id: exec-41-persist-logs-format-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Three persistence alternatives were rejected in favour of JSON-per-job + summary: plain-text log + JSON index (two-artifact consistency burden), GUI-only persistence (spec divergence + CLI loses post-mortem logs), and a single NDJSON journal per run (NDJSON events are deferred to v1.x anyway)."
+  steelman: "A single NDJSON-per-run journal is one append-only artifact and would align with a future event stream."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D26 (alternatives rejected)"}
+- id: exec-42-persist-logs-writefail
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "A silent mid-run job-<index>.json write failure was invisible to finish() and still returned Ok, printing a false 'logs written' success despite partial data loss in exactly the artifact D26 exists for; fixed by tracking had_write_error and reflecting it in finish()."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "plan-5 task-6-review-verdict.md + commit f54cbab"}
+- id: exec-43-runsroot-debug-gated
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "The MUXSMITH_RUNS_ROOT override used by tests was shipping as an unconditional, undocumented env-var surface read in the release binary; gated behind #[cfg(debug_assertions)]."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "plan-5 task-6-review-verdict.md (Minor 2) + commit f54cbab"}
+- id: exec-45-runlog-config-deferred
+  kind: non-decision
+  tier: 1
+  domain: executor
+  statement: "Making the run-log retention period configurable (disable / change days) is deferred to IDEAS #7; v1 ships a fixed 14-day prune with no setting or flag, the configuration surface not yet earned. Recurred across plan T4.5 and memo D35, still unadopted."
+  steelman: null
+  blocked_on: "internal: option surface not earned; parked to IDEAS #7 pending real demand"
+  status: blocked
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "plan T4.5"}
+    - {date: "2026-07-12", kind: deferred, ref: "memo D35"}
+- id: exec-46-runlog-keepforever-prunefacility-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Keeping run logs forever with deletion as an explicit prune facility (Peter's recommendation) was overruled at D35: the audit-value premise does not hold for this tool class in Şenol's judgment and unbounded history clutter is the worse default."
+  steelman: "Batch run logs are audit artifacts; deletion should be an explicit, deliberate act."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D35 (rejected alternatives)"}
+- id: exec-47-runlog-keepforever-plain-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "Doing no pruning at all was rejected at D35 (unbounded growth, cleanup nobody performs)."
+  steelman: "Simplest possible behavior, zero mechanism."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D35"}
+- id: exec-48-runlog-mkvtoolnix-immediate-rejected
+  kind: restraint
+  tier: 1
+  domain: executor
+  statement: "mkvtoolnix-gui's additional immediate-removal-on-completion / on-exit policies were deliberately not adopted; only the 14-day default is, because immediate removal would delete the post-mortem record spec 6 mandates persisting."
+  steelman: "Full parity with the mkvtoolnix oracle whose 14-day default Muxsmith already matched."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D35 (parity note)"}
+- id: exec-49-runid-parser-to-core
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Reuse before writing: the run_id_timestamp parser was moved to core and the shell's started_at_from_run_id became a 4-line delegate, keeping three existing shell tests byte-identical."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "plan T4.5 / plan-5.5 task-4.5-verdict.md"}
+- id: cross-02-wails-rejected
+  kind: restraint
+  tier: 1
+  domain: cross
+  statement: "Wails v3 was weighed and rejected as the desktop shell."
+  steelman: "A Go-based Wails shell would keep the core in Şenol's strongest language and dodge the Rust learning curve while still shipping small native bundles. Rejected because v3 was alpha (delivery risk)."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Plan 1 entry"}
+- id: cross-03-avalonia-rejected
+  kind: restraint
+  tier: 1
+  domain: cross
+  statement: "Avalonia (C#/.NET) was weighed and rejected as the UI stack."
+  steelman: "Avalonia is a mature C#/.NET UI stack in a language Şenol already knows, with high delivery certainty and a smaller OSS dependency pull. Rejected for weaker web-native fit than the Tauri + web-frontend route."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Plan 1 entry"}
+- id: cross-04-mkvtoolnix-external-cli
+  kind: pattern
+  tier: 1
+  domain: cross
+  statement: "mkvtoolnix is invoked as external, user-installed executables only, detected at startup: no linking, no code reuse, no bundling. Muxsmith never processes media itself, which sidesteps GPL implications and the bundling burden."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 (mkvtoolnix row) + §12"}
+    - {date: "2026-07-08", kind: decided, ref: "commit 61249f9"}
+- id: cross-05-dry-single-core
+  kind: pattern
+  tier: 1
+  domain: cross
+  statement: "Validation, planning and execution share one code path in muxsmith-core; the frontend performs zero semantic validation and round-trips every edit through a core validate command; CLI and GUI only render shared structures."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 (DRY row) + §7"}
+- id: cross-06-no-bundling-v1
+  kind: restraint
+  tier: 1
+  domain: cross
+  statement: "Muxsmith does not bundle mkvtoolnix binaries in v1; a Windows convenience downloader is named as a v1.x candidate only."
+  steelman: "Bundling the binary would remove the biggest first-run friction - the user having to install mkvtoolnix."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §11 + §12"}
+- id: cross-07-watch-daemon-mode
+  kind: non-decision
+  tier: 1
+  domain: cross
+  statement: "Watch/daemon mode is a v1 non-goal with no rationale and no reconsider trigger: deferred rather than principled-rejected."
+  steelman: null
+  blocked_on: "post-v1 scope; no v1 use case established"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec §11"}
+- id: cross-08-minor-findings-deferred
+  kind: non-decision
+  tier: 1
+  domain: cross
+  statement: "The whole-branch review's 6 Minor items (double-report, render-fail donor gap, IdentifyError English, TempDir leaks, double file print, mkvmerge_found JSON asymmetry) were recorded for a follow-up rather than blocking the fix-pass merge."
+  steelman: null
+  blocked_on: "internal: pending dev work / owner disposition"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "plan-2-fixes-sdd/FINAL-review.md MINOR section + journal fix-pass Open threads"}
+- id: cross-09-plan-wire-format-extension
+  kind: pattern
+  tier: 1
+  domain: cross
+  statement: "New serialized Plan fields (keep_unmatched, primary_track_ids) are recorded as deliberate wire-format extensions consumed downstream (Plan-4 executor, Plan-5 GUI), not incidental additions."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "plan-4 whole-branch-review-verdict.md (Minor #5)"}
+- id: cross-10-jobevent-wire-contract
+  kind: pattern
+  tier: 1
+  domain: cross
+  statement: "The JobEvent wire contract is pinned at three layers that fail loudly on drift, not assumed: Rust serde golden test, src/ipc.ts mirroring the Rust structs field-for-field, and e2e fixtures typed satisfies JobEvent."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: reinforced, ref: "plan-5 whole-branch-review-verdict.md (strengths)"}
+- id: cross-11-native-platform-before-dependency
+  kind: pattern
+  tier: 1
+  domain: cross
+  statement: "The shared 'dependencies are earned' bullet gains a clause preferring a native platform primitive over any dependency that reimplements it (browser/CSS/DB/OS feature over a library that duplicates it)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "ponytail-mining.md candidate 1"}
+- id: cross-12-comprehension-gate-minimalism
+  kind: pattern
+  tier: 1
+  domain: cross
+  statement: "Minimalism shortens the solution, never the comprehension: trace every file the change touches before choosing the simplest mechanism; a small change in the wrong place is a second bug. Generalizes the diagnosis-scoped verify-topology reflex to the building side."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "ponytail-mining.md candidate 3"}
+- id: proc-10-verify-rerun
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The controller independently re-runs every test suite / the full gate with per-part accounting rather than trusting subagent-reported counts or piped/tailed output that swallows exit codes. Also embedded as a component of the SDD loop at Plan 3.5 and Plan 5.5; only the two primary-subject touchpoints are counted here to avoid double-crediting proc-01."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 evidence-integrity + verdicts/task-3-review-verdict.md (E0[5]/E1[15])"}
+    - {date: "2026-07-12", kind: violated-corrected, ref: "journal session-8 close (E8[87])"}
+- id: proc-11-sdd-artifact-gitignore
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Archiving .superpowers/sdd artifacts is booby-trapped: the copied tooling directory carries its own bare-* .gitignore that silently excludes everything, and its task-N-report.md paths are reused across plans (stale same-named reports overwritten). Read the commit stat line after any archive/copy commit and select artifacts by name."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "journal 2026-07-08 'Addendum' + commit 411087f (E0[11])"}
+    - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 3 complete (Friction) (E3[30])"}
+- id: proc-12-plan-split
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The build is split so the pure, fully golden-testable layer is banked green and independently whole-branch-reviewed before the riskiest, least-testable process layer, with the GUI last (Plan 3 = resolution+command, Plan 4 = executor+run+queue, Plan 5 = GUI). The same layering rationale slotted Plan 3.5 (pure-layer mkvtoolnix-parity fixes) before Plan 4."
+  steelman: "A single combined ~20-task plan avoids one extra plan boundary and a second whole-branch review; the memo names this as the accepted tradeoff."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D7 (specs/2026-07-09-plan-3-design-decisions.md) + journal Plan 3 complete (E3[24]/[25])"}
+    - {date: "2026-07-09", kind: decided, ref: "Plan 3.5 memo Status/Scope + journal (E4[31])"}
+- id: proc-13-roadmap-forward-tracker
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Deferred/forward work lives in a living ROADMAP.md, the single forward slot, distinct from the frozen archives (spec = contract, memos = frozen, IDEAS = unbuilt, journal = history). Durable-as-history is not durable-as-backlog; ROADMAP items are discussion anchors, not execution licenses."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "journal session-6 close + commit c9bd6b4 (E6[57])"}
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt2/pt5 (E8[74])"}
+- id: proc-14-plan-precision
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Plans are authored at maximal precision: verbatim interface code consumed by downstream tasks, and anchor-precise specs (exact files/line anchors, named tests). Double-edged: verbatim implementation text can carry real defects into review scope; an underspecified task is a DONE-blocking question, not a license to guess."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: reinforced, ref: "journal Plan-4-complete (E5[42])"}
+    - {date: "2026-07-12", kind: decided, ref: "Plan 5.5 Style note line 13 (E7[65])"}
+- id: proc-15-deferral-vehicle
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Every deferral names the vehicle/reactivation trigger that will bring it back, so a deferral cannot silently become permanent."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt5 (D18 root cause) (E8[78])"}
+    - {date: "2026-07-12", kind: reinforced, ref: "journal session 9 (E8[78])"}
+- id: proc-16-spec-code-coherence
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Shipped diagnostics, severities, and catalog rows must match the spec; the whole-branch review catches spec-vs-code drift that per-task reviews cannot (each side was locally consistent), corrected in the close wave."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "whole-branch-verdict.md C1 + whole-branch-fix-report.md (E7[70])"}
+    - {date: "2026-07-12", kind: violated-corrected, ref: "whole-branch-verdict.md I1 + progress.md f25b02d (E7[71])"}
+- id: proc-17-plan-sequencing
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The plan's declared task graph (disjointness notes, parallel/serial assignments) is corrected against real file overlaps and human gates at dispatch, not trusted blindly."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "progress.md RESEQUENCED + journal Decisions (E7[63])"}
+    - {date: "2026-07-12", kind: decided, ref: "progress.md + journal Decisions (E7[64])"}
+- id: proc-18-git-authorization
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Agent git commits and pushes are authorized for this repo specifically, carrying a Co-Authored-By trailer; the global 'no unrequested commits' rule was applied mid-session then explicitly reversed for this repo."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "handoff plan-1-close Git section + journal 2026-07-08 friction (E0[10]/E1[17])"}
+- id: proc-19-gh-log-audit
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Every GitHub interaction (gh CLI, API call, push) is recorded in a git-ignored operational gh-log.md; nothing that incurs cost is run while the repo is private."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Friction + commit fad067c + handoff plan-1-close GitHub section (E0[8]/E1[18])"}
+- id: proc-20-license-mit
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Licensed MIT over Apache-2.0: permissive, allows commercialization by anyone including the author, consistent with the Ruby prototype."
+  steelman: "Apache-2.0 adds an explicit patent grant the MIT text lacks; rejected in favor of MIT's simplicity and prototype consistency."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 + §12 + journal 2026-07-08 + Plan 1 Global Constraints + commit 61249f9 (E0[1]/E1[12])"}
+- id: proc-21-deny-missing-docs
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "All library crate roots carry #![deny(missing_docs)] requiring semantics-not-name rustdoc on public items; private items are documented by judgment only."
+  steelman: "Documenting every private item too would maximize coverage and consistency; rejected because it produces comment-noise restating obvious names."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Decisions + rustdoc-backfill-report.md + commit c402914 (E1[13])"}
+- id: proc-22-fix-wave-hygiene
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Fix waves are one commit per finding, TDD where behavior changes, foreground only, scope kept within the files each finding names; adjacent issues are flagged and routed as separate accepted commits, never silently folded in."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: reinforced, ref: "final-fix-wave-report.md + whole-branch-review-verdict-round-2.md (E5[45]/[46])"}
+- id: proc-23-foreground-exec
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "All cargo/pnpm build and test commands run in the foreground, never background-run + Monitor (a Plan-4 implementer stalled twice on background waits)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: reinforced, ref: "plan global constraints (E6[52])"}
+- id: proc-24-injection-untrusted
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Mid-tool-stream scope changes are treated as untrusted per the framework's injection-handling doctrine; a legitimate scope addendum embedded in a subagent's tool stream was refused (a healthy false positive) and the controller applied the change himself."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: reinforced, ref: "final-fix-wave-plan5-report.md (flagged suspicious message) (E6[53])"}
+- id: proc-25-go-public
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The repo was taken public mid-close-out: reversible, and it unlocks free CI resources for 3-OS verification."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "journal Plan 5 (decisions) (E6[54])"}
+- id: proc-26-leak-audit
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Before going public, a parallel multi-auditor leak audit runs over all docs (4 auditors / 258 docs, 0 secrets/PII); Şenol ruled the persona name, commit identity, and mkv-batch-tools prototype reference stay public, only a stale repo URL fixed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "journal session-6 close + commit 705f735 (E6[55])"}
+- id: proc-27-doc-truthfulness-adjudication
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "A trait doc-comment edit made under a 'no trait changes' scope constraint was adjudicated ACCEPT as a truthfulness fix (changes no contract/algebra); reverting would reintroduce a false comment."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "task-3-review-verdict.md + progress.md Task 3 (E3[26])"}
+- id: proc-28-brief-self-containment
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "A per-task brief is not self-contained when the plan front-loads shared reference blocks above Task 1 (scripts/task-brief extracts only the per-task section); the shared references must be appended to affected briefs before dispatch."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "journal Plan 3 complete (Friction) + progress.md (E3[29])"}
+- id: proc-29-restructure-completeness
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "A decided restructure (e.g. tracks -> block) is applied completely: all consumers, fixtures and inline-test YAML migrated with zero orphaned sites, verified by an independent full-repo re-scan, not just the diff."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "task-1-review-verdict.md + whole-branch-review-verdict.md (E4[37])"}
+- id: proc-30-design-approval-gate
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The design memo is approved by Şenol before any implementation begins."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "journal session-4-close + commit 7ba90ee (E5[38])"}
+- id: proc-31-mise-runtimes
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Language runtimes are managed via mise, not dnf/corepack/rustup; the controller's dnf+corepack proposal for node was corrected, with the pin in the repo mise.toml."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "journal Plan 5 (friction) + commits cad84a3..656449c (E6[48])"}
+- id: proc-32-gitattributes-lf
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: ".gitattributes normalizes text to LF (text=auto eol=lf) with per-extension -text overrides for binary assets, giving LF-stable files for byte-exact snapshot tests."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-1-verdict.md + plan T1 (E7[67])"}
+- id: proc-33-question-dialog
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The question-dialog overlay swallowed pre-question context (the owner could not see what he was deciding); context is sent as a plain message first and the question after (or prose answers)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "journal 2026-07-12 Plan 5.5 (Friction and failure) (E7[72])"}
+- id: proc-34-mechanism-not-appeal
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Process rules are encoded as mechanisms rather than appeals (appeals get ignored); root-caused from the forensic audit and packaged into the software-dev-process skill."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt2 (E8[73])"}
+- id: proc-35-behavior-as-package
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The process doctrine ships as a self-contained, liftable, project-scoped software-dev-process skill; new projects get an adopt-or-not question at kickoff."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt2 (E8[75])"}
+- id: proc-36-write-at-creation
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "A decision is persisted to the ROADMAP the same turn it is made (write-at-creation), not batched at session end."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: reinforced, ref: "journal session 7 pt6 (E8[77])"}
+- id: proc-37-house-knowledge-tiers
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "House-knowledge is recorded deterministically in a Tier-1 decision-ledger (always written, not always loaded) and promoted to Tier-2 CONVENTIONS (always loaded) at recurrence count 3; the controller is the single writer."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "commit b38a46f + doctrine §7 (E8[79])"}
+- id: proc-38-byte-verified-recovery
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Recovered artifacts (handoffs, verdicts) are byte-verified verbatim against the source transcripts rather than paraphrased."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt2 (E8[80])"}
+- id: proc-39-persistence-scope
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "A single concrete complaint is not inverted into an absolute always/never rule; persistence scope is decided case-by-case, asking when unclear (black-and-white generalization is a defect)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "journal session 7 pt5 (E8[81])"}
+- id: proc-40-readme-voice
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "The README is written in a sell-tone with personality, a WIP banner, and the AI-collaboration story told openly, a deliberate case-scoped exception to the neutral writeup voice rule."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "journal session-8 close (README 62aaf61) (E8[84])"}
+- id: proc-41-idiomacy-directive
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "A three-part idiomacy directive (ecosystem-idiom check + reuse-before-writing + dependencies-earned-both-directions) replaces the misinterpretable 'minimize runtime dependencies' and governs code written after it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "journal session-8 close (E8[85])"}
+- id: proc-42-readme-magic-anchor
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Properties that carry language-like matching magic (normalization, dual-field lookup, absent-boolean-compares-false, curated domains) must be explicitly listed in the README, a standing directive from the B-8 no-magic ruling, recorded as a README content anchor in the ROADMAP."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D32 addendum follow-on directive (Şenol) (E7[58])"}
+- id: proc-43-ride-existing-plan
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "An approved decision's implementation rides an existing plan as a wave task (D35 as Plan 5.5 task 4.5) rather than spinning a standalone run: one SDD apparatus over a separate run."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "plan T4.5 + journal 2026-07-12 Plan 5.5 (E7[59])"}
+- id: proc-44-handoff-snapshot
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Every HANDOFF rewrite snapshots the new state to artifacts/handoffs/ in the same turn (SI-5); the rule moved from intro prose to a standing instruction after a session-close state was overwritten without snapshotting."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "journal session-8 addendum (E8[89])"}
+- id: proc-45-bulk-agent-sizing
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Bulk agent jobs use coarser agents that batch many findings per dispatch and size total fan-out to the available budget (cap in-flight at 30), rather than one agent per finding."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "journal session 10 lesson (E8[97])"}
+- id: proc-46-bulk-run-resilience
+  kind: pattern
+  tier: 1
+  domain: process
+  statement: "Bulk runs stay limit-resilient: each agent writes its report at creation, the workflow captures each finding before its verdict, and a resume replays cached results, so a usage-limit wall leaves a clean re-runnable worklist, not data loss."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: reinforced, ref: "journal session 10 (E8[98])"}
+- id: proc-47-just-rejected
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "No just task runner adopted; xtask already covers every dev task and a second entry point drifts."
+  steelman: "just is the ergonomic, discoverable task runner most Rust projects reach for; xtask is more boilerplate."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "BUILDING.md 'Deliberately not used' (Plan-1 stock-take) (E0[2])"}
+- id: proc-48-docsurface-delink
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "An intra-doc link to a private item (on_close_requested) was satisfied by delinking, not by publicizing it or adding a pub-use re-export: growing the public surface to satisfy a doc link inverts the relationship (docs describe architecture, they do not dictate it)."
+  steelman: "A pub-use re-export would keep the intra-doc link working without exposing the whole run module."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-12-verdict.md judgment (E7[60])"}
+- id: proc-49-eager-memory-rejected
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "Carrying the process doctrine as always-loaded eager persona-memory ambience was rejected by Şenol in favor of the packaged, adopt-or-not skill."
+  steelman: "Always-loaded memory keeps the behavior present every session without an explicit adopt step."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "journal session 7 pt2 (E8[76])"}
+- id: proc-50-ponytail-ladder-rejected
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "Importing ponytail's full seven-rung laziness decision ladder wholesale as a new rule block was rejected as redundant with the existing idiomacy directive and scale rule (ours is bidirectional on deps; the inbound ladder isn't)."
+  steelman: "A compact reuse/stdlib/native/dep laziness ladder, vividly phrased, as a single pre-write checklist."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "ponytail-mining.md REJECTED (E8[92])"}
+- id: proc-51-aggressive-minimalism-rejected
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "The aggressive-minimalism 'laziest thing that works / shortest diff wins' framing and its lite/full/ultra intensity levels were rejected as inverting the correctness > precision > maintainability > simplicity ordering."
+  steelman: "Aggressively minimizing code reliably cuts over-build; the benchmark shows real wins on over-build-trap features."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "ponytail-mining.md REJECTED (E8[93])"}
+- id: proc-52-cornercut-ledger-rejected
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "Grepped in-code corner-cut markers with a /ponytail-debt grep ledger were rejected as redundant with software-dev-process's HITL deferral record."
+  steelman: "A grepped marker with an explicit upgrade trigger prevents a deliberate corner-cut from silently becoming permanent."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "ponytail-mining.md REJECTED (E8[94])"}
+- id: proc-53-shrink-axis-rejected
+  kind: restraint
+  tier: 1
+  domain: process
+  statement: "A shrink / line-golf (same-logic-fewer-lines) review dimension was rejected as noise for a pre-1.0 idiomacy pass; value is in idiomacy/reuse/dead-abstraction, not counting lines."
+  steelman: "Line-count reduction is a cheap, objective signal that pairs naturally with the other cut-oriented axes."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "ponytail-mining.md REJECTED (E8[95])"}
+- id: proc-54-doc-deliverables-deferred
+  kind: non-decision
+  tier: 1
+  domain: process
+  statement: "1.0 documentation formats are fixed (single-file EN GUIDE.md at maximal scope + two EN+DE blog posts) but the authoring itself is deferred to the 1.0 tag via three fresh sessions."
+  steelman: null
+  blocked_on: "external: awaiting the 1.0 tag"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "journal session-8 close (format interview) (E8[90])"}
+- id: proc-55-correctness-gate-deferred
+  kind: non-decision
+  tier: 1
+  domain: process
+  statement: "The 11 correctness/security/perf findings routed out of the idiomacy pass are deferred to a dedicated normal-review gate, deliberately not blended into the complexity hunt (a complexity hunt and a bug hunt want different mindsets)."
+  steelman: null
+  blocked_on: "internal: the dedicated correctness/security/perf review not yet run"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "ROADMAP c38a197 + idiomacy-review-findings.md routed-out section (E8[99])"}
+- id: proc-56-idiomacy-fix-wave-deferred
+  kind: non-decision
+  tier: 1
+  domain: process
+  statement: "The 70 confirmed idiomacy findings await triage with Şenol; the accepted set becomes its own SDD-executed fix-wave plan (mechanical + low-risk), with the review scratch salvaged at that close."
+  steelman: null
+  blocked_on: "internal: triage of the 70 confirmed findings with Şenol"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "journal session 10 open threads + ROADMAP L220 (E8[100])"}
+- id: i18n-01-fluent-choice
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "Fluent is the i18n library, chosen because it is the one system with first-class Rust (fluent-rs) AND JS (@fluent/bundle) implementations, so a single catalog under locales/ serves the CLI and the future GUI and message templates exist exactly once."
+  steelman: "gettext/ICU are more established but lack a matched Rust+JS pair, which would force two divergent catalogs."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §2 row 10 + §8.4 + journal 2026-07-08 bullet 6"}
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 'Localization' + §8.4; Plan 1 Global Constraints; commits 61249f9 / a671949"}
+- id: i18n-03-content-scope-en-v1
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "The i18n mechanism ships complete from day one, but v1 ships English catalogs and help topics only; adding a locale is content work, not a refactor. No target locale was committed for v1; German was later added at plan T21 (i18n-11), validating the 'content work, not a refactor' claim."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "spec 2026-07-08 §2 row 10 + §11"}
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 'Localization' + §11 non-goal; commit 61249f9"}
+- id: i18n-04-param-agreement
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "A Fluent message must reference only params the emitter actually sets, or the placeable renders literally. Bug G: the UnknownPropertySkew message referenced {$property} but the emitter set only $version, so it rendered a literal {$property}; the catalog guard only checked message existence, not param wiring. (Deeper: validate hard-rejects unknown props at config time, so skew's untyped-forward-matching path is unreachable in v1 - a known limitation.)"
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent-review-2026-07-09.md bug G + F9; commit 2e0dc00"}
+- id: i18n-06-plural-numeric-args
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "Plural-selecting Fluent args must be numeric FluentValues, not strings, or the [one] variant never matches. The mirrored Rust/TS lists of which params get numeric-promoted are a real cross-language contract that check:i18n does not cover, pinned by a Rust-side test that names the TS mirror (TS tightened to Number.isInteger && >=0)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "journal 2026-07-10 Plan-4-complete + commit 79f0447 (i18n.rs msg_with_count)"}
+    - {date: "2026-07-12", kind: decided, ref: "task-19-verdict.md (b); fix 0d19dc4"}
+- id: i18n-07-plurality-render-boundary
+  kind: restraint
+  tier: 1
+  domain: i18n
+  statement: "Plurality is resolved at the render boundary (promotion), not carried through a typed-params wire change - the wire change would touch dozens of call sites plus JSON schema and IPC types for only two codes' benefit."
+  steelman: "A typed-params wire change would carry plurality end-to-end in the type system rather than reconstructing it at render."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-19-verdict.md (c)"}
+- id: i18n-08-no-raw-text-lint
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "CI enforces no bare template text (including aria strings) via the @intlify no-raw-text lint, verified at plan time to fire without vue-i18n as the runtime (custom check as fallback). Lint workarounds may relocate only passthrough/ASCII non-prose data, never real user-facing copy."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "memo D27 / plan T4 step2"}
+    - {date: "2026-07-11", kind: reinforced, ref: "task-9-review-verdict.md / task-10-review-verdict.md"}
+- id: i18n-09-usage-completeness-gate
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "A CI script (check-i18n.mjs) parses ftl ids and scans src for t() ids, hard-failing (exit 1) on any t() id missing from the catalogs; unused keys warn only. Exemption comments are supported."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "plan T12 / task-12-review-verdict.md"}
+- id: i18n-10-cross-locale-parity
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "check:i18n enforces cross-locale key parity with EN as the fixed reference, extended to include cli.ftl (which has no UI chrome to mask a silent English fallback). A regex-based parity check has a blind spot - malformed multiline indentation can pass parity while the real Fluent parser rejects it - closed by an e2e real-Fluent-parse guard covering every catalog of every locale."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-20-verdict.md / plan T20"}
+    - {date: "2026-07-12", kind: violated-corrected, ref: "task-20-verdict.md m1 / task-21-verdict.md; commit c229400"}
+- id: i18n-11-german-locale
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "All six catalogs translated to German, terminology anchored to mkvtoolnix's de.po facts (single domain terms only, zero sentence overlap verified across 12 distinctive sentences) behind a hard Şenol terminology gate before merge; gate passed with three corrections (Starten, Meldungen, Verweis)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-21-verdict.md / plan T21"}
+    - {date: "2026-07-12", kind: reinforced, ref: "journal 2026-07-12 Plan 5.5 / progress.md; commit 362db2d"}
+- id: i18n-12-de-placeable-parity-deferred
+  kind: non-decision
+  tier: 1
+  domain: i18n
+  statement: "Placeable-name and selector-structure drift in the German catalogs is not machine-checked (check:i18n enforces id parity only); a check:i18n extension to cover placeable/selector structure was deferred, no actual drift found at close."
+  steelman: null
+  blocked_on: "future check:i18n extension (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "task-21-verdict.md residual / whole-branch-verdict.md M1"}
+- id: i18n-13-cli-key-rename-deferred
+  kind: non-decision
+  tier: 1
+  domain: i18n
+  statement: "The dry-run-summary cli.ftl key serves both run and dry-run (a latent catalog-skimming trap); renaming it to batch-summary was deferred (touches en+de+allowlist+2 snapshots)."
+  steelman: null
+  blocked_on: "idiomacy review (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "task-8-verdict.md m2 / whole-branch funnel T8-m2"}
+- id: i18n-14-locale-picker-endonyms
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "Locale picker labels are endonyms (English/Deutsch identical in both catalogs) per universal picker convention; T21's language-name precedent was an accidental byproduct."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-21.5-verdict.md"}
+- id: i18n-15-settings-hint-evergreen
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "The settings locale hint is evergreen - no language enumeration, tightened to two plain sentences - because enumerating locales re-stales the hint at every new locale (it was re-staling at locale #3)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-21.5-verdict.md"}
+- id: i18n-16-bilingual-cutoff
+  kind: pattern
+  tier: 1
+  domain: i18n
+  statement: "New Fluent messages are EN-only during waves 1-2 and land bilingual (en+de) from T19 onward (constraint C2); thereafter any new or changed user-facing message lands in both locales in the same change, enforced by the cross-locale parity gate."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "progress.md C2 / plan Global Constraints"}
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f)"}
+- id: i18n-17-mixed-language-allowed-deferred
+  kind: non-decision
+  tier: 1
+  domain: i18n
+  statement: "Core emits English prose through the allowed param at two sites, rendering a mixed-language diagnostic in de mode on the marquee language property - a residual breach of prose-free core (i18n-02); the catalog-side fix (a kind selector) was too large for the branch close and deferred to pre-1.0 polish."
+  steelman: null
+  blocked_on: "pre-1.0 polish / Plan 6 (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "whole-branch-verdict.md I2"}
+- id: gui-01
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Every non-obvious control carries a tooltip and inline explanation, plus an integrated help mode that swaps a sidebar to each element's long-form explanation; extra UI surface accepted deliberately."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §2 row 11 + §8.3 + commit a671949"}
+- id: gui-03
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Vue 3 + TypeScript, Composition API, plain reactive state, no Pinia/component library, fluent-vue for i18n; chosen over React with scale-appropriate defaults."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D27 (React vetoed, spec §7 amended)"}
+- id: gui-05
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "App settings (override, jobs, locale, recents MRU-10, dir memory) live in the platform config dir keyed by profile path; per-profile source/output memory is never written into user YAML."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D27 / plan T7"}
+- id: gui-06
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "The client-side recents list must truncate to the D27 MRU cap of 10; updateSettings assigned the pre-truncation array to reactive state, growing the rendered recents past 10 within a session. Corrected."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "task-10-review-verdict.md (Important); fix commit 638eda2"}
+- id: gui-07
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "src-tauri is commands + job event stream with no logic: start_run spawns run_queue on a std thread, re-emits each JobEvent, cancels via a shared Arc<AtomicBool>, reusing the CLI drain pattern and JobEvent's existing Serialize."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D23"}
+- id: gui-09
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Exactly one run at a time, enforced in Tauri managed state; a second start_run is rejected, mirroring mkvtoolnix-gui's one queue executor. UI additionally disables Run."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D23"}
+- id: gui-10
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "The frontend performs zero semantic validation; every profile check round-trips through core's validate_profile."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D23 / spec 7"}
+- id: gui-11
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "D23's 'UI disables Run while active' was left unimplemented; clicking Run during an active run wiped JobsView state before start_run rejected, leaving the run invisible and uncancellable. Corrected."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "whole-branch-review-verdict.md (Important #3); fix commits a32b159 + fix wave"}
+- id: gui-12
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "The run path must resolve mkvmerge via the settings override; T8 mirrored the CLI verbatim and missed T7's detect(override) substitution, so start_run used PATH-only locate() and every real run on Windows/override soft-failed while detect+dry-run passed. Cross-task drift; corrected."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "whole-branch-review-verdict.md (Critical #1); fix commit d9ad2fb"}
+- id: gui-13
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Run planning must not run on the main thread; start_run was a sync command shelling mkvmerge -J per file on the main thread, freezing the window and making the tested cancel-during-planning paths unreachable from production. Fixed via async + spawn_blocking."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "whole-branch-review-verdict.md (Important #2); fix commit d9ad2fb"}
+- id: gui-14
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Long-running commands (dry_run/identify/detect_mkvmerge) are async + spawn_blocking per the verified Tauri v2 threading model; non-async commands run on the main thread."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "task-7-review-verdict.md (judgment call 3)"}
+- id: gui-15
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Closing during a run never exits immediately: a confirm dialog aborts and quits only after the runner thread finishes (full mkvtoolnix parity), superseding D23's bare cancel_all. Merges the T8 data-loss flag that escalated the question with its D31 resolution."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "task-8-review-verdict.md (Important #4)"}
+    - {date: "2026-07-10", kind: decided, ref: "memo D31 (amendment, Şenol)"}
+- id: gui-18
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "A queue-worker panic left the slot Running post-D31, so close forever answered ConfirmAbort (app unclosable) and summary.json was lost; fixed with a TeardownGuard RAII drop."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "whole-branch-review-verdict.md (Important #4, promoted); fix commit 8e3243c"}
+- id: gui-19
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "A torn settings.json (plain fs::write) sent App to FirstRun whose recovery re-read the same broken file, a closed loop bricking the GUI; fixed with atomic write-temp-then-rename."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "whole-branch-review-verdict.md (Important #5); fix commit 5c504c1"}
+- id: gui-20
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Save-as uses the official fs+dialog plugin combo (the dialog plugin injects the chosen path into the fs scope) rather than reimplementing the trust chain in a bespoke Rust write command."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "task-11-review-verdict.md (strengths)"}
+- id: gui-23
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "The one genuine mkvtoolnix parity gap (open a finished job's log as text for support) is closed in the Jobs view with copy + save-as."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D30 (genuine gap, closed); task-11-review-verdict.md"}
+- id: gui-24
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Priority-ordered a11y+test convention: semantic HTML first, Fluent-sourced localized accessible names, live regions (role=log/progressbar), Playwright getByRole primary with data-testid fallback and en-pinned locale."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D29 (Şenol directive)"}
+- id: gui-25
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "German added to the settings dropdown and the stale settings-locale-hint corrected, failing-e2e-first; Şenol ruled fix immediately, not with Plan 6."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "task-21.5-verdict.md / plan T21.5"}
+- id: gui-27
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "The T21.5 settings-hint texts were parked on Şenol's veto, then approved unchanged when he declined the veto. Merges the deferral and its resolution."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "journal 2026-07-12 Plan 5.5 entry (Open threads)"}
+    - {date: "2026-07-12", kind: decided, ref: "journal 2026-07-12 session 9 close addendum"}
+- id: gui-28
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "tauri.conf.json app.security.csp is a strict object-form block (default-src 'none' plus explicit script/style/img/connect/base-uri/form-action); Tauri IPC nonce/hash injection left on, no devCsp. Merges the E6 csp:null deferral with the E8 D34 adoption that resolved it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "task-4-review-verdict.md (Minor 3) / whole-branch rec #3"}
+    - {date: "2026-07-12", kind: decided, ref: "memo D34"}
+- id: gui-32
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Every GUI report command returns the same report::json document (config_only/batch/run_document) so the frontend has one rendering path; new report commands conform."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f); idiomacy finding run.rs:L249"}
+- id: gui-33
+  kind: pattern
+  tier: 1
+  domain: gui
+  statement: "Prop-taking SFCs declare const props = defineProps<...>() and read props.x (withDefaults for defaults); all SFCs conform and a lone deviation is treated as the outlier."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f)"}
+- id: gui-02
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "The GUI offers no per-file manual override; users needing that go to mkvtoolnix-gui, with an 'open in mkvtoolnix-gui' escape hatch left as a v1.x candidate."
+  steelman: "Users will sometimes hit one file the rules cannot express and must then leave the tool entirely."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §11"}
+- id: gui-04
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "Four frontend alternatives rejected: React (author veto), Svelte 5, SolidJS, Leptos-WASM."
+  steelman: "React is the most-staffed ecosystem and Şenol had it in-stack; Leptos would keep a single Rust language end-to-end."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D27 (alternatives rejected 2026-07-10)"}
+- id: gui-08
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "Rejected a sidecar CLI process (parsing --json) and an async/tokio adapter runtime."
+  steelman: "A sidecar reuses the CLI untouched; a tokio bridge yields idiomatic async Tauri commands."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D23 (alternatives rejected)"}
+- id: gui-16
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "Rejected both a dialog-less abort and keeping the immediate close."
+  steelman: "Immediate close is the simplest and most responsive behavior with no extra dialog to maintain."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D31 (alternatives rejected)"}
+- id: gui-21
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "Justified divergence from mkvtoolnix-gui: no user-assembled, reorderable, persistent job queue. The batch is derived declaratively at run time, so the Jobs view shows the live run + history instead of an editable queue."
+  steelman: "mkvtoolnix-gui's interactive build-and-reorder queue is a familiar, flexible UX users may expect."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D30 (justified divergence)"}
+- id: gui-22
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "Justified divergence: no automatic 'remove completed jobs after N days' setting in v1; v1 keeps all run logs, pruning is v1.x."
+  steelman: "mkvtoolnix-gui ships an auto-cleanup setting that bounds disk growth without user effort."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "memo D30 (justified divergence)"}
+- id: gui-29
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "The common Tauri default-src 'self'; connect-src ipc string-form baseline was considered and rejected."
+  steelman: "Defensible and common in well-maintained Tauri apps; less config to maintain."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D34 rejected-alternatives"}
+- id: gui-30
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "A separate devCsp block was initially proposed then withdrawn the same day."
+  steelman: "Would give development its own CSP separate from production."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D34; journal session-8 close"}
+- id: gui-31
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "Leaving the scaffold default csp:null (carried since Plan 5 T4) was rejected."
+  steelman: "The shipped status quo; zero configuration."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "memo D34"}
+- id: gui-34
+  kind: restraint
+  tier: 1
+  domain: gui
+  statement: "An idiomacy finder proposed switching to Vue 3.5 reactive-props destructure; verification refuted it because it would make the component the lone outlier vs its siblings, and the refute was materialized as a standing CONVENTIONS restraint."
+  steelman: "Terser and 3.5-supported (reactive-props destructure enabled by default; toolchain supports it)."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: violated-corrected, ref: "idiomacy-review-findings.md Refuted, BatchView.vue:L53"}
+    - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Restraints (b38a46f)"}
+- id: gui-17
+  kind: non-decision
+  tier: 1
+  domain: gui
+  statement: "The abort-confirmation-suppression setting (mkvtoolnix m_warnBeforeAbortingJobs) is parked as a v1.x settings candidate, not v1 scope."
+  steelman: null
+  blocked_on: "external (product / v1.x)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "memo D31"}
+- id: gui-26
+  kind: non-decision
+  tier: 1
+  domain: gui
+  statement: "No live in-session locale switch (bootstrap-once architecture; a restart notice was added); a live switch was deferred as a Plan 6 candidate."
+  steelman: null
+  blocked_on: "Plan 6 (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "task-21.5-verdict.md / whole-branch funnel T21.5-m1"}
+- id: ci-02-sccache-rejected
+  kind: restraint
+  tier: 1
+  domain: ci
+  statement: "No sccache: there is no compile-time pain at this workspace size."
+  steelman: "sccache would speed CI and local rebuilds as the workspace grows."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "BUILDING.md 'Deliberately not used'"}
+- id: ci-03-cargo-outdated-rejected
+  kind: restraint
+  tier: 1
+  domain: ci
+  statement: "No cargo-outdated: Renovate/Dependabot will replace it once activated."
+  steelman: "cargo-outdated gives an immediate local dependency-freshness view before the bots are wired."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "BUILDING.md 'Deliberately not used'"}
+- id: ci-04-dependabot-cadence
+  kind: non-decision
+  tier: 1
+  domain: ci
+  statement: "Dependabot/Renovate activation is deferred to Şenol's call; the eventual cadence is a CI-cost decision because every dependency PR triggers the full 3-OS matrix."
+  steelman: null
+  blocked_on: "go-public/1.0 timing (free only once the repo is public); activation remains Şenol's call"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "journal 2026-07-08 open threads + ROADMAP residue R3"}
+- id: ci-05-cargo-deny-gate
+  kind: pattern
+  tier: 1
+  domain: ci
+  statement: "cargo-deny runs as a CI gate; deny caught the intra-workspace path dependency as a wildcard, resolved by marking the workspace crates publish=false (they ship as app bundles, not to crates.io). The license allow-list is kept minimal (trimmed from a speculative 8 to the 3 actually used) and each RUSTSEC advisory ignore carries a reachability justification (quick-xml build-time-only)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 2 'What the process caught' + commit 5561601"}
+    - {date: "2026-07-10", kind: reinforced, ref: "task-4-review-verdict.md (strengths)"}
+- id: ci-07-controller-regate
+  kind: pattern
+  tier: 1
+  domain: ci
+  statement: "SDD controller discipline: the controller independently re-runs the full test/fmt/clippy/deny gate after every task rather than trusting the implementer report's test-count arithmetic (SI-1: never trust the report). Green each time across the 12 Plan-3 tasks; test count grew 164 -> 204."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 | Plan 3 complete (Mechanics/metrics)"}
+    - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + progress ledger (Plan 4)"}
+- id: ci-09-skipmarker-contract
+  kind: non-decision
+  tier: 1
+  domain: ci
+  statement: "The skip-marker string is an unenforced cross-file contract (19 call sites + 1 CI grep, no shared const), so a future reword silently reintroduces the false-negative that ci-08's assertion exists to catch; hardening with a shared const was deferred."
+  steelman: null
+  blocked_on: "internal - idiomacy review"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-2-verdict.md m1 / whole-branch funnel T2-m1"}
+- id: ci-11-newest-over-lts
+  kind: pattern
+  tier: 1
+  domain: ci
+  statement: "For dev-only runtimes, newest-when-nothing-blocks beats LTS: the controller's node-24-LTS proposal was overturned by Şenol's policy and repinned twice (24 -> 26 -> 26.5.0; pnpm 11.10.0)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "journal Plan 5 / commits 4902a2a, 656449c"}
+- id: ci-12-registry-sourcing
+  kind: pattern
+  tier: 1
+  domain: ci
+  statement: "Dependency versions are resolved against the live registry, not typed from stale training-data memory: eslint was the lone stale pin (9.9.1, ~2 years old, swallowed by wide peer ranges), corrected to 9.39.4 then bumped to 10.6.0."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "task-4-review-verdict.md (Important #1) / commits 46c7874, 63fdfc4"}
+- id: ci-13-packaging-deferred
+  kind: non-decision
+  tier: 1
+  domain: ci
+  statement: "Release-tag packaging artifacts (msi/dmg/deb/rpm/AppImage) remain deferred until go-public, because tags trigger the full 3-OS matrix and paid minutes while the repo is private."
+  steelman: null
+  blocked_on: "external - go-public / paid-minutes cost"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "memo D29"}
+- id: ci-14-cross-target-clippy
+  kind: pattern
+  tier: 1
+  domain: ci
+  statement: "For -D warnings workspaces, run cross-target clippy locally before the first foreign-OS CI run and cfg-gate imports/helpers for cfg-gated tests: Windows legs went red twice on -D warnings from unix-only imports."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "journal Plan 5 close addendum (3-OS) / commits fdf220b, da69eec"}
+- id: ci-15-rustdoc-gate
+  kind: pattern
+  tier: 1
+  domain: ci
+  statement: "RUSTDOCFLAGS=-D warnings cargo doc --no-deps runs as the ninth gate part inside the matrixed test job on all three legs (via an env: block); dead intra-doc links are delinked while the target is private and real-fixed once public (T12)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-12-verdict.md / plan T12"}
+- id: ci-16-mise-not-ci
+  kind: restraint
+  tier: 1
+  domain: ci
+  statement: "CI must not fetch a floating mise binary at run time: jdx/mise-action downloads and executes the latest mise release, contradicting the pin-everything doctrine. The restraint is recorded although current CI (mise-action without a version pin, ci.yml:L73) still violates it; dropping mise from CI is deferred to post-1.0."
+  steelman: "jdx/mise-action is the convenient, currently-green way to get the pinned runtimes in CI."
+  blocked_on: "internal - kept until the release stabilizes; removal tracked in ROADMAP v1.x"
+  status: blocked
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "CONVENTIONS.md Restraints (b38a46f) / idiomacy routed-out ci.yml:L73"}
+    - {date: "2026-07-12", kind: deferred, ref: "CONVENTIONS.md Restraints note / ROADMAP c38a197"}
+- id: testing-self-skip-idiom
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Gated live/integration tests locate mkvmerge and self-skip cleanly (have_mkvmerge() probe as the first statement, eprintln + early return before any tempdir/Command) when the binary is absent, matching sibling gated tests so CI without mkvmerge stays green and no assertion is silently skipped."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "task-3-review-verdict.md + plan Task 3"}
+    - {date: "2026-07-10", kind: reinforced, ref: "task-11-review-verdict.md"}
+- id: testing-integration-real-mkvmerge
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Integration tests use the real mkvmerge binary in CI to synthesize tiny fixture MKVs from srt/wav seeds and run end-to-end dry-run and run against them; the gated tests self-skip until mkvtoolnix is installed in CI."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10"}
+- id: testing-proptest-core
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The correctness core (match algebra, language idempotence/symmetry, planner determinism + D6 suggestion-survival) is covered by property-based tests (proptest) alongside unit tests, with deterministic seeds, an exact pin, and non-vacuity traced to ~100% suggestion-path reach."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10 + journal 2026-07-08 testing bullet"}
+    - {date: "2026-07-11", kind: decided, ref: "task-14-verdict.md / plan T14"}
+- id: testing-gui-shallow-smoke
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "GUI tests stay a shallow smoke (Playwright via mockIPC against the Vite build, no tauri-driver; plus FakeSpawner shell tests, i18n and axe) because all logic lives in core and the UI is a renderer."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10"}
+    - {date: "2026-07-10", kind: decided, ref: "memo D29 / spec 10"}
+- id: testing-cli-insta-snapshots
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "CLI human-readable rendering is covered by insta snapshot tests with redaction filters for paths/version/durations (load-bearing), EN locale pinned, CI strict compare (default CI=true / no INSTA_UPDATE), and review-before-accept enforced."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10"}
+    - {date: "2026-07-11", kind: decided, ref: "task-22-verdict.md / plan T22"}
+- id: testing-diagcode-all-guard
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The diagnostic-code registry's key()/serde encodings were unlinked; an exhaustive DiagCode::ALL consistency test guarantees they stay in sync, later reused/extended into a no-wildcard exhaustive match over all DiagCodes that builds a param fixture per code and (with a real Fluent parser enumerating all cli.ftl keys) asserts no rendered {$ leak."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "journal 2026-07-08 'What the process caught' (T2) + commit a7c0d89"}
+    - {date: "2026-07-11", kind: decided, ref: "task-10-verdict.md / plan T10"}
+- id: testing-tempdir-hygiene
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "std::mem::forget(tempdir) leak sites are replaced by returning/holding the TempDir so it cleans on drop; helpers return the TempDir alongside their value and callers bind let (x, _dir) = .... 15 sites fixed (13 in planner_resolution.rs, 2 in suggestions.rs)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch-review-verdict.md (Plan 3, Minor 7) + progress.md Task 7 roll-up"}
+    - {date: "2026-07-10", kind: decided, ref: "memo D18 + task-5-review-verdict.md"}
+- id: testing-attachment-id-fixture
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The with-attachments fixture is grounded in real mkvmerge v100 -J (attachment ids 1-based, track ids 0-based) with id-agnostic assertions; the earlier 0-based fixture modeled an id space that cannot occur (functionally harmless because command passes -J ids through, corrected in the test-hardening pass)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "whole-branch-review-verdict.md (Plan 3, Minor 5)"}
+    - {date: "2026-07-11", kind: decided, ref: "task-11-verdict.md / plan T11"}
+- id: testing-deterministic-concurrency
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Concurrency tests are deterministic via barriers, condvar gates and index-keyed scripting with no sleep-based timing bets (recv_timeout documented as a hang-to-failure converter, not a race window); the cancel test needs a killer-gated condvar fake because a naive wait-for-Started opens the exact empty-registry race it is meant to pin."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "task-3-review-verdict.md"}
+    - {date: "2026-07-10", kind: reinforced, ref: "journal 2026-07-10 Plan-4-complete (Moments)"}
+- id: testing-jobevent-golden
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The JobEvent serde wire shape (event tag / variant / field names) is pinned by a golden test once the GUI consumes the event stream, making the shape a contract; deferred while it had no consumer, added exactly when Plan 5's Tauri consumer landed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "whole-branch-review-verdict.md (Plan 4, ledger #8)"}
+    - {date: "2026-07-10", kind: decided, ref: "plan T1 / memo D29; task-1-review-verdict.md"}
+- id: testing-completeness-gates
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "CI enforces i18n/help completeness (referenced-but-missing catalog keys, diagnostic codes without message templates, help-ids without a topic file) and an eslint no-literal-string rule keeps hardcoded strings out of the frontend; core is prose-free by construction."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec 2026-07-08 §10 + commit c7a70f7"}
+- id: testing-invalid-language-fixture
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Invalid-language regression fixtures must exceed the 8-char primary-subtag limit (notalanguage), not short zz/zzz: zz/zzz are well-formed BCP-47 and would silently pass the widened predicate, gutting the test."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "task-4-review-verdict.md (Named-risk verification) + journal (What the process caught, Task 4)"}
+- id: testing-keep-donor-deterministic-guard
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The keep+donor track-order branch (the exact scenario the task exists to fix) must carry a deterministic guaranteed-run unit guard (Plan-literal, asserting 0:0,0:1,1:0), not only a gated live test that silently skips without mkvmerge (e.g. in CI)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "task-7-review-verdict.md (Important) -> fix commit aa75025"}
+- id: testing-per-commit-gate
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Every commit passes TDD RED/GREEN and the full 4-command gate (test / fmt / clippy -D warnings / cargo-deny); the controller re-ran the gate itself at every merge and acceptance."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints"}
+- id: testing-assert-cmd-cargo-bin
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Tests invoke the built binary via assert_cmd's Command::cargo_bin(\"muxsmith\") (the house convention, as run_cli.rs already does), not the plan's literally named env!(CARGO_BIN_EXE_muxsmith) macro; the house convention wins over the plan's letter."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "task-11-review-verdict.md + journal Deltas"}
+- id: testing-e2e-tsc-drift
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The e2e fixtures' satisfies-JobEvent annotations only catch contract drift if tsc actually runs; the report claimed protection while tsc was uninvoked (the guard was inert), fixed by wiring the e2e tsconfig type-check into test:e2e."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "task-12-review-verdict.md (Important); fix commit 945ee96"}
+- id: testing-unix-file-level-cfg
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "A standalone unix-only integration crate must gate at file level (#![cfg(unix)]); round-1 module-level imports under a fn-level cfg(unix) broke Windows clippy -D warnings and were corrected by fix 3353028."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: violated-corrected, ref: "task-3-verdict.md"}
+- id: testing-regex-wording-snapshot
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "Two snapshots embedding regex-crate wording deliberately break on cargo update as an intended change signal (the §10 third-party exception), not a fragility bug."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "task-22-verdict.md concern 1 / whole-branch funnel T22-m1"}
+- id: testing-de-locale-presence-guard
+  kind: pattern
+  tier: 1
+  domain: testing
+  statement: "The de-locale message-presence guard cross-checks column-0 presence in the real Fluent parser output; the reviewer's suggested reliance on addResource reporting Junk drops was disproven from library source (addResource errors only on id collisions; Junk is silently dropped) and the reviewer conceded."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: violated-corrected, ref: "task-21-verdict.md fix wave 2 / journal"}
+- id: testing-keep-track-order-assumption
+  kind: restraint
+  tier: 1
+  domain: testing
+  statement: "Assumption #3 (keep-mode --track-order lists only matched tracks; mkvmerge appends kept-unmatched tracks after, in source order) was confirmed against real mkvmerge v100 - ordering only id1 of a 3-track source yields BRAVO,ALPHA,CHARLIE - and needed no planner change, before it was later reversed on usability grounds."
+  steelman: "the assumption was empirically correct as to mkvmerge behavior; the reversal was about usability, not correctness."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: reinforced, ref: "task-3-review-verdict.md + progress ledger Task 3"}
+- id: testing-catalog-completeness-rejected
+  kind: restraint
+  tier: 1
+  domain: testing
+  statement: "A completeness test over all cli.ftl keys was rejected as unnecessary (wontfix): the renderer unit tests assert rendered fragments, so a missing run-* key fails as a raw-id render, and milestone tests already cover the run-* keys - that guard is adequate."
+  steelman: "catalog_completeness only iterates DiagCode::ALL, so a completeness test over all cli.ftl keys would close the future-keys gap; but milestone tests already cover the run-* keys."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "whole-branch-review-verdict.md (#9) + task-8 Minor"}
+- id: testing-coverage-tooling
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "Coverage tooling (cargo-llvm-cov) was left out of the Plan-1 tooling stock-take as a signal not yet needed, with a revisit at v1.x planning."
+  steelman: null
+  blocked_on: "no measured coverage need in v1 (revisit at v1.x planning)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: deferred, ref: "BUILDING.md 'Deliberately not used' (2026-07-08)"}
+- id: testing-warning-path-coverage
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "The exit-1 warning path lacks an output-kept assertion and WarningLine/ErrorLine on_progress surfacing is untested; deferred to v1.x."
+  steelman: null
+  blocked_on: "internal: v1.x test work"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "task-2-review-verdict.md (ledger #4 whole-branch)"}
+- id: testing-concurrencytracker-hygiene
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "ConcurrencyTracker is pure test instrumentation in the public lib surface; doc-hiding (#[doc(hidden)]) or relocating it is deferred until before go-public."
+  steelman: null
+  blocked_on: "internal: before go-public"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "whole-branch-review-verdict.md (Minor)"}
+- id: testing-cli-helper-dedup
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "have_mkvmerge/muxsmith/fake-stub helpers are duplicated 2-3x across CLI test files (each tests/*.rs is its own crate, no shared common module); applying the T5 consolidation to the CLI crate is deferred until the next CLI test file appears."
+  steelman: null
+  blocked_on: "internal: next CLI test file"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-10", kind: deferred, ref: "whole-branch-review-verdict.md (Minor)"}
+- id: testing-comment-fixture-convention
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "The _comment fixture-note convention introduced ad hoc for one file is left ad hoc; promotion to a written convention is trigger-gated on a second fixture needing it."
+  steelman: null
+  blocked_on: "second use (trigger-gated, internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-11-verdict.md m1 / whole-branch funnel T11-m1"}
+- id: testing-proptest-assert-locality
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "D6 property guards use prop_assume where prop_assert would localize a future generator regression (which currently dies opaquely as 'too many global rejects'); the switch was deferred."
+  steelman: null
+  blocked_on: "idiomacy review (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-14-verdict.md m1 / whole-branch funnel T14-m1"}
+- id: testing-check-i18n-self-test
+  kind: non-decision
+  tier: 1
+  domain: testing
+  statement: "check-i18n.mjs has no fixture self-test despite grown logic; adding one was deferred (the e2e guard covers only the parser-blindness half)."
+  steelman: null
+  blocked_on: "v1.x test-hardening (internal)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: deferred, ref: "task-20-verdict.md m2 / whole-branch funnel T20-m2"}
+- id: cli-01-diag-ordering
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "Diagnostics are sorted error-first (Reverse(severity)) exactly once, before the text/json branch, so every surface derives from the same sorted vector. The --json path emitted raw insertion order while text sorted (diagnostics[0] could be a warning under exit 2), corrected at T12; later codified as a CONVENTIONS pattern, but the same sweep flags validate.rs:L19 still re-implementing the shared sort as a deviation to correct."
+  steelman: null
+  blocked_on: null
+  status: contested
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "commit ad841b0 + task-12-review-verdict.md (Important #1) + journal 2026-07-08 (T12)"}
+    - {date: "E8", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f) + idiomacy finding validate.rs:L19"}
+- id: cli-03-human-file-attribution
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "Renderer::diagnostic must include d.file when present so batch-level diagnostics (IgnoredFile, DuplicateIdentifier) are attributed to their own file rather than misread as belonging to the file shown above. The inline human renderer dropped the field (bug J); the JSON path was unaffected."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "independent-review-2026-07-09 bug J + F9-report.md + commit 2e0dc00"}
+- id: cli-04-json-always-parseable
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "--json must always emit a parseable document, even on error paths; the profile-load and list-languages error paths violated this (unparseable stdout). Flagged and deferred to a fast-follow at T9 (correct diagnostic-folding collect() pattern already in validate.rs), then corrected so run and dry-run emit a JSON document on those failures."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: deferred, ref: "task-9-review-verdict.md"}
+    - {date: "2026-07-10", kind: violated-corrected, ref: "commit 3f66a4e + journal 2026-07-10 Plan-4-complete"}
+- id: cli-05-json-final-document
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "--json emits a single final document carrying planning diagnostics, per-job results and summary counts; human progress lines are suppressed in JSON mode. The run_json_document builder is shape-exact and unit-tested via serde_json::Value equality."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+    - {date: "E5", kind: reinforced, ref: "task-9-review-verdict.md"}
+- id: cli-06-mkvmerge-found-honesty
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "mkvmerge_found reports honestly as a three-way signal: Some(true)=binary found but query failed, Some(false)=lookup ran and failed, absent=lookup never ran. Two corrections: omit the key on the profile-load path (lookup never ran, must not assert false), and emit true on the list-languages-failure arm (locate() succeeded, only the query failed)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: violated-corrected, ref: "whole-branch-review-verdict.md + commit db9f559"}
+    - {date: "E5", kind: violated-corrected, ref: "commit 9009d34 (whole-branch ledger #10)"}
+- id: cli-07-ndjson-deferred
+  kind: non-decision
+  tier: 1
+  domain: cli
+  statement: "A streaming NDJSON event mode (--json-events) riding the D13 enum is a v1.x candidate, explicitly not built in Plan 4. Reviewer confirmed no NDJSON in the diff."
+  steelman: null
+  blocked_on: "external: v1.x demand"
+  status: blocked
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: deferred, ref: "memo D15"}
+    - {date: "E5", kind: deferred, ref: "task-9-review-verdict.md"}
+- id: cli-08-config-diags-json-ordering
+  kind: non-decision
+  tier: 1
+  domain: cli
+  statement: "The flat config_diags JSON is unsorted, inconsistent with validate's sorted JSON; sorting for parity was deferred because consumers key on the severity field and ordering is cosmetic. Same theme as cli-01 but a distinct, deliberately-deferred decision on a specific surface."
+  steelman: null
+  blocked_on: "internal: Plan 6 / idiomacy sweep"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E7", kind: deferred, ref: "task-9-verdict.md (iv) + whole-branch funnel"}
+- id: cli-10-run-exit-fold
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "muxsmith run's exit code is max(diag_exit_code, job_exit_code) (error/Failed->2, warning/Warning->1, else 0), mirroring dry-run, with the 130 override structurally ahead. fail_fast's Cancelled jobs still fold to 2 since the caller cancel flag is untouched."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+    - {date: "E5", kind: reinforced, ref: "task-8-review-verdict.md"}
+- id: cli-11-sigint-exit-130
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "A SIGINT-cancelled batch exits 130 (128 + SIGINT, shell convention) so scripts can distinguish user cancellation from mux failure."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+- id: cli-12-exit-doc-drift
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "Cli::command's exit-code doc was stale (missing 130 from T10) and corrected: '0 clean / 1 warnings / 2 errors' -> '... / 130 cancelled (spec 8.1, D16)'. A cross-task doc-drift catch."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: violated-corrected, ref: "whole-branch-review-verdict.md + commit 841db0b"}
+- id: cli-13-ctrlc-crate
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "SIGINT is handled with the ctrlc crate (cross-platform, incl. Windows console events); its handler sets the queue's shared cancellation flag. One Arc is shared across handler_cancel/queue_cancel/cancel; the vendored ctrlc-3.5.2 os_handler only calls sem_post (async-signal-safe)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D16"}
+    - {date: "E5", kind: reinforced, ref: "task-10-review-verdict.md"}
+- id: cli-14-reject-handrolled-signals
+  kind: restraint
+  tier: 1
+  domain: cli
+  statement: "Hand-rolling libc/WinAPI signal handling across three OSes was rejected in favour of one vetted crate (ctrlc)."
+  steelman: "Zero new dependency, but std has no stable signal API and hand-rolled signal code across three OSes is fragile platform branching the project avoids."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D16"}
+- id: cli-15-sigint-single-level
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "SIGINT handling is single-level: AtomicBool::swap arms graceful cancel on the first Ctrl-C, and a second Ctrl-C during cleanup forces immediate std::process::exit(130). No two-stage graceful/hard scheme."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D16"}
+    - {date: "E5", kind: reinforced, ref: "task-10-review-verdict.md"}
+- id: cli-16-ctrlc-pin-deferred
+  kind: non-decision
+  tier: 1
+  domain: cli
+  statement: "ctrlc is pinned to major only ('3') unlike siblings' full-patch pins (clap=4.6.1, serde_json=1.0.150); folding it to a full pin is deferred to the next Cargo.toml touch. Cargo.lock pins 3.5.2; a brief-literal style inconsistency."
+  steelman: null
+  blocked_on: "internal: next Cargo.toml edit"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: deferred, ref: "task-10-review-verdict.md + whole-branch ledger #12"}
+- id: cli-17-render-ownership
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "The queue runs on a scoped side thread; live rendering drains events on the calling thread. The sole Sender is moved into the scope closure so the drain loop terminates deterministically when the batch finishes; std mpsc is unbounded so sends never block."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: reinforced, ref: "task-8-review-verdict.md"}
+- id: cli-18-milestone-lines
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "Human mode renders dependency-free per-job milestone lines ([i/n] name ... start/25/50/75/terminal) plus a one-line batch summary; pipe-safe, no TTY branching, interleaves under --jobs N. Milestone thresholding is per-index (last_milestone: Vec<u8>), the renderer returns Vec<String> (I/O-free), unit-tested at the seam."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+    - {date: "E5", kind: reinforced, ref: "task-8-review-verdict.md"}
+- id: cli-19-reject-indicatif
+  kind: restraint
+  tier: 1
+  domain: cli
+  statement: "Live ANSI progress bars via indicatif were rejected for run progress rendering."
+  steelman: "Nicer interactive UX, but adds a dependency, needs TTY/non-TTY special-casing, and duplicates what the Plan 5 GUI job view does properly."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+- id: cli-20-reject-quiet-output
+  kind: restraint
+  tier: 1
+  domain: cli
+  statement: "Quiet start/end-only output was rejected for run progress rendering."
+  steelman: "Minimal output, but gives no liveness signal on long muxes."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: decided, ref: "memo D15"}
+- id: cli-21-empty-batch-output
+  kind: pattern
+  tier: 1
+  domain: cli
+  statement: "A clean empty run must not be a silent success. At E5 human mode on a clean empty run (exit 0) printed nothing, flagged as a spec-level gap (D15 unspecified) and deferred to Şenol; resolved at E7 by print_batch_human always printing the batch summary line even at zero matches, threading the real search root and extensions. JSON path and exit code unchanged."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "E5", kind: deferred, ref: "whole-branch-review-verdict.md (Minor) + progress backlog"}
+    - {date: "E7", kind: decided, ref: "task-8-verdict.md + plan T8"}
+- id: cli-22-jobs-index-doc-deferred
+  kind: non-decision
+  tier: 1
+  domain: cli
+  statement: "jobs[].index indexes the queue, not files; correlating a job to its file requires joining on the output path. One doc sentence in run_json_document (or a source field later) prevents consumer misreads in Plan 5; deferred until Plan 5 consumes it."
+  steelman: null
+  blocked_on: "internal: before Plan 5 consumption"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E5", kind: deferred, ref: "whole-branch-review-verdict.md (Minor) + progress backlog"}
+- id: cli-23-identifyerror-passthrough
+  kind: restraint
+  tier: 1
+  domain: cli
+  statement: "IdentifyError's English detail text is kept (not routed through a catalog key) and added explicitly to the spec §8.4 exception list; the exception is noted as slightly broader than pure pass-through."
+  steelman: "Third-party text pass-through like spec 8.4's clap exception - routing it through the catalog would re-author third-party wording."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "E7", kind: decided, ref: "task-9-verdict.md (viii)"}
+
+# --- Audit-demoted promotion candidates (count fell below 3 after
+# occurrence audit). Full occurrences in .superpowers/sdd/house-backfill/
+# audit-<id>.md. Fold into the schema above on next touch. ---
+#   core-01-rule-uniqueness  verified_count=1  "Every rule resolves against all tracks independently, no consumption, no order effects; ov"
+#   core-04-mkv-structure-full-control  verified_count=2  "v1 configures tracks, attachments, chapters, tags and title, accepting the larger surface "
+#   core-21-rustdoc-states-meaning  verified_count=2  "deny(missing_docs) enforces presence only; the quality bar is that rustdoc states meaning,"
+#   core-22-edition-2024-codegen-rename  verified_count=1  "gen is reserved in Rust edition 2024; the implementer's edition-2021 downgrade workaround "
+#   core-24-diagcode-key-integrity  verified_count=1  "The hand-authored .key() literals and serde's kebab rename were two independent encodings "
+#   core-26-unknownproperty-split  verified_count=1  "The code used unknown-property for a config-time typo error while spec 5.2 defined Unknown"
+#   core-29-no-value-domain-codegen  verified_count=2  "No xtask codegen path for value domains; type/codec_kind domains are curated by hand in ca"
+#   core-42-unidentifiable-hard-regardless-optional  verified_count=2  "A present-but-unidentifiable source is a hard UnidentifiableSource error regardless of rul"
+#   core-46-symlink-source-discovery  verified_count=1  "A symlink whose target is a regular file must be discovered (classify via fs::metadata); d"
+#   core-58-attach-add-cardinality  verified_count=2  "An add locator attaches all matched files (collection-populator, like select/drop), dedup "
+#   core-67-no-mkvtoolnix-magic-guesses  verified_count=1  "Filename/track-name-derived language and flags, auto-title, unique-name (1) suffixing and "
+#   core-87-version-floor  verified_count=2  "The mkvmerge version floor MIN_SUPPORTED = (86,0) was derived empirically from the identif"
+#   core-119-invalidpropertyvalue-allowed  verified_count=2  "planner.rs emitted InvalidPropertyValue without the template-required $allowed on the chan"
+#   core-121-planner-seam-and-hoist  verified_count=2  "The four-copy planning pipeline (~100 lines across cli dry_run.rs/run.rs and src-tauri lib"
+#   exec-40-persist-perjob-logs  verified_count=2  "Persisting per-job logs was deferred twice - at D7 (to Plan 5, the GUI job-queue view bein"
