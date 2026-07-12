@@ -8,7 +8,7 @@ what building it would take, and when to reconsider.
 Scope boundary: this file is for **deferred product/feature ideas**, mostly
 surfaced by the mkvtoolnix parity audit. Engineering follow-ups and cleanups
 (test dedup, CI, diagnostic minors) live in the plan docs, the HANDOFF, and
-the design memos, not here.
+the ADRs, not here.
 
 Nothing here is committed work. An item graduates only when Şenol green-lights
 it into a plan.

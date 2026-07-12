@@ -6,16 +6,18 @@
 #   statement, steelman (restraint only), blocked_on (non-decision only),
 #   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
 #   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
-# count is always len(occurrences); no occurrence, no increment. Promotion to
-# CONVENTIONS.yaml at count 3; the occurrence list migrates and keeps growing.
+# count is always len(occurrences); no occurrence, no increment. An occurrence is a
+# distinct decision EVENT, not a distinct artifact documenting one event. Promotion
+# to the Tier-2 nature files happens by the source x nature matrix (doctrine section 7).
 #
 # Bootstrapped 2026-07-13 by a retroactive reconstruction sweep over the whole
-# project trail (git, 8 D-memos, the 10-session journal, plan-1..5.5 SDD verdict
+# project trail (git, 8 ADRs, the 10-session journal, plan-1..5.5 SDD verdict
 # archives, ROADMAP/IDEAS/spec), walked chronologically. 549 occurrence records
-# -> 358 clusters. Tier-1 counts here are RECONSTRUCTION-STAGE (not individually
-# audited); only the promoted entries (-> CONVENTIONS.yaml) passed the
-# adversarial per-occurrence audit that drops fabricated/duplicate citations.
-
+# -> 358 clusters: 295 below-threshold + 15 audit-demoted
+# (promotion candidates whose count fell below 3 once the occurrence audit dropped
+# duplicate-event citations) = 310 Tier-1 entries. Tier-1 counts are
+# reconstruction-stage; only the 48 promoted (-> Tier-2 nature files) passed the
+# adversarial per-occurrence audit.
 
 entries:
 - id: core-02-ordered-consumption-rejected
@@ -1975,7 +1977,7 @@ entries:
   kind: pattern
   tier: 1
   domain: process
-  statement: "The design memo is approved by Şenol before any implementation begins."
+  statement: "The ADR is approved by Şenol before any implementation begins."
   steelman: null
   blocked_on: null
   status: settled
@@ -3648,22 +3650,192 @@ entries:
   count: 1
   occurrences:
     - {date: "E7", kind: decided, ref: "task-9-verdict.md (viii)"}
-
-# --- Audit-demoted promotion candidates (count fell below 3 after
-# occurrence audit). Full occurrences in .superpowers/sdd/house-backfill/
-# audit-<id>.md. Fold into the schema above on next touch. ---
-#   core-01-rule-uniqueness  verified_count=1  "Every rule resolves against all tracks independently, no consumption, no order effects; ov"
-#   core-04-mkv-structure-full-control  verified_count=2  "v1 configures tracks, attachments, chapters, tags and title, accepting the larger surface "
-#   core-21-rustdoc-states-meaning  verified_count=2  "deny(missing_docs) enforces presence only; the quality bar is that rustdoc states meaning,"
-#   core-22-edition-2024-codegen-rename  verified_count=1  "gen is reserved in Rust edition 2024; the implementer's edition-2021 downgrade workaround "
-#   core-24-diagcode-key-integrity  verified_count=1  "The hand-authored .key() literals and serde's kebab rename were two independent encodings "
-#   core-26-unknownproperty-split  verified_count=1  "The code used unknown-property for a config-time typo error while spec 5.2 defined Unknown"
-#   core-29-no-value-domain-codegen  verified_count=2  "No xtask codegen path for value domains; type/codec_kind domains are curated by hand in ca"
-#   core-42-unidentifiable-hard-regardless-optional  verified_count=2  "A present-but-unidentifiable source is a hard UnidentifiableSource error regardless of rul"
-#   core-46-symlink-source-discovery  verified_count=1  "A symlink whose target is a regular file must be discovered (classify via fs::metadata); d"
-#   core-58-attach-add-cardinality  verified_count=2  "An add locator attaches all matched files (collection-populator, like select/drop), dedup "
-#   core-67-no-mkvtoolnix-magic-guesses  verified_count=1  "Filename/track-name-derived language and flags, auto-title, unique-name (1) suffixing and "
-#   core-87-version-floor  verified_count=2  "The mkvmerge version floor MIN_SUPPORTED = (86,0) was derived empirically from the identif"
-#   core-119-invalidpropertyvalue-allowed  verified_count=2  "planner.rs emitted InvalidPropertyValue without the template-required $allowed on the chan"
-#   core-121-planner-seam-and-hoist  verified_count=2  "The four-copy planning pipeline (~100 lines across cli dry_run.rs/run.rs and src-tauri lib"
-#   exec-40-persist-perjob-logs  verified_count=2  "Persisting per-job logs was deferred twice - at D7 (to Plan 5, the GUI job-queue view bein"
+- id: core-01-rule-uniqueness
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "Every rule resolves against all tracks independently, no consumption, no order effects; overlaps and multiple candidates are errors, configs spell out exclusions explicitly (forced_track: false), error quality and the suggestion engine compensate."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "commit 61249f9"}
+- id: core-04-mkv-structure-full-control
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "v1 configures tracks, attachments, chapters, tags and title, accepting the larger surface deliberately over agent-recommended global toggles."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "spec §2 MKV-structure row"}
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+- id: core-21-rustdoc-states-meaning
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "deny(missing_docs) enforces presence only; the quality bar is that rustdoc states meaning, contract and edge cases, not a name echo. Enforcement: five restatement-style docs from the 151-item backfill were caught by review and sharpened."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "BUILDING.md Documentation standard (agreed Plan 1)"}
+    - {date: "2026-07-08", kind: violated-corrected, ref: "journal Rustdoc (5 restatement docs)"}
+- id: core-22-edition-2024-codegen-rename
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "gen is reserved in Rust edition 2024; the implementer's edition-2021 downgrade workaround was rejected by the controller and the module renamed to codegen instead (root cause over symptom)."
+  steelman: "Downgrading the crate to edition 2021 would have compiled immediately without renaming anything."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "commit e78847d"}
+- id: core-24-diagcode-key-integrity
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "The hand-authored .key() literals and serde's kebab rename were two independent encodings linked only by hand; T2 flagged the divergence risk, corrected with DiagCode::ALL plus exhaustive consistency and uniqueness tests."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "task-2 review verdict Important #1"}
+- id: core-26-unknownproperty-split
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "The code used unknown-property for a config-time typo error while spec 5.2 defined UnknownProperty as the plan-time skew warning; resolved by amending the spec (split into UnknownProperty error + UnknownPropertySkew warning) and keeping the code - a deliberate spec-wins exception because the code was correct."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-08", kind: violated-corrected, ref: "whole-branch verdict Important #2"}
+- id: core-29-no-value-domain-codegen
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "No xtask codegen path for value domains; type/codec_kind domains are curated by hand in capability, because the v20 schema types type as a plain string and only aac_is_sbr carries a schema enum - codegen would serve one irrelevant field."
+  steelman: "Generate value domains from the pinned schema at build time for consistency with the identification-schema extraction - rejected because only one irrelevant field would benefit; the abstraction the scale had not earned."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "journal Plan 2 (Decisions)"}
+    - {date: "2026-07-09", kind: decided, ref: "memo D2 note"}
+- id: core-42-unidentifiable-hard-regardless-optional
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "A present-but-unidentifiable source is a hard UnidentifiableSource error regardless of rule.optional (optional means 'zero matches acceptable', not 'a broken file is acceptable'); spec 5.2 makes it unconditional. The fix-plan draft that said donor-identify-failure should respect optional was superseded and the plan text reconciled to shipped behavior."
+  steelman: "Make donor-identify-failure respect optional, consistent with the zero-hits branch - rejected because spec 5.2 makes UnidentifiableSource unconditional."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "F5 review Important #2"}
+    - {date: "2026-07-09", kind: decided, ref: "commit 953c5cd"}
+- id: core-46-symlink-source-discovery
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "A symlink whose target is a regular file must be discovered (classify via fs::metadata); do not recurse into directory symlinks (cycle guard); skip broken symlinks silently. Bug I: walk_files under symlink_metadata dropped symlinked source files with no diagnostic."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: violated-corrected, ref: "F8 review (SPEC pass)"}
+- id: core-58-attach-add-cardinality
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "An add locator attaches all matched files (collection-populator, like select/drop), dedup by path; zero matches emit a warning (not an error) that does not suppress the plan. The real invariant is slot-vs-collection: track/chapters donors fill a unique slot, select/drop/add populate the collection, so add-attaches-all is the consistent rule, not a font special case."
+  steelman: "Treat add like a track/chapters donor (exactly-one, error on 0 or >=2) so a needed font fails loudly - rejected via a two-round debate; exactly-one would make add the lone unique attachment rule kind."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "memo D12"}
+    - {date: "2026-07-09", kind: reinforced, ref: "task-8 verdict (zero findings)"}
+- id: core-67-no-mkvtoolnix-magic-guesses
+  kind: restraint
+  tier: 1
+  domain: core
+  statement: "Filename/track-name-derived language and flags, auto-title, unique-name (1) suffixing and numeric-sequence auto-append are deliberately not emulated (IDEAS.md #1-4, all hard no). Muxsmith is declarative-batch: a guess would fire unseen across hundreds of files with no review step; fail loud or stay out of the model instead."
+  steelman: "mkvtoolnix-gui enables all of these by default (m_setCommentaryFlagFromFileName, filename language for audio/subs, m_uniqueOutputFileNames, m_mergeReconstructSequencesWhenAdding) - high value for a user who reviews each file interactively."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-09", kind: decided, ref: "IDEAS.md #1-4"}
+- id: core-87-version-floor
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "The mkvmerge version floor MIN_SUPPORTED = (86,0) was derived empirically from the identification-schema v19->v20 diff traced to NEWS.md v86.0, with the evidence in the const doc; independently re-derived by the reviewer."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "Plan T3 step 1"}
+    - {date: "2026-07-10", kind: decided, ref: "task-3 verdict (inductive step confirmed)"}
+- id: core-119-invalidpropertyvalue-allowed
+  kind: pattern
+  tier: 1
+  domain: core
+  statement: "planner.rs emitted InvalidPropertyValue without the template-required $allowed on the changes.language path, rendering a literal {$allowed} to users; found by the T10 fixture-fidelity spot-check (per-DiagCode fixtures are structurally blind to single-site divergence), routed to T9(ix), fixed with a site-specific no-{$ regression test."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-11", kind: violated-corrected, ref: "task-10 verdict (fixture-fidelity spot-check)"}
+    - {date: "2026-07-11", kind: violated-corrected, ref: "task-9 verdict (ix)"}
+- id: core-121-planner-seam-and-hoist
+  kind: non-decision
+  tier: 1
+  domain: core
+  statement: "The four-copy planning pipeline (~100 lines across cli dry_run.rs/run.rs and src-tauri lib.rs/run.rs) and the never-decided injectable-planner-seam interface (S4/S5/S6) are one question: a shared core plan_pipeline() IS the seam. Left undecided whether to do the hoist as an idiomacy-fix wave now or fold it into the Plan 6 profile-editor design."
+  steelman: null
+  blocked_on: "Şenol's call (idiomacy-fix wave vs Plan 6 profile-editor design); reactivate when Plan 6 brainstorming starts"
+  status: blocked
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "ROADMAP L37"}
+    - {date: "2026-07-12", kind: deferred, ref: "idiomacy-review-findings (four-copy hoist)"}
+- id: exec-40-persist-perjob-logs
+  kind: pattern
+  tier: 1
+  domain: executor
+  statement: "Persisting per-job logs was deferred twice - at D7 (to Plan 5, the GUI job-queue view being the consumer, CLI streaming to stdout + --json meanwhile) and again at the Plan-4 self-review - before being adopted in D26 as runs/<run-id>/{summary.json, job-<index>.json} under the platform data dir, written unconditionally by core for both CLI and GUI runs; dry-runs persist nothing."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "memo D7 (Deferrals)"}
+    - {date: "2026-07-10", kind: decided, ref: "memo D26 (format+scope Şenol)"}
