@@ -160,7 +160,20 @@ polish entry.
   (bilingual launch makes it user-visible).
 - **Whole-codebase idiomacy review**: one large, deliberately costly review
   pass before the 1.0 tag - Rust workspace, TS/Vue frontend, configs -
-  against ecosystem idiom. NAMED INPUTS from the Plan 5.5 roll-up funnel
+  against ecosystem idiom. SIX dimensions (four original + two adopted
+  2026-07-12 from mining the ponytail rule set, Şenol-approved):
+  unidiomatic constructs; near-duplicate reimplementations; hand-rolled
+  vs stdlib/established library; inverse dependency sweep; `yagni`
+  (over-abstraction: interface/trait with one impl, factory with one
+  product, wrapper that only delegates, config nobody sets, layer with
+  one caller, dead flags); `native` (platform reinvention: code or a dep
+  doing what the language runtime, browser, CSS or DB does natively).
+  OUTPUT CONTRACT (adopted from ponytail's review/audit skills): one line
+  per finding `<file>:L<n>: <tag> <what to cut>. <replacement>.`, ranked
+  biggest-cut-first, ending `net: -<N> lines, -<M> deps possible`; a
+  clean subsystem returns "Lean already. Ship." Correctness/security/
+  perf explicitly OUT of scope for this pass (complexity hunt and bug
+  hunt want different mindsets); route such finds to a normal review. NAMED INPUTS from the Plan 5.5 roll-up funnel
   (2026-07-12, whole-branch triage; details in the salvaged
   whole-branch-verdict): skip-marker shared const (T2-m1);
   dry-run-summary -> batch-summary rename (T8-m2); known_extensions
