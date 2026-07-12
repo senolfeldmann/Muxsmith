@@ -28,6 +28,21 @@ function catalogsForLocale(locale: string): string[] {
     .map((path) => catalogSources[path]);
 }
 
+/**
+ * BCP-47 primary language subtag (everything before the first "-"),
+ * lowercased. A saved setting or `navigator.language` is often
+ * region-qualified ("de-DE", "de-AT", "en-US"), but catalogs live under a
+ * primary-subtag directory ("locales/de", "locales/en"); matching the full
+ * tag verbatim against the directory name would skip the catalog and fall
+ * through to English (docs-tree S15 / Plan 5 task-9 review, latent until a
+ * second locale landed with Task 21). German regional variants share one
+ * CLDR plural-rule set, so collapsing the region is lossless for the
+ * locale negotiation this loader does.
+ */
+function primarySubtag(locale: string): string {
+  return locale.split("-")[0].toLowerCase();
+}
+
 function buildBundle(locale: string): FluentBundle | null {
   const sources = catalogsForLocale(locale);
   if (sources.length === 0) {
@@ -54,15 +69,17 @@ function buildBundle(locale: string): FluentBundle | null {
  * from the first bundle falls through to the next, so this is real
  * per-message fallback, not just a startup default.
  *
- * v1 ships English content only (non-goal 11), so `catalogsForLocale`
- * currently only ever resolves "en" and this always returns a single
- * bundle; the chain shape is what makes a later locale addition pure
- * content instead of a loader change.
+ * As of the German locale (Task 21), a non-English primary subtag (e.g.
+ * "de", normalized by `primarySubtag` from a "de-DE"/"de-AT" system tag)
+ * resolves to its own catalog directory and this returns a two-bundle
+ * chain (requested locale, then "en"); an unknown tag still resolves to a
+ * single "en" bundle. A further locale stays pure content under a new
+ * `locales/<tag>/` directory.
  */
 export function buildBundles(locale: string | null | undefined): FluentBundle[] {
-  const requested = [locale, "en"].filter(
-    (tag): tag is string => typeof tag === "string" && tag.length > 0,
-  );
+  const requested = [locale, "en"]
+    .filter((tag): tag is string => typeof tag === "string" && tag.length > 0)
+    .map(primarySubtag);
   const seen = new Set<string>();
   const bundles: FluentBundle[] = [];
   for (const tag of requested) {

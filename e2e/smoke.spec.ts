@@ -439,3 +439,66 @@ test.describe("jobs view: live run", () => {
     await expect(row1.getByText(en("jobs-state-cancelled"))).toBeVisible();
   });
 });
+
+// Task 21 (#17 step 3): the German catalog renders end-to-end. The locale
+// is pinned via the mocked `get_settings.locale = "de"` (the same channel
+// `main.ts`'s locale bootstrap reads before mount), and `buildBundles`
+// primary-subtag-normalizes it to the `locales/de/` directory. Assertions
+// are LITERAL German strings, not `en(id)`/a `de()` helper: the point is
+// proving the app actually loaded the de bundle rather than falling back
+// to en, so each asserted string is one that ONLY exists in de (en renders
+// "Batch"/"Selected profile:"/"Dry run"). `visibleText` strips the
+// U+2066-2069 directional-isolate marks the GUI bundle wraps around the
+// `{ $path }` placeable -- without stripping, the exact-equality check on
+// `batch-profile-current` would fail on invisible marks (same mechanism
+// the T19 plural assertions document).
+test.describe("german locale", () => {
+  const PROFILE_PATH = "/profiles/demo.yaml";
+
+  const DE_SETTINGS: AppSettings = {
+    mkvmerge_path: null,
+    default_jobs: 1,
+    locale: "de",
+    recent_profiles: [],
+    dir_memory: {},
+  };
+
+  const emptyReport: ReportDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  test("a de-locale settings value renders the German catalog, not the en fallback", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        get_settings: [resolveWith(DE_SETTINGS)],
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        validate_profile: [resolveWith(emptyReport)],
+      },
+    });
+
+    await page.goto("/");
+
+    const batch = page.getByTestId("view-batch");
+    // batch-view-heading: "Batch" (en) vs "Stapel" (de).
+    await expect(batch.getByRole("heading", { name: "Stapel", exact: true })).toBeVisible();
+    // batch-dry-run: "Dry run" (en) vs "Probelauf" (de).
+    await expect(batch.getByRole("button", { name: "Probelauf", exact: true })).toBeVisible();
+
+    // batch-profile-current: a placeable-bearing de string. Picking a
+    // profile fills "Ausgewähltes Profil: { $path }"; the exact-equality
+    // check only passes with the de catalog AND the BiDi marks stripped.
+    await batch.getByTestId("batch-profile-pick").click();
+    const profileLine = batch.locator("p", { hasText: "Ausgewähltes Profil:" });
+    await expect(profileLine).toBeVisible();
+    expect(visibleText(await profileLine.textContent())).toBe(
+      `Ausgewähltes Profil: ${PROFILE_PATH}`,
+    );
+  });
+});
