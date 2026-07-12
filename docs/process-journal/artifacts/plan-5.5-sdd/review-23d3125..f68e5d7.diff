@@ -1,0 +1,900 @@
+# Review package: 23d3125..f68e5d7
+
+## Commits
+f68e5d7 feat(suggest): overlap-narrowing suggestions (D33, #12iii)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs       | 315 ++++++++++++++++++++++++--
+ crates/muxsmith-core/tests/suggestions.rs | 361 ++++++++++++++++++++++++++++++
+ 2 files changed, 662 insertions(+), 14 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 6e83f9b..bc2a1c0 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -1159,31 +1159,66 @@ fn finalize_plans(files: &mut [FileReport]) {
+ }
+ 
+ // A candidate refinement plus the concrete delta to splice into the rule.
+ #[derive(Clone)]
+ struct Candidate {
+     edit: StructuredEdit,
+     apply: MatchExpr,
+     rank: (u8, String, String),
+ }
+ 
+-/// Generates and validates suggestions for every `AmbiguousRule` conflict
+-/// (spec 5.3, D6). For each conflicted rule (primary or external source):
+-/// gather the matched (conflicting) tracks across all affected files, derive
+-/// discriminator candidates, simulate each against the whole batch via
+-/// [`plan_core`], and keep only those that resolve the ambiguity everywhere
+-/// with no new diagnostic. Deterministic; capped at 3 per rule, with a
+-/// `SuggestionsCapped` diagnostic recording how many were dropped when more
+-/// were accepted, so the cap is never silent. When no candidate resolves a
+-/// rule batch-wide, the no-single-fix partition ([`partition_for_rule`]) is
+-/// reported instead. OverlappingRules suggestions remain deferred (Plan 2
+-/// scope note).
++// How `candidates_for_rule` seeds discriminators. The `AmbiguousRule` path
++// needs a >=2 matched set and both polarities (a discriminator that includes
++// one of the tied tracks resolves the ambiguity). The `OverlappingRules` path
++// (D33) seeds from the single shared track (`matched.len() == 1`) and emits
++// NOT-polarity only: a narrowing can only zero a claim, never redirect it, so
++// the sole useful edit is one that EXCLUDES the contested track. A positive
++// `AddExact` toward a value the track lacks would also zero the claim but is
++// an oblique, near-tie-noise way to say "not this track" (and a no-op when it
++// duplicates an existing key), so the overlap seed drops it.
++#[derive(Clone, Copy, PartialEq)]
++enum SeedMode {
++    Ambiguous,
++    Overlap,
++}
++
++impl SeedMode {
++    fn min_matched(self) -> usize {
++        match self {
++            SeedMode::Ambiguous => 2,
++            SeedMode::Overlap => 1,
++        }
++    }
++
++    fn keeps_polarity(self, polarity: u8) -> bool {
++        match self {
++            SeedMode::Ambiguous => true,
++            SeedMode::Overlap => polarity == 1,
++        }
++    }
++}
++
++/// Generates and validates suggestions for every `AmbiguousRule` and
++/// `OverlappingRules` conflict (spec 5.3, D6/D33). For each ambiguous rule
++/// (primary or external source): gather the matched (conflicting) tracks
++/// across all affected files, derive discriminator candidates, simulate each
++/// against the whole batch via [`plan_core`], and keep only those that resolve
++/// the ambiguity everywhere with no new diagnostic. For each overlap conflict:
++/// generate NOT-polarity candidates for ALL claimants symmetrically and keep
++/// those where the target overlap instance disappears without regression -
++/// feasibility (a claimant's `optional` flag / batch structure) selects the
++/// rule, no precedence is assumed (D33). Deterministic; capped at 3 per
++/// conflict, with a `SuggestionsCapped` diagnostic so the cap is never silent.
++/// When no candidate resolves a conflict batch-wide, the no-single-fix
++/// partition ([`partition_for_rule`] / [`partition_for_overlap`]) is reported;
++/// an unresolvable overlap emits no partition and lets the standing
++/// `OverlappingRules` diagnostic (naming every claimant) stand as the report.
+ #[allow(clippy::too_many_arguments)]
+ fn suggest(
+     profile: &Profile,
+     run: &RunInputs,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+     baseline: &Batch,
+ ) -> (Vec<Suggestion>, Vec<Diagnostic>) {
+     let base_sig = diag_signature(baseline);
+@@ -1197,21 +1232,21 @@ fn suggest(
+         .collect();
+     conflicted.sort_unstable();
+     conflicted.dedup();
+ 
+     let mut out = Vec::new();
+     let mut cap_diagnostics = Vec::new();
+     for ri in conflicted {
+         if profile.tracks.rules.get(ri).is_none() {
+             continue;
+         }
+-        let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
++        let candidates = candidates_for_rule(profile, ri, primaries, id, lang, SeedMode::Ambiguous);
+         let mut accepted: Vec<Candidate> = Vec::new();
+         for cand in &candidates {
+             let edited = with_rule_match(profile, ri, &cand.apply);
+             let sim = plan_core(&edited, run, primaries, id, lang);
+             if resolves_without_regression(&sim, ri, &base_sig) {
+                 accepted.push(cand.clone());
+             }
+         }
+         // No single refinement resolves the rule batch-wide: report the
+         // no-single-fix partition instead of empty suggestions (spec 5.3, D6
+@@ -1243,20 +1278,100 @@ fn suggest(
+         for cand in accepted {
+             let fragment = yaml_fragment(ri, &cand.apply);
+             out.push(Suggestion {
+                 resolves: DiagCode::AmbiguousRule,
+                 config_path: format!("tracks[{ri}].match"),
+                 yaml_fragment: fragment,
+                 edit: cand.edit,
+             });
+         }
+     }
++
++    // OverlappingRules suggestions (D33): symmetric generation across ALL
++    // claimants of each overlap, acceptance-filtered on the overlap instance
++    // disappearing. Feasibility - a claimant's `optional` flag and its
++    // batch-wide matches - selects which narrowing survives; no precedence is
++    // assumed. Reuses candidates_for_rule (NOT-polarity, single-track seed),
++    // resolves_overlap_without_regression, and yaml_fragment. The common
++    // two-required-single-file case and the >=3-claimant case both survive
++    // nothing here and fall through to partition_for_overlap, which for an
++    // unresolvable overlap emits nothing: the standing OverlappingRules
++    // diagnostic (T9's $rules list names every claimant) is the no-fix report.
++    for conflict in overlap_conflicts(baseline) {
++        // (rule index, candidate) tagged so each narrowing knows the rule it
++        // edits - unlike the ambiguous path, candidates for one conflict span
++        // several rules.
++        let mut tagged: Vec<(usize, Candidate)> = Vec::new();
++        for &ri in &conflict.claimants {
++            if profile.tracks.rules.get(ri).is_none() {
++                continue;
++            }
++            for cand in candidates_for_rule(profile, ri, primaries, id, lang, SeedMode::Overlap) {
++                tagged.push((ri, cand));
++            }
++        }
++
++        let mut accepted: Vec<(usize, Candidate)> = Vec::new();
++        for (ri, cand) in &tagged {
++            let edited = with_rule_match(profile, *ri, &cand.apply);
++            let sim = plan_core(&edited, run, primaries, id, lang);
++            if resolves_overlap_without_regression(&sim, &conflict, &base_sig) {
++                accepted.push((*ri, cand.clone()));
++            }
++        }
++
++        if accepted.is_empty() {
++            cap_diagnostics.extend(partition_for_overlap(
++                profile, run, primaries, id, lang, &conflict, &tagged,
++            ));
++            continue;
++        }
++
++        // Rank: the candidate's own dimension rank first; ties between
++        // narrowings on DIFFERENT claimant rules break broader-rule-first
++        // (larger match domain), then lower rule index (D33).
++        let breadth: BTreeMap<usize, usize> = conflict
++            .claimants
++            .iter()
++            .map(|&ri| (ri, rule_breadth(profile, ri, primaries, id, lang)))
++            .collect();
++        accepted.sort_by(|(ra, ca), (rb, cb)| {
++            ca.rank
++                .cmp(&cb.rank)
++                .then_with(|| breadth[rb].cmp(&breadth[ra]))
++                .then_with(|| ra.cmp(rb))
++        });
++        let total_accepted = accepted.len();
++        accepted.truncate(3);
++        let dropped = total_accepted - accepted.len();
++        if dropped > 0 {
++            // Keyed on the lowest claimant, mirroring the OverlappingRules
++            // diagnostic's own `config_path` convention.
++            let anchor = conflict.claimants.first().copied().unwrap_or(0);
++            cap_diagnostics.push(
++                Diagnostic::info(
++                    DiagCode::SuggestionsCapped,
++                    format!("tracks[{anchor}].match"),
++                )
++                .with("dropped", dropped.to_string()),
++            );
++        }
++        for (ri, cand) in accepted {
++            out.push(Suggestion {
++                resolves: DiagCode::OverlappingRules,
++                config_path: format!("tracks[{ri}].match"),
++                yaml_fragment: yaml_fragment(ri, &cand.apply),
++                edit: cand.edit,
++            });
++        }
++    }
++
+     (out, cap_diagnostics)
+ }
+ 
+ // The no-single-fix partition report cap (spec 5.3, D6 step 6): at most this
+ // many resolution groups are rendered per rule, the surplus recorded in an
+ // overflow note, mirroring `SuggestionsCapped`'s never-silent cap philosophy.
+ const PARTITION_GROUP_CAP: usize = 5;
+ 
+ // Reports the no-single-fix partition for rule `ri` (spec 5.3, D6 step 6):
+ // when no candidate resolves the rule batch-wide, group the affected files by
+@@ -1329,20 +1444,74 @@ fn partition_for_rule(
+     if total_groups > PARTITION_GROUP_CAP {
+         diagnostics.push(
+             Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
+                 .with("kind", "overflow")
+                 .with("dropped", (total_groups - PARTITION_GROUP_CAP).to_string()),
+         );
+     }
+     diagnostics
+ }
+ 
++// The no-single-fix report for one overlap conflict (D33 touch-point 4), run
++// when no narrowing resolves it batch-wide. An overlap is a single-file fact,
++// so this partitions over exactly one file (the conflict's): it reports the
++// top-ranked narrowing that resolves the conflict IN ISOLATION but was
++// rejected batch-wide (a candidate that clears this file yet regresses another
++// - e.g. empties a file whose only track it also matched), as one `kind=group`
++// diagnostic rendered by the existing partition message.
++//
++// When no narrowing resolves the conflict even in isolation - the common
++// two-required-single-file case and every >=3-claimant overlap (a single edit
++// leaves a smaller overlap) - this emits NOTHING: the standing
++// `OverlappingRules` diagnostic, which already names every claimant (T9's
++// `$rules`), is the no-fix report. That keeps the "unresolvable overlap"
++// branch inside the existing catalog voice with no new Fluent message.
++#[allow(clippy::too_many_arguments)]
++fn partition_for_overlap(
++    profile: &Profile,
++    run: &RunInputs,
++    primaries: &[PrimaryFile],
++    id: &mut dyn Identify,
++    lang: &LanguageIndex,
++    conflict: &OverlapConflict,
++    tagged: &[(usize, Candidate)],
++) -> Vec<Diagnostic> {
++    let Some(primary) = primaries.iter().find(|p| p.path == conflict.file) else {
++        return Vec::new();
++    };
++    let single = std::slice::from_ref(primary);
++    let iso_base_sig = diag_signature(&plan_core(profile, run, single, id, lang));
++
++    let mut best: Option<&(usize, Candidate)> = None;
++    for entry in tagged {
++        let (ri, cand) = entry;
++        let edited = with_rule_match(profile, *ri, &cand.apply);
++        let sim = plan_core(&edited, run, single, id, lang);
++        if resolves_overlap_without_regression(&sim, conflict, &iso_base_sig)
++            && best.is_none_or(|(_, b)| cand.rank < b.rank)
++        {
++            best = Some(entry);
++        }
++    }
++
++    match best {
++        Some((ri, cand)) => vec![
++            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
++                .with("kind", "group")
++                .with("count", "1")
++                .with("fix", yaml_fragment(*ri, &cand.apply))
++                .with("files", conflict.file.display().to_string()),
++        ],
++        None => Vec::new(),
++    }
++}
++
+ // The identification a rule reads for one primary: the primary itself for a
+ // keyword source, the single located+identified donor for an external source.
+ // `None` when no single donor resolves (zero, ambiguous, or unidentifiable),
+ // mirroring `resolve_file`'s source resolution so candidate generation draws
+ // discriminators from the same tracks the planner matched against. This is
+ // what makes the engine source-agnostic (spec 5.3, D6): an external rule's
+ // ambiguity lives in its donor's tracks, not the primary's.
+ fn rule_source_ident(
+     rule: &TrackRule,
+     primary: &PrimaryFile,
+@@ -1356,43 +1525,47 @@ fn rule_source_ident(
+                 discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
+             match hits.as_slice() {
+                 [donor] => id.identify(donor).ok(),
+                 _ => None,
+             }
+         }
+     }
+ }
+ 
+ // Discriminator candidates for a rule, drawn from the property vectors of the
+-// tracks it ambiguously matches, across every affected file.
++// tracks it matches across every affected file. `mode` selects the seed
++// contract (see [`SeedMode`]): `Ambiguous` needs a >=2 matched set and both
++// polarities; `Overlap` seeds from the single shared track and NOT-polarity
++// only.
+ fn candidates_for_rule(
+     profile: &Profile,
+     ri: usize,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
++    mode: SeedMode,
+ ) -> Vec<Candidate> {
+     let rule = &profile.tracks.rules[ri];
+     let mut raw: Vec<Candidate> = Vec::new();
+     let mut seen: std::collections::BTreeSet<(String, String, u8)> =
+         std::collections::BTreeSet::new();
+ 
+     for primary in primaries {
+         let Some(ident) = rule_source_ident(rule, primary, id) else {
+             continue;
+         };
+         let matched: Vec<&crate::identify::Track> = ident
+             .tracks
+             .iter()
+             .filter(|t| matcher::matches(&rule.match_expr, t, lang))
+             .collect();
+-        if matched.len() < 2 {
++        if matched.len() < mode.min_matched() {
+             continue;
+         }
+         for t in &matched {
+             // Own the property list, including the top-level `type`/`codec`/
+             // `id` pseudo-props (spec 4.4 flattens these over `properties`;
+             // R1 iv makes `codec` and `id` discriminator dimensions too).
+             let mut props: Vec<(String, crate::identify::PropValue)> = t
+                 .properties
+                 .iter()
+                 .map(|(k, v)| (k.clone(), v.clone()))
+@@ -1425,20 +1598,23 @@ fn candidates_for_rule(
+                         },
+                     ),
+                     (
+                         1u8,
+                         StructuredEdit::AddNotExact {
+                             property: prop.clone(),
+                             value: display.clone(),
+                         },
+                     ),
+                 ] {
++                    if !mode.keeps_polarity(polarity) {
++                        continue;
++                    }
+                     if seen.insert((prop.clone(), display.clone(), polarity)) {
+                         raw.push(Candidate {
+                             apply: delta_for(&edit, &scalar),
+                             rank: (rank_of(prop, polarity), prop.clone(), display.clone()),
+                             edit,
+                         });
+                     }
+                 }
+             }
+             if let Some(crate::identify::PropValue::Str(name)) = t.get("track_name") {
+@@ -1450,20 +1626,23 @@ fn candidates_for_rule(
+                                 value: tok.to_string(),
+                             },
+                         ),
+                         (
+                             1u8,
+                             StructuredEdit::AddNotSubstring {
+                                 value: tok.to_string(),
+                             },
+                         ),
+                     ] {
++                        if !mode.keeps_polarity(polarity) {
++                            continue;
++                        }
+                         let key = ("track_name~".to_string(), tok.to_string(), polarity);
+                         if seen.insert(key) {
+                             raw.push(Candidate {
+                                 apply: delta_for(&edit, &Scalar::Str(tok.to_string())),
+                                 rank: (
+                                     rank_substring(polarity),
+                                     "track_name".into(),
+                                     tok.to_string(),
+                                 ),
+                                 edit,
+@@ -1549,25 +1728,133 @@ fn resolves_without_regression(
+     base_sig: &std::collections::BTreeMap<String, usize>,
+ ) -> bool {
+     let still_ambiguous = sim
+         .files
+         .iter()
+         .flat_map(|f| f.diagnostics.iter())
+         .any(|d| d.code == DiagCode::AmbiguousRule && rule_index_of(&d.config_path) == Some(ri));
+     if still_ambiguous {
+         return false;
+     }
++    no_regression(sim, base_sig)
++}
++
++// The "nothing new anywhere" half of the acceptance criterion (D6 (b), R1 v),
++// shared by the AmbiguousRule and OverlappingRules paths: no diagnostic
++// signature in the simulation exceeds its baseline count. Multiset-valued, so
++// a candidate that introduces a SECOND copy of an already-present diagnostic
++// (a new MissingTrack, a new EmptyPlan, a new OverlappingRules) is rejected
++// even when that signature already existed once. Code-agnostic: it needs no
++// per-code special case, which is exactly why generalizing the "target
++// conflict gone" half to overlaps needed no change here.
++fn no_regression(sim: &Batch, base_sig: &std::collections::BTreeMap<String, usize>) -> bool {
+     diag_signature(sim)
+         .iter()
+         .all(|(sig, count)| base_sig.get(sig).is_some_and(|base| count <= base))
+ }
+ 
++// A single overlap conflict instance, distilled from an `OverlappingRules`
++// diagnostic (D33): the file and track it is on, its claimant rule indices
++// (T9's `$rules` list), and the diagnostic's `config_path`. Acceptance and
++// partitioning key on `(file, track)` - the identity the diagnostic reports
++// and a fix resolves - not on the edited rule index (the diagnostic is filed
++// under the lowest claimant, so keying on the edited index would misread
++// "resolved" when a different claimant was narrowed).
++struct OverlapConflict {
++    file: PathBuf,
++    track: String,
++    claimants: Vec<usize>,
++}
++
++// Collects the overlap conflicts from a baseline, one per `OverlappingRules`
++// diagnostic. Claimants are parsed back from the rendered `$rules` list
++// ("tracks[0], tracks[1], ..."), so every claimant - not just the first pair -
++// gets candidates generated for it (symmetric generation, D33).
++fn overlap_conflicts(baseline: &Batch) -> Vec<OverlapConflict> {
++    baseline
++        .files
++        .iter()
++        .flat_map(|f| f.diagnostics.iter())
++        .filter(|d| d.code == DiagCode::OverlappingRules)
++        .filter_map(|d| {
++            let file = d.file.clone()?;
++            let track = d.params.get("track")?.clone();
++            let claimants: Vec<usize> = d
++                .params
++                .get("rules")
++                .map(|r| r.split(',').filter_map(rule_index_of).collect())
++                .unwrap_or_default();
++            Some(OverlapConflict {
++                file,
++                track,
++                claimants,
++            })
++        })
++        .collect()
++}
++
++// Accept iff the targeted overlap instance `(file, track)` is gone from the
++// simulation and no diagnostic regressed (D33 touch-point 1). The "gone" half
++// keys on the conflict identity, not on `rule_index == edited-rule`: the
++// diagnostic is filed under the lowest claimant's `config_path`, so narrowing
++// a higher-indexed claimant would otherwise spuriously read "resolved" while
++// the diagnostic still sits under the lowest one. For a >=3-claimant overlap,
++// dropping one claimant leaves a smaller overlap on the same `(file, track)`,
++// which this check correctly still sees as unresolved.
++fn resolves_overlap_without_regression(
++    sim: &Batch,
++    conflict: &OverlapConflict,
++    base_sig: &std::collections::BTreeMap<String, usize>,
++) -> bool {
++    let still_overlapping = sim
++        .files
++        .iter()
++        .flat_map(|f| f.diagnostics.iter())
++        .any(|d| {
++            d.code == DiagCode::OverlappingRules
++                && d.file.as_deref() == Some(conflict.file.as_path())
++                && d.params.get("track") == Some(&conflict.track)
++        });
++    if still_overlapping {
++        return false;
++    }
++    no_regression(sim, base_sig)
++}
++
++// A rule's match-domain size across the batch: the total number of tracks it
++// matches over every primary's source identification. The D33 rank tiebreak
++// between surviving narrowings on DIFFERENT claimant rules is "broader rule
++// first" (Policy 2), measured here; ties break on lower rule index (Policy 1).
++// On the contested file every claimant matches exactly one track, so breadth
++// only discriminates via the rest of the batch - deliberately, since the
++// broader rule is the likely accidental over-claimer.
++fn rule_breadth(
++    profile: &Profile,
++    ri: usize,
++    primaries: &[PrimaryFile],
++    id: &mut dyn Identify,
++    lang: &LanguageIndex,
++) -> usize {
++    let rule = &profile.tracks.rules[ri];
++    primaries
++        .iter()
++        .filter_map(|p| rule_source_ident(rule, p, id))
++        .map(|ident| {
++            ident
++                .tracks
++                .iter()
++                .filter(|t| matcher::matches(&rule.match_expr, t, lang))
++                .count()
++        })
++        .sum()
++}
++
+ // A comparable signature multiset of all diagnostics: (code + config_path +
+ // file) -> occurrence count. A multiset, not a set, so two diagnostics that
+ // share a signature but describe different tracks (e.g. two OverlappingRules
+ // on one rule) stay counted separately (R1 v, D6 acceptance criterion b).
+ fn diag_signature(batch: &Batch) -> std::collections::BTreeMap<String, usize> {
+     let mut counts = std::collections::BTreeMap::new();
+     let all = batch
+         .batch_diagnostics
+         .iter()
+         .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()));
+diff --git a/crates/muxsmith-core/tests/suggestions.rs b/crates/muxsmith-core/tests/suggestions.rs
+index 357a1e8..1b4bef3 100644
+--- a/crates/muxsmith-core/tests/suggestions.rs
++++ b/crates/muxsmith-core/tests/suggestions.rs
+@@ -645,10 +645,371 @@ fn no_single_fix_produces_a_two_group_partition() {
+         .expect("a forced_track group");
+     let lang = groups
+         .iter()
+         .find(|d| d.params["fix"].contains("language"))
+         .expect("a language group");
+     assert!(forced.params["files"].contains("S01E01"));
+     assert!(!forced.params["files"].contains("S01E02"));
+     assert!(lang.params["files"].contains("S01E02"));
+     assert!(!lang.params["files"].contains("S01E01"));
+ }
++
++// ===========================================================================
++// Task 18 / D33: OverlappingRules auto-narrowing suggestions.
++//
++// Symmetric generation for ALL overlap claimants, NOT-polarity seed from the
++// shared track's property vector, acceptance-filtered on the target overlap
++// INSTANCE disappearing. Reuses the AmbiguousRule machinery
++// (candidates_for_rule / resolves_without_regression / partition) with the
++// four D33 touch-points; no new edit variant, DiagCode, or Fluent message.
++// TC-A..TC-D are the D33 acceptance cases.
++// ===========================================================================
++
++fn overlap_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
++    batch
++        .files
++        .iter()
++        .flat_map(|f| f.diagnostics.iter())
++        .filter(|d| d.code == DiagCode::OverlappingRules)
++        .collect()
++}
++
++// --- TC-A: optional yielding rule -> NOT-narrowings on the optional rule ----
++
++const P_OVERLAP_OPTIONAL_YIELDS: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles, forced_track: true } }
++    - match: { exact: { codec_id: 'S_TEXT/UTF8', forced_track: true } }
++      optional: true
++"#;
++
++#[test]
++fn tc_a_overlap_optional_rule_yields_not_narrowings_on_that_rule() {
++    let (batch, _dir) = plan(P_OVERLAP_OPTIONAL_YIELDS);
++
++    // Baseline: R0 and R1 both claim SERIES id2 (the forced subtitle).
++    let overlaps = overlap_diags(&batch);
++    assert_eq!(overlaps.len(), 1, "expected one overlap on id2");
++    assert_eq!(overlaps[0].params["track"], "2");
++    assert!(batch.files[0].plan.is_none(), "overlap drops the plan");
++
++    // Symmetric generation + acceptance auto-select the OPTIONAL rule: every
++    // emitted suggestion edits tracks[1] (narrowing tracks[0], the required
++    // rule, regresses to MissingTrack and is rejected).
++    assert!(
++        !batch.suggestions.is_empty(),
++        "expected overlap suggestions"
++    );
++    assert!(
++        batch
++            .suggestions
++            .iter()
++            .all(|s| s.resolves == DiagCode::OverlappingRules),
++        "overlap suggestions must carry resolves=OverlappingRules: {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.resolves)
++            .collect::<Vec<_>>()
++    );
++    assert!(
++        batch
++            .suggestions
++            .iter()
++            .all(|s| s.config_path.starts_with("tracks[1]")),
++        "every accepted suggestion must edit the optional rule tracks[1], got {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.config_path)
++            .collect::<Vec<_>>()
++    );
++
++    // NOT-polarity seed from the shared track: a NOT-exact on forced_track=true
++    // (a property id2 HAS) is among the accepted narrowings.
++    assert!(
++        batch.suggestions.iter().any(|s| matches!(
++            &s.edit,
++            StructuredEdit::AddNotExact { property, value }
++                if property == "forced_track" && value == "true"
++        )),
++        "expected AddNotExact{{forced_track,true}} on the optional rule, got {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++
++    // Post-application: overlap gone, R1 empty-but-optional, plan produced.
++    let edited = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles, forced_track: true } }
++    - match: { exact: { codec_id: 'S_TEXT/UTF8', forced_track: true } }
++      optional: true
++      not: [ { exact: { forced_track: true } } ]
++"#;
++    // (the `not` above is spliced under `match`; render the real applied form)
++    let applied = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles, forced_track: true } }
++    - match:
++        exact: { codec_id: 'S_TEXT/UTF8', forced_track: true }
++        not: [ { exact: { forced_track: true } } ]
++      optional: true
++"#;
++    let _ = edited;
++    let (re, _d) = plan(applied);
++    assert!(
++        overlap_diags(&re).is_empty(),
++        "applying the forced_track NOT must clear the overlap: {:?}",
++        re.files[0].diagnostics
++    );
++    assert!(
++        re.files[0].plan.is_some(),
++        "after clearing the overlap a plan must be produced: {:?}",
++        re.files[0].diagnostics
++    );
++}
++
++// --- TC-B: two required rules, single file -> no suggestion, no-fix report --
++
++const P_OVERLAP_TWO_REQUIRED: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
++"#;
++
++#[test]
++fn tc_b_two_required_overlap_yields_no_suggestion_and_names_all_claimants() {
++    let (batch, _dir) = plan(P_OVERLAP_TWO_REQUIRED);
++
++    let overlaps = overlap_diags(&batch);
++    assert_eq!(overlaps.len(), 1, "expected one overlap on id0");
++    assert_eq!(overlaps[0].params["track"], "0");
++
++    // The common case: narrowing either required rule regresses to
++    // MissingTrack, so NOTHING survives -> zero suggestions.
++    assert!(
++        batch.suggestions.is_empty(),
++        "two required rules must yield no suggestion: {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++
++    // No SuggestionPartition group is fabricated for an unresolvable overlap
++    // (no narrowing resolves it even in isolation).
++    assert!(
++        !batch
++            .batch_diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::SuggestionPartition),
++        "an unresolvable overlap must not fabricate a partition group: {:?}",
++        batch.batch_diagnostics
++    );
++
++    // The no-fix report is the standing OverlappingRules diagnostic, which
++    // names every claimant (T9 $rules list).
++    let rules = &overlaps[0].params["rules"];
++    for expected in ["tracks[0]", "tracks[1]"] {
++        assert!(
++            rules.contains(expected),
++            "claimant {expected} missing from the no-fix report: {rules:?}"
++        );
++    }
++}
++
++// --- TC-C: batch regression rejection (multiset nothing-new guard) ----------
++
++// File A: a video plus one forced English subtitle. Under the TC-C rules both
++// R0 (forced subtitles) and R1 (English subtitles) claim the subtitle -> an
++// overlap; the video keeps the file non-empty after any fix.
++const OVERLAP_A_VIDEO_PLUS_FORCED_ENG_SUB: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": true,
++        "language": "eng", "language_ietf": "en", "track_name": "English forced" } }
++  ]
++}
++"#;
++
++// File B: a SINGLE non-forced English subtitle and nothing else. Only R1
++// (English subtitles) claims it; there is no overlap here. It is R1's sole
++// output on this file, so any narrowing that drops it empties the file.
++const OVERLAP_B_ONLY_NONFORCED_ENG_SUB: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E02.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en", "track_name": "English" } }
++  ]
++}
++"#;
++
++const P_OVERLAP_BATCH: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles, forced_track: true } }
++      optional: true
++    - match: { exact: { type: subtitles, language: en } }
++      optional: true
++"#;
++
++#[test]
++fn tc_c_batch_unsafe_overlap_narrowing_is_rejected_by_the_multiset_guard() {
++    let files = [
++        ("Show.S01E01.mkv", OVERLAP_A_VIDEO_PLUS_FORCED_ENG_SUB),
++        ("Show.S01E02.mkv", OVERLAP_B_ONLY_NONFORCED_ENG_SUB),
++    ];
++    let (batch, _dir) = plan_multi(P_OVERLAP_BATCH, &files);
++
++    // Baseline: overlap only on file A (id2); file B is clean (only R1 claims).
++    let overlaps = overlap_diags(&batch);
++    assert_eq!(
++        overlaps.len(),
++        1,
++        "overlap must be on file A only: {overlaps:?}"
++    );
++    assert!(
++        overlaps[0]
++            .file
++            .as_ref()
++            .unwrap()
++            .ends_with("Show.S01E01.mkv")
++    );
++
++    // The language-keyed NOT on R1 (tracks[1]) clears file A but would empty
++    // file B (its only track is English) -> EmptyPlan on B -> a new diagnostic
++    // -> the multiset "nothing-new" guard rejects it batch-wide. It must NOT
++    // appear as a suggestion.
++    assert!(
++        !batch.suggestions.iter().any(|s| matches!(
++            &s.edit,
++            StructuredEdit::AddNotExact { property, value }
++                if property == "language" && value == "eng"
++        )),
++        "a batch-unsafe language narrowing must be rejected, got {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| (&s.config_path, &s.edit))
++            .collect::<Vec<_>>()
++    );
++
++    // Batch-SAFE narrowings still survive (e.g. NOT forced_track, which does
++    // not touch B's non-forced track), so the engine is not simply silent.
++    assert!(
++        !batch.suggestions.is_empty(),
++        "batch-safe narrowings must still be emitted"
++    );
++
++    // Proof the rejection is specifically the batch collateral, not general
++    // infeasibility: the same language NOT resolves file A in isolation ...
++    let a_only = [(files[0].0, files[0].1)];
++    let applied = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles, forced_track: true } }
++      optional: true
++    - match:
++        exact: { type: subtitles, language: en }
++        not: [ { exact: { language: eng } } ]
++      optional: true
++"#;
++    let (a_iso, _d1) = plan_multi(applied, &a_only);
++    assert!(
++        overlap_diags(&a_iso).is_empty(),
++        "the language NOT resolves file A in isolation: {:?}",
++        a_iso.files[0].diagnostics
++    );
++
++    // ... but on the full batch it empties file B (the collateral the guard saw).
++    let (both, _d2) = plan_multi(applied, &files);
++    let b = both
++        .files
++        .iter()
++        .find(|f| f.source.ends_with("Show.S01E02.mkv"))
++        .unwrap();
++    assert!(
++        b.diagnostics.iter().any(|d| d.code == DiagCode::EmptyPlan),
++        "the language NOT must empty file B (the batch collateral): {:?}",
++        b.diagnostics
++    );
++}
++
++// --- TC-D: >=3 claimants -> single narrowing insufficient -> names all three -
++
++const P_OVERLAP_THREE_CLAIMANTS: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++    - match: { exact: { codec_id: 'V_MPEG4/ISO/AVC' } }
++    - match: { exact: { default_track: true, type: video } }
++"#;
++
++#[test]
++fn tc_d_three_claimant_overlap_yields_no_suggestion_and_names_all_three() {
++    let (batch, _dir) = plan(P_OVERLAP_THREE_CLAIMANTS);
++
++    let overlaps = overlap_diags(&batch);
++    assert_eq!(overlaps.len(), 1, "expected one 3-way overlap on id0");
++    assert_eq!(overlaps[0].params["track"], "0");
++
++    // A single narrowing can never clear a 3-rule overlap (removing one leaves
++    // a 2-rule overlap), and all three are required -> zero suggestions.
++    assert!(
++        batch.suggestions.is_empty(),
++        "a 3-claimant overlap yields no single-narrowing suggestion: {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++    assert!(
++        !batch
++            .batch_diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::SuggestionPartition),
++        "no partition group is fabricated for the unresolvable 3-way overlap"
++    );
++
++    // The no-fix report names ALL THREE claimants (T9 $rules list).
++    let rules = &overlaps[0].params["rules"];
++    for expected in ["tracks[0]", "tracks[1]", "tracks[2]"] {
++        assert!(
++            rules.contains(expected),
++            "claimant {expected} missing from the no-fix report: {rules:?}"
++        );
++    }
++}

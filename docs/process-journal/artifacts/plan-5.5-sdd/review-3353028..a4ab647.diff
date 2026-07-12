@@ -1,0 +1,714 @@
+# Review package: 3353028..a4ab647
+
+## Commits
+a4ab647 fix(executor): report worker panics as failures, recover poisoned mutexes (#10)
+
+## Files changed
+ crates/muxsmith-core/src/executor/queue.rs | 238 +++++++++++++++++++++++++++--
+ crates/muxsmith-core/src/report/mod.rs     |   3 +
+ locales/en/diagnostics.ftl                 |   1 +
+ src-tauri/src/run.rs                       |  35 ++++-
+ 4 files changed, 256 insertions(+), 21 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 1d1dbb5..b7ca5b0 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -6,20 +6,21 @@ use std::collections::HashMap;
+ use std::path::PathBuf;
+ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+ use std::sync::mpsc::Sender;
+ use std::sync::{Arc, Mutex};
+ use std::time::Duration;
+ 
+ use serde::Serialize;
+ 
+ use super::job::{JobOutcome, JobProgress, JobSpec, JobState, run_job};
+ use super::spawn::{Killer, RunningJob, Spawn, SpawnError};
++use crate::report::DiagCode;
+ 
+ /// Serializable job-engine event (D13): the CLI renders it, Plan 5's Tauri
+ /// shell forwards it, a future --json-events streams it.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ #[serde(tag = "event", rename_all = "snake_case")]
+ pub enum JobEvent {
+     /// A queued spec was dequeued and handed to the runner.
+     Started {
+         /// Index into the `specs` slice passed to [`run_queue`].
+         index: usize,
+@@ -119,25 +120,40 @@ impl QueueControl {
+     /// for `index` (the job is in flight), invokes it immediately rather
+     /// than waiting for the watcher's next poll. A queued job (not yet
+     /// dequeued) has no registered killer; setting its flag alone is
+     /// enough, since the worker consults [`Self::job_cancelled`] before
+     /// spawning (`run_job`'s pre-spawn check). An `index` outside the
+     /// batch's spec count is a no-op.
+     pub fn cancel_job(&self, index: usize) {
+         if let Some(flag) = self.jobs.get(index) {
+             flag.store(true, Ordering::SeqCst);
+         }
+-        if let Some(killer) = self.killers.lock().unwrap().get(&index) {
++        if let Some(killer) = self.killers().get(&index) {
+             killer();
+         }
+     }
+ 
++    /// Locks `killers`, recovering from poisoning instead of propagating a
++    /// second panic (hardening: a worker panicking mid `insert`/`remove`
++    /// must not also poison every other worker's, and the watcher's, own
++    /// access to this same map, cascading one job's bug into the whole
++    /// batch). Recovery is sound because every write this lock guards is a
++    /// single `HashMap` `insert`/`remove` -- never a multi-step invariant a
++    /// panic could leave half-applied -- so whatever the map held right
++    /// before a panic is exactly what it holds right after: still a valid
++    /// killer registry.
++    fn killers(&self) -> std::sync::MutexGuard<'_, HashMap<usize, Killer>> {
++        self.killers
++            .lock()
++            .unwrap_or_else(|poisoned| poisoned.into_inner())
++    }
++
+     /// Whether job `index` is cancelled, either because the whole batch was
+     /// ([`Self::cancel_all`]) or because that job specifically was
+     /// ([`Self::cancel_job`]). Passed to [`run_job`] as its `cancelled`
+     /// closure.
+     pub fn job_cancelled(&self, index: usize) -> bool {
+         self.batch.load(Ordering::SeqCst)
+             || self
+                 .jobs
+                 .get(index)
+                 .is_some_and(|flag| flag.load(Ordering::SeqCst))
+@@ -167,60 +183,70 @@ pub fn run_queue(
+     opts: QueueOpts,
+     ctl: &Arc<QueueControl>,
+     events: &Sender<JobEvent>,
+ ) -> Vec<JobOutcome> {
+     let workers = worker_count(opts.jobs, specs.len());
+     let next = AtomicUsize::new(0);
+     let stop = AtomicBool::new(false);
+     let done = AtomicBool::new(false);
+     let outcomes: Mutex<Vec<Option<JobOutcome>>> =
+         Mutex::new((0..specs.len()).map(|_| None).collect());
++    // One slot per worker, holding the spec index that worker last
++    // dequeued; cleared back to `NO_JOB` only once that job's outcome has
++    // actually been written to `outcomes` (see the worker loop below). A
++    // panic unwinds past every other local inside the worker closure, so
++    // this is the one piece of state that survives it: `handle.join()`
++    // below reads it, once a worker's thread has died, to recover which
++    // job it was running when it did.
++    let current_index: Vec<AtomicUsize> = (0..workers).map(|_| AtomicUsize::new(NO_JOB)).collect();
+ 
+     std::thread::scope(|scope| {
+         let next = &next;
+         let stop = &stop;
+         let done = &done;
+         let outcomes = &outcomes;
++        let current_index = &current_index;
+ 
+         // Watcher: polls the batch flag; on batch cancellation flips
+         // stop-dequeuing, kills every in-flight job through its registered
+         // Killer, and exits. Also exits (without killing) once all workers
+         // are done, so the scope can close on a natural finish. Per-job
+         // cancellation needs no watcher involvement:
+         // QueueControl::cancel_job kills its target synchronously.
+         scope.spawn(move || {
+             loop {
+                 if done.load(Ordering::SeqCst) {
+                     return;
+                 }
+                 if ctl.batch.load(Ordering::SeqCst) {
+                     stop.store(true, Ordering::SeqCst);
+-                    for killer in ctl.killers.lock().unwrap().values() {
++                    for killer in ctl.killers().values() {
+                         killer();
+                     }
+                     return;
+                 }
+                 std::thread::sleep(CANCEL_POLL);
+             }
+         });
+ 
+         let handles: Vec<_> = (0..workers)
+-            .map(|_| {
++            .map(|worker_id| {
+                 scope.spawn(move || {
+                     loop {
+                         if stop.load(Ordering::SeqCst) || ctl.batch.load(Ordering::SeqCst) {
+                             return;
+                         }
+                         let index = next.fetch_add(1, Ordering::SeqCst);
+                         if index >= specs.len() {
+                             return;
+                         }
++                        current_index[worker_id].store(index, Ordering::SeqCst);
+                         let spec = &specs[index];
+ 
+                         // A job already cancelled per-job at dequeue time
+                         // never gets a Started event (D25 deviation - see
+                         // this function's rustdoc); run_job's own
+                         // pre-spawn check still runs below and produces
+                         // its Cancelled outcome without touching the
+                         // spawner or the filesystem.
+                         if !ctl.job_cancelled(index) {
+                             let _ = events.send(JobEvent::Started {
+@@ -244,44 +270,53 @@ pub fn run_queue(
+                                 JobProgress::OutputLine(line) => JobEvent::Output { index, line },
+                             };
+                             let _ = events.send(event);
+                         };
+                         let outcome = run_job(
+                             &registering,
+                             spec,
+                             &|| ctl.job_cancelled(index),
+                             &mut on_progress,
+                         );
+-                        ctl.killers.lock().unwrap().remove(&index);
++                        ctl.killers().remove(&index);
+ 
+                         if outcome.state == JobState::Failed && opts.fail_fast {
+                             stop.store(true, Ordering::SeqCst);
+                         }
+                         let _ = events.send(JobEvent::Finished {
+                             index,
+                             outcome: outcome.clone(),
+                         });
+-                        outcomes.lock().unwrap()[index] = Some(outcome);
++                        lock_outcomes(outcomes)[index] = Some(outcome);
++                        current_index[worker_id].store(NO_JOB, Ordering::SeqCst);
+                     }
+                 })
+             })
+             .collect();
+ 
+-        for handle in handles {
+-            let _ = handle.join();
++        for (worker_id, handle) in handles.into_iter().enumerate() {
++            if let Err(payload) = handle.join() {
++                recover_panicked_worker(worker_id, payload, current_index, ctl, outcomes, events);
++            }
+         }
+         done.store(true, Ordering::SeqCst);
+     });
+ 
++    // Poisoning here is unreachable in practice today (every write above
++    // already recovers instead of panicking while holding this lock), but
++    // `into_inner()` still surfaces a `PoisonError` if that ever changes;
++    // recovering rather than `.unwrap()`-ing keeps a single future
++    // regression elsewhere from taking down this final collection step
++    // too.
+     outcomes
+         .into_inner()
+-        .unwrap()
++        .unwrap_or_else(|poisoned| poisoned.into_inner())
+         .into_iter()
+         .map(|outcome| {
+             outcome.unwrap_or(JobOutcome {
+                 state: JobState::Cancelled,
+                 exit_code: None,
+                 warnings: Vec::new(),
+                 errors: Vec::new(),
+                 duration_ms: 0,
+             })
+         })
+@@ -293,40 +328,113 @@ pub fn run_queue(
+ /// batch still gets one idle worker rather than zero). A worker beyond
+ /// `spec_count` could never dequeue a spec (each fetches a distinct index
+ /// once), so it would only ever sit idle; an oversized `--jobs` would
+ /// otherwise spawn that many real OS threads for nothing; at extreme values
+ /// enough to exhaust the OS and panic inside the scope (`Scope::spawn`
+ /// panics on a thread-creation failure).
+ fn worker_count(jobs: usize, spec_count: usize) -> usize {
+     jobs.max(1).min(spec_count.max(1))
+ }
+ 
++/// Sentinel `current_index` value meaning "this worker is between jobs (or
++/// has not dequeued one yet)", never a real spec index.
++const NO_JOB: usize = usize::MAX;
++
++/// Locks `outcomes`, recovering from poisoning instead of propagating a
++/// second panic. Sound for the same reason as [`QueueControl::killers`]:
++/// the one write this lock ever guards (`outcomes[index] = Some(...)`) is a
++/// single slot assignment, never a multi-step invariant a panic could leave
++/// half-applied -- and refusing to recover would turn one worker's panic
++/// into every other, perfectly healthy, worker's inability to ever record
++/// its own outcome once its turn to lock this comes up.
++fn lock_outcomes(
++    outcomes: &Mutex<Vec<Option<JobOutcome>>>,
++) -> std::sync::MutexGuard<'_, Vec<Option<JobOutcome>>> {
++    outcomes
++        .lock()
++        .unwrap_or_else(|poisoned| poisoned.into_inner())
++}
++
++/// Recovers from one worker thread's panic (`handle.join()`'s `Err`, in
++/// [`run_queue`]): a bug inside this crate's own job-execution path, never
++/// an mkvmerge failure (a failing mux is `run_job`'s own `Failed` return,
++/// not a panic). Before this existed, the panic was silently swallowed
++/// (`let _ = handle.join();`) and the job's slot in `outcomes` stayed
++/// `None` forever, so [`run_queue`]'s final fallback mislabeled it
++/// `Cancelled` -- indistinguishable from a job that was never dequeued at
++/// all.
++///
++/// `current_index[worker_id]` still holds the spec index that worker last
++/// dequeued (cleared only after a successful outcome write, see the worker
++/// loop in [`run_queue`]), so it is the one piece of state that survives
++/// the unwind and identifies which job died with it; `NO_JOB` means the
++/// panic happened outside any job (no such path exists today, but there is
++/// then nothing to recover).
++///
++/// The panic payload itself (whatever `panic!`/`.unwrap()`/`.expect()` was
++/// called with) is arbitrary developer-diagnostic content, not a stable,
++/// translatable code -- like `job.rs`'s `delete_partial_failed` detail, it
++/// is core's one deliberate prose-free exception (spec 6/7): logged here
++/// for triage, never carried past this function into the user-facing
++/// [`JobOutcome`] beyond the stable `worker-panicked` [`DiagCode`].
++fn recover_panicked_worker(
++    worker_id: usize,
++    payload: Box<dyn std::any::Any + Send>,
++    current_index: &[AtomicUsize],
++    ctl: &QueueControl,
++    outcomes: &Mutex<Vec<Option<JobOutcome>>>,
++    events: &Sender<JobEvent>,
++) {
++    let index = current_index[worker_id].load(Ordering::SeqCst);
++    if index == NO_JOB {
++        return;
++    }
++    let message = payload
++        .downcast_ref::<&str>()
++        .map(|s| s.to_string())
++        .or_else(|| payload.downcast_ref::<String>().cloned())
++        .unwrap_or_else(|| "<non-string panic payload>".to_string());
++    eprintln!("muxsmith: worker thread panicked while running job {index}: {message}");
++
++    ctl.killers().remove(&index);
++    let outcome = JobOutcome {
++        state: JobState::Failed,
++        exit_code: None,
++        warnings: Vec::new(),
++        errors: vec![format!("{}: job {index}", DiagCode::WorkerPanicked.key())],
++        // The worker died mid-`run_job`, before it could measure its own
++        // elapsed time; there is nothing truthful to report here.
++        duration_ms: 0,
++    };
++    let _ = events.send(JobEvent::Finished {
++        index,
++        outcome: outcome.clone(),
++    });
++    lock_outcomes(outcomes)[index] = Some(outcome);
++}
++
+ /// Wraps the caller's spawner so a successful spawn registers the new job's
+ /// [`Killer`] into the control's registry under its own spec `index` (D25)
+ /// before `run_job` starts streaming, giving [`QueueControl::cancel_job`]
+ /// and the watcher (batch cancel) a handle to an in-flight job neither owns.
+ /// The worker loop removes the entry once `run_job` returns.
+ struct RegisteringSpawner<'a> {
+     inner: &'a (dyn Spawn + Sync),
+     ctl: &'a QueueControl,
+     index: usize,
+ }
+ 
+ impl Spawn for RegisteringSpawner<'_> {
+     fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
+         let job = self.inner.spawn(argv)?;
+         let killer = job.killer();
+-        self.ctl
+-            .killers
+-            .lock()
+-            .unwrap()
+-            .insert(self.index, Arc::clone(&killer));
++        self.ctl.killers().insert(self.index, Arc::clone(&killer));
+         // Closes the D25 lost-cancellation window: a cancel_job landing
+         // between run_job's pre-spawn check and the insert above found no
+         // killer to invoke, and a normally-exiting process never reaches
+         // the `None if cancelled()` arm - the request would be silently
+         // dropped. Re-check now that the killer is registered and kill the
+         // fresh process ourselves if so. The ordering makes the window
+         // airtight: a cancel_job earlier than this check is seen via the
+         // flag here; one later than it finds the killer in the map. A
+         // double invocation (both paths firing) is harmless - Killer is
+         // idempotent and best-effort by contract (spawn.rs).
+@@ -581,20 +689,124 @@ mod tests {
+         let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
+         drop(tx);
+         let _events: Vec<JobEvent> = rx.iter().collect();
+ 
+         assert_eq!(
+             outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
+             vec![JobState::Failed, JobState::Ok, JobState::Ok]
+         );
+     }
+ 
++    /// A [`Spawn`] fake whose `spawn` panics for one specific spec index
++    /// (encoded into `argv[0]`, [`ScriptByIndexSpawner`]'s convention) and
++    /// scripts every other index as an ordinary success -- the harness for
++    /// [`worker_panic_is_reported_as_failed_not_cancelled`].
++    struct PanicOnIndexSpawner {
++        panic_index: usize,
++    }
++
++    impl Spawn for PanicOnIndexSpawner {
++        fn spawn(&self, argv: &[String]) -> Result<Box<dyn RunningJob>, SpawnError> {
++            let index: usize = argv[0].parse().expect("test spec index encoded in argv[0]");
++            if index == self.panic_index {
++                panic!("scripted worker panic for job {index}");
++            }
++            Ok(Box::new(ScriptedJob {
++                lines: vec!["#GUI#progress 100%".to_string()],
++                cursor: 0,
++                exit: Some(0),
++            }))
++        }
++    }
++
++    /// A worker thread panicking mid-job (a bug in this crate, never an
++    /// mkvmerge failure) used to mislabel that job `Cancelled` --
++    /// indistinguishable from a spec that was never dequeued at all --
++    /// because the panic was silently swallowed (`let _ = handle.join();`)
++    /// before the job's slot in `outcomes` was ever written. This pins the
++    /// fix: the panicked job must be reported `Failed` with the
++    /// `worker-panicked` diagnostic code, the surviving worker must still
++    /// finish the rest of the batch (`jobs: 2` so a second, healthy worker
++    /// is still alive to pick up what the dead one would have), and
++    /// `run_queue` itself must not propagate the panic -- this test
++    /// function would abort the whole process if it did.
++    #[test]
++    fn worker_panic_is_reported_as_failed_not_cancelled() {
++        let dir = tempfile::tempdir().unwrap();
++        let specs = vec![
++            spec(0, dir.path().join("a.mkv")),
++            spec(1, dir.path().join("b.mkv")),
++            spec(2, dir.path().join("c.mkv")),
++        ];
++        let fake = PanicOnIndexSpawner { panic_index: 0 };
++        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
++        let (tx, rx) = mpsc::channel();
++        let opts = QueueOpts {
++            jobs: 2,
++            fail_fast: false,
++        };
++
++        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
++        drop(tx);
++        let _events: Vec<JobEvent> = rx.iter().collect();
++
++        assert_eq!(
++            outcomes[0].state,
++            JobState::Failed,
++            "a panicked worker must be reported Failed, not silently Cancelled"
++        );
++        assert!(
++            outcomes[0]
++                .errors
++                .iter()
++                .any(|e| e.starts_with(DiagCode::WorkerPanicked.key())),
++            "expected a worker-panicked entry, got: {:?}",
++            outcomes[0].errors
++        );
++        assert_eq!(
++            outcomes[1].state,
++            JobState::Ok,
++            "a surviving worker must still finish the rest of the batch"
++        );
++        assert_eq!(outcomes[2].state, JobState::Ok);
++    }
++
++    /// Direct regression test for the `unwrap_or_else(|p| p.into_inner())`
++    /// poison-recovery pattern now used throughout this module (`killers`,
++    /// `outcomes`): a panic while holding a `MutexGuard` poisons the
++    /// `Mutex`, but a plain assignment made *before* the panic is a
++    /// completed write, not a half-applied one -- so recovering via
++    /// `into_inner()` must yield exactly that state, never lose or reset
++    /// it. This is the soundness claim documented on
++    /// [`QueueControl::killers`] and [`lock_outcomes`], pinned here so a
++    /// future change to the pattern itself cannot silently regress it.
++    #[test]
++    fn poisoned_mutex_recovers_state_written_before_the_panic() {
++        let mutex = Mutex::new(vec![1, 2, 3]);
++        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++            let mut guard = mutex.lock().unwrap();
++            guard.push(4);
++            panic!("simulated poison, deliberately while still holding the guard");
++        }));
++        assert!(mutex.is_poisoned());
++
++        let recovered = mutex
++            .lock()
++            .unwrap_or_else(|poisoned| poisoned.into_inner());
++
++        assert_eq!(
++            *recovered,
++            vec![1, 2, 3, 4],
++            "recovery must yield the state as it stood right before the panic"
++        );
++    }
++
+     #[test]
+     fn outcomes_index_aligned() {
+         let dir = tempfile::tempdir().unwrap();
+         let specs = vec![
+             spec(0, dir.path().join("a.mkv")),
+             spec(1, dir.path().join("b.mkv")),
+             spec(2, dir.path().join("c.mkv")),
+             spec(3, dir.path().join("d.mkv")),
+         ];
+         let fake = ScriptByIndexSpawner {
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 32699b0..e9d2dc9 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -139,20 +139,23 @@ diag_codes! {
+     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
+     DonorIsPrimary => "donor-is-primary",
+     /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
+     IgnoredFile => "ignored-file",
+     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
+     MultipleIdentifierMatches => "multiple-identifier-matches",
+     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
+     UnknownPropertySkew => "unknown-property-skew",
+     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
+     SuggestionsCapped => "suggestions-capped",
++    // Run-time (executor)
++    /// A queue worker thread panicked while running a job -- a bug in this crate, never an mkvmerge failure (a failing mux is a plain `Failed` outcome, not a panic). The job is reported `Failed`; the panic's own payload is developer-diagnostic content, logged but never carried into this code's params.
++    WorkerPanicked => "worker-panicked",
+ }
+ 
+ /// One diagnostic (spec 5.2): a data record, never prose. `code` +
+ /// `params` select and fill a message/hint template at presentation time
+ /// (spec 8.4); core itself never renders text.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Diagnostic {
+     /// Which condition produced this diagnostic (spec 5.2 catalog).
+     pub code: DiagCode,
+     /// Error/warning/info; error means the affected file produces no plan
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 477499b..3eb580a 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -36,10 +36,11 @@ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
+ unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
+ suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
++worker-panicked = A worker thread panicked while running this job. This is a Muxsmith bug, not an mkvmerge failure; see the application log for details.
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index 7646ae0..ea315e8 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -76,20 +76,39 @@ pub(crate) enum RunSlot {
+ /// window-close teardown. The run's id is returned to the caller directly
+ /// by [`start_run`] (as [`StartedRun::run_id`]) and is not otherwise
+ /// consumed while the run is in flight, so it is not duplicated here.
+ /// `pub(crate)`, matching [`RunSlot`]: it is reachable through
+ /// `RunSlot::Running`'s field, which is itself `pub(crate)`-visible from
+ /// `AppState` in the parent module.
+ pub(crate) struct ActiveRun {
+     ctl: Arc<QueueControl>,
+ }
+ 
++/// Locks [`AppState::active`], recovering from poisoning instead of
++/// propagating a second panic (hardening, mirrors
++/// `muxsmith_core::executor::queue`'s identical treatment of its own
++/// `killers`/`outcomes` mutexes). Recovery is sound because every write
++/// this lock guards is a single, non-panicking assignment (`*slot =
++/// Some(...)`/`*slot = None`) -- whatever it held right before some
++/// earlier caller panicked while holding it is still a valid
++/// `Option<RunSlot>`, not a half-applied one. The alternative is strictly
++/// worse: an unrecovered poison here would make every future `start_run`,
++/// `cancel_run`, `cancel_job`, and the close-confirmation dialog panic
++/// forever too, wedging the whole app over one earlier bug instead of
++/// just failing the run that triggered it.
++fn lock_active(state: &AppState) -> std::sync::MutexGuard<'_, Option<RunSlot>> {
++    state
++        .active
++        .lock()
++        .unwrap_or_else(|poisoned| poisoned.into_inner())
++}
++
+ /// An RAII hold on [`AppState::active`]'s slot for the span of
+ /// [`start_run`]'s lock-free planning pass (D23). [`Reservation::acquire`]
+ /// installs [`RunSlot::Reserved`] and releases the mutex immediately;
+ /// dropping the reservation *without* [`Reservation::commit`] clears the
+ /// slot again -- one mechanism covering every soft-outcome early return
+ /// (and a mid-planning panic) so no path can leak the reservation and
+ /// wedge the app in permanent `"run-already-active"`.
+ struct Reservation<'a> {
+     state: &'a AppState,
+     cancel: Arc<AtomicBool>,
+@@ -98,21 +117,21 @@ struct Reservation<'a> {
+ 
+ impl<'a> Reservation<'a> {
+     /// Reserves the single-run slot, or fails with `"run-already-active"`
+     /// if either a reservation or a running queue already holds it. The
+     /// mutex is held only for this check-and-insert, never across
+     /// planning. Also discards any stale quit-after-finished request
+     /// (D31): a new run starting supersedes a pending quit -- without
+     /// this, a flag orphaned by e.g. a mid-callback panic would silently
+     /// exit the app after the *next* unrelated run.
+     fn acquire(state: &'a AppState) -> Result<Reservation<'a>, IpcError> {
+-        let mut slot = state.active.lock().unwrap();
++        let mut slot = lock_active(state);
+         if slot.is_some() {
+             return Err(IpcError::new("run-already-active"));
+         }
+         state.quit_after_finished.store(false, Ordering::SeqCst);
+         let cancel = Arc::new(AtomicBool::new(false));
+         *slot = Some(RunSlot::Reserved(Arc::clone(&cancel)));
+         Ok(Reservation {
+             state,
+             cancel,
+             committed: false,
+@@ -126,29 +145,29 @@ impl<'a> Reservation<'a> {
+     /// lost.
+     fn cancel_flag(&self) -> Arc<AtomicBool> {
+         Arc::clone(&self.cancel)
+     }
+ 
+     /// Promotes the reservation to a running queue: installs
+     /// [`RunSlot::Running`] over the `Reserved` placeholder. Called before
+     /// the queue thread spawns, so the thread's own end-of-run clear
+     /// ([`finish_teardown`]) can never race ahead of the install.
+     fn commit(mut self, ctl: Arc<QueueControl>) {
+-        *self.state.active.lock().unwrap() = Some(RunSlot::Running(ActiveRun { ctl }));
++        *lock_active(self.state) = Some(RunSlot::Running(ActiveRun { ctl }));
+         self.committed = true;
+     }
+ }
+ 
+ impl Drop for Reservation<'_> {
+     fn drop(&mut self) {
+         if !self.committed {
+-            *self.state.active.lock().unwrap() = None;
++            *lock_active(self.state) = None;
+         }
+     }
+ }
+ 
+ /// [`start_run`]'s success payload.
+ #[derive(Debug, Clone, Serialize)]
+ pub struct StartedRun {
+     /// This run's id ([`make_run_id`]'s timestamp stamp), always present
+     /// even on a path that never touched the queue (D15: a run that plans
+     /// zero jobs still "happened", it just has no [`Self::run_dir`]).
+@@ -574,21 +593,21 @@ enum CloseDecision {
+     Close,
+     /// A run is active (planning or running): prevent the close and ask
+     /// whether to abort the batch.
+     ConfirmAbort,
+ }
+ 
+ /// The close-vs-ask decision (D31), factored off the Tauri types so it is
+ /// unit-testable: any occupant of the slot (Reserved or Running) means
+ /// "confirm first".
+ fn close_decision(state: &AppState) -> CloseDecision {
+-    if state.active.lock().unwrap().is_some() {
++    if lock_active(state).is_some() {
+         CloseDecision::ConfirmAbort
+     } else {
+         CloseDecision::Close
+     }
+ }
+ 
+ /// Window-close handling (D31, supersedes D23's bare cancel_all): with no
+ /// active run the window closes normally; with an active run the close is
+ /// prevented and a native, non-blocking confirmation dialog asks whether
+ /// to abort the running batch (mkvtoolnix-gui parity, SI-3). Yes runs
+@@ -634,21 +653,21 @@ pub fn on_close_requested(window: &Window, event: &WindowEvent) {
+ /// [`finish_teardown`] after a real run, [`finish_without_queue`] after a
+ /// soft outcome, or right here when the run already tore down while the
+ /// dialog was open (slot empty = teardown fully complete, including the
+ /// joblog, since clearing is teardown's final step).
+ ///
+ /// `exit` is injected (production: `app.exit`) so the exactly-once
+ /// semantics are unit-testable; the `swap` inside [`quit_if_requested`]
+ /// is what guarantees a single exit no matter which paths race.
+ fn abort_and_quit(state: &AppState, exit: impl FnOnce(i32)) {
+     state.quit_after_finished.store(true, Ordering::SeqCst);
+-    let already_torn_down = match state.active.lock().unwrap().as_ref() {
++    let already_torn_down = match lock_active(state).as_ref() {
+         Some(RunSlot::Reserved(cancel)) => {
+             cancel.store(true, Ordering::SeqCst);
+             false
+         }
+         Some(RunSlot::Running(run)) => {
+             run.ctl.cancel_all();
+             false
+         }
+         None => true,
+     };
+@@ -671,21 +690,21 @@ fn quit_if_requested(state: &AppState, exit: impl FnOnce(i32)) {
+ /// then honors a pending quit-after-finished. Runs strictly after
+ /// [`finalize_joblog`] and the terminal emit, so an empty slot always
+ /// means "teardown fully complete" -- the invariant [`abort_and_quit`]'s
+ /// direct-exit arm relies on. The tradeoff is documented: a frontend that
+ /// reacts to `muxsmith://run-finished` by instantly invoking `start_run`
+ /// can race this clear by microseconds and get a spurious
+ /// `"run-already-active"`; that is recoverable (retry), whereas exiting
+ /// before `summary.json` is written would lose the run's history (the
+ /// exact loss D26/D31 exist to prevent).
+ fn finish_teardown(state: &AppState, exit: impl FnOnce(i32)) {
+-    *state.active.lock().unwrap() = None;
++    *lock_active(state) = None;
+     quit_if_requested(state, exit);
+ }
+ 
+ /// RAII guard around the whole runner-thread body (fix). A `run_queue`
+ /// worker panic used to propagate straight out through [`run_batch`]'s
+ /// `handle.join().expect(...)` and terminate the runner thread before
+ /// [`finish_teardown`] ever ran: the active-run slot stayed `Running`
+ /// forever (every later `start_run` permanently rejected with
+ /// `"run-already-active"`), and a quit confirmed while that panic was in
+ /// flight could never fire (nothing left to consume it), making the window
+@@ -842,42 +861,42 @@ fn resolve_runs_root() -> Option<PathBuf> {
+     }
+ }
+ 
+ /// [`cancel_run`]'s testable body. A run mid-planning
+ /// ([`RunSlot::Reserved`]) is cancelled by setting the reservation's flag,
+ /// which [`start_run`] shares into [`QueueControl::new`] as the queue's
+ /// batch flag: the queue is born already-cancelled and every job finishes
+ /// `Cancelled` without spawning, so a cancel in the planning window is
+ /// honored, not lost.
+ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
+-    match state.active.lock().unwrap().as_ref() {
++    match lock_active(state).as_ref() {
+         Some(RunSlot::Reserved(cancel)) => {
+             cancel.store(true, Ordering::SeqCst);
+             Ok(())
+         }
+         Some(RunSlot::Running(run)) => {
+             run.ctl.cancel_all();
+             Ok(())
+         }
+         None => Err(IpcError::new("no-active-run")),
+     }
+ }
+ 
+ /// [`cancel_job`]'s testable body. During [`RunSlot::Reserved`] the job
+ /// set does not exist yet, so a per-job cancel has no target: it is
+ /// accepted as a no-op, mirroring [`QueueControl::cancel_job`]'s own
+ /// out-of-range no-op semantics. The window is unreachable from a
+ /// well-behaved frontend anyway -- job indices only become known once
+ /// `start_run` returns, and by then the slot is `Running` (commit happens
+ /// before `start_run` returns).
+ fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
+-    match state.active.lock().unwrap().as_ref() {
++    match lock_active(state).as_ref() {
+         Some(RunSlot::Reserved(_)) => Ok(()),
+         Some(RunSlot::Running(run)) => {
+             run.ctl.cancel_job(index);
+             Ok(())
+         }
+         None => Err(IpcError::new("no-active-run")),
+     }
+ }
+ 
+ fn list_runs_in(runs_root: Option<&Path>) -> Vec<RunMeta> {

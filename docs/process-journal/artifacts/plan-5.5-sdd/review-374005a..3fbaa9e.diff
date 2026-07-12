@@ -1,0 +1,231 @@
+# Review package: 374005a..3fbaa9e
+
+## Commits
+3fbaa9e fix(executor): survive non-UTF-8 output lines - no truncation, no pipe-full hang (#9)
+
+## Files changed
+ crates/muxsmith-core/src/executor/spawn.rs         | 49 +++++++++--
+ .../muxsmith-core/tests/executor_no_hang_live.rs   | 98 ++++++++++++++++++++++
+ 2 files changed, 142 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/executor/spawn.rs b/crates/muxsmith-core/src/executor/spawn.rs
+index 3fe835d..bc2ef62 100644
+--- a/crates/muxsmith-core/src/executor/spawn.rs
++++ b/crates/muxsmith-core/src/executor/spawn.rs
+@@ -93,25 +93,21 @@ struct LiveJob {
+     child: Arc<Mutex<Child>>,
+     /// Set by this job's [`Killer`] before it signals the child (D16/D17):
+     /// authoritative for `wait`'s `None`-when-killed contract, since a
+     /// Windows `TerminateProcess`-killed child still reports a `Some` exit
+     /// code from `Child::wait`, unlike Unix's signal death.
+     killed: Arc<AtomicBool>,
+ }
+ 
+ impl RunningJob for LiveJob {
+     fn next_line(&mut self) -> Option<String> {
+-        let mut line = String::new();
+-        match self.reader.read_line(&mut line) {
+-            Ok(0) | Err(_) => None,
+-            Ok(_) => Some(line.trim_end().to_string()),
+-        }
++        read_next_line(&mut self.reader)
+     }
+     fn wait(&mut self) -> Option<i32> {
+         let raw_code = self
+             .child
+             .lock()
+             .unwrap()
+             .wait()
+             .ok()
+             .and_then(|s| s.code());
+         resolve_wait(self.killed.load(Ordering::SeqCst), raw_code)
+@@ -122,20 +118,45 @@ impl RunningJob for LiveJob {
+         Arc::new(move || {
+             // Set before kill(): a concurrent `wait()` must never observe
+             // "the process is gone" without also observing "the flag is
+             // set" (D16/D17).
+             killed.store(true, Ordering::SeqCst);
+             let _ = child.lock().unwrap().kill();
+         })
+     }
+ }
+ 
++/// Reads one line from `r`, byte-wise, lossily decoding it rather than
++/// failing the whole stream on the first non-UTF-8 byte (#9): mkvmerge can
++/// echo a source filename or an OS error string that is not valid UTF-8
++/// (e.g. a Windows codepage leftover), and the read loop must survive that
++/// line instead of silently ending as if the process had exited. `Ok(0)`
++/// (true EOF) is the only case that ends the stream; a decode-degraded line
++/// comes back as `Some` with `U+FFFD` standing in for the bad bytes, exactly
++/// like [`String::from_utf8_lossy`]. Extracted out of [`LiveJob::next_line`]
++/// so the decode behavior is unit-testable against a plain `Cursor` without
++/// a real child process.
++fn read_next_line<R: BufRead>(r: &mut R) -> Option<String> {
++    let mut buf = Vec::new();
++    match r.read_until(b'\n', &mut buf) {
++        Ok(0) => None,
++        Ok(_) => Some(String::from_utf8_lossy(&buf).trim_end().to_string()),
++        // A genuine I/O error on the underlying reader (`read_until` reads
++        // raw bytes, so it cannot itself fail on decoding - that path is
++        // `Ok` with lossy replacement above). Kept a distinct match arm
++        // rather than folded into `Ok(0)` so "true EOF" and "read error"
++        // stay distinguishable in the code even though both currently map
++        // to the same `None` return.
++        Err(_) => None,
++    }
++}
++
+ /// Combines a job's kill flag with its raw OS exit code into the
+ /// [`RunningJob::wait`] contract (`None` exactly when killed). Extracted out
+ /// of [`LiveJob::wait`] so the decision is unit-testable without a real
+ /// child process: `raw_code` stands in for whatever the OS reports (Unix
+ /// `None` on signal death, Windows always `Some`), and the flag overrides it
+ /// either way.
+ fn resolve_wait(killed: bool, raw_code: Option<i32>) -> Option<i32> {
+     if killed { None } else { raw_code }
+ }
+ 
+@@ -258,20 +279,38 @@ impl ConcurrencyTracker {
+ 
+     fn exit(&self) {
+         self.current.fetch_sub(1, Ordering::SeqCst);
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
++    /// #9 RED (Task 3, plan 5.5): a single non-UTF-8 line must not truncate
++    /// the stream. Drives the extracted `read_next_line` directly against a
++    /// `Cursor` rather than a real child, so the decode behavior is
++    /// testable without spawning a process.
++    #[test]
++    fn read_next_line_survives_non_utf8_bytes_without_truncating() {
++        let mut cursor = std::io::Cursor::new(b"ok line\n\xFF\xFE broken\nafter\n".to_vec());
++        assert_eq!(read_next_line(&mut cursor).as_deref(), Some("ok line"));
++        let degraded =
++            read_next_line(&mut cursor).expect("a lossy-decoded line, not a truncated stream");
++        assert!(
++            degraded.contains('\u{FFFD}'),
++            "expected a U+FFFD replacement char in the decode-degraded line, got: {degraded:?}"
++        );
++        assert_eq!(read_next_line(&mut cursor).as_deref(), Some("after"));
++        assert_eq!(read_next_line(&mut cursor), None);
++    }
++
+     #[test]
+     fn fake_spawner_scripts_lines_and_exit() {
+         let fake = FakeSpawner::script(vec!["#GUI#progress 50%".into()], Some(0));
+         let mut job = fake.spawn(&["--output".into(), "x.mkv".into()]).unwrap();
+         assert_eq!(job.next_line().as_deref(), Some("#GUI#progress 50%"));
+         assert_eq!(job.next_line(), None);
+         assert_eq!(job.wait(), Some(0));
+         assert_eq!(
+             fake.spawned(),
+             vec![vec!["--output".to_string(), "x.mkv".into()]]
+diff --git a/crates/muxsmith-core/tests/executor_no_hang_live.rs b/crates/muxsmith-core/tests/executor_no_hang_live.rs
+new file mode 100644
+index 0000000..3fbb900
+--- /dev/null
++++ b/crates/muxsmith-core/tests/executor_no_hang_live.rs
+@@ -0,0 +1,98 @@
++//! No-hang regression (#9, Plan 5.5 Task 3): a real child process that
++//! writes a non-UTF-8 line followed by more output than a pipe's default OS
++//! buffer holds must not stall `run_job`. Spawns a scripted shell script
++//! through the real `LiveSpawner` (not `FakeSpawner`, which is pure
++//! in-memory and cannot reproduce OS pipe backpressure) - unix-only for the
++//! same reason `spawn.rs`'s own `live_killer_then_wait_returns_none` is,
++//! and for the same reason does not need a real mkvmerge on PATH: the
++//! script stands in for the child process being spawned, mirroring that
++//! test's pattern rather than `executor_live.rs`'s (which specifically
++//! checks real mkvmerge's `--gui-mode` grammar).
++//!
++//! Before the #9 fix, `LiveJob::next_line` returned `None` on the first
++//! non-UTF-8 read error, so `run_job`'s drain loop stopped there; the child
++//! kept running and blocked on `write()` once the undrained pipe filled,
++//! and `run_job`'s later `running.wait()` (a blocking `waitpid`) then
++//! stalled forever waiting for a child that could never exit. Run on a
++//! background thread with a bounded `recv_timeout` so a regression fails
++//! the test cleanly instead of hanging the suite.
++
++use std::io::Write as _;
++use std::sync::mpsc;
++use std::time::Duration;
++
++use muxsmith_core::executor::job::{JobProgress, JobSpec, JobState, run_job};
++use muxsmith_core::executor::spawn::LiveSpawner;
++
++#[test]
++#[cfg(unix)]
++fn run_job_survives_a_non_utf8_line_and_a_pipe_filling_tail_without_hanging() {
++    use std::os::unix::fs::PermissionsExt;
++
++    let dir = tempfile::tempdir().unwrap();
++    let script = dir.path().join("fake-mkvmerge");
++    {
++        let mut f = std::fs::File::create(&script).unwrap();
++        // `\377\376` are raw invalid-UTF-8 bytes (POSIX `printf` octal
++        // escapes); `yes | head` emits ~140KB of filler, comfortably above
++        // a pipe's usual 64KiB OS buffer. If nothing drains the pipe past
++        // the bad line, the script's own `write()` calls block once that
++        // buffer fills, so the child never reaches its final `printf` or
++        // exits - exactly the hang this test pins.
++        write!(
++            f,
++            "#!/bin/sh\n\
++             printf 'ok line\\n'\n\
++             printf 'broken \\377\\376 line\\n'\n\
++             yes 'filler line xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' | head -n 2000\n\
++             printf 'TAIL_MARKER\\n'\n"
++        )
++        .unwrap();
++    }
++    let mut perms = std::fs::metadata(&script).unwrap().permissions();
++    perms.set_mode(0o755);
++    std::fs::set_permissions(&script, perms).unwrap();
++
++    let spawner = LiveSpawner { mkvmerge: script };
++    let spec = JobSpec {
++        argv: vec![],
++        output: dir.path().join("out.mkv"),
++    };
++
++    // `run_job` itself has no timeout; a hang regression would block this
++    // thread forever. Drive it on a worker thread and bound the wait here,
++    // so the bug reproduces as a clean, fast test failure instead of a
++    // frozen `cargo test` run.
++    let (tx, rx) = mpsc::channel();
++    std::thread::spawn(move || {
++        let mut lines = Vec::new();
++        let outcome = run_job(&spawner, &spec, &|| false, &mut |p| {
++            if let JobProgress::OutputLine(l) = p {
++                lines.push(l);
++            }
++        });
++        let _ = tx.send((outcome, lines));
++    });
++
++    let (outcome, lines) = rx.recv_timeout(Duration::from_secs(10)).expect(
++        "run_job did not complete within 10s - the pipe-full hang this test \
++         pins (#9) is back",
++    );
++
++    assert_eq!(outcome.state, JobState::Ok, "outcome: {outcome:?}");
++    assert!(
++        lines.iter().any(|l| l == "ok line"),
++        "the line before the bad one must survive, lines: {lines:?}"
++    );
++    assert!(
++        lines.iter().any(|l| l.contains('\u{FFFD}')),
++        "expected a decode-degraded line (U+FFFD) in the captured output, \
++         lines: {lines:?}"
++    );
++    assert_eq!(
++        lines.last().map(String::as_str),
++        Some("TAIL_MARKER"),
++        "the full >64KiB tail after the bad line must be captured, not \
++         truncated - lines: {lines:?}"
++    );
++}

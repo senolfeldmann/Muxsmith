@@ -1,0 +1,466 @@
+# Review package: a4ab647..3511efe
+
+## Commits
+3511efe feat(executor): auto-prune run logs older than 14 days (D35)
+
+## Files changed
+ Cargo.lock                                  |   1 +
+ crates/muxsmith-core/src/executor/joblog.rs |  90 ++++++++++++++++
+ crates/muxsmith-core/tests/joblog.rs        | 155 +++++++++++++++++++++++++++-
+ src-tauri/Cargo.toml                        |   1 +
+ src-tauri/src/run.rs                        |  27 ++---
+ 5 files changed, 257 insertions(+), 17 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index f3a0244..74515bf 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2151,20 +2151,21 @@ dependencies = [
+  "muxsmith-core",
+  "serde",
+  "serde_json",
+  "tauri",
+  "tauri-build",
+  "tauri-plugin-clipboard-manager",
+  "tauri-plugin-dialog",
+  "tauri-plugin-fs",
+  "tauri-plugin-os",
+  "tempfile",
++ "time",
+ ]
+ 
+ [[package]]
+ name = "ndk"
+ version = "0.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4"
+ dependencies = [
+  "bitflags 2.13.0",
+  "jni-sys 0.3.1",
+diff --git a/crates/muxsmith-core/src/executor/joblog.rs b/crates/muxsmith-core/src/executor/joblog.rs
+index 323ccfd..1ef0572 100644
+--- a/crates/muxsmith-core/src/executor/joblog.rs
++++ b/crates/muxsmith-core/src/executor/joblog.rs
+@@ -55,20 +55,104 @@ pub fn default_runs_root() -> Option<PathBuf> {
+ /// Formats `now` as a UTC run-id stamp, `"YYYYMMDD-HHMMSSZ"`. Takes the
+ /// timestamp as a parameter rather than calling `SystemTime::now()`
+ /// internally, so the caller (`SystemTime::now()` in production) can pass a
+ /// fixed value in tests.
+ pub fn make_run_id(now: std::time::SystemTime) -> String {
+     OffsetDateTime::from(now)
+         .format(RUN_ID_FORMAT)
+         .expect("RUN_ID_FORMAT is a fixed, well-formed descriptor; formatting a valid OffsetDateTime never fails")
+ }
+ 
++/// The inverse of [`make_run_id`]: parses its fixed `"YYYYMMDD-HHMMSSZ"`
++/// (UTC) prefix -- the first 16 bytes, present even on a collision-suffixed
++/// name like `"...Z-2"` (see [`RunLogger::create`]) -- back into the
++/// instant it encodes. `None` for anything that does not match, including a
++/// digit-shaped but out-of-range calendar/clock value (e.g. month `13`):
++/// such a name is not one this crate itself produced, exactly like a name
++/// that fails the digit-shape check outright -- [`prune_stale_runs`] relies
++/// on that to never delete a directory it did not create.
++///
++/// Moved here from the shell's own `started_at_from_run_id` (D35): both the
++/// GUI's run history and this module's pruning need the same parse, so it
++/// lives once in core and the shell delegates to it.
++pub fn run_id_timestamp(name: &str) -> Option<OffsetDateTime> {
++    let prefix = name.get(0..16)?;
++    let b = prefix.as_bytes();
++    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
++    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
++        return None;
++    }
++    let n = |r: std::ops::Range<usize>| prefix[r].parse::<u32>().ok();
++    let year = n(0..4)? as i32;
++    let month = time::Month::try_from(u8::try_from(n(4..6)?).ok()?).ok()?;
++    let day = u8::try_from(n(6..8)?).ok()?;
++    let hour = u8::try_from(n(9..11)?).ok()?;
++    let minute = u8::try_from(n(11..13)?).ok()?;
++    let second = u8::try_from(n(13..15)?).ok()?;
++    time::Date::from_calendar_date(year, month, day)
++        .and_then(|date| date.with_hms(hour, minute, second))
++        .map(time::PrimitiveDateTime::assume_utc)
++        .ok()
++}
++
++/// D35 (Şenol 2026-07-11, fixed for v1 -- no setting, no CLI flag;
++/// configurability parked as IDEAS #7): run logs are kept for 14 days.
++const RUN_LOG_RETENTION: time::Duration = time::Duration::days(14);
++
++/// Deletes run directories under `runs_root` older than the fixed 14-day
++/// `RUN_LOG_RETENTION` window (D35). Called best-effort by [`RunLogger::create`]
++/// before it creates the new run's own leaf directory, so pruning happens
++/// on every run through the one shared entry point (D26's
++/// core-writes-for-both-surfaces principle) rather than needing each
++/// surface to remember it separately.
++///
++/// Age is decided by the directory NAME alone, via [`run_id_timestamp`],
++/// never by filesystem mtime: a name this crate did not itself produce is
++/// left alone unconditionally (not this crate's directory to judge), and a
++/// name it did produce carries its own age regardless of whatever mtime a
++/// copy, backup, or restore might have given the directory since.
++///
++/// Only actual directories are candidates: `DirEntry::file_type()` does not
++/// follow symlinks, so a symlink is excluded outright, never handed to
++/// `remove_dir_all` -- which would otherwise delete whatever it points at,
++/// possibly well outside `runs_root`.
++///
++/// Every I/O error along the way (`read_dir` failing, a single entry's
++/// `file_type()` failing, a `remove_dir_all` failing) is deliberately
++/// IGNORED. Pruning is housekeeping, not part of a run's own contract, and
++/// its only failure mode -- old logs surviving a little longer -- is
++/// harmless; surfacing the error instead would mean delaying or failing a
++/// run over a stale log directory the run itself does not depend on.
++pub fn prune_stale_runs(runs_root: &Path, now: std::time::SystemTime) {
++    let cutoff = OffsetDateTime::from(now) - RUN_LOG_RETENTION;
++    let Ok(entries) = fs::read_dir(runs_root) else {
++        return;
++    };
++    for entry in entries.flatten() {
++        let Ok(file_type) = entry.file_type() else {
++            continue;
++        };
++        if !file_type.is_dir() {
++            continue;
++        }
++        let Ok(name) = entry.file_name().into_string() else {
++            continue;
++        };
++        let Some(started_at) = run_id_timestamp(&name) else {
++            continue;
++        };
++        if started_at < cutoff {
++            let _ = fs::remove_dir_all(entry.path());
++        }
++    }
++}
++
+ /// Formats the current UTC instant as RFC3339, for a job record's
+ /// `started_at`/`finished_at` fields.
+ fn now_rfc3339() -> String {
+     OffsetDateTime::now_utc()
+         .format(&time::format_description::well_known::Rfc3339)
+         .expect("Rfc3339 formatting of the current UTC time never fails")
+ }
+ 
+ /// Per-job state accumulated across events until `Finished` writes it out.
+ /// `argv`/`output` are seeded from the [`JobSpec`] at [`RunLogger::create`]
+@@ -114,26 +198,32 @@ pub struct RunLogger {
+ }
+ 
+ impl RunLogger {
+     /// Creates the run's log directory under `runs_root`, named `run_id`
+     /// (`mkdir -p runs_root` first, then the leaf directory itself). A
+     /// leaf-name collision (a directory of that name already exists, e.g. a
+     /// prior run with the same-second `run_id`) appends a numeric suffix:
+     /// `<run_id>-2`, then `<run_id>-3`, and so on, until an unused name is
+     /// found.
+     ///
++    /// Also runs [`prune_stale_runs`] (D35) against `runs_root` first,
++    /// best-effort, before the new leaf is created -- see its doc for the
++    /// retention window and failure handling.
++    ///
+     /// `specs` seeds one [`JobAccumulator`] per index (its `argv`/`output`),
+     /// so a job's identity is known even if it never receives a single
+     /// event before the batch ends.
+     pub fn create(runs_root: &Path, run_id: &str, specs: &[JobSpec]) -> io::Result<RunLogger> {
+         fs::create_dir_all(runs_root)?;
+ 
++        prune_stale_runs(runs_root, std::time::SystemTime::now());
++
+         let mut dir = runs_root.join(run_id);
+         let mut suffix = 1u32;
+         loop {
+             match fs::create_dir(&dir) {
+                 Ok(()) => break,
+                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                     suffix += 1;
+                     dir = runs_root.join(format!("{run_id}-{suffix}"));
+                 }
+                 Err(e) => return Err(e),
+diff --git a/crates/muxsmith-core/tests/joblog.rs b/crates/muxsmith-core/tests/joblog.rs
+index 17cdd45..d9dca9d 100644
+--- a/crates/muxsmith-core/tests/joblog.rs
++++ b/crates/muxsmith-core/tests/joblog.rs
+@@ -1,21 +1,23 @@
+ //! Persisted job logs (`executor::joblog`, D26, Task 6): `RunLogger` writes
+ //! one `job-<index>.json` per job (incrementally, as events arrive) plus a
+ //! `summary.json` (the T2 `run_document`, taken verbatim) when the run
+ //! finishes. All tests use a tempdir as `runs_root`, never the real platform
+ //! data dir.
+ 
+ use std::path::PathBuf;
+ use std::time::{Duration, SystemTime};
+ 
+ use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
+-use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
++use muxsmith_core::executor::joblog::{
++    RunLogger, default_runs_root, make_run_id, prune_stale_runs, run_id_timestamp,
++};
+ use muxsmith_core::executor::queue::JobEvent;
+ 
+ fn spec(argv: &[&str], output: &str) -> JobSpec {
+     JobSpec {
+         argv: argv.iter().map(|s| s.to_string()).collect(),
+         output: PathBuf::from(output),
+     }
+ }
+ 
+ fn outcome(state: JobState, exit_code: Option<i32>) -> JobOutcome {
+@@ -234,10 +236,161 @@ fn a_job_with_zero_events_never_gets_a_file() {
+     let logger = RunLogger::create(&runs_root, "run", &specs).unwrap();
+     let written_dir = logger.finish(&serde_json::json!({})).unwrap();
+ 
+     let entries: Vec<_> = std::fs::read_dir(&written_dir).unwrap().collect();
+     assert_eq!(
+         entries.len(),
+         1,
+         "only summary.json; no job file for a spec that received no events at all"
+     );
+ }
++
++/// D35: `create` prunes run dirs older than 14 days, best-effort, before it
++/// creates the new run's own leaf. Seeds `runs_root` with a stale dir, a
++/// stale collision-suffixed dir, a fresh run dir (named via `make_run_id`,
++/// so it looks exactly like one of ours but is recent), a non-run dir, and
++/// a plain file -- only the two stale run dirs must disappear; everything
++/// else, including the dir `create` itself produces, must survive. The
++/// stale dirs get a fresh mtime (just created by this test) but an old
++/// NAME, so their deletion also proves the age decision reads the name,
++/// not the filesystem timestamp.
++#[test]
++fn create_prunes_run_dirs_older_than_14_days_by_name_only() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    std::fs::create_dir_all(&runs_root).unwrap();
++
++    std::fs::create_dir(runs_root.join("20200101-000000Z")).unwrap();
++    std::fs::create_dir(runs_root.join("20200101-000000Z-2")).unwrap();
++
++    let fresh_name = make_run_id(SystemTime::now());
++    std::fs::create_dir(runs_root.join(&fresh_name)).unwrap();
++
++    std::fs::create_dir(runs_root.join("keep-me")).unwrap();
++    std::fs::write(runs_root.join("notes.txt"), b"hello").unwrap();
++
++    RunLogger::create(&runs_root, "this-run", &[]).unwrap();
++
++    let mut entries: Vec<String> = std::fs::read_dir(&runs_root)
++        .unwrap()
++        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
++        .collect();
++    entries.sort();
++
++    let mut expected = vec![
++        fresh_name,
++        "keep-me".to_string(),
++        "notes.txt".to_string(),
++        "this-run".to_string(),
++    ];
++    expected.sort();
++
++    assert_eq!(
++        entries, expected,
++        "the two stale run dirs must be pruned; the fresh run dir, the \
++         non-run dir, the plain file, and the newly created run dir must \
++         all survive"
++    );
++}
++
++/// `run_id_timestamp` is [`make_run_id`]'s inverse: round-trips any instant
++/// it produced, and tolerates a collision `-N` suffix (see
++/// `RunLogger::create`'s numeric-suffix fallback) identically to the bare
++/// name.
++#[test]
++fn run_id_timestamp_round_trips_make_run_id_and_tolerates_the_collision_suffix() {
++    let now = SystemTime::UNIX_EPOCH + Duration::new(3723, 0);
++    let expected = time::OffsetDateTime::from(now);
++    let id = make_run_id(now);
++
++    assert_eq!(run_id_timestamp(&id), Some(expected));
++    assert_eq!(
++        run_id_timestamp(&format!("{id}-2")),
++        Some(expected),
++        "a collision-suffixed name must parse identically to the bare one"
++    );
++}
++
++/// `run_id_timestamp` returns `None` not only for digit-shape mismatches
++/// (garbage, too short) but also for a digit-shaped, out-of-range
++/// calendar/clock value (month 13, hour 99) -- stricter than the shell's
++/// original hand-rolled string-slicing parser, which would have happily
++/// emitted a nonsensical RFC3339 string for either.
++#[test]
++fn run_id_timestamp_rejects_garbage_and_out_of_range_calendar_values() {
++    assert_eq!(run_id_timestamp("not-a-run-id"), None);
++    assert_eq!(run_id_timestamp(""), None);
++    assert_eq!(run_id_timestamp("short"), None);
++    assert_eq!(
++        run_id_timestamp("20260113-999999Z"),
++        None,
++        "digit-shaped but out-of-range hour/minute/second must not parse"
++    );
++    assert_eq!(
++        run_id_timestamp("20261399-120000Z"),
++        None,
++        "digit-shaped but out-of-range month/day must not parse"
++    );
++}
++
++/// D35 boundary: exercised directly against `prune_stale_runs` (`create`
++/// always calls `SystemTime::now()` internally, so the cutoff itself is
++/// only deterministically testable here). A run one second inside the
++/// 14-day window survives; one second past it is pruned.
++#[test]
++fn prune_stale_runs_boundary_is_exactly_14_days() {
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    std::fs::create_dir_all(&runs_root).unwrap();
++
++    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(20 * 24 * 60 * 60);
++    let fourteen_days = Duration::from_secs(14 * 24 * 60 * 60);
++    let just_inside = make_run_id(now - (fourteen_days - Duration::from_secs(1)));
++    let just_outside = make_run_id(now - (fourteen_days + Duration::from_secs(1)));
++    std::fs::create_dir(runs_root.join(&just_inside)).unwrap();
++    std::fs::create_dir(runs_root.join(&just_outside)).unwrap();
++
++    prune_stale_runs(&runs_root, now);
++
++    assert!(
++        runs_root.join(&just_inside).exists(),
++        "13d 23h 59m 59s old must survive"
++    );
++    assert!(
++        !runs_root.join(&just_outside).exists(),
++        "14d 0h 0m 1s old must be pruned"
++    );
++}
++
++/// D35 safety: `prune_stale_runs` must never delete through a symlink, even
++/// one named and dated exactly like a stale run directory -- `file_type()`
++/// does not follow symlinks, so `remove_dir_all` is never handed one; a
++/// symlinked directory outside `runs_root` (as this one is) would otherwise
++/// have its contents wiped out from under it.
++#[cfg(unix)]
++#[test]
++fn prune_stale_runs_leaves_a_stale_named_symlink_and_its_target_untouched() {
++    use std::os::unix::fs::symlink;
++
++    let target_dir = tempfile::tempdir().unwrap();
++    std::fs::write(target_dir.path().join("keep.txt"), b"x").unwrap();
++
++    let dir = tempfile::tempdir().unwrap();
++    let runs_root = dir.path().join("runs");
++    std::fs::create_dir_all(&runs_root).unwrap();
++    let link = runs_root.join("20200101-000000Z");
++    symlink(target_dir.path(), &link).unwrap();
++
++    prune_stale_runs(&runs_root, SystemTime::now());
++
++    assert!(
++        std::fs::symlink_metadata(&link)
++            .expect("the symlink entry itself must still be there")
++            .file_type()
++            .is_symlink(),
++        "must still be a symlink, not resolved or replaced"
++    );
++    assert!(
++        target_dir.path().join("keep.txt").exists(),
++        "the symlink's target directory must be untouched"
++    );
++}
+diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
+index 220bedd..2ae3224 100644
+--- a/src-tauri/Cargo.toml
++++ b/src-tauri/Cargo.toml
+@@ -19,13 +19,14 @@ tauri-build = { version = "2.6.3", features = [] }
+ [dependencies]
+ dirs = "6.0.0"
+ muxsmith-core = { path = "../crates/muxsmith-core" }
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ tauri = { version = "2.11.5", features = [] }
+ tauri-plugin-clipboard-manager = "2.3.2"
+ tauri-plugin-dialog = "2.7.1"
+ tauri-plugin-fs = "2.5.1"
+ tauri-plugin-os = "2.3.2"
++time = { version = "0.3.53", features = ["formatting"] }
+ 
+ [dev-dependencies]
+ tempfile = "3.27.0"
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index ea315e8..2c8c7f9 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -32,21 +32,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
+ use std::sync::mpsc;
+ use std::time::SystemTime;
+ 
+ use serde::Serialize;
+ use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
+ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+ 
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::command::command;
+ use muxsmith_core::executor::job::{JobOutcome, JobSpec};
+-use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
++use muxsmith_core::executor::joblog::{
++    RunLogger, default_runs_root, make_run_id, run_id_timestamp,
++};
+ use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
+ use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
+ 
+ use crate::AppState;
+ use crate::ShellRenderer;
+ use crate::error::IpcError;
+@@ -925,36 +927,29 @@ fn run_meta_from_dir(dir: &Path) -> Option<RunMeta> {
+         started_at,
+         summary,
+     })
+ }
+ 
+ /// Parses [`make_run_id`]'s fixed `"YYYYMMDD-HHMMSSZ"` prefix (the first
+ /// 16 bytes -- present even on a collision-suffixed directory name like
+ /// `"...Z-2"`) into an RFC3339 timestamp, e.g. `"20260710-153612Z"` ->
+ /// `"2026-07-10T15:36:12Z"`. `None` for anything that does not match: a
+ /// directory this crate did not itself create.
++///
++/// A thin delegate (D35, reuse-before-writing): the actual parse now lives
++/// once in [`run_id_timestamp`] (core, shared with its pruning), this
++/// function only reformats the resulting instant back to this call site's
++/// own RFC3339-string contract, unchanged from before the delegation.
+ fn started_at_from_run_id(run_id: &str) -> Option<String> {
+-    let prefix = run_id.get(0..16)?;
+-    let b = prefix.as_bytes();
+-    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+-    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
+-        return None;
+-    }
+-    Some(format!(
+-        "{}-{}-{}T{}:{}:{}Z",
+-        &prefix[0..4],
+-        &prefix[4..6],
+-        &prefix[6..8],
+-        &prefix[9..11],
+-        &prefix[11..13],
+-        &prefix[13..15],
+-    ))
++    run_id_timestamp(run_id)?
++        .format(&time::format_description::well_known::Rfc3339)
++        .ok()
+ }
+ 
+ fn get_job_log_in(
+     runs_root: Option<&Path>,
+     run_id: &str,
+     index: usize,
+ ) -> Result<serde_json::Value, IpcError> {
+     if !valid_run_id(run_id) {
+         return Err(IpcError::new("invalid-run-id").with("run_id", run_id));
+     }

@@ -1,0 +1,254 @@
+# Review package: 2ae62dd..4d946f4
+
+## Commits
+4d946f4 feat(gui): German selectable in settings (T21 follow-up)
+
+## Files changed
+ e2e/mocks.ts                      | 14 +++++++-
+ e2e/smoke.spec.ts                 | 67 ++++++++++++++++++++++++++++++++++++++-
+ locales/de/gui-settings.ftl       |  8 ++---
+ locales/en/gui-settings.ftl       |  3 +-
+ src/components/SettingsDialog.vue |  3 ++
+ 5 files changed, 87 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/e2e/mocks.ts b/e2e/mocks.ts
+index ef94cd3..03e0212 100644
+--- a/e2e/mocks.ts
++++ b/e2e/mocks.ts
+@@ -60,22 +60,34 @@ export interface RecordedInvoke {
+   args: unknown;
+ }
+ 
+ /**
+  * Runs INSIDE the page: Playwright serializes this whole function body via
+  * `page.addInitScript(fn, arg)` and re-evaluates it fresh on every
+  * navigation, so it must not close over anything from this module's scope
+  * beyond the `scenario` argument itself (see `global.d.ts` for the ambient
+  * `window.__muxsmithE2E__`/`__TAURI_OS_PLUGIN_INTERNALS__`/
+  * `__muxsmithRecordInvoke__` typings it relies on).
++ *
++ * Exported so a test can register a SECOND scenario mid-test via its own
++ * `page.addInitScript(installMockIPC, otherScenario)` call, layered on top
++ * of `installTauriMocks`'s own registration: `@tauri-apps/api/mocks`'
++ * `mockIPC` reassigns `window.__TAURI_INTERNALS__.invoke` outright (last
++ * registration wins), so a script added after the first navigation has no
++ * effect until the next one -- exactly what a "settings change takes
++ * effect after the app restarts" case needs (there is no live in-session
++ * catalog swap; `main.ts` resolves the locale once, before mount). Calling
++ * `installTauriMocks` a second time on the same page cannot do this: its
++ * own `page.exposeFunction("__muxsmithRecordInvoke__", ...)` throws on a
++ * second registration for the same name.
+  */
+-function installMockIPC(scenario: MockScenario): void {
++export function installMockIPC(scenario: MockScenario): void {
+   const queues = new Map<string, MockResult[]>(
+     Object.entries(scenario.commands).map(([cmd, results]) => [cmd, [...results]]),
+   );
+ 
+   function nextResult(cmd: string): MockResult | undefined {
+     const q = queues.get(cmd);
+     if (!q || q.length === 0) {
+       return undefined;
+     }
+     return q.length > 1 ? q.shift() : q[0];
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 57ba2b3..a897ca8 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -12,21 +12,21 @@
+  *       `run-finished` announces the summary.
+  * Every user-facing string asserted against comes from `e2e/i18n-en.ts`
+  * (the real en Fluent catalog), never a hand-duplicated literal (Task 12's
+  * binding test-discipline convention). Locators prefer `getByRole`;
+  * `data-testid` is the fallback where no distinct accessible role/name
+  * exists.
+  */
+ import { expect, test } from "@playwright/test";
+ import AxeBuilder from "@axe-core/playwright";
+ import type { Page } from "@playwright/test";
+-import { emitEvent, installTauriMocks, rejectWith, resolveWith } from "./mocks";
++import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
+ import { en } from "./i18n-en";
+ import type { FluentVariable } from "@fluent/bundle";
+ import {
+   JOB_EVENT_CHANNEL,
+   RUN_FINISHED_CHANNEL,
+ } from "../src/ipc";
+ import type {
+   AppSettings,
+   JobEvent,
+   MkvmergeInfo,
+@@ -461,20 +461,31 @@ test.describe("german locale", () => {
+   const PROFILE_PATH = "/profiles/demo.yaml";
+ 
+   const DE_AT_SETTINGS: AppSettings = {
+     mkvmerge_path: null,
+     default_jobs: 1,
+     locale: "de-AT",
+     recent_profiles: [],
+     dir_memory: {},
+   };
+ 
++  // T21.5: the bare "de" tag the settings dialog's new option actually
++  // saves (`<option value="de">`), as opposed to DE_AT_SETTINGS's
++  // region-qualified "de-AT" (T21's own normalization case above).
++  const DE_SETTINGS: AppSettings = {
++    mkvmerge_path: null,
++    default_jobs: 1,
++    locale: "de",
++    recent_profiles: [],
++    dir_memory: {},
++  };
++
+   const emptyReport: ReportDocument = {
+     config_diagnostics: [],
+     batch_diagnostics: [],
+     files: [],
+     suggestions: [],
+     mkvmerge_found: true,
+   };
+ 
+   test("a de-AT-locale settings value normalizes to the German catalog, not the en fallback", async ({
+     page,
+@@ -499,11 +510,65 @@ test.describe("german locale", () => {
+     // batch-profile-current: a placeable-bearing de string. Picking a
+     // profile fills "Ausgewähltes Profil: { $path }"; the exact-equality
+     // check only passes with the de catalog AND the BiDi marks stripped.
+     await batch.getByTestId("batch-profile-pick").click();
+     const profileLine = batch.locator("p", { hasText: "Ausgewähltes Profil:" });
+     await expect(profileLine).toBeVisible();
+     expect(visibleText(await profileLine.textContent())).toBe(
+       `Ausgewähltes Profil: ${PROFILE_PATH}`,
+     );
+   });
++
++  // T21.5 (settings gate follow-up): German reachable from the settings UI
++  // itself, not just via a pre-seeded settings value (the de-AT case
++  // above). `main.ts` resolves the locale exactly once, before mount, and
++  // nothing in the app swaps the live `FluentBundle`s afterwards -- a
++  // saved locale change takes effect on the next start, same as a
++  // restart. This is simulated here rather than invented: `set_settings`
++  // is asserted as the real, load-bearing evidence that the UI action
++  // saved "de" (not a UI echo), and `page.reload()` plus a second,
++  // layered `installMockIPC` registration (see that function's own doc in
++  // mocks.ts) stand in for the app actually restarting with that saved
++  // value. The post-reload assertion is a literal German string
++  // ("Einstellungen"), not `en(id)`/a `de()` helper -- same rationale as
++  // the de-AT case: proving the de bundle is genuinely active, not merely
++  // that a translation function was called correctly.
++  test("selecting German in the settings dialog saves it, and it renders the German catalog on the next start", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++      },
++    });
++
++    await page.goto("/");
++
++    await page.getByTestId("open-settings").click();
++    const dialog = page.getByTestId("settings-dialog");
++    await expect(dialog).toBeVisible();
++
++    const localeSelect = dialog.getByRole("combobox", name("settings-locale-label"));
++    await expect(localeSelect).toHaveValue("en");
++    await localeSelect.selectOption("de");
++
++    await dialog.getByRole("button", name("settings-save")).click();
++    await expect(dialog).toBeHidden();
++
++    const settingsWrites = recorded.filter((r) => r.cmd === "set_settings");
++    expect(settingsWrites).toHaveLength(1);
++    expect((settingsWrites[0].args as { settings: AppSettings }).settings.locale).toBe("de");
++
++    await page.addInitScript(installMockIPC, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        get_settings: [resolveWith(DE_SETTINGS)],
++      },
++    });
++    await page.reload();
++
++    await page.getByTestId("open-settings").click();
++    const reloadedDialog = page.getByTestId("settings-dialog");
++    await expect(reloadedDialog.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
++    await expect(reloadedDialog.getByRole("combobox")).toHaveValue("de");
++  });
+ });
+diff --git a/locales/de/gui-settings.ftl b/locales/de/gui-settings.ftl
+index 495eabf..043f7c0 100644
+--- a/locales/de/gui-settings.ftl
++++ b/locales/de/gui-settings.ftl
+@@ -1,18 +1,16 @@
+ # German (de) translation of locales/en/gui-settings.ftl. The en catalog is
+ # the source of truth; keys mirror it (parity-enforced by
+-# scripts/check-i18n.mjs). NOTE: settings-locale-hint mirrors en verbatim
+-# and is now factually stale (German ships); the SettingsDialog dropdown
+-# also still offers only English (no settings-locale-option-de). Both are
+-# flagged for the Task 21 review/merge, out of this brief's Modify scope.
++# scripts/check-i18n.mjs).
+ settings-title = Einstellungen
+ settings-mkvmerge-path-label = Abweichender mkvmerge-Pfad
+ settings-mkvmerge-path-hint = Leer lassen, um das automatisch erkannte mkvmerge zu verwenden (aus dem PATH oder dem Standard-Installationsort deines Betriebssystems).
+ settings-default-jobs-label = Standardmäßige parallele Jobs
+ settings-default-jobs-hint = Wie viele mkvmerge-Prozesse während eines Laufs gleichzeitig ausgeführt werden. 1 führt die Jobs nacheinander aus.
+ settings-locale-label = Sprache
+-settings-locale-hint = In dieser Version ist nur Englisch enthalten; weitere Sprachen können später hinzugefügt werden, ohne die Bedeutung dieser Einstellung zu ändern.
++settings-locale-hint = In dieser Version sind Englisch und Deutsch enthalten; weitere Sprachen können später hinzugefügt werden, ohne die Bedeutung dieser Einstellung zu ändern.
+ settings-locale-option-en = Englisch
++settings-locale-option-de = Deutsch
+ settings-save = Speichern
+ settings-save-tooltip = Diese Einstellungen speichern.
+ settings-cancel = Abbrechen
+ settings-cancel-tooltip = Änderungen verwerfen und schließen.
+diff --git a/locales/en/gui-settings.ftl b/locales/en/gui-settings.ftl
+index 0b4b110..69e018a 100644
+--- a/locales/en/gui-settings.ftl
++++ b/locales/en/gui-settings.ftl
+@@ -1,14 +1,15 @@
+ # T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
+ # parallel jobs, UI locale).
+ settings-title = Settings
+ settings-mkvmerge-path-label = mkvmerge path override
+ settings-mkvmerge-path-hint = Leave empty to use the automatically detected mkvmerge (PATH or the standard install location for your operating system).
+ settings-default-jobs-label = Default parallel jobs
+ settings-default-jobs-hint = How many mkvmerge processes to run at the same time during a run. 1 runs jobs one after another.
+ settings-locale-label = Language
+-settings-locale-hint = Only English ships in this version; more languages can be added later without changing this setting's meaning.
++settings-locale-hint = English and German ship in this version; more languages can be added later without changing this setting's meaning.
+ settings-locale-option-en = English
++settings-locale-option-de = German
+ settings-save = Save
+ settings-save-tooltip = Save these settings.
+ settings-cancel = Cancel
+ settings-cancel-tooltip = Discard changes and close.
+diff --git a/src/components/SettingsDialog.vue b/src/components/SettingsDialog.vue
+index 9c03fbf..9026139 100644
+--- a/src/components/SettingsDialog.vue
++++ b/src/components/SettingsDialog.vue
+@@ -141,20 +141,23 @@ defineExpose({ open });
+       <div>
+         <label for="settings-locale">{{ $t("settings-locale-label") }}</label>
+         <select
+           id="settings-locale"
+           v-model="form.locale"
+           aria-describedby="settings-locale-hint"
+         >
+           <option value="en">
+             {{ $t("settings-locale-option-en") }}
+           </option>
++          <option value="de">
++            {{ $t("settings-locale-option-de") }}
++          </option>
+         </select>
+         <p id="settings-locale-hint">
+           {{ $t("settings-locale-hint") }}
+         </p>
+       </div>
+ 
+       <button
+         type="submit"
+         :disabled="busy"
+         :aria-busy="busy"

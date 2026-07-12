@@ -1,0 +1,864 @@
+# Review package: 643e5df..bf4dbc5
+
+## Commits
+bf4dbc5 i18n: plural selectors replace the error(s) provisional (#17)
+
+## Files changed
+ crates/muxsmith-cli/src/commands/mod.rs      |  51 ++++++++-
+ crates/muxsmith-cli/src/commands/run.rs      |   5 +-
+ crates/muxsmith-cli/src/commands/validate.rs |  73 ++++++++++---
+ crates/muxsmith-cli/src/i18n.rs              | 157 ++++++++++++++++++++++++---
+ e2e/smoke.spec.ts                            |  97 +++++++++++++++++
+ locales/en/cli.ftl                           |  16 ++-
+ locales/en/diagnostics.ftl                   |  15 ++-
+ locales/en/gui-batch.ftl                     |  11 +-
+ src/components/DiagnosticsPanel.vue          |   3 +-
+ src/diagnosticFluentParams.ts                |  46 ++++++++
+ 10 files changed, 427 insertions(+), 47 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/mod.rs b/crates/muxsmith-cli/src/commands/mod.rs
+index 55823d4..2845ed9 100644
+--- a/crates/muxsmith-cli/src/commands/mod.rs
++++ b/crates/muxsmith-cli/src/commands/mod.rs
+@@ -118,27 +118,27 @@ fn batch_human_report(
+             line(renderer.diagnostic_no_file(d));
+         }
+     }
+     for d in severity_sorted(&batch.batch_diagnostics) {
+         line(renderer.diagnostic(d));
+     }
+     for s in &batch.suggestions {
+         line(renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)]));
+         line(s.yaml_fragment.clone());
+     }
+-    line(renderer.msg(
++    line(renderer.msg_with_counts(
+         "dry-run-summary",
+         &[
+-            ("count", &batch.files.len().to_string()),
+             ("root", &root.display().to_string()),
+             ("extensions", &extensions.join(", ")),
+         ],
++        &[("count", batch.files.len())],
+     ));
+     out
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use muxsmith_core::planner::{Batch, FileReport};
+     use muxsmith_core::report::{DiagCode, Diagnostic};
+ 
+@@ -196,11 +196,58 @@ mod tests {
+         let report = batch_human_report(
+             &batch,
+             Path::new("/in"),
+             &["mkv".to_string()],
+             &Renderer::new(Some("en")),
+         );
+         let err_at = report.find("[error]").expect("an error line");
+         let warn_at = report.find("[warning]").expect("a warning line");
+         assert!(err_at < warn_at, "error must precede warning in:\n{report}");
+     }
++
++    fn file_report(source: &str) -> FileReport {
++        FileReport {
++            source: source.into(),
++            identifier: "id".into(),
++            plan: None,
++            diagnostics: vec![],
++        }
++    }
++
++    #[test]
++    fn dry_run_summary_renders_the_singular_form_for_one_matched_file() {
++        let batch = Batch {
++            files: vec![file_report("/in/a.mkv")],
++            batch_diagnostics: vec![],
++            suggestions: vec![],
++        };
++        let report = batch_human_report(
++            &batch,
++            Path::new("/in"),
++            &["mkv".to_string()],
++            &Renderer::new(Some("en")),
++        );
++        assert!(
++            report.contains("1 file matched (searched /in, extensions mkv)"),
++            "{report}"
++        );
++    }
++
++    #[test]
++    fn dry_run_summary_renders_the_plural_form_for_two_or_more_matched_files() {
++        let batch = Batch {
++            files: vec![file_report("/in/a.mkv"), file_report("/in/b.mkv")],
++            batch_diagnostics: vec![],
++            suggestions: vec![],
++        };
++        let report = batch_human_report(
++            &batch,
++            Path::new("/in"),
++            &["mkv".to_string()],
++            &Renderer::new(Some("en")),
++        );
++        assert!(
++            report.contains("2 files matched (searched /in, extensions mkv)"),
++            "{report}"
++        );
++    }
+ }
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index a51de24..1d9a670 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -453,30 +453,29 @@ impl MilestoneState {
+         match outcome.state {
+             JobState::Ok => renderer.msg(
+                 "run-job-ok",
+                 &[
+                     ("index", index_s.as_str()),
+                     ("total", total_s.as_str()),
+                     ("output", output),
+                     ("seconds", seconds.as_str()),
+                 ],
+             ),
+-            JobState::Warning => renderer.msg_with_count(
++            JobState::Warning => renderer.msg_with_counts(
+                 "run-job-warning",
+                 &[
+                     ("index", index_s.as_str()),
+                     ("total", total_s.as_str()),
+                     ("output", output),
+                     ("seconds", seconds.as_str()),
+                 ],
+-                "count",
+-                outcome.warnings.len(),
++                &[("count", outcome.warnings.len())],
+             ),
+             JobState::Failed => {
+                 let code = outcome
+                     .exit_code
+                     .map(|c| c.to_string())
+                     .unwrap_or_else(|| "n/a".to_string());
+                 renderer.msg(
+                     "run-job-failed",
+                     &[
+                         ("index", index_s.as_str()),
+diff --git a/crates/muxsmith-cli/src/commands/validate.rs b/crates/muxsmith-cli/src/commands/validate.rs
+index f06a7c8..00ec811 100644
+--- a/crates/muxsmith-cli/src/commands/validate.rs
++++ b/crates/muxsmith-cli/src/commands/validate.rs
+@@ -32,42 +32,79 @@ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
+                 v
+             })
+             .collect();
+         println!("{}", serde_json::json!({ "diagnostics": entries }));
+     } else if diagnostics.is_empty() {
+         println!("{}", renderer.msg("validate-ok", &[]));
+     } else {
+         for d in &diagnostics {
+             println!("{}", renderer.diagnostic(d));
+         }
+-        let count = |s| {
+-            diagnostics
+-                .iter()
+-                .filter(|d| d.severity == s)
+-                .count()
+-                .to_string()
+-        };
+-        println!(
+-            "{}",
+-            renderer.msg(
+-                "validate-summary",
+-                &[
+-                    ("errors", &count(Severity::Error)),
+-                    ("warnings", &count(Severity::Warning)),
+-                    ("infos", &count(Severity::Info)),
+-                ],
+-            )
+-        );
++        println!("{}", render_summary(&diagnostics, renderer));
+     }
+     exit
+ }
+ 
+ fn collect(profile_path: &Path) -> Vec<Diagnostic> {
+     match load::from_file(profile_path) {
+         Err(d) => vec![d],
+         Ok(profile) => {
+             let mut diags = validate::validate(&profile);
+             diags.extend(lint::provable_overlaps(&profile));
+             diags
+         }
+     }
+ }
++
++/// The `validate-summary` line: how many of `diagnostics` are each
++/// severity, each count through its own CLDR plural selector ("1 error" /
++/// "2 errors", T19 #17 step 1). Split out so it is unit-testable without a
++/// real profile file.
++fn render_summary(diagnostics: &[Diagnostic], renderer: &Renderer) -> String {
++    let count = |s: Severity| diagnostics.iter().filter(|d| d.severity == s).count();
++    renderer.msg_with_counts(
++        "validate-summary",
++        &[],
++        &[
++            ("errors", count(Severity::Error)),
++            ("warnings", count(Severity::Warning)),
++            ("infos", count(Severity::Info)),
++        ],
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use muxsmith_core::report::DiagCode;
++
++    fn renderer() -> Renderer {
++        Renderer::new(Some("en"))
++    }
++
++    #[test]
++    fn summary_renders_the_singular_form_for_exactly_one_of_each_severity() {
++        let diags = vec![
++            Diagnostic::error(DiagCode::EmptyExtensions, "input.extensions"),
++            Diagnostic::warning(DiagCode::EmptyMatchExpression, "tracks[0].match"),
++            Diagnostic::info(DiagCode::IgnoredFile, "input"),
++        ];
++        assert_eq!(
++            render_summary(&diags, &renderer()),
++            "1 error, 1 warning, 1 info."
++        );
++    }
++
++    #[test]
++    fn summary_renders_the_plural_form_for_two_or_more() {
++        let diags = vec![
++            Diagnostic::error(DiagCode::EmptyExtensions, "a"),
++            Diagnostic::error(DiagCode::EmptyExtensions, "b"),
++            Diagnostic::warning(DiagCode::EmptyMatchExpression, "a"),
++            Diagnostic::warning(DiagCode::EmptyMatchExpression, "b"),
++        ];
++        assert_eq!(
++            render_summary(&diags, &renderer()),
++            "2 errors, 2 warnings, 0 infos."
++        );
++    }
++}
+diff --git a/crates/muxsmith-cli/src/i18n.rs b/crates/muxsmith-cli/src/i18n.rs
+index c0d26fd..24a582f 100644
+--- a/crates/muxsmith-cli/src/i18n.rs
++++ b/crates/muxsmith-cli/src/i18n.rs
+@@ -43,39 +43,43 @@ impl Renderer {
+     /// output instead of silently disappearing (CI's catalog-completeness
+     /// guard, spec 10, is the other half of this contract).
+     pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
+         let mut fargs = FluentArgs::new();
+         for (k, v) in args {
+             fargs.set(*k, *v);
+         }
+         self.render(id, fargs)
+     }
+ 
+-    /// Renders one Fluent message like [`Self::msg`], but sets `count_key` as a
+-    /// numeric `FluentValue::Number` rather than a string. Fluent's plural
+-    /// selector (`[one]`/`*[other]`) resolves CLDR plural categories only
+-    /// against `FluentValue::Number`; a `FluentValue::String` selector
+-    /// always falls through to `*[other]`, so a message with a `{ $count ->
+-    /// [one] ... *[other] ... }` selector needs its count passed through
+-    /// this method instead of [`Self::msg`].
+-    pub fn msg_with_count(
++    /// Renders one Fluent message like [`Self::msg`], but sets every
++    /// `(name, count)` pair in `counts` as a numeric `FluentValue::Number`
++    /// rather than a string. Fluent's plural selector (`[one]`/`*[other]`)
++    /// resolves CLDR plural categories only against `FluentValue::Number`;
++    /// a `FluentValue::String` selector always falls through to
++    /// `*[other]`, so any variable a message's `{ $name -> [one] ...
++    /// *[other] ... }` selector reads needs to go through here instead of
++    /// [`Self::msg`]. Takes a slice rather than one `(key, count)` pair so
++    /// a message with several independent selectors (`validate-summary`'s
++    /// errors/warnings/infos) needs one call, not one per selector.
++    pub fn msg_with_counts(
+         &self,
+         id: &str,
+         args: &[(&str, &str)],
+-        count_key: &str,
+-        count: usize,
++        counts: &[(&str, usize)],
+     ) -> String {
+         let mut fargs = FluentArgs::new();
+         for (k, v) in args {
+             fargs.set(*k, *v);
+         }
+-        fargs.set(count_key, count);
++        for (k, count) in counts {
++            fargs.set(*k, *count);
++        }
+         self.render(id, fargs)
+     }
+ 
+     fn render(&self, id: &str, fargs: FluentArgs) -> String {
+         let Some(message) = self.bundle.get_message(id) else {
+             // Missing catalog entry: fall back to the raw id so the
+             // problem is visible instead of hidden. CI guards this case.
+             return id.to_string();
+         };
+         let Some(pattern) = message.value() else {
+@@ -101,26 +105,21 @@ impl Renderer {
+     /// filename once in its `dry-run-file` line, so repeating it on every
+     /// diagnostic under it is noise.
+     pub fn diagnostic_no_file(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+         self.render_diagnostic(d, false)
+     }
+ 
+     /// Shared body of [`Self::diagnostic`] and [`Self::diagnostic_no_file`]:
+     /// `show_file` selects the `diagnostic-line-file` template (when a file is
+     /// present) over the file-less `diagnostic-line`.
+     fn render_diagnostic(&self, d: &muxsmith_core::report::Diagnostic, show_file: bool) -> String {
+-        let params: Vec<(&str, &str)> = d
+-            .params
+-            .iter()
+-            .map(|(k, v)| (k.as_str(), v.as_str()))
+-            .collect();
+-        let message = self.msg(d.code.key(), &params);
++        let message = self.render_diagnostic_message(d);
+         let severity = self.msg(severity_key(d.severity), &[]);
+         match d.file.as_ref().filter(|_| show_file) {
+             Some(file) => {
+                 let file = file.to_string_lossy();
+                 self.msg(
+                     "diagnostic-line-file",
+                     &[
+                         ("severity", &severity),
+                         ("file", &file),
+                         ("config_path", &d.config_path),
+@@ -131,39 +130,84 @@ impl Renderer {
+             None => self.msg(
+                 "diagnostic-line",
+                 &[
+                     ("severity", &severity),
+                     ("config_path", &d.config_path),
+                     ("message", &message),
+                 ],
+             ),
+         }
+     }
++
++    /// Renders `d`'s own message (`d.code`'s template filled with
++    /// `d.params`), promoting any param [`numeric_diagnostic_params`]
++    /// lists for `d.code` from its wire string form back to a number
++    /// before handing it to Fluent. `Diagnostic::params` is
++    /// `BTreeMap<String, String>` by design (core stays prose- and
++    /// type-free on the wire, spec 5.2/8.4), so a diagnostic code whose
++    /// catalog message uses a CLDR plural selector on one of its own
++    /// params (`suggestions-capped`, `suggestion-partition`) needs that
++    /// promotion done once, here, at the render boundary -- everywhere
++    /// else (JSON, core) the param stays a plain string. A listed param
++    /// that fails to parse as a number falls back to rendering as a
++    /// string rather than being dropped, so a surprise non-numeric value
++    /// degrades to the selector's `*[other]`/`*[group]` branch instead of
++    /// leaking `{$name}`.
++    fn render_diagnostic_message(&self, d: &muxsmith_core::report::Diagnostic) -> String {
++        let numeric_keys = numeric_diagnostic_params(d.code);
++        let mut string_params: Vec<(&str, &str)> = Vec::new();
++        let mut counts: Vec<(&str, usize)> = Vec::new();
++        for (k, v) in &d.params {
++            if numeric_keys.contains(&k.as_str())
++                && let Ok(n) = v.parse::<usize>()
++            {
++                counts.push((k.as_str(), n));
++                continue;
++            }
++            string_params.push((k.as_str(), v.as_str()));
++        }
++        self.msg_with_counts(d.code.key(), &string_params, &counts)
++    }
+ }
+ 
+ /// Lets `report::json`'s document-assembly functions (spec 7, D15) fill
+ /// each diagnostic's `"rendered"` field without core itself depending on
+ /// this Fluent-based renderer.
+ impl muxsmith_core::report::json::DiagnosticRenderer for Renderer {
+     fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
+         Renderer::diagnostic(self, d)
+     }
+ }
+ 
+ fn severity_key(s: muxsmith_core::report::Severity) -> &'static str {
+     match s {
+         muxsmith_core::report::Severity::Error => "severity-error",
+         muxsmith_core::report::Severity::Warning => "severity-warning",
+         muxsmith_core::report::Severity::Info => "severity-info",
+     }
+ }
+ 
++/// Names the params of `code`'s catalog message that must reach Fluent as
++/// numbers, not strings, because the template selects on them with a CLDR
++/// plural selector (T19, #17 step 1): `suggestions-capped`'s `dropped`,
++/// `suggestion-partition`'s `dropped` (`[overflow]` branch) and `count`
++/// (`*[group]` branch). Every other `DiagCode` renders its params as plain
++/// strings, unchanged.
++fn numeric_diagnostic_params(code: muxsmith_core::report::DiagCode) -> &'static [&'static str] {
++    use muxsmith_core::report::DiagCode;
++    match code {
++        DiagCode::SuggestionsCapped => &["dropped"],
++        DiagCode::SuggestionPartition => &["dropped", "count"],
++        _ => &[],
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     #[test]
+     fn unknown_message_id_falls_back_to_raw_id() {
+         let renderer = Renderer::new(Some("en"));
+         assert_eq!(renderer.msg("no-such-id", &[]), "no-such-id");
+     }
+ 
+@@ -266,11 +310,90 @@ mod tests {
+         let rendered = renderer.msg("unsupported-source", &[]);
+         assert_eq!(
+             rendered,
+             "mkvmerge identified this file but its container is not a supported muxing source."
+         );
+         assert!(
+             !rendered.contains("{$"),
+             "unresolved placeholder leaked into: {rendered}"
+         );
+     }
++
++    // T19 (#17 step 1): `SuggestionsCapped`/`SuggestionPartition` are the
++    // one place a plural selector's count arrives through
++    // `Diagnostic::params` (`BTreeMap<String, String>`, spec 5.2) rather
++    // than a call site that holds a real `usize` -- the Plan-4 lesson the
++    // task flagged ("$count reached Fluent as a string once and [one]
++    // never matched"). These pin `render_diagnostic`'s promotion
++    // (`numeric_diagnostic_params`) end to end: a real `Diagnostic` with a
++    // string param in, the correctly-selected CLDR variant out.
++
++    #[test]
++    fn suggestions_capped_renders_singular_and_plural() {
++        use muxsmith_core::report::{DiagCode, Diagnostic};
++
++        let renderer = Renderer::new(Some("en"));
++        let one =
++            Diagnostic::info(DiagCode::SuggestionsCapped, "tracks[0].match").with("dropped", "1");
++        assert_eq!(
++            renderer.diagnostic(&one),
++            "[info] tracks[0].match: 1 further suggestion for this rule was capped at 3 and not shown."
++        );
++
++        let two =
++            Diagnostic::info(DiagCode::SuggestionsCapped, "tracks[0].match").with("dropped", "2");
++        assert_eq!(
++            renderer.diagnostic(&two),
++            "[info] tracks[0].match: 2 further suggestions for this rule were capped at 3 and not shown."
++        );
++    }
++
++    #[test]
++    fn suggestion_partition_group_branch_renders_singular_and_plural() {
++        use muxsmith_core::report::{DiagCode, Diagnostic};
++
++        let renderer = Renderer::new(Some("en"));
++        let one = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
++            .with("kind", "group")
++            .with("count", "1")
++            .with("fix", "tracks[0].match.exact.forced_track: true")
++            .with("files", "/in/a.mkv");
++        assert_eq!(
++            renderer.diagnostic(&one),
++            "[info] tracks[0].match: This file needs its own refinement; apply:\n\
++             tracks[0].match.exact.forced_track: true\n    to: /in/a.mkv"
++        );
++
++        let two = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
++            .with("kind", "group")
++            .with("count", "2")
++            .with("fix", "tracks[0].match.exact.forced_track: true")
++            .with("files", "/in/a.mkv, /in/b.mkv");
++        assert_eq!(
++            renderer.diagnostic(&two),
++            "[info] tracks[0].match: These 2 files need their own refinement; apply:\n\
++             tracks[0].match.exact.forced_track: true\n    to: /in/a.mkv, /in/b.mkv"
++        );
++    }
++
++    #[test]
++    fn suggestion_partition_overflow_branch_renders_singular_and_plural() {
++        use muxsmith_core::report::{DiagCode, Diagnostic};
++
++        let renderer = Renderer::new(Some("en"));
++        let one = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
++            .with("kind", "overflow")
++            .with("dropped", "1");
++        assert_eq!(
++            renderer.diagnostic(&one),
++            "[info] tracks[0].match: 1 further resolution group was capped at 5 and not shown."
++        );
++
++        let two = Diagnostic::info(DiagCode::SuggestionPartition, "tracks[0].match")
++            .with("kind", "overflow")
++            .with("dropped", "2");
++        assert_eq!(
++            renderer.diagnostic(&two),
++            "[info] tracks[0].match: 2 further resolution groups were capped at 5 and not shown."
++        );
++    }
+ }
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 7e8c875..82f3a73 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -39,20 +39,31 @@ import type {
+  * default role-name matching is a case-insensitive SUBSTRING match, which
+  * collides here for real (not hypothetically): "Run" (the batch-run
+  * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
+  * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
+  * list), so an un-exact match resolves to 2-3 elements and Playwright's
+  * strict mode rejects the locator. */
+ function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
+   return { name: en(id, args), exact: true };
+ }
+ 
++/** Strips the U+2068 (FIRST STRONG ISOLATE) / U+2069 (POP DIRECTIONAL
++ * ISOLATE) marks Fluent wraps around every placeable substitution when a
++ * bundle's `useIsolating` option is on -- the GUI catalog's default (unlike
++ * the CLI's `Renderer`, which explicitly turns it off for plain-text
++ * stdout). Invisible to a user but present in `textContent`, so a test
++ * pinning literal rendered text (not derived via `en()`) needs to strip
++ * them before comparing. */
++function visibleText(text: string | null): string {
++  return (text ?? "").replace(/[\u2066-\u2069]/g, "");
++}
++
+ /** Fails the test with every axe violation of impact "serious" or
+  * "critical" listed (id, impact, help text, offending selectors) -- Task
+  * 12 step 2: one scan per view state the smoke actually reaches. */
+ async function assertNoSeriousA11yViolations(page: Page): Promise<void> {
+   const results = await new AxeBuilder({ page }).analyze();
+   const serious = results.violations.filter(
+     (v) => v.impact === "serious" || v.impact === "critical",
+   );
+   const report = serious
+     .map(
+@@ -218,20 +229,106 @@ test.describe("batch view: dry run", () => {
+ 
+     await assertNoSeriousA11yViolations(page);
+ 
+     await suggestion.getByRole("button", name("batch-suggestion-copy")).click();
+     await expect(suggestion.getByText(en("batch-suggestion-copied"))).toBeVisible();
+ 
+     const clipboardCalls = recorded.filter((r) => r.cmd === "plugin:clipboard-manager|write_text");
+     expect(clipboardCalls).toHaveLength(1);
+     expect((clipboardCalls[0].args as { text: string }).text).toBe(SUGGESTION_YAML);
+   });
++
++  // T19 (#17 step 1): `batch-diagnostics-summary`'s three counts each got
++  // their own Fluent plural selector, replacing the provisional "error(s)"
++  // wording; `suggestions-capped` (rendered per-diagnostic by
++  // DiagnosticsPanel) got one too, and needs its own numeric-promotion fix
++  // on the frontend (`diagnosticFluentParams.ts`) since `Diagnostic.params`
++  // arrives over IPC as `Record<string, string>` -- a plain string
++  // argument never matches a Fluent `[one]` selector. Unlike every other
++  // assertion in this file, the expected summary/diagnostic text below is
++  // a LITERAL, not `en(id, args)`: the grammar (singular vs. plural) is
++  // exactly what this test pins, so deriving the expectation through the
++  // same catalog/mechanism under test would prove nothing. `visibleText`
++  // strips the U+2068/U+2069 directional-isolate marks the GUI's
++  // `FluentBundle` wraps around every placeable substitution (unlike the
++  // CLI's, which turns `useIsolating` off) -- invisible to a user, but
++  // present in `textContent`, and pre-existing/out of scope for T19 to
++  // touch (a GUI-wide catalog-loader setting, not a plural-selector one).
++  const pluralReport: ReportDocument = {
++    config_diagnostics: [
++      {
++        code: "unsupported-source",
++        severity: "error",
++        config_path: "tracks[0].match",
++        params: { kind: "primary" },
++        rendered: "unsupported-source",
++      },
++      {
++        code: "empty-match-expression",
++        severity: "warning",
++        config_path: "tracks[0].match",
++        params: {},
++        rendered: "empty-match-expression",
++      },
++      {
++        code: "empty-match-expression",
++        severity: "warning",
++        config_path: "tracks[1].match",
++        params: {},
++        rendered: "empty-match-expression",
++      },
++      {
++        code: "suggestions-capped",
++        severity: "info",
++        config_path: "tracks[0].match",
++        params: { dropped: "1" },
++        rendered: "suggestions-capped",
++      },
++    ],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  test("diagnostics summary and suggestions-capped pluralize their counts (1 error singular, 2 warnings plural, 1 dropped suggestion singular)", async ({
++    page,
++  }) => {
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        validate_profile: [resolveWith(emptyReport)],
++        dry_run: [resolveWith(pluralReport)],
++      },
++    });
++
++    await page.goto("/");
++
++    const batch = page.getByTestId("view-batch");
++    await batch.getByRole("button", name("batch-profile-pick")).click();
++    await batch.getByRole("button", name("batch-dry-run")).click();
++
++    const status = batch.getByRole("status");
++    await expect(status).toBeVisible();
++    expect(visibleText(await status.textContent())).toBe(
++      "1 error, 2 warnings, 1 info notice.",
++    );
++
++    const diagnosticsSection = batch.getByRole("region", name("batch-diagnostics-heading"));
++    await expect(diagnosticsSection).toContainText("further suggestion");
++    expect(visibleText(await diagnosticsSection.textContent())).toContain(
++      "info: 1 further suggestion for this rule was capped at 3 and not shown.",
++    );
++
++    await assertNoSeriousA11yViolations(page);
++  });
+ });
+ 
+ test.describe("jobs view: live run", () => {
+   const PROFILE_PATH = "/profiles/run-demo.yaml";
+   const JOB0_OUTPUT = "output/episode1.mkv";
+   const JOB1_OUTPUT = "output/episode2.mkv";
+   const RUN_ID = "20260710-190000Z";
+ 
+   const runnableReport: ReportDocument = {
+     config_diagnostics: [],
+diff --git a/locales/en/cli.ftl b/locales/en/cli.ftl
+index f294a9a..3f85a07 100644
+--- a/locales/en/cli.ftl
++++ b/locales/en/cli.ftl
+@@ -1,24 +1,36 @@
+ validate-ok = Profile is valid.
+-validate-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info(s).
++validate-summary = { $errors ->
++    [one] 1 error
++   *[other] { $errors } errors
++}, { $warnings ->
++    [one] 1 warning
++   *[other] { $warnings } warnings
++}, { $infos ->
++    [one] 1 info
++   *[other] { $infos } infos
++}.
+ diagnostic-line = [{ $severity }] { $config_path }: { $message }
+ diagnostic-line-file = [{ $severity }] { $file } { $config_path }: { $message }
+ mkvmerge-not-found = mkvmerge was not found on PATH. Install MKVToolNix or set the mkvmerge path.
+ mkvmerge-query-failed = Querying mkvmerge failed.
+ identify-failed = Could not identify { $file }.
+ identify-not-media = { $file } is not a recognized media file.
+ identify-track-line = Track { $id }: { $type } [{ $codec }] { $language }
+ dry-run-file = { $file } (identifier: { $id })
+ dry-run-assignment =   rule { $rule } -> track { $track }
+ dry-run-output =   output: { $path }
+ dry-run-suggestion = Suggestion for { $config_path }:
+-dry-run-summary = { $count } files matched (searched { $root }, extensions { $extensions })
++dry-run-summary = { $count ->
++    [one] 1 file matched
++   *[other] { $count } files matched
++} (searched { $root }, extensions { $extensions })
+ run-job-start = [{ $index }/{ $total }] { $output } ... start
+ run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
+ run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }
+ run-job-ok = [{ $index }/{ $total }] { $output } ... ok ({ $seconds }s)
+ run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count ->
+     [one] 1 warning
+    *[other] { $count } warnings
+ }, { $seconds }s)
+ run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
+ run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index df1a2e4..1360a4f 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -42,18 +42,27 @@ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not {
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
+ unsupported-source = { $kind ->
+     [donor] mkvmerge identified external donor { $donor } but its container is not a supported muxing source.
+    *[primary] mkvmerge identified this file but its container is not a supported muxing source.
+ }
+ empty-plan = This plan resolves to zero output tracks; mkvmerge will still write a valid but track-less MKV.
+-suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
++suggestions-capped = { $dropped ->
++    [one] 1 further suggestion for this rule was capped at 3 and not shown.
++   *[other] { $dropped } further suggestions for this rule were capped at 3 and not shown.
++}
+ suggestion-partition = { $kind ->
+-    [overflow] { $dropped } further resolution group(s) were capped at 5 and not shown.
+-   *[group] These { $count } file(s) need their own refinement; apply:
++    [overflow] { $dropped ->
++        [one] 1 further resolution group was capped at 5 and not shown.
++       *[other] { $dropped } further resolution groups were capped at 5 and not shown.
++    }
++   *[group] { $count ->
++        [one] This file needs its own refinement; apply:
++       *[other] These { $count } files need their own refinement; apply:
++    }
+ { $fix }
+     to: { $files }
+ }
+ worker-panicked = A worker thread panicked while running this job. This is a Muxsmith bug, not an mkvmerge failure; see the application log for details.
+diff --git a/locales/en/gui-batch.ftl b/locales/en/gui-batch.ftl
+index fd6148f..3e9ee2c 100644
+--- a/locales/en/gui-batch.ftl
++++ b/locales/en/gui-batch.ftl
+@@ -21,21 +21,30 @@ batch-recents-empty = No recent profiles yet.
+ batch-recents-select-tooltip = Open this profile again.
+ 
+ batch-dirs-heading = Directories
+ batch-browse-dir-tooltip = Choose the directory with a folder picker.
+ batch-source-label = Source directory
+ batch-source-hint = Directory scanned for input files. Leave empty to use the profile's own source directory.
+ batch-output-label = Output directory
+ batch-output-hint = Directory the muxed files are written to. Leave empty to use the profile's output directory.
+ 
+ batch-diagnostics-heading = Diagnostics
+-batch-diagnostics-summary = { $errors } error(s), { $warnings } warning(s), { $infos } info notice(s).
++batch-diagnostics-summary = { $errors ->
++    [one] 1 error
++   *[other] { $errors } errors
++}, { $warnings ->
++    [one] 1 warning
++   *[other] { $warnings } warnings
++}, { $infos ->
++    [one] 1 info notice
++   *[other] { $infos } info notices
++}.
+ batch-diagnostic-line = { $severity }: { $message }
+ 
+ batch-dry-run = Dry run
+ batch-dry-run-tooltip = Resolve every track rule and render the report below without muxing anything.
+ 
+ batch-files-heading = Files
+ batch-resolution-rule-header = Rule
+ batch-resolution-track-header = Resolved track
+ batch-file-caption = { $source } (identifier: { $identifier }) -> { $output }
+ batch-file-no-plan = { $source } (identifier: { $identifier }): no plan produced; see diagnostics below.
+diff --git a/src/components/DiagnosticsPanel.vue b/src/components/DiagnosticsPanel.vue
+index 474906d..427b8cf 100644
+--- a/src/components/DiagnosticsPanel.vue
++++ b/src/components/DiagnosticsPanel.vue
+@@ -1,12 +1,13 @@
+ <script setup lang="ts">
+ import type { Diagnostic } from "../ipc";
++import { diagnosticFluentParams } from "../diagnosticFluentParams";
+ 
+ // Renders one flat list of diagnostics (spec 5.2, 8.4): severity icon
+ // (decorative, `aria-hidden`) plus the localized severity word and the
+ // `code`/`params` rendered through `diagnostics.ftl` -- the same catalog
+ // the CLI's `Renderer` reads (spec 7), so a diagnostic reads identically
+ // in both surfaces. Reused for the batch/config-level diagnostics
+ // (BatchView) and, once per file, for `ReportFile.diagnostics`
+ // (ResolutionTable): same shape, same rendering, no per-caller variant.
+ //
+ // Deliberately no "no diagnostics" empty state here: an empty list means
+@@ -23,21 +24,21 @@ defineProps<{ diagnostics: Diagnostic[] }>();
+       :key="i"
+     >
+       <span
+         class="severity-dot"
+         :class="`severity-dot--${d.severity}`"
+         aria-hidden="true"
+       />
+       <span>{{
+         $t("batch-diagnostic-line", {
+           severity: $t(`severity-${d.severity}`),
+-          message: $t(d.code, d.params),
++          message: $t(d.code, diagnosticFluentParams(d.code, d.params)),
+         })
+       }}</span>
+     </li>
+   </ul>
+ </template>
+ 
+ <style scoped>
+ .severity-dot {
+   display: inline-block;
+   width: 0.6em;
+diff --git a/src/diagnosticFluentParams.ts b/src/diagnosticFluentParams.ts
+new file mode 100644
+index 0000000..06e67ea
+--- /dev/null
++++ b/src/diagnosticFluentParams.ts
+@@ -0,0 +1,46 @@
++/**
++ * Diagnostic params that must reach Fluent as a number, not a string (T19,
++ * #17 step 1): `Diagnostic.params` mirrors the Rust wire type
++ * (`BTreeMap<String, String>`, spec 5.2/8.4 -- core stays prose- and
++ * type-free), so a diagnostic code whose `diagnostics.ftl` message uses a
++ * CLDR plural selector (`[one]`/`*[other]`) on one of its own params needs
++ * that value promoted back to a number here, at the render boundary --
++ * `@fluent/bundle`'s resolver only resolves a plural selector against a
++ * JS `number`, a `string` argument always falls through to `*[other]`.
++ * Mirrors `muxsmith_cli::i18n::numeric_diagnostic_params` on the Rust
++ * side, same two codes and param names; keep both lists in lockstep if
++ * either changes.
++ */
++const NUMERIC_DIAGNOSTIC_PARAMS: Record<string, readonly string[]> = {
++  "suggestions-capped": ["dropped"],
++  "suggestion-partition": ["dropped", "count"],
++};
++
++/**
++ * Fluent params for one diagnostic `(code, params)`, promoting every name
++ * [`NUMERIC_DIAGNOSTIC_PARAMS`] lists for `code` from its wire string form
++ * to a real number. A listed value that does not parse as a finite number
++ * is left as a string rather than dropped, so it degrades to the
++ * selector's `*[other]`/`*[group]` branch instead of leaking `{$name}`.
++ */
++export function diagnosticFluentParams(
++  code: string,
++  params: Record<string, string>,
++): Record<string, string | number> {
++  const numericKeys = NUMERIC_DIAGNOSTIC_PARAMS[code];
++  if (!numericKeys) {
++    return params;
++  }
++  const result: Record<string, string | number> = { ...params };
++  for (const key of numericKeys) {
++    const raw = params[key];
++    if (raw === undefined) {
++      continue;
++    }
++    const n = Number(raw);
++    if (Number.isFinite(n)) {
++      result[key] = n;
++    }
++  }
++  return result;
++}

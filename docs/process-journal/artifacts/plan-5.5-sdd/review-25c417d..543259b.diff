@@ -1,0 +1,608 @@
+# Review package: 25c417d..543259b
+
+## Commits
+543259b test: close the audited coverage gaps (group T, #21)
+
+## Files changed
+ crates/muxsmith-cli/tests/dry_run_cli.rs           |  44 ++++++-
+ crates/muxsmith-core/src/executor/job.rs           |  14 ++-
+ crates/muxsmith-core/src/executor/queue.rs         |  52 ++++++++
+ crates/muxsmith-core/src/identify.rs               |  42 +++++++
+ crates/muxsmith-core/tests/command.rs              | 138 +++++++++++++++++++++
+ .../tests/fixtures/identify/with-attachments.json  |   7 +-
+ crates/muxsmith-core/tests/planner_resolution.rs   |  18 +--
+ 7 files changed, 302 insertions(+), 13 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index b49d7b0..eefc486 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -271,21 +271,25 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
+     assert_eq!(report["batch_diagnostics"].as_array().unwrap().len(), 0);
+     assert_eq!(report["suggestions"].as_array().unwrap().len(), 0);
+     assert_eq!(report["mkvmerge_found"], false);
+ }
+ 
+ /// D15 (spec 8.1): `--on-collision` overrides the profile's output-collision
+ /// policy for a single dry-run invocation. Default policy is `error`, so a
+ /// pre-existing file at the planned output path exits 2; passing
+ /// `--on-collision skip` downgrades the same collision to a warning and
+ /// exits 1, with the JSON report carrying an `output-collision` diagnostic
+-/// at `warning` severity.
++/// at `warning` severity; passing `--on-collision overwrite` downgrades it
++/// further to Info severity and exits 0 -- `diag_exit_code`'s (mod.rs) match
++/// has only two named arms (`Error` => 2, `Warning` => 1); every other
++/// severity, Info included, falls through its `_ => 0` default arm, which
++/// this case is what actually exercises.
+ #[test]
+ fn dry_run_on_collision_flag_overrides_default_error_policy() {
+     if !have_mkvmerge() {
+         eprintln!("mkvmerge not found; skipping");
+         return;
+     }
+     // Separate source and output tempdirs: nesting the output dir inside
+     // the source dir would let discovery (which scans recursively) pick up
+     // the pre-existing collision file as a second primary, muddying the
+     // fixture with an unrelated `duplicate-identifier`/`source-overwrite`.
+@@ -369,20 +373,58 @@ fn dry_run_on_collision_flag_overrides_default_error_policy() {
+             String::from_utf8_lossy(&skip_out.stderr)
+         )
+     });
+     let diag = report["files"][0]["diagnostics"]
+         .as_array()
+         .unwrap()
+         .iter()
+         .find(|d| d["code"] == "output-collision")
+         .unwrap_or_else(|| panic!("expected an output-collision diagnostic, got: {report}"));
+     assert_eq!(diag["severity"], "warning");
++
++    // --on-collision overwrite: downgrades to Info, exits 0 -- the
++    // `diag_exit_code` default-branch case (gap T-iii): neither the `Error`
++    // nor the `Warning` arm fires, so the worst-of fold must fall through to
++    // its `_ => 0` arm rather than defaulting to a nonzero exit by omission.
++    let overwrite_out = Command::cargo_bin("muxsmith")
++        .unwrap()
++        .args(["dry-run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(src_dir.path())
++        .args(["--output"])
++        .arg(out_dir.path())
++        .args(["--on-collision", "overwrite"])
++        .arg("--json")
++        .output()
++        .unwrap();
++    assert_eq!(
++        overwrite_out.status.code(),
++        Some(0),
++        "stdout: {}, stderr: {}",
++        String::from_utf8_lossy(&overwrite_out.stdout),
++        String::from_utf8_lossy(&overwrite_out.stderr)
++    );
++    let report: serde_json::Value =
++        serde_json::from_slice(&overwrite_out.stdout).unwrap_or_else(|e| {
++            panic!(
++                "json report: {e}, stderr: {}",
++                String::from_utf8_lossy(&overwrite_out.stderr)
++            )
++        });
++    let diag = report["files"][0]["diagnostics"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .find(|d| d["code"] == "output-collision")
++        .unwrap_or_else(|| panic!("expected an output-collision diagnostic, got: {report}"));
++    assert_eq!(diag["severity"], "info");
+ }
+ 
+ /// Same forced-missing-mkvmerge condition as above, human (non-`--json`)
+ /// mode: the config diagnostic must still be printed (superset of
+ /// `validate`), and the mkvmerge-not-found message must still appear, exit
+ /// code 2.
+ #[test]
+ fn dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing() {
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("bad.yaml");
+diff --git a/crates/muxsmith-core/src/executor/job.rs b/crates/muxsmith-core/src/executor/job.rs
+index a0a2910..803bb1f 100644
+--- a/crates/muxsmith-core/src/executor/job.rs
++++ b/crates/muxsmith-core/src/executor/job.rs
+@@ -246,40 +246,50 @@ mod tests {
+         let cancelled = || false;
+ 
+         let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
+ 
+         assert_eq!(outcome.state, JobState::Ok);
+         assert_eq!(outcome.exit_code, Some(0));
+         assert!(spec.output.exists());
+     }
+ 
+     #[test]
+-    fn exit_one_is_warning_with_captured_lines() {
++    fn exit_one_is_warning_with_captured_lines_and_output_kept() {
+         let dir = tempfile::tempdir().unwrap();
+-        let spec = spec(dir.path().join("out.mkv"));
++        let output = dir.path().join("out.mkv");
++        // A real mkvmerge exit-1 mux still writes the output (spec 6, job.rs
++        // module doc: "warning, output kept"); `finish` only deletes on
++        // Failed/Cancelled, so the earlier version of this test (no file
++        // ever written) could not tell "kept" apart from "never produced".
++        std::fs::write(&output, b"muxed with warnings").unwrap();
++        let spec = spec(output);
+         let fake = FakeSpawner::script(
+             vec![
+                 "#GUI#warning 'seed.srt': A track with the ID 9 was requested but not found."
+                     .to_string(),
+             ],
+             Some(1),
+         );
+         let cancelled = || false;
+ 
+         let outcome = run_job(&fake, &spec, &cancelled, &mut |_| {});
+ 
+         assert_eq!(outcome.state, JobState::Warning);
+         assert_eq!(outcome.exit_code, Some(1));
+         assert_eq!(
+             outcome.warnings,
+             vec!["'seed.srt': A track with the ID 9 was requested but not found.".to_string()]
+         );
++        assert!(
++            spec.output.exists(),
++            "exit-1 output must be kept, not deleted"
++        );
+     }
+ 
+     #[test]
+     fn exit_two_is_failed_and_partial_deleted() {
+         let dir = tempfile::tempdir().unwrap();
+         let output = dir.path().join("out.mkv");
+         std::fs::write(&output, b"partial").unwrap();
+         let spec = spec(output);
+         let fake = FakeSpawner::script(
+             vec!["#GUI#error The file 'missing.srt' could not be opened for reading.".to_string()],
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 1d1dbb5..113b430 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -581,20 +581,72 @@ mod tests {
+         let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
+         drop(tx);
+         let _events: Vec<JobEvent> = rx.iter().collect();
+ 
+         assert_eq!(
+             outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
+             vec![JobState::Failed, JobState::Ok, JobState::Ok]
+         );
+     }
+ 
++    /// `soft_fail_fast_cancels_queued_but_not_inflight` only exercises a
++    /// failure at spec index 0 -- the FIRST spec ever dequeued -- so it
++    /// cannot tell a `stop.store(true, ...)` genuinely gated on "the most
++    /// recently finished job failed" apart from one accidentally gated on
++    /// "index == 0". Job 0 succeeds, job 1 (the second dequeued, not the
++    /// first) fails, job 2 must never spawn.
++    #[test]
++    fn fail_fast_triggers_on_a_non_first_failing_job() {
++        let dir = tempfile::tempdir().unwrap();
++        let specs = vec![
++            spec(0, dir.path().join("a.mkv")),
++            spec(1, dir.path().join("b.mkv")),
++            spec(2, dir.path().join("c.mkv")),
++        ];
++        let fake = ScriptByIndexSpawner {
++            scripts: vec![
++                (vec!["#GUI#progress 100%".to_string()], Some(0)),
++                (vec!["#GUI#error boom".to_string()], Some(2)),
++                (vec!["#GUI#progress 100%".to_string()], Some(0)),
++            ],
++        };
++        let ctl = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
++        let (tx, rx) = mpsc::channel();
++        let opts = QueueOpts {
++            jobs: 1,
++            fail_fast: true,
++        };
++
++        let outcomes = run_queue(&specs, &fake, opts, &ctl, &tx);
++        drop(tx);
++        let events: Vec<JobEvent> = rx.iter().collect();
++
++        assert_eq!(
++            outcomes.iter().map(|o| o.state).collect::<Vec<_>>(),
++            vec![JobState::Ok, JobState::Failed, JobState::Cancelled],
++            "fail-fast must trigger on the failing job regardless of its \
++             position in the queue, not only when it is dequeued first"
++        );
++        let started: Vec<usize> = events
++            .iter()
++            .filter_map(|e| match e {
++                JobEvent::Started { index, .. } => Some(*index),
++                _ => None,
++            })
++            .collect();
++        assert_eq!(
++            started,
++            vec![0, 1],
++            "job 2, queued after the non-first failure, must never start"
++        );
++    }
++
+     #[test]
+     fn outcomes_index_aligned() {
+         let dir = tempfile::tempdir().unwrap();
+         let specs = vec![
+             spec(0, dir.path().join("a.mkv")),
+             spec(1, dir.path().join("b.mkv")),
+             spec(2, dir.path().join("c.mkv")),
+             spec(3, dir.path().join("d.mkv")),
+         ];
+         let fake = ScriptByIndexSpawner {
+diff --git a/crates/muxsmith-core/src/identify.rs b/crates/muxsmith-core/src/identify.rs
+index 24f29ad..15e2e2e 100644
+--- a/crates/muxsmith-core/src/identify.rs
++++ b/crates/muxsmith-core/src/identify.rs
+@@ -506,11 +506,53 @@ mod tests {
+         assert_eq!(a.get("file_name"), Some(PropValue::Str("f.otf".into())));
+         assert_eq!(
+             a.get("content_type"),
+             Some(PropValue::Str("font/otf".into()))
+         );
+         assert_eq!(a.get("description"), None);
+         assert_eq!(a.get("id"), Some(PropValue::Int(3)));
+         assert_eq!(a.get("size"), Some(PropValue::Int(10)));
+         assert_eq!(a.get("nope"), None);
+     }
++
++    // parse_attachment's contract (identify.rs:224-225): required fields
++    // (id, file_name, size) missing OR WRONG-TYPED drop the entry. A
++    // string-typed id fails the `as_u64` extraction, so the whole attachment
++    // is filtered out by `from_json`'s `filter_map`, not just its id field.
++    #[test]
++    fn attachment_with_wrong_typed_id_is_dropped() {
++        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
++          "container": { "recognized": true, "supported": true }, "tracks": [],
++          "attachments": [
++            { "id": "not-a-number", "file_name": "bad.ttf", "size": 10 },
++            { "id": 5, "file_name": "good.ttf", "size": 20 }
++          ] }"#;
++        let id = Identification::from_json(json).unwrap();
++        assert_eq!(id.attachments.len(), 1);
++        assert_eq!(id.attachments[0].id, 5);
++    }
++
++    // Chapters is a sum over each edition's `num_entries` (from_json). A
++    // non-numeric value fails `as_u64` and is filtered out by the sum's
++    // `filter_map`, contributing 0 rather than erroring or panicking.
++    #[test]
++    fn chapters_non_numeric_num_entries_is_skipped_not_erroring() {
++        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
++          "container": { "recognized": true, "supported": true }, "tracks": [],
++          "chapters": [ { "num_entries": "twelve" }, { "num_entries": 5 } ] }"#;
++        let id = Identification::from_json(json).unwrap();
++        assert_eq!(id.chapters, 5);
++    }
++
++    // parse_attachment's uid lookup chains `.get("properties")` before
++    // `.get("uid")`; an attachment with no "properties" key at all (not even
++    // an empty object) must still parse, with uid defaulting to None.
++    #[test]
++    fn attachment_without_properties_key_has_no_uid() {
++        let json = r#"{ "file_name": "e.mkv", "identification_format_version": 20,
++          "container": { "recognized": true, "supported": true }, "tracks": [],
++          "attachments": [ { "id": 1, "file_name": "f.ttf", "size": 10 } ] }"#;
++        let id = Identification::from_json(json).unwrap();
++        assert_eq!(id.attachments.len(), 1);
++        assert_eq!(id.attachments[0].uid, None);
++    }
+ }
+diff --git a/crates/muxsmith-core/tests/command.rs b/crates/muxsmith-core/tests/command.rs
+index 4678990..4e754a2 100644
+--- a/crates/muxsmith-core/tests/command.rs
++++ b/crates/muxsmith-core/tests/command.rs
+@@ -202,20 +202,158 @@ fn unmatched_donor_rule_opens_no_input_group() {
+         "unmatched donor source must not open an input group: {argv:?}"
+     );
+ 
+     let track_order = argv
+         .iter()
+         .position(|a| a == "--track-order")
+         .map(|i| argv[i + 1].as_str());
+     assert_eq!(track_order, Some("0:0"));
+ }
+ 
++// Golden pin (gap T-i): drop-mode `--track-order` when `track_id: None`
++// assignments are interleaved BETWEEN `Some` ones across the primary and two
++// distinct donors, not just trailing a single donor as in
++// `unmatched_donor_rule_opens_no_input_group`. Pins two facts about
++// `push_track_order`/`input_groups` together: (1) `None` assignments are
++// skipped in place without shifting the ordering of the `Some` ones around
++// them, wherever they sit in profile order; (2) a group's index is assigned
++// by first-appearance of a `Some` assignment on that source, so a donor
++// hit only by a later rule (donor A, rule 3) gets a HIGHER group index than
++// one first hit earlier (donor B, rule 2), even though donor A is also
++// referenced (unsuccessfully) by an earlier, `None` rule (rule 1). A wholly
++// unreferenced-by-any-Some donor (rule 4) opens no group at all, confirming
++// that holds even amid this denser mix.
++#[test]
++fn donor_ordering_drop_mode_with_mixed_none_and_some_assignments() {
++    let plan = Plan {
++        source: p("/m/e.mkv"),
++        output: p("/out/e.mkv"),
++        keep_unmatched: false,
++        primary_track_ids: vec![0],
++        assignments: vec![
++            Assignment {
++                rule_index: 0,
++                source: p("/m/e.mkv"),
++                track_id: Some(0),
++                track_kind: Some("video".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 1,
++                source: p("/m/e.en.srt"),
++                track_id: None,
++                track_kind: None,
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 2,
++                source: p("/m/e.ac3"),
++                track_id: Some(0),
++                track_kind: Some("audio".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 3,
++                source: p("/m/e.en.srt"),
++                track_id: Some(0),
++                track_kind: Some("subtitles".into()),
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 4,
++                source: p("/m/e.commentary.ac3"),
++                track_id: None,
++                track_kind: None,
++                changes: vec![],
++            },
++        ],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Clear,
++    };
++    let argv = muxsmith_core::command::command(&plan);
++
++    assert!(
++        !argv.iter().any(|a| a == "/m/e.commentary.ac3"),
++        "a source with only None assignments must never open an input group: {argv:?}"
++    );
++
++    let track_order = argv
++        .iter()
++        .position(|a| a == "--track-order")
++        .map(|i| argv[i + 1].as_str());
++    assert_eq!(
++        track_order,
++        Some("0:0,1:0,2:0"),
++        "None assignments must be skipped in place; groups indexed by \
++         first-Some-appearance (primary=0, e.ac3=1, e.en.srt=2), got {argv:?}"
++    );
++}
++
++// Golden pin (gap T-i): keep-mode counterpart. D20's primary-then-donors
++// order (`push_track_order_keep`) must also skip a `None` donor assignment
++// in place rather than emitting a bogus entry for it, while still listing
++// every REAL donor assignment that follows, in profile order.
++#[test]
++fn donor_ordering_keep_mode_with_mixed_none_and_some_assignments() {
++    let plan = Plan {
++        source: p("/m/show.mkv"),
++        output: p("/out/show.mkv"),
++        keep_unmatched: true,
++        primary_track_ids: vec![0, 1],
++        assignments: vec![
++            Assignment {
++                rule_index: 0,
++                source: p("/m/missing.srt"),
++                track_id: None,
++                track_kind: None,
++                changes: vec![],
++            },
++            Assignment {
++                rule_index: 1,
++                source: p("/m/donor.srt"),
++                track_id: Some(0),
++                track_kind: Some("subtitles".into()),
++                changes: vec![],
++            },
++        ],
++        attachments: AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
++            add_files: vec![],
++        },
++        chapters: ChapterSource::Keep,
++        tags: TagFlags {
++            global_keep: true,
++            track_keep: true,
++        },
++        title: TitleAction::Keep,
++    };
++    let argv = muxsmith_core::command::command(&plan);
++    let track_order = argv
++        .iter()
++        .position(|a| a == "--track-order")
++        .map(|i| argv[i + 1].as_str());
++    assert_eq!(
++        track_order,
++        Some("0:0,0:1,1:0"),
++        "keep-mode must skip the None donor assignment and still list the \
++         real donor trailing every primary track (D20), got {argv:?}"
++    );
++}
++
+ #[test]
+ fn per_track_properties_and_multi_group() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
+         primary_track_ids: vec![0, 1],
+         assignments: vec![
+             Assignment {
+                 rule_index: 0,
+diff --git a/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json b/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
+index d5e3db7..231bc3b 100644
+--- a/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
++++ b/crates/muxsmith-core/tests/fixtures/identify/with-attachments.json
+@@ -1,15 +1,16 @@
+ {
++  "_comment": "Ids mirror real mkvmerge -J wire format (source of truth), verified against mkvmerge v100: attachment ids are 1-based, track ids stay 0-based. Ignored by Identification::from_json, which reads only named keys.",
+   "attachments": [
+-    { "id": 0, "file_name": "a.ttf", "size": 100 },
+-    { "id": 1, "file_name": "b.otf", "size": 100 },
+-    { "id": 2, "file_name": "cover.jpg", "size": 100 }
++    { "id": 1, "file_name": "a.ttf", "size": 100 },
++    { "id": 2, "file_name": "b.otf", "size": 100 },
++    { "id": 3, "file_name": "cover.jpg", "size": 100 }
+   ],
+   "chapters": [],
+   "container": { "recognized": true, "supported": true, "type": "Matroska" },
+   "errors": [],
+   "file_name": "Show.S01E01.mkv",
+   "global_tags": [],
+   "identification_format_version": 20,
+   "track_tags": [],
+   "tracks": [
+     {
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index f76ca41..5971c46 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -4,22 +4,23 @@ use muxsmith_core::identify::Identification;
+ use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::match_expr::Scalar;
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::report::{DiagCode, Severity};
+ 
+ mod support;
+ use support::{FakeIdent, lang};
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+-// Task 8: one video track plus three attachments (id0 "a.ttf", id1 "b.otf",
+-// id2 "cover.jpg"), the fixture the brief's attachment-rule test cases use.
++// Task 8: one video track plus three attachments (id1 "a.ttf", id2 "b.otf",
++// id3 "cover.jpg" - 1-based, mkvmerge -J wire format), the fixture the
++// brief's attachment-rule test cases use.
+ const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
+ 
+ fn plan_one(
+     profile_yaml: &str,
+     file_name: &str,
+     ident_json: &str,
+ ) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join(file_name), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+@@ -1208,41 +1209,42 @@ tracks:
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::AmbiguousExternal)
+         .unwrap_or_else(|| panic!("expected AmbiguousExternal, got: {:?}", fr.diagnostics));
+     assert_eq!(d.config_path, "chapters.external");
+     assert_eq!(d.params.get("count").map(String::as_str), Some("2"));
+ }
+ 
+ // Task 8: a `select` rule keeps only the attachments it matches; `unmatched:
+-// drop` removes everything else, reducing to `Subset` of just the matched id.
++// drop` removes everything else, reducing to `Subset` of just the matched id
++// (1-based: WITH_ATTACHMENTS' "a.ttf" is id 1, mkvmerge -J wire format).
+ #[test]
+ fn attachment_select_rule_keeps_matched_and_unmatched_drop_removes_rest() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: drop
+   rules:
+     - select: { substring: { file_name: .ttf } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0])
++        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1])
+     );
+ }
+ 
+ // Task 8: no rules at all, `unmatched: keep` -> every attachment falls
+ // through to `unmatched` and is kept, reducing to `KeepAll`.
+ #[test]
+ fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+@@ -1278,42 +1280,44 @@ attachments:
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+         muxsmith_core::planner::PrimaryAttachments::DropAll
+     );
+ }
+ 
+-// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id2);
+-// `unmatched: keep` keeps the other two, reducing to `Subset([0, 1])`.
++// Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id 3);
++// `unmatched: keep` keeps the other two, reducing to `Subset([1, 2])`
++// (1-based: WITH_ATTACHMENTS' "a.ttf"/"b.otf" are ids 1/2, mkvmerge -J wire
++// format).
+ #[test]
+ fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: keep
+   rules:
+     - drop: { substring: { file_name: cover } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![0, 1])
++        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1, 2])
+     );
+ }
+ 
+ // Task 8 (D12): an `add` locator attaches ALL files it matches, not just one;
+ // both fonts land in `add_files`, in the locator's sorted order.
+ #[test]
+ fn attachment_add_locator_attaches_all_matching_files() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("b.ttf"), b"font-b").unwrap();

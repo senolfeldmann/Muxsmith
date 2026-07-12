@@ -1,0 +1,328 @@
+# Review package: 374005a..8188bf8
+
+## Commits
+8188bf8 feat(cli): empty batch speaks - always print the batch summary (#8)
+
+## Files changed
+ crates/muxsmith-cli/src/commands/dry_run.rs |  2 +-
+ crates/muxsmith-cli/src/commands/mod.rs     | 32 +++++++++++++++---
+ crates/muxsmith-cli/src/commands/run.rs     |  7 +++-
+ crates/muxsmith-cli/tests/dry_run_cli.rs    | 50 +++++++++++++++++++++++++++++
+ crates/muxsmith-cli/tests/run_cli.rs        | 47 +++++++++++++++++++++++++++
+ locales/en/cli.ftl                          |  1 +
+ 6 files changed, 133 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/dry_run.rs b/crates/muxsmith-cli/src/commands/dry_run.rs
+index 90677e6..de3644b 100644
+--- a/crates/muxsmith-cli/src/commands/dry_run.rs
++++ b/crates/muxsmith-cli/src/commands/dry_run.rs
+@@ -112,14 +112,14 @@ pub fn run(
+         mkv: &mkv,
+     };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang);
+ 
+     if json {
+         println!("{}", batch_document(&config_diags, &batch, renderer));
+     } else {
+         for d in &config_diags {
+             println!("{}", renderer.diagnostic(d));
+         }
+-        print_batch_human(&batch, renderer);
++        print_batch_human(&batch, &run.source, &profile.input.extensions, renderer);
+     }
+     diag_exit_code(&config_diags, &batch)
+ }
+diff --git a/crates/muxsmith-cli/src/commands/mod.rs b/crates/muxsmith-cli/src/commands/mod.rs
+index 03ffee6..b333497 100644
+--- a/crates/muxsmith-cli/src/commands/mod.rs
++++ b/crates/muxsmith-cli/src/commands/mod.rs
+@@ -1,18 +1,20 @@
+ //! One module per CLI subcommand (spec 8.1); each wraps a core operation
+ //! and renders its diagnostics via [`crate::i18n::Renderer`].
+ 
+ pub mod dry_run;
+ pub mod identify;
+ pub mod run;
+ pub mod validate;
+ 
++use std::path::Path;
++
+ use muxsmith_core::planner::Batch;
+ use muxsmith_core::report::{Diagnostic, Severity};
+ 
+ use crate::i18n::Renderer;
+ 
+ /// Every diagnostic belonging to a planned [`Batch`] plus the config-time
+ /// set collected before it ran: config-time, then batch-level, then
+ /// per-file, in that order. Shared by `dry-run` and `run` (spec 5.5): both
+ /// re-plan via `plan_batch` and fold the same diagnostic set into their
+ /// exit code.
+@@ -33,24 +35,35 @@ pub(crate) fn all_diags<'a>(
+ pub(crate) fn diag_exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 {
+     match all_diags(config_diags, batch).map(|d| d.severity).max() {
+         Some(Severity::Error) => 2,
+         Some(Severity::Warning) => 1,
+         _ => 0,
+     }
+ }
+ 
+ /// Prints a planned [`Batch`] in dry-run's human format (spec 5.5): per file
+ /// its identifier, its assignments and output path when it has a plan, then
+-/// its diagnostics; then batch-level diagnostics and suggestions. Shared
+-/// verbatim by `dry-run` and `run`: spec 5.5 requires `run` to re-plan and
+-/// print exactly this report before executing.
+-pub(crate) fn print_batch_human(batch: &Batch, renderer: &Renderer) {
++/// its diagnostics; then batch-level diagnostics and suggestions; then a
++/// trailing batch summary line naming how many files matched, `root`, and
++/// `extensions` (ROADMAP "Empty-batch human output" gap, ticket #8).
++/// Unconditional: the empty batch (zero files, zero diagnostics, zero
++/// suggestions) still prints this one line ("0 files matched (searched
++/// ..., extensions ...)"), so human mode never exits clean and silent the
++/// way it did before. Shared verbatim by `dry-run` and `run`: spec 5.5
++/// requires `run` to re-plan and print exactly this report before
++/// executing.
++pub(crate) fn print_batch_human(
++    batch: &Batch,
++    root: &Path,
++    extensions: &[String],
++    renderer: &Renderer,
++) {
+     for f in &batch.files {
+         println!(
+             "{}",
+             renderer.msg(
+                 "dry-run-file",
+                 &[
+                     ("file", &f.source.display().to_string()),
+                     ("id", &f.identifier),
+                 ],
+             )
+@@ -84,11 +97,22 @@ pub(crate) fn print_batch_human(batch: &Batch, renderer: &Renderer) {
+     for d in &batch.batch_diagnostics {
+         println!("{}", renderer.diagnostic(d));
+     }
+     for s in &batch.suggestions {
+         println!(
+             "{}",
+             renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)])
+         );
+         println!("{}", s.yaml_fragment);
+     }
++    println!(
++        "{}",
++        renderer.msg(
++            "dry-run-summary",
++            &[
++                ("count", &batch.files.len().to_string()),
++                ("root", &root.display().to_string()),
++                ("extensions", &extensions.join(", ")),
++            ],
++        )
++    );
+ }
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index a9459af..5ec9794 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -143,21 +143,26 @@ pub fn run(
+     let mut ident = LiveIdentifier {
+         cache: IdentifyCache::new(),
+         mkv: &mkv,
+     };
+     let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
+ 
+     if !json {
+         for d in &config_diags {
+             println!("{}", renderer.diagnostic(d));
+         }
+-        print_batch_human(&batch, renderer);
++        print_batch_human(
++            &batch,
++            &run_inputs.source,
++            &profile.input.extensions,
++            renderer,
++        );
+     }
+ 
+     // error-severity files already carry `plan: None` (spec 5.1), so this
+     // filter_map is also the "does this file get muxed" gate.
+     let specs: Vec<JobSpec> = batch
+         .files
+         .iter()
+         .filter_map(|f| f.plan.as_ref())
+         .map(|p| JobSpec {
+             argv: command(p),
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index b49d7b0..51ddf07 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -194,20 +194,70 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
+         "expected a non-empty config_diagnostics specifically, got: {report}"
+     );
+     for d in &all_diags {
+         let rendered = d["rendered"]
+             .as_str()
+             .unwrap_or_else(|| panic!("diagnostic missing rendered field: {d}"));
+         assert!(!rendered.is_empty(), "empty rendered text for {d}");
+     }
+ }
+ 
++/// Task 8 (#8): human mode must speak even when nothing matched, not stay
++/// silent on a clean exit. A clean profile over an empty source directory
++/// plans zero primaries; asserts the batch summary line names the zero
++/// count, the searched root, and the configured extensions (compare
++/// `run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent`
++/// in run_cli.rs).
++#[test]
++fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
++    if !have_mkvmerge() {
++        eprintln!("mkvmerge not found; skipping");
++        return;
++    }
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("p.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++
++    let out = Command::cargo_bin("muxsmith")
++        .unwrap()
++        .args(["dry-run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .output()
++        .unwrap();
++
++    assert!(
++        out.status.success(),
++        "exit: {:?}, stderr: {}",
++        out.status.code(),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    assert!(
++        stdout.contains("0 files matched"),
++        "expected the zero-count batch summary line, got stdout: {stdout}"
++    );
++    assert!(
++        stdout.contains(&dir.path().display().to_string()),
++        "expected the searched root in the summary line, got stdout: {stdout}"
++    );
++    assert!(
++        stdout.contains("mkv"),
++        "expected the configured extensions in the summary line, got stdout: {stdout}"
++    );
++}
++
+ /// Points a child process's PATH at a directory with no `mkvmerge`, so
+ /// `Mkvmerge::locate()` fails deterministically regardless of whether the
+ /// real mkvmerge is installed on the machine running the test. Confirmed by
+ /// hand (see F1 fix report) that `Command::new("mkvmerge")` under an
+ /// overridden child `PATH` fails with a spawn error, which `locate()` maps
+ /// to `RuntimeError::NotFound`.
+ fn empty_path_dir() -> tempfile::TempDir {
+     tempfile::tempdir().unwrap()
+ }
+ 
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index b76e538..ef160a3 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -318,20 +318,67 @@ fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_su
+         )
+     });
+     assert_eq!(report["files"].as_array().unwrap().len(), 0);
+     assert_eq!(report["jobs"].as_array().unwrap().len(), 0);
+     assert_eq!(
+         report["summary"],
+         serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+     );
+ }
+ 
++/// Task 8 (#8): human mode must speak even when nothing matched, not stay
++/// silent on a clean exit. Same empty-source-dir fixture as the `--json`
++/// sibling above, without `--json`: asserts the batch summary line names
++/// the zero count, the searched root, and the configured extensions.
++#[test]
++fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
++    if !have_mkvmerge() {
++        eprintln!("mkvmerge not found; skipping");
++        return;
++    }
++    let dir = tempfile::tempdir().unwrap();
++    let profile = dir.path().join("p.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++    )
++    .unwrap();
++
++    let out = muxsmith()
++        .args(["run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .output()
++        .unwrap();
++
++    assert!(
++        out.status.success(),
++        "exit: {:?}, stderr: {}",
++        out.status.code(),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let stdout = String::from_utf8_lossy(&out.stdout);
++    assert!(
++        stdout.contains("0 files matched"),
++        "expected the zero-count batch summary line, got stdout: {stdout}"
++    );
++    assert!(
++        stdout.contains(&dir.path().display().to_string()),
++        "expected the searched root in the summary line, got stdout: {stdout}"
++    );
++    assert!(
++        stdout.contains("mkv"),
++        "expected the configured extensions in the summary line, got stdout: {stdout}"
++    );
++}
++
+ /// Task 9 (D15): the mkvmerge-not-found path must surface the same document
+ /// dry-run's `config_only_json` builds for the same condition (spec 5.5
+ /// superset-of-validate guarantee), extended with an empty `jobs` array and
+ /// a zeroed `summary`. Forces the condition via an empty `PATH`, so this
+ /// does not depend on whether the test machine actually has mkvmerge
+ /// installed (compare `dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing`
+ /// in dry_run_cli.rs).
+ #[test]
+ fn run_json_surfaces_the_mkvmerge_not_found_document() {
+     let dir = tempfile::tempdir().unwrap();
+diff --git a/locales/en/cli.ftl b/locales/en/cli.ftl
+index 3921fcf..f294a9a 100644
+--- a/locales/en/cli.ftl
++++ b/locales/en/cli.ftl
+@@ -4,20 +4,21 @@ diagnostic-line = [{ $severity }] { $config_path }: { $message }
+ diagnostic-line-file = [{ $severity }] { $file } { $config_path }: { $message }
+ mkvmerge-not-found = mkvmerge was not found on PATH. Install MKVToolNix or set the mkvmerge path.
+ mkvmerge-query-failed = Querying mkvmerge failed.
+ identify-failed = Could not identify { $file }.
+ identify-not-media = { $file } is not a recognized media file.
+ identify-track-line = Track { $id }: { $type } [{ $codec }] { $language }
+ dry-run-file = { $file } (identifier: { $id })
+ dry-run-assignment =   rule { $rule } -> track { $track }
+ dry-run-output =   output: { $path }
+ dry-run-suggestion = Suggestion for { $config_path }:
++dry-run-summary = { $count } files matched (searched { $root }, extensions { $extensions })
+ run-job-start = [{ $index }/{ $total }] { $output } ... start
+ run-job-progress = [{ $index }/{ $total }] { $output } ... { $percent }%
+ run-job-notice = [{ $index }/{ $total }] { $output } ... { $text }
+ run-job-ok = [{ $index }/{ $total }] { $output } ... ok ({ $seconds }s)
+ run-job-warning = [{ $index }/{ $total }] { $output } ... warning ({ $count ->
+     [one] 1 warning
+    *[other] { $count } warnings
+ }, { $seconds }s)
+ run-job-failed = [{ $index }/{ $total }] { $output } ... failed (exit { $code })
+ run-job-cancelled = [{ $index }/{ $total }] { $output } ... cancelled

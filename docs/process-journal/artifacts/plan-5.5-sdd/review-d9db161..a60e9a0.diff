@@ -1,0 +1,362 @@
+# Review package: d9db161..a60e9a0
+
+## Commits
+a60e9a0 fix(planner): EmptyPlan decided post-finalize, batch-report test (T6 review)
+c09875e feat(planner): warn when a plan resolves to zero tracks (#6)
+
+## Files changed
+ crates/muxsmith-cli/tests/dry_run_cli.rs         | 74 ++++++++++++++++++++++++
+ crates/muxsmith-core/src/planner.rs              | 38 ++++++++++--
+ crates/muxsmith-core/src/report/mod.rs           |  9 +++
+ crates/muxsmith-core/tests/planner_resolution.rs | 69 ++++++++++++++++++++++
+ locales/en/diagnostics.ftl                       |  1 +
+ 5 files changed, 187 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index b49d7b0..b9a0706 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -194,20 +194,94 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
+         "expected a non-empty config_diagnostics specifically, got: {report}"
+     );
+     for d in &all_diags {
+         let rendered = d["rendered"]
+             .as_str()
+             .unwrap_or_else(|| panic!("diagnostic missing rendered field: {d}"));
+         assert!(!rendered.is_empty(), "empty rendered text for {d}");
+     }
+ }
+ 
++/// Task 6 review finding 2: an `EmptyPlan`-only batch (a plan resolving to
++/// zero output tracks, warning severity, spec 5.2) must surface end-to-end
++/// through `--json`, not just in the core-crate unit tests. The fixture's
++/// only audio track is tagged `eng`; the profile's only rule is `optional`
++/// and requires `de`, so it is satisfied-but-unmatched and the plan renders
++/// with zero assignments. Exit code mirrors mkvmerge: 1, since the worst
++/// diagnostic present is a warning, not an error.
++#[test]
++fn dry_run_json_surfaces_empty_plan_batch_report() {
++    if !have_mkvmerge() {
++        eprintln!("mkvmerge not found; skipping");
++        return;
++    }
++    let dir = tempfile::tempdir().unwrap();
++    let wav = concat!(
++        env!("CARGO_MANIFEST_DIR"),
++        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
++    );
++    let media = dir.path().join("Show.S01E01.mkv");
++    let ok = Command::new("mkvmerge")
++        .args(["-q", "-o"])
++        .arg(&media)
++        .args(["--language", "0:eng"])
++        .arg(wav)
++        .status()
++        .unwrap()
++        .success();
++    assert!(ok);
++
++    let profile = dir.path().join("p.yaml");
++    std::fs::write(
++        &profile,
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio, language: de } }\n      optional: true\n",
++    )
++    .unwrap();
++
++    let out = Command::cargo_bin("muxsmith")
++        .unwrap()
++        .args(["dry-run"])
++        .arg(&profile)
++        .args(["--source"])
++        .arg(dir.path())
++        .args(["--output"])
++        .arg(dir.path().join("out"))
++        .arg("--json")
++        .output()
++        .unwrap();
++
++    assert_eq!(
++        out.status.code(),
++        Some(1),
++        "stdout: {}, stderr: {}",
++        String::from_utf8_lossy(&out.stdout),
++        String::from_utf8_lossy(&out.stderr)
++    );
++    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
++        panic!(
++            "json report: {e}, stderr: {}",
++            String::from_utf8_lossy(&out.stderr)
++        )
++    });
++    let files = report["files"].as_array().unwrap();
++    assert_eq!(files.len(), 1, "expected one file, got: {report}");
++    assert!(
++        files[0]["plan"].is_object(),
++        "expected a rendered (non-null) plan, got: {report}"
++    );
++    let diags = files[0]["diagnostics"].as_array().unwrap();
++    assert!(
++        diags.iter().any(|d| d["code"] == "empty-plan"),
++        "expected an empty-plan diagnostic, got: {report}"
++    );
++}
++
+ /// Points a child process's PATH at a directory with no `mkvmerge`, so
+ /// `Mkvmerge::locate()` fails deterministically regardless of whether the
+ /// real mkvmerge is installed on the machine running the test. Confirmed by
+ /// hand (see F1 fix report) that `Command::new("mkvmerge")` under an
+ /// overridden child `PATH` fails with a spawn error, which `locate()` maps
+ /// to `RuntimeError::NotFound`.
+ fn empty_path_dir() -> tempfile::TempDir {
+     tempfile::tempdir().unwrap()
+ }
+ 
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 71be796..71b18a1 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -265,20 +265,21 @@ pub fn plan_core(
+     // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
+     // resolved donors, not just the current one's, so it runs as its own
+     // pass before anything drops a plan. Then drop plans with resolution
+     // errors, so collision detection only considers files that will actually
+     // produce output; then re-drop any plan that a collision error just
+     // invalidated.
+     detect_source_overwrites(&mut files, &primary_paths);
+     finalize_plans(&mut files);
+     detect_output_collisions(&mut files, policy);
+     finalize_plans(&mut files);
++    detect_empty_plans(&mut files);
+ 
+     Batch {
+         files,
+         batch_diagnostics,
+         suggestions: Vec::new(),
+     }
+ }
+ 
+ /// Plans the whole batch and attaches batch-validated suggestions (spec 5).
+ pub fn plan_batch(
+@@ -568,32 +569,34 @@ fn resolve_file(
+     let chapters = resolve_chapters(profile, primary, primary_dir, &mut diagnostics);
+     let attachments = resolve_attachments(
+         profile,
+         primary,
+         primary_dir,
+         &ident.attachments,
+         lang,
+         &mut diagnostics,
+     );
+ 
++    let keep_unmatched = matches!(
++        profile.tracks.unmatched,
++        crate::profile::model::KeepDrop::Keep
++    );
++
+     let plan = output.map(|output| Plan {
+         source: primary.path.clone(),
+         output,
+         assignments,
+         attachments,
+         chapters,
+         tags,
+         title,
+-        keep_unmatched: matches!(
+-            profile.tracks.unmatched,
+-            crate::profile::model::KeepDrop::Keep
+-        ),
++        keep_unmatched,
+         primary_track_ids: ident.tracks.iter().map(|t| t.id).collect(),
+     });
+ 
+     FileReport {
+         source: primary.path.clone(),
+         identifier: primary.identifier.whole.clone(),
+         plan,
+         diagnostics,
+     }
+ }
+@@ -979,20 +982,47 @@ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
+         // "skip" on an on-disk collision means the output is not produced
+         // (bug E), even though the diagnostic above is only a Warning;
+         // `finalize_plans` only drops Error-severity plans, so null it here
+         // explicitly rather than relying on that pass.
+         if !planned_twice && policy == CollisionPolicy::Skip {
+             f.plan = None;
+         }
+     }
+ }
+ 
++// EmptyPlan (spec 5.2, D18/#6): a plan that survived both finalize_plans
++// passes above still resolved zero output tracks. Runs last, after the
++// cross-file passes (`detect_source_overwrites`, `detect_output_collisions`)
++// and their finalize calls, so `f.plan.is_some()` here already means "no
++// error, local or cross-file, doomed this file's plan" - a file that
++// resolves to zero tracks locally but then loses its plan to a cross-file
++// error never gets this warning stacked on top of that error. `Plan`'s
++// `assignments`/`keep_unmatched`/`primary_track_ids` are public, so
++// has-tracks is fully recomputable from the surviving plan alone; no
++// severity scan needed.
++fn detect_empty_plans(files: &mut [FileReport]) {
++    for f in files.iter_mut() {
++        let Some(plan) = &f.plan else { continue };
++        // Either a rule matched (`Assignment::track_id` is `Some`), or,
++        // under `keep`, the primary's own tracks pass through untouched
++        // regardless of rule matches (D20: "keep = match to what is
++        // already there", so a non-empty primary counts as matched even
++        // when no rule fired).
++        let has_tracks = plan.assignments.iter().any(|a| a.track_id.is_some())
++            || (plan.keep_unmatched && !plan.primary_track_ids.is_empty());
++        if !has_tracks {
++            f.diagnostics
++                .push(Diagnostic::warning(DiagCode::EmptyPlan, "tracks").for_file(&f.source));
++        }
++    }
++}
++
+ // Drop the plan for any file that has an error-severity diagnostic (spec 5.1).
+ fn finalize_plans(files: &mut [FileReport]) {
+     for f in files.iter_mut() {
+         if f.diagnostics.iter().any(|d| d.severity == Severity::Error) {
+             f.plan = None;
+         }
+     }
+ }
+ 
+ // A candidate refinement plus the concrete delta to splice into the rule.
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index fe28e71..6f2451d 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -119,20 +119,29 @@ diag_codes! {
+     /// An external locator (track rule or chapters) found two or more candidate files; exactly one donor is required (spec 4.6).
+     AmbiguousExternal => "ambiguous-external",
+     /// A discovered primary or resolved donor file exists but mkvmerge could not identify it (spec 5.2); `detail` carries the underlying error text.
+     UnidentifiableSource => "unidentifiable-source",
+     /// A primary source mkvmerge identified (exit 0) whose container it does
+     /// not recognize or support, so it cannot be muxed. Distinct from
+     /// `UnidentifiableSource` (mkvmerge exited non-zero). A recognized,
+     /// supported container with zero tracks is NOT this code (stays a
+     /// per-rule `missing-track`).
+     UnsupportedSource => "unsupported-source",
++    /// A plan that survived every finalize pass (no error-severity
++    /// diagnostic on the file, local or cross-file) still resolved zero
++    /// track assignments: mkvmerge exits 0 and writes a valid but
++    /// track-less MKV (verified live, Plan 3 whole-branch review), which
++    /// would otherwise pass silently. Does not fire for a `tracks.unmatched:
++    /// keep` plan whose primary carries at least one track (D20: "keep =
++    /// match to what is already there", so the passthrough counts as
++    /// matched).
++    EmptyPlan => "empty-plan",
+     /// Rendered output path already exists or is produced by two plans; severity follows the `on_collision` policy (spec 4.8).
+     OutputCollision => "output-collision",
+     /// The rendered output filename contains a path separator (`/` or `\`); v1 never creates subdirectories, checked on the rendered name on all platforms (spec 4.8). `name` param carries the rendered name.
+     PathSeparatorInRenderedName => "path-separator-in-rendered-name",
+     /// The rendered output filename has an empty stem or is `.`/`..` (spec 4.8); the ".mkv appended if missing" rule would otherwise produce a hidden or invalid file. `name` param carries the rendered name.
+     EmptyRenderedName => "empty-rendered-name",
+     /// An output path equals an input path: a hard error regardless of collision policy, since sources are never modified (spec 4.8).
+     SourceOverwrite => "source-overwrite",
+     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
+     DuplicateIdentifier => "duplicate-identifier",
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 770f498..1e0c7b9 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1569,10 +1569,79 @@ attachments:
+     let plan = fr.plan.as_ref().unwrap();
+     assert!(plan.attachments.add_files.is_empty());
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::MissingExternal)
+         .unwrap_or_else(|| panic!("expected MissingExternal, got: {:?}", fr.diagnostics));
+     assert_eq!(d.config_path, "attachments.rules[0].add");
+     assert_eq!(d.severity, Severity::Warning);
+ }
++
++// Task 6 (#6, ROADMAP "Zero-track plan warning"): a plan resolving to zero
++// output tracks used to mux a valid-but-empty MKV silently (exit 0, no
++// diagnostic - verified live against mkvmerge in the Plan-3 whole-branch
++// review). Decided (Şenol 2026-07-11, sweep walkthrough #6): a per-file
++// WARNING, one sane default, no error/skip alternative (that variance is
++// parked in IDEAS.md #5, deliberately not built).
++#[test]
++fn empty_plan_warns_when_all_optional_rules_match_nothing() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: audio, language: de } }
++      optional: true
++"#;
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    // The plan still renders, unchanged: a satisfied `optional` rule is not
++    // an error (spec 5.1), just an unmatched assignment.
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert_eq!(plan.assignments.len(), 1);
++    assert_eq!(plan.assignments[0].track_id, None);
++    let empty_plan_warnings: Vec<_> = fr
++        .diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::EmptyPlan)
++        .collect();
++    assert_eq!(empty_plan_warnings.len(), 1, "diags: {:?}", fr.diagnostics);
++    assert_eq!(empty_plan_warnings[0].severity, Severity::Warning);
++    assert_eq!(
++        empty_plan_warnings[0].file.as_deref(),
++        Some(fr.source.as_path())
++    );
++}
++
++// Task 6 (D20 semantics): under `tracks.unmatched: keep`, the primary's own
++// tracks always pass through untouched, even when the only rule is
++// optional and matches nothing itself - D20's "keep = match to what is
++// already there" means that passthrough already counts as matched, so
++// `EmptyPlan` naturally cannot fire on a keep-mode plan (as long as the
++// primary itself has at least one track, always true here via SERIES).
++// Same zero-rule-match profile as the warning test above, plus `unmatched:
++// keep`, to isolate the one variable that changes the outcome.
++#[test]
++fn empty_plan_does_not_fire_under_keep_unmatched_primary_passthrough() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  unmatched: keep
++  rules:
++    - match: { exact: { type: audio, language: de } }
++      optional: true
++"#;
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    assert!(plan.keep_unmatched);
++    assert!(!plan.primary_track_ids.is_empty());
++    assert!(
++        !fr.diagnostics.iter().any(|d| d.code == DiagCode::EmptyPlan),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 6537d1e..8a3a255 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -36,11 +36,12 @@ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.
+ unknown-extension = Extension "{ $extension }" is not among the extensions mkvmerge supports ({ $known }). If this is a typo, matching files are silently never found; if intentional, mkvmerge will not be able to process them.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
+ unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
++empty-plan = This plan resolves to zero output tracks; mkvmerge will still write a valid but track-less MKV.
+ suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.

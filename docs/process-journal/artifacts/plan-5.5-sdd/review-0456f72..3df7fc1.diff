@@ -1,0 +1,361 @@
+# Review package: 0456f72..3df7fc1
+
+## Commits
+3df7fc1 feat(planner): validate locator extensions against --list-types (spec §4.6)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs              |  62 ++++++-
+ crates/muxsmith-core/src/report/mod.rs           |   2 +-
+ crates/muxsmith-core/tests/planner_resolution.rs | 199 +++++++++++++++++++++++
+ 3 files changed, 255 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 62cb4ae..ebd3567 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -293,38 +293,86 @@ pub fn plan_batch(
+     batch.batch_diagnostics.extend(cap_diagnostics);
+     batch
+ }
+ 
+ fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
+     for (i, rule) in profile.tracks.rules.iter().enumerate() {
+         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
+     }
+ }
+ 
+-// Batch-wide, once per plan_core call (spec 4.2, walkthrough #3): checks
+-// `profile.input.extensions` against the runtime's `--list-types` output,
+-// mirroring `validate_language_values`'s structure. `known` is `None` when
+-// the capability is unavailable (mkvmerge absent or the query failed); the
++// Batch-wide, once per plan_core call (spec 4.2, 4.6, walkthrough #3):
++// checks `profile.input.extensions` and every locator's `extensions` (a
++// track rule's external source, `chapters`, each `attachments.rules[i].add`)
++// against the runtime's `--list-types` output, mirroring
++// `validate_language_values`'s structure. `known` is `None` when the
++// capability is unavailable (mkvmerge absent or the query failed); the
+ // check then degrades to a no-op rather than blocking planning, unlike
+ // `validate_language_values`'s `lang`, which callers must always resolve
+-// before planning can start at all.
++// before planning can start at all. No dedup by extension value: the same
++// unknown extension repeated across `input.extensions` and a locator (or
++// across two locators) gets one diagnostic per occurrence, each at its own
++// `config_path`, exactly as two repeated `input.extensions` entries always
++// did.
+ fn validate_extension_values(
+     profile: &Profile,
+     known: Option<&[String]>,
+     diags: &mut Vec<Diagnostic>,
+ ) {
+     let Some(known) = known else { return };
+-    for (i, ext) in profile.input.extensions.iter().enumerate() {
++    validate_extension_list(known, "input.extensions", &profile.input.extensions, diags);
++
++    for (i, rule) in profile.tracks.rules.iter().enumerate() {
++        if let SourceCfg::External(block) = &rule.source {
++            validate_extension_list(
++                known,
++                &format!("tracks[{i}].source.external.extensions"),
++                &block.external.extensions,
++                diags,
++            );
++        }
++    }
++    if let ChaptersCfg::External(block) = &profile.chapters {
++        validate_extension_list(
++            known,
++            "chapters.external.extensions",
++            &block.external.extensions,
++            diags,
++        );
++    }
++    for (i, rule) in profile.attachments.rules.iter().enumerate() {
++        if let Some(locator) = &rule.add {
++            validate_extension_list(
++                known,
++                &format!("attachments.rules[{i}].add.extensions"),
++                &locator.extensions,
++                diags,
++            );
++        }
++    }
++}
++
++// Shared per-list core (Task 5.9 reuse): checks one `extensions` list
++// against `known`, raising `UnknownExtension` at `{path_prefix}[i]` per
++// offending entry. Backs both `input.extensions` and every locator
++// position in `validate_extension_values`.
++fn validate_extension_list(
++    known: &[String],
++    path_prefix: &str,
++    extensions: &[String],
++    diags: &mut Vec<Diagnostic>,
++) {
++    for (i, ext) in extensions.iter().enumerate() {
+         let normalized = ext.to_ascii_lowercase();
+         if !known.contains(&normalized) {
+             diags.push(
+-                Diagnostic::warning(DiagCode::UnknownExtension, format!("input.extensions[{i}]"))
++                Diagnostic::warning(DiagCode::UnknownExtension, format!("{path_prefix}[{i}]"))
+                     .with("extension", ext.clone())
+                     .with("known", known.join(", ")),
+             );
+         }
+     }
+ }
+ 
+ // Recurses match expressions collecting exact `language` values, checking each
+ // against the runtime index (plan-time InvalidPropertyValue, D2).
+ fn walk_exact_languages(
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 6f2451d..8dfeae4 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -146,21 +146,21 @@ diag_codes! {
+     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
+     DuplicateIdentifier => "duplicate-identifier",
+     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
+     DonorIsPrimary => "donor-is-primary",
+     /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
+     IgnoredFile => "ignored-file",
+     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
+     MultipleIdentifierMatches => "multiple-identifier-matches",
+     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
+     UnknownPropertySkew => "unknown-property-skew",
+-    /// A `profile.input.extensions` entry is not among the local mkvmerge's `--list-types` output (spec 4.2); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
++    /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
+     UnknownExtension => "unknown-extension",
+     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
+     SuggestionsCapped => "suggestions-capped",
+ }
+ 
+ /// One diagnostic (spec 5.2): a data record, never prose. `code` +
+ /// `params` select and fill a message/hint template at presentation time
+ /// (spec 8.4); core itself never renders text.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Diagnostic {
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 2759c91..73a9a78 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1293,20 +1293,219 @@ tracks:
+     assert!(
+         !batch
+             .batch_diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::UnknownExtension),
+         "batch diags: {:?}",
+         batch.batch_diagnostics
+     );
+ }
+ 
++// Task 5.9 (spec 4.6): a track rule's external locator's `extensions` is
++// batch-checked against the runtime's `--list-types` output too, same as
++// `input.extensions` (Task 5). `optional: true` keeps the locator's
++// zero-hit resolution from adding its own `MissingExternal` error, so the
++// `UnknownExtension` warning is the only diagnostic under test.
++#[test]
++fn unknown_extension_in_track_rule_locator_is_batch_warning() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++    - source:
++        external: { path: '.', extensions: [srt, mp4a] }
++      match: { exact: { type: subtitles } }
++      optional: true
++"#;
++    let (batch, _dir) = plan_one_with_extensions(
++        p,
++        "Show.S01E01.mkv",
++        SERIES,
++        Some(vec!["mkv", "srt", "avi"]),
++    );
++    let unknown: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnknownExtension)
++        .collect();
++    assert_eq!(
++        unknown.len(),
++        1,
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    assert_eq!(unknown[0].severity, Severity::Warning);
++    assert_eq!(
++        unknown[0].config_path,
++        "tracks[1].source.external.extensions[1]"
++    );
++    assert_eq!(
++        unknown[0].params.get("extension").map(String::as_str),
++        Some("mp4a")
++    );
++    // Batch continues: the file still resolves to a plan despite the warning.
++    assert!(
++        batch.files[0].plan.is_some(),
++        "diags: {:?}",
++        batch.files[0].diagnostics
++    );
++}
++
++// Task 5.9 (spec 4.6): a `chapters` external locator's `extensions` is
++// checked the same way. A real `.xml` donor keeps chapters resolution from
++// raising its own `MissingExternal` error (chapters has no `optional`
++// escape, unlike a track rule's external source), isolating the
++// `UnknownExtension` warning under test.
++#[test]
++fn unknown_extension_in_chapters_locator_is_batch_warning() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.xml"), b"<Chapters/>").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++chapters:
++  external: { path: '.', extensions: [xml, mp4a], match_to_source: true }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdentWithExtensions {
++        inner: FakeIdent { by_name },
++        known_extensions: Some(vec!["mkv".into(), "xml".into()]),
++    };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++
++    let unknown: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnknownExtension)
++        .collect();
++    assert_eq!(
++        unknown.len(),
++        1,
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    assert_eq!(unknown[0].config_path, "chapters.external.extensions[1]");
++    assert_eq!(
++        unknown[0].params.get("extension").map(String::as_str),
++        Some("mp4a")
++    );
++    assert!(
++        batch.files[0].plan.is_some(),
++        "diags: {:?}",
++        batch.files[0].diagnostics
++    );
++}
++
++// Task 5.9 (spec 4.6): an `attachments.rules[i].add` locator's `extensions`
++// is checked the same way. An `add` locator's zero-hit case is a warning,
++// not an error (spec 4.9), so no donor file is needed to keep the plan
++// resolving.
++#[test]
++fn unknown_extension_in_attachments_add_locator_is_batch_warning() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: '.', extensions: [ttf, mp4a] }
++"#;
++    let (batch, _dir) = plan_one_with_extensions(
++        p,
++        "Show.S01E01.mkv",
++        SERIES,
++        Some(vec!["mkv", "ttf", "otf"]),
++    );
++    let unknown: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnknownExtension)
++        .collect();
++    assert_eq!(
++        unknown.len(),
++        1,
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    assert_eq!(
++        unknown[0].config_path,
++        "attachments.rules[0].add.extensions[1]"
++    );
++    assert_eq!(
++        unknown[0].params.get("extension").map(String::as_str),
++        Some("mp4a")
++    );
++    assert!(
++        batch.files[0].plan.is_some(),
++        "diags: {:?}",
++        batch.files[0].diagnostics
++    );
++}
++
++// Task 5.9: T5's walk never deduped `input.extensions` occurrences by
++// value (two entries with the same unknown string each get their own
++// diagnostic, keyed by their own index/path); the locator walk keeps that
++// behavior rather than introducing batch-wide dedup by extension value, so
++// the same unknown extension repeated across `input.extensions` and a
++// locator yields two independent warnings.
++#[test]
++fn unknown_extension_repeated_across_input_and_locator_is_not_deduped() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++    - source:
++        external: { path: '.', extensions: [mp4a] }
++      match: { exact: { type: subtitles } }
++      optional: true
++"#;
++    let (batch, _dir) =
++        plan_one_with_extensions(p, "Show.S01E01.mkv", SERIES, Some(vec!["mkv", "srt"]));
++    let unknown: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnknownExtension)
++        .collect();
++    assert_eq!(
++        unknown.len(),
++        2,
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    let paths: Vec<&str> = unknown.iter().map(|d| d.config_path.as_str()).collect();
++    assert!(paths.contains(&"input.extensions[1]"), "paths: {paths:?}");
++    assert!(
++        paths.contains(&"tracks[1].source.external.extensions[0]"),
++        "paths: {paths:?}"
++    );
++}
++
+ // Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
+ #[test]
+ fn chapters_drop_keyword_resolves_to_drop() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: drop
+ tracks:
+   rules:
+     - match: { exact: { type: video } }

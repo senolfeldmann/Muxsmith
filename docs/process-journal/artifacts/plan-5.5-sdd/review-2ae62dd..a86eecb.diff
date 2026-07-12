@@ -1,0 +1,440 @@
+# Review package: 2ae62dd..a86eecb
+
+## Commits
+a86eecb feat(core): once-per-batch schema-drift notice (D32 addendum, Şenol)
+
+## Files changed
+ crates/muxsmith-cli/tests/catalog_completeness.rs |   4 +
+ crates/muxsmith-core/src/planner.rs               |  46 ++++++++-
+ crates/muxsmith-core/src/report/mod.rs            |   2 +
+ crates/muxsmith-core/tests/planner_resolution.rs  | 117 ++++++++++++++++++++++
+ locales/de/diagnostics.ftl                        |   1 +
+ locales/en/diagnostics.ftl                        |   1 +
+ 6 files changed, 169 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/tests/catalog_completeness.rs b/crates/muxsmith-cli/tests/catalog_completeness.rs
+index 9cd656b..4b5331d 100644
+--- a/crates/muxsmith-cli/tests/catalog_completeness.rs
++++ b/crates/muxsmith-cli/tests/catalog_completeness.rs
+@@ -166,20 +166,24 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
+         }
+         DiagCode::IgnoredFile => {}
+         DiagCode::MultipleIdentifierMatches => {
+             args.set("name", "movie.1080p.1080p.mkv");
+         }
+         DiagCode::UnknownPropertySkew => {
+             args.set("property", "new_prop");
+             args.set("found_version", "21");
+             args.set("pinned", "20");
+         }
++        DiagCode::SchemaDrift => {
++            args.set("found_version", "21");
++            args.set("pinned", "20");
++        }
+         DiagCode::UnknownExtension => {
+             args.set("extension", "avi");
+             args.set("known", "mkv, mp4, ac3");
+         }
+         DiagCode::SuggestionsCapped => {
+             args.set("dropped", "2");
+         }
+         // `suggestion-partition`'s message selects on `kind` (planner.rs
+         // `partition_for_rule`): the `*[group]` default branch (kind other
+         // than "overflow") uses count/fix/files, the `[overflow]` branch
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index c532971..530150f 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -245,26 +245,29 @@ pub fn plan_core(
+     let primary_paths: Vec<PathBuf> = primaries.iter().map(|p| p.path.clone()).collect();
+     let output_dir = run
+         .output
+         .clone()
+         .or_else(|| profile.output.directory.clone())
+         .unwrap_or_else(|| run.source.clone());
+     let policy = run.on_collision.unwrap_or(profile.output.on_collision);
+ 
+     let mut files: Vec<FileReport> = Vec::new();
+     let mut resolved_sources: Vec<PathBuf> = Vec::new();
++    let mut found_versions: Vec<u64> = Vec::new();
+     for primary in primaries {
+-        let (report, sources) =
++        let (report, sources, format_version) =
+             resolve_file(profile, primary, &primary_paths, &output_dir, id, lang);
+         files.push(report);
+         resolved_sources.extend(sources);
++        found_versions.extend(format_version);
+     }
++    detect_schema_drift(&found_versions, &mut batch_diagnostics);
+ 
+     // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
+     // resolved donors, not just the current one's, so it runs as its own
+     // pass before anything drops a plan. Then drop plans with resolution
+     // errors, so collision detection only considers files that will actually
+     // produce output; then re-drop any plan that a collision error just
+     // invalidated.
+     detect_source_overwrites(&mut files, &primary_paths, &resolved_sources);
+     finalize_plans(&mut files);
+     detect_output_collisions(&mut files, policy);
+@@ -366,20 +369,50 @@ fn validate_extension_list(
+         if !known.contains(&normalized) {
+             diags.push(
+                 Diagnostic::warning(DiagCode::UnknownExtension, format!("{path_prefix}[{i}]"))
+                     .with("extension", ext.clone())
+                     .with("known", known.join(", ")),
+             );
+         }
+     }
+ }
+ 
++// SchemaDrift (D32 addendum, Task 16.5, Şenol 2026-07-12 ruling): once per
++// batch, info severity, decoupled from `raw:` consumption entirely (that
++// stays `UnknownPropertySkew`'s job, emitted per consumed property in
++// `emit_raw_property_skew`). Rebuilds the general "your mkvmerge speaks a
++// newer identification schema" notice T16 dropped when D32 repurposed
++// `UnknownPropertySkew` to the per-property `raw:` path (that removal
++// silenced the signal even for a batch with no `raw:` property in play at
++// all). Fires when ANY identified file in `found_versions` (collected by
++// `plan_core` across every primary `resolve_file` identified, regardless of
++// container support) exceeds `PINNED_IDENTIFICATION_FORMAT_VERSION`;
++// `found_version` carries the max seen, so a mixed batch reports the most
++// skewed file rather than the first. `found_versions` is empty whenever no
++// file in the batch identified at all (mkvmerge absent, every query
++// failed), which degrades this to a no-op exactly like
++// `validate_extension_values` degrades on a `None` capability query.
++fn detect_schema_drift(found_versions: &[u64], diags: &mut Vec<Diagnostic>) {
++    let max_found = found_versions
++        .iter()
++        .copied()
++        .filter(|&v| v > PINNED_IDENTIFICATION_FORMAT_VERSION)
++        .max();
++    if let Some(found) = max_found {
++        diags.push(
++            Diagnostic::info(DiagCode::SchemaDrift, "input")
++                .with("found_version", found.to_string())
++                .with("pinned", PINNED_IDENTIFICATION_FORMAT_VERSION.to_string()),
++        );
++    }
++}
++
+ // Recurses match expressions collecting exact `language` values, checking each
+ // against the runtime index (plan-time InvalidPropertyValue, D2).
+ fn walk_exact_languages(
+     expr: &MatchExpr,
+     path: &str,
+     lang: &LanguageIndex,
+     diags: &mut Vec<Diagnostic>,
+ ) {
+     if let Some(exact) = &expr.exact
+         && let Some(Scalar::Str(v)) = exact.get("language")
+@@ -412,57 +445,65 @@ fn walk_exact_languages(
+ // donors (Task 7.5) - independent of whether the file's own plan ends up
+ // `Some`; `detect_source_overwrites` needs the latter even when this file's
+ // own output never renders (Plan-2 FINAL M2 / #7).
+ fn resolve_file(
+     profile: &Profile,
+     primary: &PrimaryFile,
+     primary_paths: &[PathBuf],
+     output_dir: &Path,
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+-) -> (FileReport, Vec<PathBuf>) {
++) -> (FileReport, Vec<PathBuf>, Option<u64>) {
+     let mut diagnostics = Vec::new();
+     let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
+ 
+     let ident = match id.identify(&primary.path) {
+         Ok(i) => i,
+         Err(e) => {
+             diagnostics.push(
+                 Diagnostic::error(DiagCode::UnidentifiableSource, "input")
+                     .for_file(&primary.path)
+                     .with("detail", format!("{e}")),
+             );
+             return (
+                 FileReport {
+                     source: primary.path.clone(),
+                     identifier: primary.identifier.whole.clone(),
+                     plan: None,
+                     diagnostics,
+                 },
+                 Vec::new(),
++                None,
+             );
+         }
+     };
++    // Every successful identification contributes its schema version to the
++    // batch-level SchemaDrift walk (`detect_schema_drift` in `plan_core`),
++    // independent of whether the container turns out supported/recognized -
++    // mkvmerge already produced a genuine `identification_format_version`
++    // for this file at this point (D32 addendum, Task 16.5).
++    let format_version = Some(ident.format_version);
+     if !ident.container_recognized || !ident.container_supported {
+         diagnostics.push(
+             Diagnostic::error(DiagCode::UnsupportedSource, "input")
+                 .for_file(&primary.path)
+                 .with("kind", "primary"),
+         );
+         return (
+             FileReport {
+                 source: primary.path.clone(),
+                 identifier: primary.identifier.whole.clone(),
+                 plan: None,
+                 diagnostics,
+             },
+             Vec::new(),
++            format_version,
+         );
+     }
+ 
+     let mut assignments = Vec::new();
+     // (source_path, track_id) -> rule indices claiming it, for overlap checks.
+     let mut claims: BTreeMap<(PathBuf, u64), Vec<usize>> = BTreeMap::new();
+ 
+     for (ri, rule) in profile.tracks.rules.iter().enumerate() {
+         let base = format!("tracks[{ri}]");
+         let (source_path, source_ident): (PathBuf, Identification) = match &rule.source {
+@@ -709,20 +750,21 @@ fn resolve_file(
+     });
+ 
+     (
+         FileReport {
+             source: primary.path.clone(),
+             identifier: primary.identifier.whole.clone(),
+             plan,
+             diagnostics,
+         },
+         resolved_sources,
++        format_version,
+     )
+ }
+ 
+ // Emits one UnknownPropertySkew warning (spec 9.2, D32) per distinct `raw:`
+ // property referenced anywhere in this rule's match expression, at the rule's
+ // `.match` path. `found_version` is the resolved source's schema version, so
+ // the message can show it against `pinned` whether the runtime schema is
+ // genuinely newer (B-9) or the same (B-10). Deduplicated per rule via the
+ // BTreeSet, which also fixes the emission order.
+ fn emit_raw_property_skew(
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 65c8f4e..522c737 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -153,20 +153,22 @@ diag_codes! {
+     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
+     DuplicateIdentifier => "duplicate-identifier",
+     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
+     DonorIsPrimary => "donor-is-primary",
+     /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
+     IgnoredFile => "ignored-file",
+     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
+     MultipleIdentifierMatches => "multiple-identifier-matches",
+     /// A `raw:`-opted property was consumed at plan time and matched untyped against a source's tracks (spec 9.2). Emitted per consumed `raw:` property with `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so one code covers both a genuinely newer runtime schema and a same-version untyped match.
+     UnknownPropertySkew => "unknown-property-skew",
++    /// At least one identified file in the batch reports an `identification_format_version` newer than this build pins (spec 9.2, D32 addendum). Batch-wide, once per batch, info severity; independent of whether any rule actually consumes a `raw:` property (that is `UnknownPropertySkew`'s job, per property). `found_version` carries the max seen across the batch, `pinned` this build's schema.
++    SchemaDrift => "schema-drift",
+     /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
+     UnknownExtension => "unknown-extension",
+     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
+     SuggestionsCapped => "suggestions-capped",
+     /// No single refinement resolves a conflicted rule across the whole batch, so the engine reports the no-single-fix partition instead (spec 5.3, D6 step 6): the affected files grouped by the per-file refinement that would resolve each. `kind=group` carries a group's `fix` (the refinement) and `files`; `kind=overflow` carries `dropped` when more than five groups were capped.
+     SuggestionPartition => "suggestion-partition",
+     // Run-time (executor)
+     /// A queue worker thread panicked while running a job -- a bug in this crate, never an mkvmerge failure (a failing mux is a plain `Failed` outcome, not a panic). The job is reported `Failed`; the panic's own payload is developer-diagnostic content, logged but never carried into this code's params.
+     WorkerPanicked => "worker-panicked",
+ }
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 11dabbb..54a820a 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -195,20 +195,137 @@ fn b11_raw_absent_missing_track_but_still_warns_no_plan() {
+     assert_eq!(d.params["found_version"], "21");
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::MissingTrack),
+         "expected MissingTrack alongside the skew warning; diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
++// D32 addendum (Task 16.5, Şenol 2026-07-12 ruling "das ist ein wichtiger
++// Hinweis"): SchemaDrift, once per batch, decoupled from `raw:` consumption
++// entirely -- fires whenever ANY identified file's own
++// `identification_format_version` exceeds PINNED (20), independent of
++// whether any rule ever reads a `raw:` property (that stays
++// UnknownPropertySkew's job, B-9..B-11 above). found_version is the max
++// seen across the batch; exactly one diagnostic regardless of file count.
++
++fn ident_json_at_version(file_name: &str, version: u64) -> String {
++    format!(
++        r#"{{ "file_name": "{file_name}", "identification_format_version": {version},
++      "container": {{ "recognized": true, "supported": true }},
++      "tracks": [ {{ "id": 0, "type": "video", "codec": "AVC" }} ] }}"#
++    )
++}
++
++fn plan_two_at_versions(a_version: u64, b_version: u64) -> (Batch, tempfile::TempDir) {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("Show.S01E02.mkv"), b"x").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(&ident_json_at_version("Show.S01E01.mkv", a_version)).unwrap(),
++    );
++    by_name.insert(
++        "Show.S01E02.mkv".to_string(),
++        Identification::from_json(&ident_json_at_version("Show.S01E02.mkv", b_version)).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    (batch, dir)
++}
++
++#[test]
++fn schema_drift_fires_once_per_batch_with_the_max_found_version() {
++    let (batch, _dir) = plan_two_at_versions(21, 23);
++    let hits: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::SchemaDrift)
++        .collect();
++    assert_eq!(hits.len(), 1, "batch diags: {:?}", batch.batch_diagnostics);
++    assert_eq!(hits[0].severity, Severity::Info);
++    assert_eq!(
++        hits[0].params.get("found_version").map(String::as_str),
++        Some("23"),
++        "expected the max of the two versions, not the first/last seen"
++    );
++    assert_eq!(hits[0].params.get("pinned").map(String::as_str), Some("20"));
++}
++
++#[test]
++fn schema_drift_all_pinned_batch_yields_none() {
++    let (batch, _dir) = plan_two_at_versions(20, 20);
++    assert!(
++        !batch
++            .batch_diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::SchemaDrift),
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++}
++
++// Mirrors `unknown_extension_check_degrades_when_runtime_unavailable`: when
++// no file in the batch identifies at all (mkvmerge absent / every query
++// failed, modeled the same way as
++// `unidentifiable_primary_yields_unidentifiable_source_not_missing_track`'s
++// empty fixture map), SchemaDrift has nothing to report and degrades to a
++// no-op instead of false-firing.
++#[test]
++fn schema_drift_degrades_when_no_file_in_the_batch_identifies() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    let profile = from_str(P_VIDEO_AUDIO, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut ident = FakeIdent {
++        by_name: HashMap::new(),
++    };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++
++    assert!(
++        !batch
++            .batch_diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::SchemaDrift),
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    assert!(
++        batch.files[0]
++            .diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::UnidentifiableSource),
++        "diags: {:?}",
++        batch.files[0].diagnostics
++    );
++}
++
+ // Task 5: a settable `language` value validated at plan time (D2), at the
+ // point of application, distinct from the batch-level `match.exact.language`
+ // walk (`bad_language_value_is_batch_invalid_property_value`).
+ #[test]
+ fn invalid_changes_language_is_plan_time_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+diff --git a/locales/de/diagnostics.ftl b/locales/de/diagnostics.ftl
+index d2e84e5..44e2832 100644
+--- a/locales/de/diagnostics.ftl
++++ b/locales/de/diagnostics.ftl
+@@ -35,20 +35,21 @@ overlapping-rules = Die Regeln { $rules } beanspruchen alle die Spur { $track }.
+ missing-track = Keine Spur passt auf diese nicht-optionale Regel.
+ missing-external = Keine Datei passt auf diesen externen Verweis.
+ ambiguous-external = { $count } Dateien passen auf diesen externen Verweis; genau eine ist erforderlich.
+ output-collision = Der Ausgabepfad { $path } kollidiert mit einer vorhandenen Datei oder einer anderen geplanten Ausgabe.
+ source-overwrite = Der Ausgabepfad { $path } würde eine Quelldatei überschreiben. Das ist niemals erlaubt.
+ duplicate-identifier = Die Dateien { $file_a } und { $file_b } teilen sich die Kennung "{ $identifier }".
+ donor-is-primary = Die externe Spender-Datei { $donor } ist selbst eine Primärquelle.
+ ignored-file = Die Datei passt auf die Erweiterungsliste, aber nicht auf das Eingabemuster.
+ multiple-identifier-matches = Das Eingabemuster passt mehr als einmal in "{ $name }"; der erste Treffer wird verwendet.
+ unknown-property-skew = Die Eigenschaft "{ $property }" wurde über ein raw:-Opt-in untypisiert abgeglichen (unter Umgehung des Fähigkeitsmodells). Dieser Build fixiert die mkvmerge-Identifikationsschema-Version { $pinned }; diese Datei meldet Version { $found_version }.
++schema-drift = Dieser Build fixiert die mkvmerge-Identifikationsschema-Version { $pinned }; mindestens eine identifizierte Datei in diesem Stapel meldet Schema-Version { $found_version }. Jede von der neueren Version hinzugefügte Eigenschaft liegt außerhalb des Fähigkeitsmodells; nutze ein raw:-Präfix, um sie untypisiert abzugleichen.
+ unknown-extension = Die Erweiterung "{ $extension }" ist keine der von mkvmerge unterstützten Erweiterungen ({ $known }). Ist dies ein Tippfehler, werden passende Dateien stillschweigend nie gefunden; ist es beabsichtigt, kann mkvmerge sie nicht verarbeiten.
+ codec-kind-exact-only = Die Eigenschaft "codec_kind" kann nur mit exact verwendet werden, nicht mit { $condition }. Gleiche stattdessen codec_id mit { $condition } ab.
+ invalid-property-value = Der Wert "{ $value }" ist für die Eigenschaft "{ $property }" nicht gültig. Zulässige Werte sind unter anderem: { $allowed }.
+ path-separator-in-rendered-name = Der erzeugte Ausgabedateiname "{ $name }" enthält ein Pfadtrennzeichen; Muxsmith legt niemals Unterverzeichnisse an.
+ empty-rendered-name = Der erzeugte Ausgabedateiname ist leer oder ungültig ("{ $name }").
+ empty-match-list = Eine "any"- oder "not"-Liste darf nicht leer sein; entferne sie oder füge mindestens einen Unterausdruck hinzu.
+ unidentifiable-source = Eine Quelldatei ist vorhanden, konnte aber nicht identifiziert werden: { $detail }.
+ unsupported-source = { $kind ->
+     [donor] mkvmerge hat den externen Spender { $donor } identifiziert, aber sein Container ist keine unterstützte Multiplex-Quelle.
+    *[primary] mkvmerge hat diese Datei identifiziert, aber ihr Container ist keine unterstützte Multiplex-Quelle.
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 1360a4f..675e1d0 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -30,20 +30,21 @@ overlapping-rules = Rules { $rules } all claim track { $track }.
+ missing-track = No track matches this non-optional rule.
+ missing-external = No file matches this external locator.
+ ambiguous-external = { $count } files match this external locator; exactly one is required.
+ output-collision = Output path { $path } collides with an existing file or another planned output.
+ source-overwrite = Output path { $path } would overwrite a source file. This is never allowed.
+ duplicate-identifier = Files { $file_a } and { $file_b } share the identifier "{ $identifier }".
+ donor-is-primary = External donor file { $donor } is itself a primary source.
+ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = Property "{ $property }" was matched untyped through a raw: opt-in (bypassing the capability model). This build pins mkvmerge identification schema version { $pinned }; this file reports version { $found_version }.
++schema-drift = This build pins mkvmerge identification schema version { $pinned }; at least one identified file in this batch reports schema version { $found_version }. Any property the newer schema adds sits outside the capability model; use a raw: prefix to match it untyped.
+ unknown-extension = Extension "{ $extension }" is not among the extensions mkvmerge supports ({ $known }). If this is a typo, matching files are silently never found; if intentional, mkvmerge will not be able to process them.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
+ unsupported-source = { $kind ->
+     [donor] mkvmerge identified external donor { $donor } but its container is not a supported muxing source.
+    *[primary] mkvmerge identified this file but its container is not a supported muxing source.

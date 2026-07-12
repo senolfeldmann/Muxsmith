@@ -1,0 +1,812 @@
+# Review package: 374005a..0ddd945
+
+## Commits
+0ddd945 feat(suggest): no-single-fix partition report (#5)
+2ddc964 feat(suggest): diagnostic signature is a multiset (R1 v)
+b1f611c feat(suggest): codec and id become narrowing dimensions (R1 iv)
+31c2135 feat(suggest): external-source rules get suggestions (#12ii)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs                | 241 ++++++++++++++++--
+ crates/muxsmith-core/src/report/mod.rs             |   2 +
+ crates/muxsmith-core/tests/suggestions.rs          | 269 +++++++++++++++++++++
+ .../specs/2026-07-08-muxsmith-v1-design.md         |   1 +
+ locales/en/diagnostics.ftl                         |   6 +
+ 5 files changed, 495 insertions(+), 24 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index bc494d1..f4d8aa7 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -962,35 +962,38 @@ fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
+ // Drop the plan for any file that has an error-severity diagnostic (spec 5.1).
+ fn finalize_plans(files: &mut [FileReport]) {
+     for f in files.iter_mut() {
+         if f.diagnostics.iter().any(|d| d.severity == Severity::Error) {
+             f.plan = None;
+         }
+     }
+ }
+ 
+ // A candidate refinement plus the concrete delta to splice into the rule.
++#[derive(Clone)]
+ struct Candidate {
+     edit: StructuredEdit,
+     apply: MatchExpr,
+     rank: (u8, String, String),
+ }
+ 
+ /// Generates and validates suggestions for every `AmbiguousRule` conflict
+-/// (spec 5.3, D6). For each conflicted primary-source rule: gather the matched
+-/// (conflicting) tracks across all affected files, derive discriminator
+-/// candidates, simulate each against the whole batch via [`plan_core`], and
+-/// keep only those that resolve the ambiguity everywhere with no new
+-/// diagnostic. Deterministic; capped at 3 per rule, with a `SuggestionsCapped`
+-/// diagnostic recording how many were dropped when more were accepted, so the
+-/// cap is never silent. OverlappingRules suggestions and the no-single-fix
+-/// partition report are deferred (Plan 2 scope note).
++/// (spec 5.3, D6). For each conflicted rule (primary or external source):
++/// gather the matched (conflicting) tracks across all affected files, derive
++/// discriminator candidates, simulate each against the whole batch via
++/// [`plan_core`], and keep only those that resolve the ambiguity everywhere
++/// with no new diagnostic. Deterministic; capped at 3 per rule, with a
++/// `SuggestionsCapped` diagnostic recording how many were dropped when more
++/// were accepted, so the cap is never silent. When no candidate resolves a
++/// rule batch-wide, the no-single-fix partition ([`partition_for_rule`]) is
++/// reported instead. OverlappingRules suggestions remain deferred (Plan 2
++/// scope note).
+ #[allow(clippy::too_many_arguments)]
+ fn suggest(
+     profile: &Profile,
+     run: &RunInputs,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+     baseline: &Batch,
+ ) -> (Vec<Suggestion>, Vec<Diagnostic>) {
+     let base_sig = diag_signature(baseline);
+@@ -1001,36 +1004,49 @@ fn suggest(
+         .flat_map(|f| f.diagnostics.iter())
+         .filter(|d| d.code == DiagCode::AmbiguousRule)
+         .filter_map(|d| rule_index_of(&d.config_path))
+         .collect();
+     conflicted.sort_unstable();
+     conflicted.dedup();
+ 
+     let mut out = Vec::new();
+     let mut cap_diagnostics = Vec::new();
+     for ri in conflicted {
+-        let Some(rule) = profile.tracks.rules.get(ri) else {
+-            continue;
+-        };
+-        // Only primary-source rules get suggestions in v1 (external deferred).
+-        if matches!(rule.source, SourceCfg::External(_)) {
++        if profile.tracks.rules.get(ri).is_none() {
+             continue;
+         }
+         let candidates = candidates_for_rule(profile, ri, primaries, id, lang);
+         let mut accepted: Vec<Candidate> = Vec::new();
+-        for cand in candidates {
++        for cand in &candidates {
+             let edited = with_rule_match(profile, ri, &cand.apply);
+             let sim = plan_core(&edited, run, primaries, id, lang);
+             if resolves_without_regression(&sim, ri, &base_sig) {
+-                accepted.push(cand);
++                accepted.push(cand.clone());
+             }
+         }
++        // No single refinement resolves the rule batch-wide: report the
++        // no-single-fix partition instead of empty suggestions (spec 5.3, D6
++        // step 6).
++        if accepted.is_empty() {
++            cap_diagnostics.extend(partition_for_rule(
++                profile,
++                run,
++                primaries,
++                id,
++                lang,
++                ri,
++                &candidates,
++                baseline,
++                &base_sig,
++            ));
++            continue;
++        }
+         accepted.sort_by(|a, b| a.rank.cmp(&b.rank));
+         let total_accepted = accepted.len();
+         accepted.truncate(3);
+         let dropped = total_accepted - accepted.len();
+         if dropped > 0 {
+             cap_diagnostics.push(
+                 Diagnostic::info(DiagCode::SuggestionsCapped, format!("tracks[{ri}].match"))
+                     .with("dropped", dropped.to_string()),
+             );
+         }
+@@ -1040,57 +1056,176 @@ fn suggest(
+                 resolves: DiagCode::AmbiguousRule,
+                 config_path: format!("tracks[{ri}].match"),
+                 yaml_fragment: fragment,
+                 edit: cand.edit,
+             });
+         }
+     }
+     (out, cap_diagnostics)
+ }
+ 
++// The no-single-fix partition report cap (spec 5.3, D6 step 6): at most this
++// many resolution groups are rendered per rule, the surplus recorded in an
++// overflow note, mirroring `SuggestionsCapped`'s never-silent cap philosophy.
++const PARTITION_GROUP_CAP: usize = 5;
++
++// Reports the no-single-fix partition for rule `ri` (spec 5.3, D6 step 6):
++// when no candidate resolves the rule batch-wide, group the affected files by
++// the per-file refinement that WOULD resolve each in isolation (its
++// top-ranked resolving candidate), so the report states "these files need one
++// narrowing, those another". One `SuggestionPartition` info diagnostic per
++// group, deterministically ordered and capped at [`PARTITION_GROUP_CAP`] with
++// an overflow note. Reuses the discriminator candidates already generated for
++// the batch-wide pass.
++#[allow(clippy::too_many_arguments)]
++fn partition_for_rule(
++    profile: &Profile,
++    run: &RunInputs,
++    primaries: &[PrimaryFile],
++    id: &mut dyn Identify,
++    lang: &LanguageIndex,
++    ri: usize,
++    candidates: &[Candidate],
++    baseline: &Batch,
++    base_sig: &BTreeMap<String, usize>,
++) -> Vec<Diagnostic> {
++    // Files whose baseline report carries an AmbiguousRule for this rule.
++    let affected: Vec<&PrimaryFile> = primaries
++        .iter()
++        .filter(|p| {
++            baseline.files.iter().any(|f| {
++                f.source == p.path
++                    && f.diagnostics.iter().any(|d| {
++                        d.code == DiagCode::AmbiguousRule
++                            && rule_index_of(&d.config_path) == Some(ri)
++                    })
++            })
++        })
++        .collect();
++
++    // group fragment (the per-file refinement, rendered once) -> member files.
++    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
++    for primary in affected {
++        let single = std::slice::from_ref(primary);
++        let mut best: Option<&Candidate> = None;
++        for cand in candidates {
++            let edited = with_rule_match(profile, ri, &cand.apply);
++            let sim = plan_core(&edited, run, single, id, lang);
++            if resolves_without_regression(&sim, ri, base_sig)
++                && best.is_none_or(|b| cand.rank < b.rank)
++            {
++                best = Some(cand);
++            }
++        }
++        if let Some(cand) = best {
++            groups
++                .entry(yaml_fragment(ri, &cand.apply))
++                .or_default()
++                .push(primary.path.display().to_string());
++        }
++    }
++
++    let total_groups = groups.len();
++    let mut diagnostics = Vec::new();
++    for (fragment, mut files) in groups.into_iter().take(PARTITION_GROUP_CAP) {
++        files.sort();
++        diagnostics.push(
++            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
++                .with("kind", "group")
++                .with("count", files.len().to_string())
++                .with("fix", fragment)
++                .with("files", files.join(", ")),
++        );
++    }
++    if total_groups > PARTITION_GROUP_CAP {
++        diagnostics.push(
++            Diagnostic::info(DiagCode::SuggestionPartition, format!("tracks[{ri}].match"))
++                .with("kind", "overflow")
++                .with("dropped", (total_groups - PARTITION_GROUP_CAP).to_string()),
++        );
++    }
++    diagnostics
++}
++
++// The identification a rule reads for one primary: the primary itself for a
++// keyword source, the single located+identified donor for an external source.
++// `None` when no single donor resolves (zero, ambiguous, or unidentifiable),
++// mirroring `resolve_file`'s source resolution so candidate generation draws
++// discriminators from the same tracks the planner matched against. This is
++// what makes the engine source-agnostic (spec 5.3, D6): an external rule's
++// ambiguity lives in its donor's tracks, not the primary's.
++fn rule_source_ident(
++    rule: &TrackRule,
++    primary: &PrimaryFile,
++    id: &mut dyn Identify,
++) -> Option<Identification> {
++    match &rule.source {
++        SourceCfg::Keyword(_) => id.identify(&primary.path).ok(),
++        SourceCfg::External(block) => {
++            let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
++            let hits =
++                discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
++            match hits.as_slice() {
++                [donor] => id.identify(donor).ok(),
++                _ => None,
++            }
++        }
++    }
++}
++
+ // Discriminator candidates for a rule, drawn from the property vectors of the
+ // tracks it ambiguously matches, across every affected file.
+ fn candidates_for_rule(
+     profile: &Profile,
+     ri: usize,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+ ) -> Vec<Candidate> {
+     let rule = &profile.tracks.rules[ri];
+     let mut raw: Vec<Candidate> = Vec::new();
+     let mut seen: std::collections::BTreeSet<(String, String, u8)> =
+         std::collections::BTreeSet::new();
+ 
+     for primary in primaries {
+-        let Ok(ident) = id.identify(&primary.path) else {
++        let Some(ident) = rule_source_ident(rule, primary, id) else {
+             continue;
+         };
+         let matched: Vec<&crate::identify::Track> = ident
+             .tracks
+             .iter()
+             .filter(|t| matcher::matches(&rule.match_expr, t, lang))
+             .collect();
+         if matched.len() < 2 {
+             continue;
+         }
+         for t in &matched {
+-            // Own the property list, including the top-level `type` pseudo-prop.
++            // Own the property list, including the top-level `type`/`codec`/
++            // `id` pseudo-props (spec 4.4 flattens these over `properties`;
++            // R1 iv makes `codec` and `id` discriminator dimensions too).
+             let mut props: Vec<(String, crate::identify::PropValue)> = t
+                 .properties
+                 .iter()
+                 .map(|(k, v)| (k.clone(), v.clone()))
+                 .collect();
+             props.push((
+                 "type".to_string(),
+                 crate::identify::PropValue::Str(t.kind.clone()),
+             ));
++            props.push((
++                "codec".to_string(),
++                crate::identify::PropValue::Str(t.codec.clone()),
++            ));
++            props.push((
++                "id".to_string(),
++                crate::identify::PropValue::Int(t.id as i64),
++            ));
+             for (prop, val) in &props {
+                 if crate::capability::matchable_type(prop).is_none() {
+                     continue;
+                 }
+                 let Some((display, scalar)) = prop_value_as(val) else {
+                     continue;
+                 };
+                 for (polarity, edit) in [
+                     (
+                         0u8,
+@@ -1208,52 +1343,62 @@ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+         }
+     }
+     if let Some(add) = &delta.not {
+         expr.not.get_or_insert_with(Vec::new).extend(add.clone());
+     }
+     p
+ }
+ 
+ // Accept iff rule `ri` has no AmbiguousRule anywhere in the simulation and no
+ // diagnostic in the simulation is absent from the baseline (no regression).
++// The signature is a multiset (R1 v): a candidate that introduces a SECOND
++// copy of an already-present (code, config_path, file) diagnostic is a
++// regression, so containment compares counts, not mere membership.
+ fn resolves_without_regression(
+     sim: &Batch,
+     ri: usize,
+-    base_sig: &std::collections::BTreeSet<String>,
++    base_sig: &std::collections::BTreeMap<String, usize>,
+ ) -> bool {
+     let still_ambiguous = sim
+         .files
+         .iter()
+         .flat_map(|f| f.diagnostics.iter())
+         .any(|d| d.code == DiagCode::AmbiguousRule && rule_index_of(&d.config_path) == Some(ri));
+     if still_ambiguous {
+         return false;
+     }
+-    diag_signature(sim).iter().all(|s| base_sig.contains(s))
++    diag_signature(sim)
++        .iter()
++        .all(|(sig, count)| base_sig.get(sig).is_some_and(|base| count <= base))
+ }
+ 
+-// A comparable signature set of all diagnostics: code + config_path + file.
+-fn diag_signature(batch: &Batch) -> std::collections::BTreeSet<String> {
+-    let mut set = std::collections::BTreeSet::new();
++// A comparable signature multiset of all diagnostics: (code + config_path +
++// file) -> occurrence count. A multiset, not a set, so two diagnostics that
++// share a signature but describe different tracks (e.g. two OverlappingRules
++// on one rule) stay counted separately (R1 v, D6 acceptance criterion b).
++fn diag_signature(batch: &Batch) -> std::collections::BTreeMap<String, usize> {
++    let mut counts = std::collections::BTreeMap::new();
+     let all = batch
+         .batch_diagnostics
+         .iter()
+         .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()));
+     for d in all {
+         let file = d
+             .file
+             .as_ref()
+             .map(|p| p.display().to_string())
+             .unwrap_or_default();
+-        set.insert(format!("{}|{}|{}", d.code.key(), d.config_path, file));
++        *counts
++            .entry(format!("{}|{}|{}", d.code.key(), d.config_path, file))
++            .or_insert(0) += 1;
+     }
+-    set
++    counts
+ }
+ 
+ fn rule_index_of(config_path: &str) -> Option<usize> {
+     let start = config_path.find("tracks[")? + "tracks[".len();
+     let end = config_path[start..].find(']')? + start;
+     config_path[start..end].parse().ok()
+ }
+ 
+ // Rank: typed flags/booleans (0) < language (1) < other exact (2); positive
+ // exact before its negation at equal property rank.
+@@ -1299,10 +1444,58 @@ struct MatchFragment<'a> {
+ // YAML-significant character (`:`, `,`, `{`, `}`; e.g. a track_name like
+ // "Chapter 1: Intro"). Serializing the actual `MatchExpr` delta through
+ // yaml_serde instead guarantees valid, round-trippable YAML for every
+ // [`Scalar`] variant, since the serializer -- not this function -- decides
+ // quoting.
+ fn yaml_fragment(ri: usize, delta: &MatchExpr) -> String {
+     let body = yaml_serde::to_string(&MatchFragment { expr: delta })
+         .expect("a MatchExpr delta always serializes to YAML");
+     format!("# tracks[{ri}] - add:\n{body}")
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn batch_with(diags: Vec<Diagnostic>) -> Batch {
++        Batch {
++            files: vec![FileReport {
++                source: PathBuf::from("Show.S01E01.mkv"),
++                identifier: "S01E01".to_string(),
++                plan: None,
++                diagnostics: diags,
++            }],
++            batch_diagnostics: vec![],
++            suggestions: vec![],
++        }
++    }
++
++    // R1 v: two diagnostics sharing (code, config_path, file) but differing
++    // only in a param (here `track`) are distinct occurrences. A set-valued
++    // signature collapses them, so a candidate that introduces a SECOND copy
++    // of a pre-existing diagnostic reads as no regression and is wrongly
++    // accepted. The signature must be a multiset.
++    #[test]
++    fn duplicate_signature_diagnostic_is_a_regression_not_a_collapse() {
++        let one = || {
++            Diagnostic::error(DiagCode::OverlappingRules, "tracks[1]")
++                .for_file("Show.S01E01.mkv")
++                .with("track", "5")
++        };
++        let two = || {
++            Diagnostic::error(DiagCode::OverlappingRules, "tracks[1]")
++                .for_file("Show.S01E01.mkv")
++                .with("track", "6")
++        };
++
++        let base = batch_with(vec![one()]);
++        let base_sig = diag_signature(&base);
++        // The simulation grew a second overlap with the same signature; rule 0
++        // carries no AmbiguousRule, so only the multiset check decides.
++        let sim = batch_with(vec![one(), two()]);
++
++        assert!(
++            !resolves_without_regression(&sim, 0, &base_sig),
++            "a newly duplicated diagnostic must count as a regression"
++        );
++    }
++}
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 32699b0..bcf03cf 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -139,20 +139,22 @@ diag_codes! {
+     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
+     DonorIsPrimary => "donor-is-primary",
+     /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
+     IgnoredFile => "ignored-file",
+     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
+     MultipleIdentifierMatches => "multiple-identifier-matches",
+     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
+     UnknownPropertySkew => "unknown-property-skew",
+     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
+     SuggestionsCapped => "suggestions-capped",
++    /// No single refinement resolves a conflicted rule across the whole batch, so the engine reports the no-single-fix partition instead (spec 5.3, D6 step 6): the affected files grouped by the per-file refinement that would resolve each. `kind=group` carries a group's `fix` (the refinement) and `files`; `kind=overflow` carries `dropped` when more than five groups were capped.
++    SuggestionPartition => "suggestion-partition",
+ }
+ 
+ /// One diagnostic (spec 5.2): a data record, never prose. `code` +
+ /// `params` select and fill a message/hint template at presentation time
+ /// (spec 8.4); core itself never renders text.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Diagnostic {
+     /// Which condition produced this diagnostic (spec 5.2 catalog).
+     pub code: DiagCode,
+     /// Error/warning/info; error means the affected file produces no plan
+diff --git a/crates/muxsmith-core/tests/suggestions.rs b/crates/muxsmith-core/tests/suggestions.rs
+index 05bc674..357a1e8 100644
+--- a/crates/muxsmith-core/tests/suggestions.rs
++++ b/crates/muxsmith-core/tests/suggestions.rs
+@@ -315,20 +315,22 @@ const COLON_TRACK_NAMES: &str = r#"
+   ]
+ }
+ "#;
+ 
+ #[derive(Deserialize)]
+ struct MatchFragmentDoc {
+     #[serde(rename = "match")]
+     match_expr: MatchExpr,
+ }
+ 
++// --- (b) yaml_fragment must emit valid, round-trippable YAML (bug D) ---
++
+ #[test]
+ fn yaml_fragment_round_trips_a_value_containing_a_colon() {
+     let (batch, _dir) = plan_multi(P_COLON_AMBIGUOUS, &[("Show.S01E01.mkv", COLON_TRACK_NAMES)]);
+ 
+     let target = batch
+         .suggestions
+         .iter()
+         .find(|s| {
+             matches!(
+                 &s.edit,
+@@ -376,10 +378,277 @@ fn suggestion_cap_truncation_is_logged_not_silent() {
+         .params
+         .get("dropped")
+         .expect("cap diagnostic must carry a dropped count")
+         .parse()
+         .expect("dropped count must be a number");
+     assert!(
+         dropped > 0,
+         "dropped count must be non-zero, was silently 0"
+     );
+ }
++
++// --- Task 13 step 1: external-source rules get suggestions (#12ii) ---
++
++// Primary is a bare video file: it never matches the subtitle rule itself, so
++// the rule's ambiguity lives entirely in the located donor. Candidate
++// generation must therefore draw discriminators from the donor's tracks, not
++// the primary's -- the source-agnostic requirement.
++const PRIMARY_VIDEO_ONLY: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } }
++  ]
++}
++"#;
++
++// Donor with two subtitle tracks, ambiguous under `exact: { type: subtitles }`;
++// they split on forced_track, so a suggestion exists.
++const DONOR_TWO_SUBS: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "SRT" },
++  "errors": [], "file_name": "Donor.S01E01.srt", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "SubRip/SRT", "id": 0, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": true,
++        "language": "eng", "language_ietf": "en", "track_name": "Forced" } },
++    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en", "track_name": "Full" } }
++  ]
++}
++"#;
++
++const P_EXTERNAL_SUBS: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - source: { external: { path: '.', extensions: [srt], match_to_source: true } }
++      match: { exact: { type: subtitles } }
++"#;
++
++#[test]
++fn ambiguous_external_source_rule_gets_suggestions_like_a_primary_rule() {
++    let (batch, _dir) = plan_multi(
++        P_EXTERNAL_SUBS,
++        &[
++            ("Show.S01E01.mkv", PRIMARY_VIDEO_ONLY),
++            ("Donor.S01E01.srt", DONOR_TWO_SUBS),
++        ],
++    );
++
++    assert!(
++        batch.files[0]
++            .diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::AmbiguousRule),
++        "expected the external rule's donor conflict to be ambiguous: {:?}",
++        batch.files[0].diagnostics
++    );
++    assert!(
++        !batch.suggestions.is_empty(),
++        "an external-source rule must get suggestions like a primary one"
++    );
++    assert!(
++        batch.suggestions.iter().all(
++            |s| s.resolves == DiagCode::AmbiguousRule && s.config_path.starts_with("tracks[0]")
++        ),
++        "suggestions: {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++}
++
++// --- Task 13 step 2: codec and id are narrowing dimensions (R1 iv) ---
++
++// Two subtitle tracks identical in every matchable property EXCEPT `codec`
++// (and `id`, which always differs per track). `codec_id` is deliberately the
++// same on both, so the ambiguity is resolvable ONLY via the top-level `codec`
++// or `id` fields -- exactly the dimensions candidate generation used to omit.
++const CODEC_ID_ONLY: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en" } },
++    { "codec": "SubStationAlpha/ASS", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en" } }
++  ]
++}
++"#;
++
++const P_SUBS_BY_LANGUAGE: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles, language: en } }
++"#;
++
++#[test]
++fn ambiguity_resolvable_only_by_codec_or_id_yields_those_dimensions() {
++    let (batch, _dir) = plan_multi(P_SUBS_BY_LANGUAGE, &[("Show.S01E01.mkv", CODEC_ID_ONLY)]);
++
++    assert!(
++        batch.files[0]
++            .diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::AmbiguousRule),
++        "expected the two same-language subtitle tracks to be ambiguous"
++    );
++    assert!(
++        batch
++            .suggestions
++            .iter()
++            .all(|s| s.resolves == DiagCode::AmbiguousRule),
++    );
++
++    let has_codec = batch.suggestions.iter().any(
++        |s| matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "codec"),
++    );
++    let has_id = batch
++        .suggestions
++        .iter()
++        .any(|s| matches!(&s.edit, StructuredEdit::AddExact { property, .. } if property == "id"));
++    assert!(
++        has_codec && has_id,
++        "expected both a codec-based and an id-based suggestion, got {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++}
++
++// --- Task 13 step 4: the no-single-fix partition report (#5) ---
++
++// File A: two subtitle tracks (ids 1, 2) separable only by forced_track.
++const PART_A_FORCED: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E01.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": true,
++        "language": "eng", "language_ietf": "en" } },
++    { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en" } }
++  ]
++}
++"#;
++
++// File B: two subtitle tracks (ids 3, 4) separable only by language, both
++// non-forced. The subtitle ids (3, 4) are disjoint from file A's (1, 2), so no
++// single `id`-based narrowing resolves BOTH files -- forcing the no-single-fix
++// case even though each file is individually resolvable.
++const PART_B_LANG: &str = r#"
++{
++  "attachments": [], "chapters": [],
++  "container": { "recognized": true, "supported": true, "type": "Matroska" },
++  "errors": [], "file_name": "Show.S01E02.mkv", "global_tags": [],
++  "identification_format_version": 20, "track_tags": [],
++  "tracks": [
++    { "codec": "AVC/H.264", "id": 0, "type": "video", "properties": { "codec_id": "V_MPEG4/ISO/AVC" } },
++    { "codec": "AAC", "id": 1, "type": "audio", "properties": { "codec_id": "A_AAC", "language": "eng" } },
++    { "codec": "AAC", "id": 2, "type": "audio", "properties": { "codec_id": "A_AAC", "language": "ger" } },
++    { "codec": "SubRip/SRT", "id": 3, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "eng", "language_ietf": "en" } },
++    { "codec": "SubRip/SRT", "id": 4, "type": "subtitles", "properties": {
++        "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
++        "language": "ger", "language_ietf": "de" } }
++  ]
++}
++"#;
++
++const P_SUBS_ANY: &str = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: subtitles } }
++"#;
++
++fn partition_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
++    batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::SuggestionPartition)
++        .collect()
++}
++
++#[test]
++fn no_single_fix_produces_a_two_group_partition() {
++    let (batch, _dir) = plan_multi(
++        P_SUBS_ANY,
++        &[
++            ("Show.S01E01.mkv", PART_A_FORCED),
++            ("Show.S01E02.mkv", PART_B_LANG),
++        ],
++    );
++
++    // Both files are ambiguous, and no single refinement resolves both.
++    assert!(
++        batch.files.iter().all(|f| f
++            .diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::AmbiguousRule)),
++        "both files must be ambiguous"
++    );
++    assert!(
++        batch.suggestions.is_empty(),
++        "no batch-wide suggestion should survive: {:?}",
++        batch
++            .suggestions
++            .iter()
++            .map(|s| &s.edit)
++            .collect::<Vec<_>>()
++    );
++
++    let groups: Vec<_> = partition_diags(&batch)
++        .into_iter()
++        .filter(|d| d.params.get("kind").map(String::as_str) == Some("group"))
++        .collect();
++    assert_eq!(
++        groups.len(),
++        2,
++        "expected a two-group partition, got {:?}",
++        groups.iter().map(|d| &d.params).collect::<Vec<_>>()
++    );
++    assert!(groups.iter().all(|d| d.config_path == "tracks[0].match"
++        && d.severity == muxsmith_core::report::Severity::Info),);
++
++    // One group is the forced_track file, the other the language file, and the
++    // files are partitioned accordingly.
++    let forced = groups
++        .iter()
++        .find(|d| d.params["fix"].contains("forced_track"))
++        .expect("a forced_track group");
++    let lang = groups
++        .iter()
++        .find(|d| d.params["fix"].contains("language"))
++        .expect("a language group");
++    assert!(forced.params["files"].contains("S01E01"));
++    assert!(!forced.params["files"].contains("S01E02"));
++    assert!(lang.params["files"].contains("S01E02"));
++    assert!(!lang.params["files"].contains("S01E01"));
++}
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index aae4517..d10bc8b 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -268,20 +268,21 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `DuplicateIdentifier` | warning | two primaries yield the same identifier match (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, templates may collide |
+ | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
+ | `IgnoredFile` | info | extension matches but `input.pattern` does not |
+ | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
+ | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`) |
+ | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+ | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+ | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
+ | `UnknownPropertySkew` | warning | property unknown to the built-in model but present in a newer identification schema version (9.2) |
+ | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
++| `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
+ 
+ ### 5.3 Suggestion engine
+ 
+ Contract: for `AmbiguousRule` and `OverlappingRules`, generate candidate refinements by diffing the properties of the conflicting tracks across **all** affected files, then simulate each candidate against the cached identification data of the **entire batch**. Emit only refinements that (a) resolve every instance of the conflict batch-wide and (b) introduce no new diagnostic for any file. If no single refinement satisfies both, report that explicitly and list the files requiring different resolutions.
+ 
+ Suggestions are structured edits (`config_path` + proposed change), not prose; the GUI offers one-click apply, the CLI prints them as exact YAML fragments.
+ 
+ Algorithm (closed edit grammar, discriminator generation, batch simulation via the real planner, acceptance invariant, deterministic ranking, no-single-fix partition): `docs/superpowers/specs/2026-07-09-plan-2-design-decisions.md` D6.
+ 
+ ### 5.4 Static lint
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 477499b..798c669 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -36,10 +36,16 @@ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
+ unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
+ suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.
++suggestion-partition = { $kind ->
++    [overflow] { $dropped } further resolution group(s) were capped at 5 and not shown.
++   *[group] These { $count } file(s) need their own refinement; apply:
++{ $fix }
++    to: { $files }
++}

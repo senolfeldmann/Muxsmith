@@ -1,0 +1,1331 @@
+# Review package: 374005a..25f2657
+
+## Commits
+25f2657 test(core): property-based tests for matcher, language, planner (spec §10, #1)
+
+## Files changed
+ Cargo.lock                                  |  93 +++++-
+ crates/muxsmith-core/Cargo.toml             |   3 +
+ crates/muxsmith-core/tests/prop_language.rs | 245 ++++++++++++++
+ crates/muxsmith-core/tests/prop_matcher.rs  | 303 +++++++++++++++++
+ crates/muxsmith-core/tests/prop_planner.rs  | 482 ++++++++++++++++++++++++++++
+ 5 files changed, 1125 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index f3a0244..9569c94 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2126,20 +2126,21 @@ dependencies = [
+  "tempfile",
+  "unic-langid",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-core"
+ version = "0.1.0"
+ dependencies = [
+  "dirs",
+  "language-tags",
++ "proptest",
+  "regex",
+  "schemars 1.2.1",
+  "serde",
+  "serde_json",
+  "serde_path_to_error",
+  "tempfile",
+  "time",
+  "yaml_serde",
+ ]
+ 
+@@ -2672,20 +2673,29 @@ checksum = "0103b1cef7ec0cf76490e969665504990193874ea05c85ff9bab8b911d0a0564"
+ dependencies = [
+  "zerovec",
+ ]
+ 
+ [[package]]
+ name = "powerfmt"
+ version = "0.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+ 
++[[package]]
++name = "ppv-lite86"
++version = "0.2.21"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
++dependencies = [
++ "zerocopy",
++]
++
+ [[package]]
+ name = "precomputed-hash"
+ version = "0.1.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+ 
+ [[package]]
+ name = "predicates"
+ version = "3.1.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -2770,26 +2780,51 @@ dependencies = [
+ 
+ [[package]]
+ name = "proc-macro2"
+ version = "1.0.106"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+ dependencies = [
+  "unicode-ident",
+ ]
+ 
++[[package]]
++name = "proptest"
++version = "1.11.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4b45fcc2344c680f5025fe57779faef368840d0bd1f42f216291f0dc4ace4744"
++dependencies = [
++ "bit-set",
++ "bit-vec",
++ "bitflags 2.13.0",
++ "num-traits",
++ "rand",
++ "rand_chacha",
++ "rand_xorshift",
++ "regex-syntax",
++ "rusty-fork",
++ "tempfile",
++ "unarray",
++]
++
+ [[package]]
+ name = "pxfm"
+ version = "0.1.30"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+ 
++[[package]]
++name = "quick-error"
++version = "1.2.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
++
+ [[package]]
+ name = "quick-error"
+ version = "2.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
+ 
+ [[package]]
+ name = "quick-xml"
+ version = "0.39.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -2821,20 +2856,58 @@ name = "r-efi"
+ version = "5.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+ 
+ [[package]]
+ name = "r-efi"
+ version = "6.0.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+ 
++[[package]]
++name = "rand"
++version = "0.9.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
++dependencies = [
++ "rand_chacha",
++ "rand_core",
++]
++
++[[package]]
++name = "rand_chacha"
++version = "0.9.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
++dependencies = [
++ "ppv-lite86",
++ "rand_core",
++]
++
++[[package]]
++name = "rand_core"
++version = "0.9.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
++dependencies = [
++ "getrandom 0.3.4",
++]
++
++[[package]]
++name = "rand_xorshift"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "513962919efc330f829edb2535844d1b912b0fbe2ca165d613e4e8788bb05a5a"
++dependencies = [
++ "rand_core",
++]
++
+ [[package]]
+ name = "raw-window-handle"
+ version = "0.6.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+ 
+ [[package]]
+ name = "redox_syscall"
+ version = "0.5.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -2988,20 +3061,32 @@ dependencies = [
+  "linux-raw-sys",
+  "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+ name = "rustversion"
+ version = "1.0.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+ 
++[[package]]
++name = "rusty-fork"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cc6bf79ff24e648f6da1f8d1f011e9cac26491b619e6b9280f2b47f1774e6ee2"
++dependencies = [
++ "fnv",
++ "quick-error 1.2.3",
++ "tempfile",
++ "wait-timeout",
++]
++
+ [[package]]
+ name = "ryu"
+ version = "1.0.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+ 
+ [[package]]
+ name = "same-file"
+ version = "1.0.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3924,21 +4009,21 @@ dependencies = [
+ 
+ [[package]]
+ name = "tiff"
+ version = "0.11.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b63feaf3343d35b6ca4d50483f94843803b0f51634937cc2ec519fc32232bc52"
+ dependencies = [
+  "fax",
+  "flate2",
+  "half",
+- "quick-error",
++ "quick-error 2.0.1",
+  "weezl",
+  "zune-jpeg",
+ ]
+ 
+ [[package]]
+ name = "time"
+ version = "0.3.53"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "18dfaaeddcb932337b5e7866ee7d0ce9b76d2fd092997146f187ec09b4558a50"
+ dependencies = [
+@@ -4256,20 +4341,26 @@ name = "typeid"
+ version = "1.0.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
+ 
+ [[package]]
+ name = "typenum"
+ version = "1.20.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+ 
++[[package]]
++name = "unarray"
++version = "0.1.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
++
+ [[package]]
+ name = "unic-char-property"
+ version = "0.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a8c57a407d9b6fa02b4795eb81c5b6652060a15a7903ea981f3d723e6c0be221"
+ dependencies = [
+  "unic-char-range",
+ ]
+ 
+ [[package]]
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 1846540..4de3c02 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -10,11 +10,14 @@ dirs = "6.0.0"
+ language-tags = "0.3.2"
+ regex = "1.12.4"
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ serde_path_to_error = "0.1.20"
+ time = { version = "0.3.53", features = ["formatting"] }
+ yaml_serde = "0.10.4"
+ 
+ [dev-dependencies]
++# Exact-pin per toolchain doctrine; registry-verified current stable
++# (crates.io API, 2026-07-11): proptest 1.11.0 is max_stable_version.
++proptest = "=1.11.0"
+ tempfile = "3.27.0"
+diff --git a/crates/muxsmith-core/tests/prop_language.rs b/crates/muxsmith-core/tests/prop_language.rs
+new file mode 100644
+index 0000000..d27874e
+--- /dev/null
++++ b/crates/muxsmith-core/tests/prop_language.rs
+@@ -0,0 +1,245 @@
++//! Property-based tests for language normalization (spec 4.4; spec 10
++//! deferred property suite, #1). Covers the `LanguageIndex` data structure
++//! (idempotent normalization, case-insensitivity, per-row canonical
++//! agreement, well-formed-tag acceptance) and the canonical language
++//! equality the matcher exposes through `exact: { language: ... }`
++//! (reflexivity and symmetry over ISO codes, BCP-47 tags, and arbitrary
++//! UTF-8).
++
++use std::collections::BTreeMap;
++
++use proptest::collection::btree_set;
++use proptest::prelude::*;
++use proptest::sample::select;
++
++use muxsmith_core::capability::runtime::LanguageIndex;
++use muxsmith_core::identify::{PropValue, Track};
++use muxsmith_core::matcher::matches;
++use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
++
++mod support;
++use support::lang;
++
++// A lowercase base-26 alphabetic string, injective over `u32` (0 -> "a",
++// 25 -> "z", 26 -> "aa", ...). Used to mint globally distinct synthetic
++// language codes.
++fn alpha(mut n: u32) -> String {
++    let mut s = String::new();
++    loop {
++        s.insert(0, (b'a' + (n % 26) as u8) as char);
++        if n < 26 {
++            break;
++        }
++        n = n / 26 - 1;
++    }
++    s
++}
++
++// Rows for `LanguageIndex::from_rows`, one per distinct id, with globally
++// unique codes (id*3 / id*3+1 / id*3+2 never collide across rows). Real
++// `mkvmerge --list-languages` output has each ISO code appear once; disjoint
++// codes mirror that invariant, which is what makes normalization idempotent
++// (a shared code across two canonical groups would break it, but that input
++// never occurs). The 639-3 code is always present (stable canonical key);
++// 639-2 and 639-1 are optionally blanked.
++fn arb_rows() -> impl Strategy<Value = Vec<[String; 4]>> {
++    btree_set(0u32..40, 1..6).prop_map(|ids| {
++        ids.into_iter()
++            .map(|id| {
++                let c3 = alpha(id * 3);
++                // Vary which optional codes are present, deterministically per
++                // id, so a single index spans rows carrying all three codes and
++                // rows carrying only some.
++                let c2 = if id % 2 == 0 {
++                    alpha(id * 3 + 1)
++                } else {
++                    String::new()
++                };
++                let c1 = if id % 3 == 0 {
++                    alpha(id * 3 + 2)
++                } else {
++                    String::new()
++                };
++                [format!("Lang{id}"), c3, c2, c1]
++            })
++            .collect()
++    })
++}
++
++fn index_of(rows: &[[String; 4]]) -> LanguageIndex {
++    let borrowed: Vec<[&str; 4]> = rows
++        .iter()
++        .map(|r| [r[0].as_str(), r[1].as_str(), r[2].as_str(), r[3].as_str()])
++        .collect();
++    LanguageIndex::from_rows(&borrowed)
++}
++
++// All non-empty codes appearing in the generated rows, plus a couple of
++// arbitrary tokens, as normalization inputs.
++fn tokens_of(rows: &[[String; 4]]) -> Vec<String> {
++    let mut toks: Vec<String> = Vec::new();
++    for r in rows {
++        for code in &r[1..4] {
++            if !code.is_empty() {
++                toks.push(code.clone());
++            }
++        }
++    }
++    toks.push("zzz-not-a-code".to_string());
++    toks
++}
++
++// A grammatically well-formed BCP-47 tag: `lang[-Script][-REGION]`, all
++// subtags RFC 5646-shaped. `is_valid_value` must accept it (well-formedness
++// only, D19), whether or not the language exists.
++fn arb_wellformed_tag() -> impl Strategy<Value = String> {
++    (
++        "[a-z]{2,3}",
++        proptest::option::of("[A-Z][a-z]{3}"),
++        proptest::option::of("[A-Z]{2}"),
++    )
++        .prop_map(|(lang, script, region)| {
++            let mut t = lang;
++            if let Some(s) = script {
++                t.push('-');
++                t.push_str(&s);
++            }
++            if let Some(r) = region {
++                t.push('-');
++                t.push_str(&r);
++            }
++            t
++        })
++}
++
++// A language token to feed the matcher's `exact: { language }` path: real
++// ISO codes present in the shared `lang()` index, well-formed BCP-47 tags,
++// and arbitrary UTF-8.
++fn arb_lang_token() -> impl Strategy<Value = String> {
++    prop_oneof![
++        select(vec!["en", "eng", "de", "ger", "tr", "tur", "und", "zxx"])
++            .prop_map(|s| s.to_string()),
++        arb_wellformed_tag(),
++        any::<String>(),
++    ]
++}
++
++fn track_with_language(value: &str) -> Track {
++    let mut properties = BTreeMap::new();
++    properties.insert("language".to_string(), PropValue::Str(value.to_string()));
++    Track {
++        id: 0,
++        kind: "subtitles".to_string(),
++        codec: String::new(),
++        properties,
++    }
++}
++
++fn language_expr(value: &str) -> MatchExpr {
++    let mut map = BTreeMap::new();
++    map.insert("language".to_string(), Scalar::Str(value.to_string()));
++    MatchExpr {
++        exact: Some(map),
++        ..Default::default()
++    }
++}
++
++proptest! {
++    // Normalization is idempotent: a token's canonical key is its own
++    // canonical key. `normalize(normalize(x)) == normalize(x)` in the sense
++    // that the canonical form is a fixed point.
++    #[test]
++    fn normalize_is_idempotent(rows in arb_rows(), extra in any::<String>()) {
++        let idx = index_of(&rows);
++        let mut toks = tokens_of(&rows);
++        toks.push(extra);
++        for t in toks {
++            if let Some(c) = idx.normalize(&t) {
++                prop_assert_eq!(idx.normalize(&c), Some(c.clone()),
++                    "canonical key {:?} of {:?} is not a fixed point", c, t);
++            }
++        }
++    }
++
++    // Normalization is case-insensitive: flipping ASCII case cannot change
++    // the canonical key.
++    #[test]
++    fn normalize_is_case_insensitive(rows in arb_rows(), t in any::<String>()) {
++        let idx = index_of(&rows);
++        let mut toks = tokens_of(&rows);
++        toks.push(t);
++        for tok in toks {
++            let upper = tok.to_uppercase();
++            prop_assert_eq!(idx.normalize(&tok), idx.normalize(&upper));
++        }
++    }
++
++    // Every non-empty code within one row shares a single canonical key, so
++    // the 639-1/2/3 spellings of a language all compare equal.
++    #[test]
++    fn codes_in_a_row_share_one_canonical(rows in arb_rows()) {
++        let idx = index_of(&rows);
++        for r in &rows {
++            let codes: Vec<&String> = r[1..4].iter().filter(|c| !c.is_empty()).collect();
++            let mut canonical: Option<String> = None;
++            for code in codes {
++                let n = idx.normalize(code);
++                prop_assert!(n.is_some(), "row code {:?} did not normalize", code);
++                match &canonical {
++                    None => canonical = n,
++                    Some(prev) => prop_assert_eq!(prev, &n.unwrap(),
++                        "codes in one row disagree on canonical key"),
++                }
++            }
++        }
++    }
++
++    // `is_valid_value` is a superset of `normalize`: anything that normalizes
++    // is a valid value.
++    #[test]
++    fn valid_value_contains_normalizable(rows in arb_rows(), t in any::<String>()) {
++        let idx = index_of(&rows);
++        let mut toks = tokens_of(&rows);
++        toks.push(t);
++        for tok in toks {
++            if idx.normalize(&tok).is_some() {
++                prop_assert!(idx.is_valid_value(&tok));
++            }
++        }
++    }
++
++    // A grammatically well-formed BCP-47 tag is a valid language value even
++    // against an empty index (accepted via the tag-grammar path, D19).
++    #[test]
++    fn wellformed_tags_are_valid_values(tag in arb_wellformed_tag()) {
++        let idx = LanguageIndex::default();
++        prop_assert!(idx.is_valid_value(&tag), "well-formed tag {:?} rejected", tag);
++    }
++
++    // Neither query panics on arbitrary UTF-8.
++    #[test]
++    fn queries_are_total_on_arbitrary_input(rows in arb_rows(), t in any::<String>()) {
++        let idx = index_of(&rows);
++        let _ = idx.normalize(&t);
++        let _ = idx.is_valid_value(&t);
++    }
++
++    // Canonical language equality (as the matcher decides it) is reflexive:
++    // a track's own language value always satisfies an exact match on it.
++    #[test]
++    fn language_equality_is_reflexive(x in arb_lang_token()) {
++        let idx = lang();
++        prop_assert!(matches(&language_expr(&x), &track_with_language(&x), &idx),
++            "language {:?} did not match itself", x);
++    }
++
++    // Canonical language equality is symmetric: swapping which value sits in
++    // the profile and which in the track cannot change the verdict.
++    #[test]
++    fn language_equality_is_symmetric(a in arb_lang_token(), b in arb_lang_token()) {
++        let idx = lang();
++        let ab = matches(&language_expr(&a), &track_with_language(&b), &idx);
++        let ba = matches(&language_expr(&b), &track_with_language(&a), &idx);
++        prop_assert_eq!(ab, ba, "language equality asymmetric for {:?} vs {:?}", a, b);
++    }
++}
+diff --git a/crates/muxsmith-core/tests/prop_matcher.rs b/crates/muxsmith-core/tests/prop_matcher.rs
+new file mode 100644
+index 0000000..f213edb
+--- /dev/null
++++ b/crates/muxsmith-core/tests/prop_matcher.rs
+@@ -0,0 +1,303 @@
++//! Property-based tests for the match algebra (spec 4.3, 4.4; spec 10
++//! deferred property suite, #1). Exercises `matcher::matches` over generated
++//! validated expressions and generated tracks: double-negation identity,
++//! `any` singleton/order/disjunction laws, `not` NOR semantics, totality on
++//! arbitrary UTF-8, and the standing invariant that the generator only
++//! produces expressions the config-time validator accepts (so "invalid regex
++//! is impossible post-validation" holds by construction).
++
++use std::collections::BTreeMap;
++
++use proptest::collection::vec as prop_vec;
++use proptest::prelude::*;
++use proptest::sample::select;
++
++use muxsmith_core::capability::{CODEC_KIND_NAMES, TYPE_VALUES};
++use muxsmith_core::identify::{PropValue, Track};
++use muxsmith_core::matcher::matches;
++use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
++use muxsmith_core::profile::model::KeepDrop;
++use muxsmith_core::profile::model::{
++    AttachmentsCfg, ChaptersCfg, Input, OutputCfg, Profile, SourceCfg, TagsCfg, TitleCfg,
++    TrackRule, TracksCfg,
++};
++use muxsmith_core::profile::validate::validate;
++use muxsmith_core::report::Severity;
++
++mod support;
++use support::lang;
++
++// --- vocabulary -----------------------------------------------------------
++
++// String-typed matchable properties. `codec`/`type`/`id` are handled via
++// their own leaves (they read the top-level Track fields, not `properties`).
++const STRING_PROPS: &[&str] = &[
++    "track_name",
++    "language",
++    "language_ietf",
++    "codec_id",
++    "codec",
++];
++// Track `properties`-map string keys only (excludes `codec`, a Track field).
++const STRING_PROPS_TRACK: &[&str] = &["track_name", "language", "language_ietf", "codec_id"];
++const BOOL_PROPS: &[&str] = &[
++    "default_track",
++    "forced_track",
++    "flag_hearing_impaired",
++    "flag_commentary",
++    "flag_original",
++    "enabled_track",
++    "flag_visual_impaired",
++];
++const INT_PROPS: &[&str] = &["audio_channels", "id", "number", "stream_id"];
++// `properties`-map integer keys only (excludes `id`, a Track field).
++const INT_PROPS_TRACK: &[&str] = &["audio_channels", "number", "stream_id"];
++const CODEC_POOL: &[&str] = &["AAC", "AVC/H.264", "SubRip/SRT", ""];
++// A small pool of string values, shared between track properties and
++// expression leaves, so exact/substring frequently hit (non-vacuous
++// disjunction/NOR cases) while still spanning misses.
++const STRING_POOL: &[&str] = &[
++    "eng",
++    "ger",
++    "tur",
++    "en",
++    "de",
++    "tr",
++    "English",
++    "German",
++    "Forced",
++    "SDH",
++    "Commentary",
++    "S_TEXT/UTF8",
++    "S_TEXT/ASS",
++    "",
++];
++// Curated valid regex patterns: every one compiles, so a regex leaf built
++// from these is a validated leaf (no InvalidRegex possible post-validation).
++const REGEXES: &[&str] = &[
++    "abc", "a.c", "^S_", "UTF8$", "(?i)eng", "[a-z]+", ".*", "x?y", "a|b", "\\d+", "", ".*SDH.*",
++];
++
++// --- MatchExpr constructors (struct-update to dodge field_reassign_with_default) ---
++
++fn exact_one(prop: &str, val: Scalar) -> MatchExpr {
++    let mut map = BTreeMap::new();
++    map.insert(prop.to_string(), val);
++    MatchExpr {
++        exact: Some(map),
++        ..Default::default()
++    }
++}
++
++fn substring_one(prop: &str, val: String) -> MatchExpr {
++    let mut map = BTreeMap::new();
++    map.insert(prop.to_string(), val);
++    MatchExpr {
++        substring: Some(map),
++        ..Default::default()
++    }
++}
++
++fn regex_one(prop: &str, val: &str) -> MatchExpr {
++    let mut map = BTreeMap::new();
++    map.insert(prop.to_string(), val.to_string());
++    MatchExpr {
++        regex: Some(map),
++        ..Default::default()
++    }
++}
++
++fn any_of(v: Vec<MatchExpr>) -> MatchExpr {
++    MatchExpr {
++        any: Some(v),
++        ..Default::default()
++    }
++}
++
++fn not_of(v: Vec<MatchExpr>) -> MatchExpr {
++    MatchExpr {
++        not: Some(v),
++        ..Default::default()
++    }
++}
++
++// --- strategies -----------------------------------------------------------
++
++// Free-text string value: weighted toward the shared pool (for overlap with
++// track values) but including genuinely arbitrary UTF-8 (for totality).
++fn free_string() -> impl Strategy<Value = String> {
++    prop_oneof![
++        3 => select(STRING_POOL.to_vec()).prop_map(|s| s.to_string()),
++        1 => any::<String>(),
++    ]
++}
++
++// A validated MatchExpr: every leaf is type-correct, closed-domain-valid
++// (`type`/`codec_kind`), string-only for substring/regex, codec_kind only
++// under exact, regex patterns compile, and `any`/`not` lists are non-empty.
++fn arb_expr() -> impl Strategy<Value = MatchExpr> {
++    let leaf = prop_oneof![
++        (select(STRING_PROPS.to_vec()), free_string())
++            .prop_map(|(p, v)| exact_one(p, Scalar::Str(v))),
++        select(TYPE_VALUES.to_vec()).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
++        select(CODEC_KIND_NAMES.to_vec())
++            .prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
++        (select(BOOL_PROPS.to_vec()), any::<bool>())
++            .prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
++        (select(INT_PROPS.to_vec()), 0i64..8).prop_map(|(p, i)| exact_one(p, Scalar::Int(i))),
++        (select(STRING_PROPS.to_vec()), free_string()).prop_map(|(p, v)| substring_one(p, v)),
++        (select(STRING_PROPS.to_vec()), select(REGEXES.to_vec()))
++            .prop_map(|(p, r)| regex_one(p, r)),
++    ];
++    leaf.prop_recursive(3, 32, 3, |inner| {
++        prop_oneof![
++            prop_vec(inner.clone(), 1..4).prop_map(any_of),
++            prop_vec(inner, 1..3).prop_map(not_of),
++        ]
++    })
++}
++
++fn arb_prop_entry() -> impl Strategy<Value = (String, PropValue)> {
++    prop_oneof![
++        (select(STRING_PROPS_TRACK.to_vec()), free_string())
++            .prop_map(|(p, v)| (p.to_string(), PropValue::Str(v))),
++        (select(BOOL_PROPS.to_vec()), any::<bool>())
++            .prop_map(|(p, b)| (p.to_string(), PropValue::Bool(b))),
++        (select(INT_PROPS_TRACK.to_vec()), 0i64..8)
++            .prop_map(|(p, i)| (p.to_string(), PropValue::Int(i))),
++    ]
++}
++
++fn arb_track() -> impl Strategy<Value = Track> {
++    (
++        select(TYPE_VALUES.to_vec()),
++        select(CODEC_POOL.to_vec()),
++        0u64..6,
++        prop_vec(arb_prop_entry(), 0..6),
++    )
++        .prop_map(|(kind, codec, id, entries)| {
++            let mut properties = BTreeMap::new();
++            for (k, v) in entries {
++                properties.insert(k, v);
++            }
++            Track {
++                id,
++                kind: kind.to_string(),
++                codec: codec.to_string(),
++                properties,
++            }
++        })
++}
++
++// A minimal valid profile carrying `expr` as its single track rule's match,
++// so the config-time validator can be run against the generated expression.
++fn profile_with_expr(expr: MatchExpr) -> Profile {
++    Profile {
++        profile_version: 1,
++        meta: None,
++        input: Input {
++            pattern: r"S(\d{2})E(\d{2})".to_string(),
++            extensions: vec!["mkv".to_string()],
++            recursive: true,
++        },
++        output: OutputCfg::default(),
++        tracks: TracksCfg {
++            unmatched: KeepDrop::Drop,
++            rules: vec![TrackRule {
++                source: SourceCfg::primary(),
++                match_expr: expr,
++                optional: false,
++                changes: None,
++            }],
++        },
++        attachments: AttachmentsCfg::default(),
++        chapters: ChaptersCfg::default(),
++        tags: TagsCfg::default(),
++        title: TitleCfg::default(),
++    }
++}
++
++// --- properties -----------------------------------------------------------
++
++proptest! {
++    // Double negation is the identity of the algebra: `not(not(e))` decides
++    // membership exactly as `e` does, for any track (spec 4.3).
++    #[test]
++    fn not_not_is_identity(track in arb_track(), e in arb_expr()) {
++        let idx = lang();
++        let wrapped = not_of(vec![not_of(vec![e.clone()])]);
++        prop_assert_eq!(
++            matches(&wrapped, &track, &idx),
++            matches(&e, &track, &idx)
++        );
++    }
++
++    // A singleton `any` is its element: `any([e]) == e` (spec 4.3).
++    #[test]
++    fn any_singleton_equals_inner(track in arb_track(), e in arb_expr()) {
++        let idx = lang();
++        prop_assert_eq!(
++            matches(&any_of(vec![e.clone()]), &track, &idx),
++            matches(&e, &track, &idx)
++        );
++    }
++
++    // `any` is order-insensitive: the disjunction's truth does not depend on
++    // the order of its clauses (reversal and rotation must all agree).
++    #[test]
++    fn any_is_order_insensitive(track in arb_track(), es in prop_vec(arb_expr(), 1..4)) {
++        let idx = lang();
++        let base = matches(&any_of(es.clone()), &track, &idx);
++
++        let reversed: Vec<MatchExpr> = es.iter().rev().cloned().collect();
++        prop_assert_eq!(base, matches(&any_of(reversed), &track, &idx));
++
++        if es.len() > 1 {
++            let mut rotated = es.clone();
++            rotated.rotate_left(1);
++            prop_assert_eq!(base, matches(&any_of(rotated), &track, &idx));
++        }
++    }
++
++    // `any` is exactly the disjunction over its clauses.
++    #[test]
++    fn any_is_disjunction(track in arb_track(), es in prop_vec(arb_expr(), 1..4)) {
++        let idx = lang();
++        let expected = es.iter().any(|e| matches(e, &track, &idx));
++        prop_assert_eq!(matches(&any_of(es), &track, &idx), expected);
++    }
++
++    // `not` is exactly the NOR over its clauses: it holds iff none hold.
++    #[test]
++    fn not_is_nor(track in arb_track(), es in prop_vec(arb_expr(), 1..3)) {
++        let idx = lang();
++        let expected = !es.iter().any(|e| matches(e, &track, &idx));
++        prop_assert_eq!(matches(&not_of(es), &track, &idx), expected);
++    }
++
++    // Totality + determinism: matching an arbitrary validated expression
++    // against an arbitrary track (arbitrary UTF-8 in values/patterns) never
++    // panics and is a pure function of its inputs. Invalid regex is
++    // impossible here because regex leaves are drawn from compiling patterns.
++    #[test]
++    fn matcher_is_total_and_deterministic(track in arb_track(), e in arb_expr()) {
++        let idx = lang();
++        let a = matches(&e, &track, &idx);
++        let b = matches(&e, &track, &idx);
++        prop_assert_eq!(a, b);
++    }
++
++    // The generator's contract: every expression it produces passes
++    // config-time validation with no error under the rule's `match` path.
++    // This is what makes "invalid regex is impossible post-validation" a fact
++    // rather than an assumption for the properties above.
++    #[test]
++    fn generated_exprs_are_validation_clean(e in arb_expr()) {
++        let profile = profile_with_expr(e);
++        let bad: Vec<_> = validate(&profile)
++            .into_iter()
++            .filter(|d| d.severity == Severity::Error && d.config_path.starts_with("tracks[0].match"))
++            .collect();
++        prop_assert!(bad.is_empty(), "generated expr failed validation: {:?}", bad);
++    }
++}
+diff --git a/crates/muxsmith-core/tests/prop_planner.rs b/crates/muxsmith-core/tests/prop_planner.rs
+new file mode 100644
+index 0000000..560912f
+--- /dev/null
++++ b/crates/muxsmith-core/tests/prop_planner.rs
+@@ -0,0 +1,482 @@
++//! Property-based tests for the planner (spec 5; spec 10 deferred property
++//! suite, #1). Three guarantees:
++//!
++//! * determinism: identical inputs produce a byte-identical serialized batch;
++//! * rendered-name invariants (D4): a produced plan's output name carries no
++//!   path separator, always ends in `.mkv`, and never escapes its output
++//!   directory;
++//! * D6: an accepted suggestion, re-applied to the profile and re-planned,
++//!   resolves the ambiguity it targets and introduces no new diagnostic.
++
++use std::collections::{BTreeMap, BTreeSet, HashMap};
++use std::path::PathBuf;
++
++use proptest::collection::vec as prop_vec;
++use proptest::prelude::*;
++use proptest::sample::select;
++use serde::Deserialize;
++
++use muxsmith_core::capability::TYPE_VALUES;
++use muxsmith_core::identify::{Identification, PropValue, Track};
++use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
++use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
++use muxsmith_core::profile::model::{
++    AttachmentsCfg, ChaptersCfg, CollisionPolicy, FilenameCfg, Input, KeepDrop, OutputCfg, Profile,
++    SourceCfg, TagsCfg, TemplateBlock, TitleCfg, TrackRule, TracksCfg,
++};
++use muxsmith_core::report::DiagCode;
++
++mod support;
++use support::{FakeIdent, lang};
++
++const FILE_NAMES: &[&str] = &[
++    "Show.S01E01.mkv",
++    "Show.S01E02.mkv",
++    "Show.S01E03.mkv",
++    "Show.S01E04.mkv",
++];
++
++// --- builders -------------------------------------------------------------
++
++fn exact_one(prop: &str, val: Scalar) -> MatchExpr {
++    let mut map = BTreeMap::new();
++    map.insert(prop.to_string(), val);
++    MatchExpr {
++        exact: Some(map),
++        ..Default::default()
++    }
++}
++
++fn substring_one(prop: &str, val: String) -> MatchExpr {
++    let mut map = BTreeMap::new();
++    map.insert(prop.to_string(), val);
++    MatchExpr {
++        substring: Some(map),
++        ..Default::default()
++    }
++}
++
++fn rule_of(expr: MatchExpr, optional: bool) -> TrackRule {
++    TrackRule {
++        source: SourceCfg::primary(),
++        match_expr: expr,
++        optional,
++        changes: None,
++    }
++}
++
++fn mk_profile(rules: Vec<TrackRule>, filename: FilenameCfg) -> Profile {
++    Profile {
++        profile_version: 1,
++        meta: None,
++        input: Input {
++            pattern: r"S(?<s>\d{2})E(?<e>\d{2})".to_string(),
++            extensions: vec!["mkv".to_string()],
++            recursive: true,
++        },
++        output: OutputCfg {
++            directory: None,
++            filename,
++            on_collision: CollisionPolicy::Error,
++        },
++        tracks: TracksCfg {
++            unmatched: KeepDrop::Drop,
++            rules,
++        },
++        attachments: AttachmentsCfg::default(),
++        chapters: ChaptersCfg::default(),
++        tags: TagsCfg::default(),
++        title: TitleCfg::default(),
++    }
++}
++
++fn ident(tracks: Vec<Track>) -> Identification {
++    Identification {
++        file_name: String::new(),
++        format_version: 20,
++        container_recognized: true,
++        container_supported: true,
++        tracks,
++        attachments: vec![],
++        chapters: 0,
++    }
++}
++
++fn video_track(id: u64) -> Track {
++    let mut properties = BTreeMap::new();
++    properties.insert(
++        "codec_id".to_string(),
++        PropValue::Str("V_MPEG4/ISO/AVC".to_string()),
++    );
++    Track {
++        id,
++        kind: "video".to_string(),
++        codec: String::new(),
++        properties,
++    }
++}
++
++// Plans `files` (name -> identification) in a throwaway source directory and
++// returns the batch plus the output directory the plan paths hang under.
++fn run_plan(profile: &Profile, files: &[(String, Identification)]) -> (Batch, PathBuf) {
++    let dir = tempfile::tempdir().unwrap();
++    let mut by_name = HashMap::new();
++    for (name, id) in files {
++        std::fs::write(dir.path().join(name), b"x").unwrap();
++        by_name.insert(name.clone(), id.clone());
++    }
++    let out_dir = dir.path().join("out");
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(out_dir.clone()),
++        on_collision: None,
++    };
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(profile, &run, &mut ident, &lang());
++    (batch, out_dir)
++}
++
++// --- strategies -----------------------------------------------------------
++
++// A compact realistic match expression over the planner's vocabulary.
++fn arb_plan_expr() -> impl Strategy<Value = MatchExpr> {
++    prop_oneof![
++        select(TYPE_VALUES.to_vec()).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
++        select(vec!["eng", "ger", "tur"])
++            .prop_map(|l| exact_one("language", Scalar::Str(l.to_string()))),
++        (select(vec!["default_track", "forced_track"]), any::<bool>())
++            .prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
++        select(vec!["Forced", "SDH", "Commentary", "Main"])
++            .prop_map(|s| substring_one("track_name", s.to_string())),
++    ]
++}
++
++fn arb_track(id: u64) -> impl Strategy<Value = Track> {
++    (
++        select(TYPE_VALUES.to_vec()),
++        select(vec!["eng", "ger", "tur"]),
++        select(vec![
++            "S_TEXT/UTF8",
++            "A_AAC",
++            "V_MPEG4/ISO/AVC",
++            "S_TEXT/ASS",
++        ]),
++        select(vec![
++            "Forced",
++            "SDH",
++            "Commentary",
++            "Main",
++            "English",
++            "German",
++        ]),
++        any::<bool>(),
++        any::<bool>(),
++    )
++        .prop_map(move |(kind, language, codec_id, name, def, forced)| {
++            let mut properties = BTreeMap::new();
++            properties.insert("language".to_string(), PropValue::Str(language.to_string()));
++            properties.insert("codec_id".to_string(), PropValue::Str(codec_id.to_string()));
++            properties.insert("track_name".to_string(), PropValue::Str(name.to_string()));
++            properties.insert("default_track".to_string(), PropValue::Bool(def));
++            properties.insert("forced_track".to_string(), PropValue::Bool(forced));
++            Track {
++                id,
++                kind: kind.to_string(),
++                codec: String::new(),
++                properties,
++            }
++        })
++}
++
++fn arb_identification() -> impl Strategy<Value = Identification> {
++    (1usize..5)
++        .prop_flat_map(|n| (0..n).map(|i| arb_track(i as u64)).collect::<Vec<_>>())
++        .prop_map(ident)
++}
++
++fn arb_files() -> impl Strategy<Value = Vec<(String, Identification)>> {
++    (1usize..=FILE_NAMES.len()).prop_flat_map(|k| {
++        FILE_NAMES[..k]
++            .iter()
++            .map(|name| arb_identification().prop_map(move |id| (name.to_string(), id)))
++            .collect::<Vec<_>>()
++    })
++}
++
++fn arb_filename() -> impl Strategy<Value = FilenameCfg> {
++    prop_oneof![
++        Just(FilenameCfg::keep()),
++        Just(FilenameCfg::Template(TemplateBlock {
++            template: "{match}".to_string()
++        })),
++        Just(FilenameCfg::Template(TemplateBlock {
++            template: "{s}-{e}".to_string()
++        })),
++    ]
++}
++
++fn arb_profile() -> impl Strategy<Value = Profile> {
++    (prop_vec(arb_plan_expr(), 1..3), arb_filename()).prop_map(|(exprs, filename)| {
++        let rules = exprs.into_iter().map(|e| rule_of(e, false)).collect();
++        mk_profile(rules, filename)
++    })
++}
++
++// One video (id 0) plus 0..3 non-video tracks, so a `type: video` rule
++// resolves to exactly one track (a plan is always produced).
++fn arb_ident_one_video() -> impl Strategy<Value = Identification> {
++    prop_vec(arb_nonvideo_track(), 0..3).prop_map(|extras| {
++        let mut tracks = vec![video_track(0)];
++        for (i, mut t) in extras.into_iter().enumerate() {
++            t.id = (i + 1) as u64;
++            tracks.push(t);
++        }
++        ident(tracks)
++    })
++}
++
++fn arb_nonvideo_track() -> impl Strategy<Value = Track> {
++    (
++        select(vec!["audio", "subtitles"]),
++        select(vec!["eng", "ger", "tur"]),
++        select(vec!["S_TEXT/UTF8", "A_AAC"]),
++    )
++        .prop_map(|(kind, language, codec_id)| {
++            let mut properties = BTreeMap::new();
++            properties.insert("language".to_string(), PropValue::Str(language.to_string()));
++            properties.insert("codec_id".to_string(), PropValue::Str(codec_id.to_string()));
++            Track {
++                id: 0,
++                kind: kind.to_string(),
++                codec: String::new(),
++                properties,
++            }
++        })
++}
++
++fn arb_render_files() -> impl Strategy<Value = Vec<(String, Identification)>> {
++    (1usize..=FILE_NAMES.len()).prop_flat_map(|k| {
++        FILE_NAMES[..k]
++            .iter()
++            .map(|name| arb_ident_one_video().prop_map(move |id| (name.to_string(), id)))
++            .collect::<Vec<_>>()
++    })
++}
++
++// A single file with one video and two subtitle tracks of DISTINCT languages:
++// `exact: { type: subtitles }` is guaranteed ambiguous, and the differing
++// language guarantees at least one resolving discriminator exists.
++fn arb_ambiguous_ident() -> impl Strategy<Value = Identification> {
++    (
++        0usize..3,
++        1usize..3,
++        select(vec!["Forced", "SDH", "Commentary", "Main"]),
++        select(vec!["Forced", "SDH", "Commentary", "Main"]),
++        any::<bool>(),
++        any::<bool>(),
++    )
++        .prop_map(|(i0, off, n1, n2, f1, f2)| {
++            let langs = ["eng", "ger", "tur"];
++            let sub = |id: u64, language: &str, name: &str, forced: bool| {
++                let mut properties = BTreeMap::new();
++                properties.insert("language".to_string(), PropValue::Str(language.to_string()));
++                properties.insert(
++                    "codec_id".to_string(),
++                    PropValue::Str("S_TEXT/UTF8".to_string()),
++                );
++                properties.insert("track_name".to_string(), PropValue::Str(name.to_string()));
++                properties.insert("forced_track".to_string(), PropValue::Bool(forced));
++                Track {
++                    id,
++                    kind: "subtitles".to_string(),
++                    codec: String::new(),
++                    properties,
++                }
++            };
++            ident(vec![
++                video_track(0),
++                sub(1, langs[i0], n1, f1),
++                sub(2, langs[(i0 + off) % 3], n2, f2),
++            ])
++        })
++}
++
++// --- suggestion application (mirrors planner::with_rule_match, insert-only) ---
++
++#[derive(Deserialize)]
++struct MatchFragmentDoc {
++    #[serde(rename = "match")]
++    match_expr: MatchExpr,
++}
++
++// Applies a suggestion's emitted YAML fragment to rule `ri`, exactly as a GUI
++// or CLI "apply" would: parse the fragment's `match:` delta and splice it in
++// with insert-only semantics (a suggestion may only narrow, never relax).
++fn apply_suggestion(profile: &Profile, ri: usize, fragment: &str) -> Profile {
++    let doc: MatchFragmentDoc =
++        yaml_serde::from_str(fragment).expect("emitted yaml_fragment must parse");
++    let delta = doc.match_expr;
++    let mut p = profile.clone();
++    let expr = &mut p.tracks.rules[ri].match_expr;
++    if let Some(add) = &delta.exact {
++        let map = expr.exact.get_or_insert_with(BTreeMap::new);
++        for (k, v) in add {
++            map.entry(k.clone()).or_insert_with(|| v.clone());
++        }
++    }
++    if let Some(add) = &delta.substring {
++        let map = expr.substring.get_or_insert_with(BTreeMap::new);
++        for (k, v) in add {
++            map.entry(k.clone()).or_insert_with(|| v.clone());
++        }
++    }
++    if let Some(add) = &delta.not {
++        expr.not.get_or_insert_with(Vec::new).extend(add.clone());
++    }
++    p
++}
++
++// Basename-scoped diagnostic signature (code|config_path|file basename), so
++// two plans of the same logical file in different throwaway directories are
++// comparable. Mirrors planner::diag_signature otherwise.
++fn diag_sig(batch: &Batch) -> BTreeSet<String> {
++    let mut set = BTreeSet::new();
++    let all = batch
++        .batch_diagnostics
++        .iter()
++        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()));
++    for d in all {
++        let file = d
++            .file
++            .as_ref()
++            .and_then(|p| p.file_name())
++            .map(|n| n.to_string_lossy().to_string())
++            .unwrap_or_default();
++        set.insert(format!("{}|{}|{}", d.code.key(), d.config_path, file));
++    }
++    set
++}
++
++fn rule_index_of(path: &str) -> Option<usize> {
++    let start = path.find("tracks[")? + "tracks[".len();
++    let end = path[start..].find(']')? + start;
++    path[start..end].parse().ok()
++}
++
++// --- properties -----------------------------------------------------------
++
++proptest! {
++    // Determinism (spec 5.5): two plan runs over identical inputs (same
++    // directory, fresh identifier caches) serialize byte-for-byte identically.
++    #[test]
++    fn plan_is_byte_identical_across_runs(
++        profile in arb_profile(),
++        files in arb_files(),
++    ) {
++        let dir = tempfile::tempdir().unwrap();
++        let mut by_name = HashMap::new();
++        for (name, id) in &files {
++            std::fs::write(dir.path().join(name), b"x").unwrap();
++            by_name.insert(name.clone(), id.clone());
++        }
++        let run = RunInputs {
++            source: dir.path().to_path_buf(),
++            output: Some(dir.path().join("out")),
++            on_collision: None,
++        };
++        let mut i1 = FakeIdent { by_name: by_name.clone() };
++        let mut i2 = FakeIdent { by_name };
++        let b1 = plan_batch(&profile, &run, &mut i1, &lang());
++        let b2 = plan_batch(&profile, &run, &mut i2, &lang());
++        prop_assert_eq!(
++            serde_json::to_string(&b1).unwrap(),
++            serde_json::to_string(&b2).unwrap()
++        );
++    }
++
++    // Rendered-name invariants (D4, spec 4.8): every produced plan's output
++    // filename has no path separator, ends in `.mkv` over a non-empty stem,
++    // and sits directly in the output directory (no injected subdirectory).
++    #[test]
++    fn produced_plan_names_are_well_formed(
++        files in arb_render_files(),
++        filename in arb_filename(),
++    ) {
++        let profile = mk_profile(
++            vec![rule_of(exact_one("type", Scalar::Str("video".to_string())), true)],
++            filename,
++        );
++        let (batch, out_dir) = run_plan(&profile, &files);
++        for f in &batch.files {
++            let Some(plan) = &f.plan else { continue };
++            let name = plan.output.file_name().and_then(|s| s.to_str());
++            prop_assert!(name.is_some(), "output has no file name: {:?}", plan.output);
++            let name = name.unwrap();
++            prop_assert!(
++                !name.contains('/') && !name.contains('\\'),
++                "separator in rendered name {:?}",
++                name
++            );
++            prop_assert!(name.to_lowercase().ends_with(".mkv"), "name not .mkv: {:?}", name);
++            let stem = &name[..name.len() - 4];
++            prop_assert!(
++                !stem.is_empty() && stem != "." && stem != "..",
++                "degenerate stem {:?}",
++                stem
++            );
++            prop_assert_eq!(
++                plan.output.parent(),
++                Some(out_dir.as_path()),
++                "output {:?} escaped its directory",
++                plan.output
++            );
++        }
++    }
++
++    // D6 (spec 5.3): every suggestion the engine emits, re-applied to the
++    // profile and re-planned, resolves its rule's ambiguity everywhere and
++    // introduces no diagnostic absent from the pre-edit baseline.
++    #[test]
++    fn accepted_suggestion_survives_replan(scene in arb_ambiguous_ident()) {
++        let profile = mk_profile(
++            vec![rule_of(exact_one("type", Scalar::Str("subtitles".to_string())), false)],
++            FilenameCfg::keep(),
++        );
++        let files = vec![("Show.S01E01.mkv".to_string(), scene)];
++        let (batch, _) = run_plan(&profile, &files);
++
++        // Meaningfulness guard: the scenario must actually be ambiguous and
++        // actually yield suggestions, or there is nothing to test.
++        prop_assume!(batch.files.iter().any(|f| f
++            .diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::AmbiguousRule)));
++        prop_assume!(!batch.suggestions.is_empty());
++
++        let base = diag_sig(&batch);
++        for s in &batch.suggestions {
++            let ri = rule_index_of(&s.config_path).expect("suggestion names a rule");
++            let edited = apply_suggestion(&profile, ri, &s.yaml_fragment);
++            let (re, _) = run_plan(&edited, &files);
++
++            let still_ambiguous = re.files.iter().flat_map(|f| f.diagnostics.iter()).any(|d| {
++                d.code == DiagCode::AmbiguousRule && rule_index_of(&d.config_path) == Some(ri)
++            });
++            prop_assert!(
++                !still_ambiguous,
++                "suggestion {:?} did not resolve rule {}",
++                s.edit,
++                ri
++            );
++
++            for sig in diag_sig(&re) {
++                prop_assert!(
++                    base.contains(&sig),
++                    "suggestion {:?} introduced new diagnostic {}",
++                    s.edit,
++                    sig
++                );
++            }
++        }
++    }
++}

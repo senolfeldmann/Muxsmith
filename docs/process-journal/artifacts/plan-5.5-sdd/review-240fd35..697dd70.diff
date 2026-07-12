@@ -1,0 +1,1319 @@
+# Review package: 240fd35..697dd70
+
+## Commits
+697dd70 fix(diag): document IdentifyError Display as a deliberate spec 8.4 exception
+bfbc493 fix(diag): surface config diagnostics on the query-failed human path
+747c968 fix(diag): print dry-run/run diagnostics errors-first like validate
+0bce722 fix(diag): print each filename once in dry-run/run human output
+22b83ae fix(diag): emit UnsupportedSource for an unmuxable external donor
+cedea75 fix(diag): format lint rule references as tracks[N] like the planner
+3081fc6 fix(diag): suppress EmptyMatchExpression when EmptyMatchList fires for the node
+bce35cd fix(diag): OverlappingRules names every claimant, not just the first pair
+408593e fix(diag): set allowed on the plan-time changes.language InvalidPropertyValue
+
+## Files changed
+ crates/muxsmith-cli/src/commands/dry_run.rs        |  16 +-
+ crates/muxsmith-cli/src/commands/mod.rs            | 170 ++++++++++++++++-----
+ crates/muxsmith-cli/src/commands/run.rs            |  15 +-
+ crates/muxsmith-cli/src/i18n.rs                    |  18 ++-
+ crates/muxsmith-cli/tests/catalog_completeness.rs  |  95 +++++++++++-
+ crates/muxsmith-cli/tests/dry_run_cli.rs           |  21 +--
+ crates/muxsmith-cli/tests/run_cli.rs               |  19 ++-
+ crates/muxsmith-core/src/identify.rs               |   7 +
+ crates/muxsmith-core/src/planner.rs                |  37 ++++-
+ crates/muxsmith-core/src/profile/lint.rs           |  15 +-
+ crates/muxsmith-core/src/profile/validate.rs       |  17 ++-
+ crates/muxsmith-core/tests/planner_resolution.rs   |  92 +++++++++++
+ crates/muxsmith-core/tests/validate_hardening.rs   |  18 +++
+ .../specs/2026-07-08-muxsmith-v1-design.md         |   2 +-
+ locales/en/diagnostics.ftl                         |   2 +-
+ 15 files changed, 455 insertions(+), 89 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/dry_run.rs b/crates/muxsmith-cli/src/commands/dry_run.rs
+index de3644b..774badf 100644
+--- a/crates/muxsmith-cli/src/commands/dry_run.rs
++++ b/crates/muxsmith-cli/src/commands/dry_run.rs
+@@ -4,21 +4,21 @@
+ 
+ use std::path::{Path, PathBuf};
+ 
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report::json::{batch_document, config_only_document};
+ 
+-use crate::commands::{diag_exit_code, print_batch_human};
++use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
+ use crate::i18n::Renderer;
+ 
+ /// Runs `muxsmith dry-run`. Returns the mkvmerge-style exit code.
+ ///
+ /// Spec 5.5: dry-run is a strict superset of `validate`, never a subset. It
+ /// runs the config-time static validate pass FIRST (the same
+ /// `validate::validate` + `lint::provable_overlaps` collection `validate`
+ /// runs), then a full planning pass, and folds both diagnostic sets into one
+ /// report; the exit code reflects the worst severity across all of them.
+ /// Exception: if mkvmerge cannot be located, planning never runs (it needs
+@@ -65,43 +65,49 @@ pub fn run(
+             // mkvmerge missing blocks the planning pass entirely, but the
+             // config-time pass above already ran; spec 5.5 requires dry-run
+             // to stay a strict superset of `validate` even on this path, so
+             // those diagnostics are surfaced here rather than dropped.
+             if json {
+                 println!(
+                     "{}",
+                     config_only_document(&config_diags, Some(false), renderer)
+                 );
+             } else {
+-                for d in &config_diags {
++                for d in severity_sorted(&config_diags) {
+                     println!("{}", renderer.diagnostic(d));
+                 }
+                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+             }
+             return 2;
+         }
+     };
+     let lang = match mkv.list_languages() {
+         Ok(l) => l,
+         Err(_) => {
+             // mkvmerge was located but querying it failed (a broken
+             // installation): planning never runs here either, so json mode
+             // gets the same config-only document shape the locate()-failure
+             // branch above builds, but with `mkvmerge_found: true` - the
+-            // binary WAS found, only the query failed; human mode is
+-            // unchanged (stderr only).
++            // binary WAS found, only the query failed. Human mode surfaces the
++            // config-time diagnostics on stdout before the failure line, the
++            // same as the locate()-failure branch: spec 5.5's superset-of-
++            // validate guarantee is unconditional, so this pre-planning path
++            // must not drop them (item vii).
+             if json {
+                 println!(
+                     "{}",
+                     config_only_document(&config_diags, Some(true), renderer)
+                 );
+             } else {
++                for d in severity_sorted(&config_diags) {
++                    println!("{}", renderer.diagnostic(d));
++                }
+                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
+             }
+             return 2;
+         }
+     };
+     let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
+     let run = RunInputs {
+         source: source_dir,
+         output,
+         on_collision,
+@@ -109,17 +115,17 @@ pub fn run(
+ 
+     let mut ident = LiveIdentifier {
+         cache: IdentifyCache::new(),
+         mkv: &mkv,
+     };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang);
+ 
+     if json {
+         println!("{}", batch_document(&config_diags, &batch, renderer));
+     } else {
+-        for d in &config_diags {
++        for d in severity_sorted(&config_diags) {
+             println!("{}", renderer.diagnostic(d));
+         }
+         print_batch_human(&batch, &run.source, &profile.input.extensions, renderer);
+     }
+     diag_exit_code(&config_diags, &batch)
+ }
+diff --git a/crates/muxsmith-cli/src/commands/mod.rs b/crates/muxsmith-cli/src/commands/mod.rs
+index b333497..af28185 100644
+--- a/crates/muxsmith-cli/src/commands/mod.rs
++++ b/crates/muxsmith-cli/src/commands/mod.rs
+@@ -1,25 +1,36 @@
+ //! One module per CLI subcommand (spec 8.1); each wraps a core operation
+ //! and renders its diagnostics via [`crate::i18n::Renderer`].
+ 
+ pub mod dry_run;
+ pub mod identify;
+ pub mod run;
+ pub mod validate;
+ 
++use std::cmp::Reverse;
+ use std::path::Path;
+ 
+ use muxsmith_core::planner::Batch;
+ use muxsmith_core::report::{Diagnostic, Severity};
+ 
+ use crate::i18n::Renderer;
+ 
++/// Diagnostics in error-first order (`Severity` is `Info < Warning < Error`,
++/// so `Reverse` puts errors first), stable within a severity. Matches
++/// `validate`'s human/JSON sort so every surface prints the worst first.
++/// Returns borrows; the source slice is untouched.
++pub(crate) fn severity_sorted(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
++    let mut sorted: Vec<&Diagnostic> = diags.iter().collect();
++    sorted.sort_by_key(|d| Reverse(d.severity));
++    sorted
++}
++
+ /// Every diagnostic belonging to a planned [`Batch`] plus the config-time
+ /// set collected before it ran: config-time, then batch-level, then
+ /// per-file, in that order. Shared by `dry-run` and `run` (spec 5.5): both
+ /// re-plan via `plan_batch` and fold the same diagnostic set into their
+ /// exit code.
+ pub(crate) fn all_diags<'a>(
+     config_diags: &'a [Diagnostic],
+     batch: &'a Batch,
+ ) -> impl Iterator<Item = &'a Diagnostic> {
+     config_diags
+@@ -50,69 +61,144 @@ pub(crate) fn diag_exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32
+ /// ..., extensions ...)"), so human mode never exits clean and silent the
+ /// way it did before. Shared verbatim by `dry-run` and `run`: spec 5.5
+ /// requires `run` to re-plan and print exactly this report before
+ /// executing.
+ pub(crate) fn print_batch_human(
+     batch: &Batch,
+     root: &Path,
+     extensions: &[String],
+     renderer: &Renderer,
+ ) {
++    print!("{}", batch_human_report(batch, root, extensions, renderer));
++}
++
++/// Builds the dry-run human report as a single string (see
++/// [`print_batch_human`] for the format). Split out so it is unit-testable
++/// without capturing stdout.
++///
++/// Per-file diagnostics are rendered file-less: the `dry-run-file` header
++/// already names the file, so repeating it on each diagnostic under it is
++/// noise. Batch-level diagnostics keep their file, since no header precedes
++/// them.
++fn batch_human_report(
++    batch: &Batch,
++    root: &Path,
++    extensions: &[String],
++    renderer: &Renderer,
++) -> String {
++    let mut out = String::new();
++    let mut line = |s: String| {
++        out.push_str(&s);
++        out.push('\n');
++    };
+     for f in &batch.files {
+-        println!(
+-            "{}",
+-            renderer.msg(
+-                "dry-run-file",
+-                &[
+-                    ("file", &f.source.display().to_string()),
+-                    ("id", &f.identifier),
+-                ],
+-            )
+-        );
++        line(renderer.msg(
++            "dry-run-file",
++            &[
++                ("file", &f.source.display().to_string()),
++                ("id", &f.identifier),
++            ],
++        ));
+         if let Some(plan) = &f.plan {
+             for a in &plan.assignments {
+                 let track = a
+                     .track_id
+                     .map(|t| t.to_string())
+                     .unwrap_or_else(|| "-".into());
+-                println!(
+-                    "{}",
+-                    renderer.msg(
+-                        "dry-run-assignment",
+-                        &[("rule", &a.rule_index.to_string()), ("track", &track)],
+-                    )
+-                );
++                line(renderer.msg(
++                    "dry-run-assignment",
++                    &[("rule", &a.rule_index.to_string()), ("track", &track)],
++                ));
+             }
+-            println!(
+-                "{}",
+-                renderer.msg(
+-                    "dry-run-output",
+-                    &[("path", &plan.output.display().to_string())]
+-                )
+-            );
++            line(renderer.msg(
++                "dry-run-output",
++                &[("path", &plan.output.display().to_string())],
++            ));
+         }
+-        for d in &f.diagnostics {
+-            println!("{}", renderer.diagnostic(d));
++        for d in severity_sorted(&f.diagnostics) {
++            line(renderer.diagnostic_no_file(d));
+         }
+     }
+-    for d in &batch.batch_diagnostics {
+-        println!("{}", renderer.diagnostic(d));
++    for d in severity_sorted(&batch.batch_diagnostics) {
++        line(renderer.diagnostic(d));
+     }
+     for s in &batch.suggestions {
+-        println!(
+-            "{}",
+-            renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)])
++        line(renderer.msg("dry-run-suggestion", &[("config_path", &s.config_path)]));
++        line(s.yaml_fragment.clone());
++    }
++    line(renderer.msg(
++        "dry-run-summary",
++        &[
++            ("count", &batch.files.len().to_string()),
++            ("root", &root.display().to_string()),
++            ("extensions", &extensions.join(", ")),
++        ],
++    ));
++    out
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use muxsmith_core::planner::{Batch, FileReport};
++    use muxsmith_core::report::{DiagCode, Diagnostic};
++
++    #[test]
++    fn per_file_diagnostics_do_not_repeat_the_filename_the_header_prints() {
++        let file = "/in/Show.S01E01.mkv";
++        let fr = FileReport {
++            source: file.into(),
++            identifier: "S01E01".into(),
++            plan: None,
++            diagnostics: vec![
++                Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(file),
++            ],
++        };
++        let batch = Batch {
++            files: vec![fr],
++            batch_diagnostics: vec![],
++            suggestions: vec![],
++        };
++        let report = batch_human_report(
++            &batch,
++            Path::new("/in"),
++            &["mkv".to_string()],
++            &Renderer::new(Some("en")),
++        );
++        let count = report.matches(file).count();
++        assert_eq!(
++            count, 1,
++            "the filename must appear once (the dry-run-file header), not on each diagnostic:\n{report}"
+         );
+-        println!("{}", s.yaml_fragment);
+     }
+-    println!(
+-        "{}",
+-        renderer.msg(
+-            "dry-run-summary",
+-            &[
+-                ("count", &batch.files.len().to_string()),
+-                ("root", &root.display().to_string()),
+-                ("extensions", &extensions.join(", ")),
++
++    #[test]
++    fn per_file_diagnostics_print_errors_before_warnings() {
++        let file = "/in/Show.S01E01.mkv";
++        // Emitted warning-then-error; the human report must print the error first.
++        let fr = FileReport {
++            source: file.into(),
++            identifier: "S01E01".into(),
++            plan: None,
++            diagnostics: vec![
++                Diagnostic::warning(DiagCode::UnknownPropertySkew, "input")
++                    .for_file(file)
++                    .with("version", "42"),
++                Diagnostic::error(DiagCode::UnsupportedSource, "input").for_file(file),
+             ],
+-        )
+-    );
++        };
++        let batch = Batch {
++            files: vec![fr],
++            batch_diagnostics: vec![],
++            suggestions: vec![],
++        };
++        let report = batch_human_report(
++            &batch,
++            Path::new("/in"),
++            &["mkv".to_string()],
++            &Renderer::new(Some("en")),
++        );
++        let err_at = report.find("[error]").expect("an error line");
++        let warn_at = report.find("[warning]").expect("a warning line");
++        assert!(err_at < warn_at, "error must precede warning in:\n{report}");
++    }
+ }
+diff --git a/crates/muxsmith-cli/src/commands/run.rs b/crates/muxsmith-cli/src/commands/run.rs
+index 5ec9794..a51de24 100644
+--- a/crates/muxsmith-cli/src/commands/run.rs
++++ b/crates/muxsmith-cli/src/commands/run.rs
+@@ -13,21 +13,21 @@ use muxsmith_core::command::command;
+ use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
+ use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
+ use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
+ use muxsmith_core::executor::spawn::LiveSpawner;
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
+ 
+-use crate::commands::{diag_exit_code, print_batch_human};
++use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
+ use crate::i18n::Renderer;
+ 
+ /// Progress thresholds a job's cumulative percent is checked against, in
+ /// ascending order. Each threshold prints at most one milestone line per
+ /// job, the first time progress reaches or passes it; the printed
+ /// `$percent` is the threshold itself (not the raw reported value), so a
+ /// single `Progress` event that jumps past several thresholds at once (a
+ /// coarse-grained mkvmerge report) still renders one line per threshold
+ /// crossed, in ascending order.
+ const MILESTONES: [u8; 3] = [25, 50, 75];
+@@ -94,67 +94,74 @@ pub fn run(
+             if json {
+                 println!(
+                     "{}",
+                     run_document(
+                         config_only_document(&config_diags, Some(false), renderer),
+                         &[],
+                         &[],
+                     )
+                 );
+             } else {
+-                for d in &config_diags {
++                for d in severity_sorted(&config_diags) {
+                     println!("{}", renderer.diagnostic(d));
+                 }
+                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
+             }
+             return 2;
+         }
+     };
+     let lang = match mkv.list_languages() {
+         Ok(l) => l,
+         Err(_) => {
+             // mkvmerge was located but querying it failed (a broken
+             // installation): planning never runs here either, so json mode
+             // gets the same config-only, empty-jobs/zeroed-summary document
+             // shape the locate()-failure branch above builds, but with
+             // `mkvmerge_found: true` - the binary WAS found, only the query
+-            // failed; human mode is unchanged (stderr only).
++            // failed. Human mode surfaces the config-time diagnostics on
++            // stdout before the failure line, the same as the locate()-failure
++            // branch: spec 5.5's superset-of-validate guarantee is
++            // unconditional, so this pre-planning path must not drop them
++            // (item vii). The queue is never touched.
+             if json {
+                 println!(
+                     "{}",
+                     run_document(
+                         config_only_document(&config_diags, Some(true), renderer),
+                         &[],
+                         &[],
+                     )
+                 );
+             } else {
++                for d in severity_sorted(&config_diags) {
++                    println!("{}", renderer.diagnostic(d));
++                }
+                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
+             }
+             return 2;
+         }
+     };
+     let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
+     let run_inputs = RunInputs {
+         source: source_dir,
+         output,
+         on_collision,
+     };
+ 
+     let mut ident = LiveIdentifier {
+         cache: IdentifyCache::new(),
+         mkv: &mkv,
+     };
+     let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
+ 
+     if !json {
+-        for d in &config_diags {
++        for d in severity_sorted(&config_diags) {
+             println!("{}", renderer.diagnostic(d));
+         }
+         print_batch_human(
+             &batch,
+             &run_inputs.source,
+             &profile.input.extensions,
+             renderer,
+         );
+     }
+ 
+diff --git a/crates/muxsmith-cli/src/i18n.rs b/crates/muxsmith-cli/src/i18n.rs
+index a22949b..cbad24d 100644
+--- a/crates/muxsmith-cli/src/i18n.rs
++++ b/crates/muxsmith-cli/src/i18n.rs
+@@ -85,28 +85,44 @@ impl Renderer {
+         self.bundle
+             .format_pattern(pattern, Some(&fargs), &mut errors)
+             .into_owned()
+     }
+ 
+     /// Renders one core [`Diagnostic`](muxsmith_core::report::Diagnostic)
+     /// as a single human-readable line: severity, config path, and the
+     /// message resolved from `code`/`params` (spec 5.2, 8.4), composed via
+     /// the `diagnostic-line` catalog entry.
+     pub fn diagnostic(&self, d: &muxsmith_core::report::Diagnostic) -> String {
++        self.render_diagnostic(d, true)
++    }
++
++    /// Renders a diagnostic WITHOUT its file prefix (always `diagnostic-line`,
++    /// even when `d.file` is set), for contexts where an enclosing header
++    /// already named the file -- dry-run/run's per-file block prints the
++    /// filename once in its `dry-run-file` line, so repeating it on every
++    /// diagnostic under it is noise.
++    pub fn diagnostic_no_file(&self, d: &muxsmith_core::report::Diagnostic) -> String {
++        self.render_diagnostic(d, false)
++    }
++
++    /// Shared body of [`Self::diagnostic`] and [`Self::diagnostic_no_file`]:
++    /// `show_file` selects the `diagnostic-line-file` template (when a file is
++    /// present) over the file-less `diagnostic-line`.
++    fn render_diagnostic(&self, d: &muxsmith_core::report::Diagnostic, show_file: bool) -> String {
+         let params: Vec<(&str, &str)> = d
+             .params
+             .iter()
+             .map(|(k, v)| (k.as_str(), v.as_str()))
+             .collect();
+         let message = self.msg(d.code.key(), &params);
+         let severity = self.msg(severity_key(d.severity), &[]);
+-        match &d.file {
++        match d.file.as_ref().filter(|_| show_file) {
+             Some(file) => {
+                 let file = file.to_string_lossy();
+                 self.msg(
+                     "diagnostic-line-file",
+                     &[
+                         ("severity", &severity),
+                         ("file", &file),
+                         ("config_path", &d.config_path),
+                         ("message", &message),
+                     ],
+diff --git a/crates/muxsmith-cli/tests/catalog_completeness.rs b/crates/muxsmith-cli/tests/catalog_completeness.rs
+index ab9c1fb..af9294b 100644
+--- a/crates/muxsmith-cli/tests/catalog_completeness.rs
++++ b/crates/muxsmith-cli/tests/catalog_completeness.rs
+@@ -1,23 +1,28 @@
+ //! Spec 10: every `DiagCode` must have a message template in the English
+ //! catalog, and every message must render without leaking an unresolved
+ //! `{$param}` placeholder (the param names an emitter actually sets must
+ //! match the template's placeholders -- drift here once reached a user as
+ //! a literal `{$property}` in output). A second guard enumerates every key
+ //! in `locales/en/cli.ftl` and requires each to be either a `DiagCode`
+ //! message or on the explicit allowlist of directly-rendered CLI strings
+ //! below, so a new catalog entry can never go silently unwired.
+ 
+ use std::collections::BTreeSet;
++use std::path::Path;
+ 
+ use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
+ use fluent_syntax::ast::Entry;
++use muxsmith_core::capability::runtime::LanguageIndex;
++use muxsmith_core::identify::{Identification, Identify, IdentifyError};
++use muxsmith_core::planner::{RunInputs, plan_batch};
++use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::report::DiagCode;
+ 
+ #[test]
+ fn every_diag_code_has_a_catalog_message() {
+     let renderer = muxsmith_cli::i18n::Renderer::new(Some("en"));
+     let missing: Vec<&str> = DiagCode::ALL
+         .iter()
+         .filter(|code| renderer.msg(code.key(), &[]) == code.key())
+         .map(|code| code.key())
+         .collect();
+@@ -28,22 +33,25 @@ fn every_diag_code_has_a_catalog_message() {
+ /// by grepping every `Diagnostic::error`/`warning`/`info` + `.with(...)`
+ /// call site across `muxsmith-core` (`planner.rs`, `discovery.rs`,
+ /// `profile/{validate,load,lint}.rs`). Exhaustive match: a new `DiagCode`
+ /// variant fails to compile here until its fixture is added, so the guard
+ /// grows with the enum instead of silently missing new codes.
+ ///
+ /// **Limitation:** this guard is exhaustive over `DiagCode` variants, not
+ /// over emitter sites per variant. It renders one fixture per code, which
+ /// proves the fixture matches the template; a single emitter site that omits
+ /// a param its siblings set will leak `{$param}` in production while this
+-/// guard stays green (known case found in review: `planner.rs:600` emits
+-/// `InvalidPropertyValue` without `allowed`, caught separately).
++/// guard stays green. The one known instance -- `resolve_changes` emitting
++/// `InvalidPropertyValue` without `allowed` while its `walk_exact_languages`
++/// sibling set it -- is fixed and pinned by
++/// [`invalid_changes_language_diagnostic_renders_without_placeholder_leak`],
++/// which renders the real emitter-site diagnostic rather than a fixture.
+ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
+     let mut args = FluentArgs::new();
+     match code {
+         DiagCode::UnsupportedProfileVersion => {
+             args.set("found", "2");
+             args.set("supported", "1");
+         }
+         DiagCode::ParseError => {
+             args.set("detail", "unexpected end of input");
+             args.set("at", "tracks[0].match");
+@@ -93,29 +101,28 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
+             args.set("allowed", "match, g1, source_stem");
+         }
+         DiagCode::UnknownTemplateFilter => {
+             args.set("name", "bogus_filter");
+         }
+         DiagCode::PathSeparatorInTemplate => {}
+         DiagCode::AttachmentRuleShape => {
+             args.set("found", "0");
+         }
+         DiagCode::ProvableOverlap => {
+-            args.set("rule_a", "0");
+-            args.set("rule_b", "1");
++            args.set("rule_a", "tracks[0]");
++            args.set("rule_b", "tracks[1]");
+         }
+         DiagCode::AmbiguousRule => {
+             args.set("count", "2");
+         }
+         DiagCode::OverlappingRules => {
+-            args.set("rule_a", "tracks[0]");
+-            args.set("rule_b", "tracks[1]");
++            args.set("rules", "tracks[0], tracks[1], tracks[2]");
+             args.set("track", "3");
+         }
+         DiagCode::MissingTrack => {}
+         DiagCode::MissingExternal => {}
+         DiagCode::AmbiguousExternal => {
+             args.set("count", "2");
+         }
+         DiagCode::UnidentifiableSource => {
+             args.set("detail", "mkvmerge exited with status 2");
+         }
+@@ -422,10 +429,86 @@ fn render_and_find_leaks<'a>(
+ /// every fixture in this file) into the `&[(&str, &str)]` shape
+ /// [`muxsmith_cli::i18n::Renderer::msg`] takes.
+ fn string_pairs<'a>(args: &'a FluentArgs<'a>) -> Vec<(&'a str, &'a str)> {
+     args.iter()
+         .map(|(k, v)| match v {
+             FluentValue::String(s) => (k, s.as_ref()),
+             other => panic!("fixture value for {k:?} is not a string: {other:?}"),
+         })
+         .collect()
+ }
++
++/// Returns the same `Identification` for any path: enough to drive
++/// `plan_batch` past identification so a rule resolves and its `changes`
++/// apply.
++struct OneIdent(Identification);
++
++impl Identify for OneIdent {
++    fn identify(&mut self, _path: &Path) -> Result<Identification, IdentifyError> {
++        Ok(self.0.clone())
++    }
++}
++
++/// Regression guard for the emitter-site divergence the two guards above are
++/// structurally blind to (they render one hand-written fixture per code, so a
++/// single emitter that omits a param its siblings set stays green there). This
++/// drives the REAL `resolve_changes` emitter -- the plan-time invalid
++/// `changes.language` path -- through `plan_batch`, then renders the diagnostic
++/// it actually produced. Before the fix that added `.with("allowed", ...)` to
++/// match its `walk_exact_languages` sibling, the `{ $allowed }` placeholder in
++/// `invalid-property-value` reached the user verbatim; this asserts it no
++/// longer does, from the emitter's own params rather than a fixture's.
++#[test]
++fn invalid_changes_language_diagnostic_renders_without_placeholder_leak() {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    let profile = from_str(
++        "profile_version: 1\n\
++         input: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\n\
++         tracks:\n  rules:\n\
++         \x20   - match: { exact: { type: audio, language: en } }\n\
++         \x20     changes: { language: 'zz!' }\n",
++        Format::Yaml,
++    )
++    .unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let series = include_str!(concat!(
++        env!("CARGO_MANIFEST_DIR"),
++        "/../muxsmith-core/tests/fixtures/identify/series-s01e01.json"
++    ));
++    let lang = LanguageIndex::from_rows(&[
++        ["English", "eng", "eng", "en"],
++        ["German", "ger", "ger", "de"],
++        ["Turkish", "tur", "tur", "tr"],
++    ]);
++    let mut ident = OneIdent(Identification::from_json(series).unwrap());
++    let batch = plan_batch(&profile, &run, &mut ident, &lang);
++
++    let diag = batch
++        .files
++        .iter()
++        .flat_map(|f| &f.diagnostics)
++        .find(|d| {
++            d.code == DiagCode::InvalidPropertyValue && d.config_path.ends_with(".changes.language")
++        })
++        .unwrap_or_else(|| {
++            panic!(
++                "expected an InvalidPropertyValue from the changes.language emitter site; diags: {:?}",
++                batch
++                    .files
++                    .iter()
++                    .flat_map(|f| &f.diagnostics)
++                    .collect::<Vec<_>>()
++            )
++        });
++
++    let renderer = muxsmith_cli::i18n::Renderer::new(Some("en"));
++    let rendered = renderer.diagnostic(diag);
++    assert!(
++        !rendered.contains("{$"),
++        "the changes.language InvalidPropertyValue leaked a placeholder: {rendered}"
++    );
++}
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index f5b84ea..1661a3e 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -643,51 +643,54 @@ fn dry_run_json_emits_a_document_when_the_language_query_fails() {
+     assert_eq!(report["files"].as_array().unwrap().len(), 0);
+     assert_eq!(report["batch_diagnostics"].as_array().unwrap().len(), 0);
+     assert_eq!(report["suggestions"].as_array().unwrap().len(), 0);
+     assert_eq!(
+         report["mkvmerge_found"], true,
+         "locate() succeeded on this path (only the language query failed), \
+          so mkvmerge_found must be true, got: {report}"
+     );
+ }
+ 
+-/// Same forced-broken-mkvmerge condition, human mode: pins down that
+-/// today's behavior (bare stderr message, empty stdout, exit 2) is
+-/// untouched by the `--json` fix; no earlier test in this file covered the
+-/// human-mode side of this branch.
++/// Same forced-broken-mkvmerge condition, human mode. The query-failed branch
++/// is a pre-planning failure where the config-time validate pass already ran,
++/// and spec 5.5's superset-of-validate guarantee is unconditional: human mode
++/// must surface those config diagnostics on stdout before the stderr failure
++/// line, exactly as the sibling locate()-failure branch does. (This branch
++/// used to drop them, stderr only; item vii.)
+ #[test]
+ #[cfg(unix)]
+-fn dry_run_human_mode_still_just_reports_the_language_query_failure_on_stderr() {
++fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
+     let fake_path = fake_mkvmerge_that_fails_queries();
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("p.yaml");
++    // An empty match expression is a config-time warning; it must reach stdout.
+     std::fs::write(
+         &profile,
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: {}\n",
+     )
+     .unwrap();
+ 
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .env("PATH", fake_path.path())
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert_eq!(out.status.code(), Some(2));
++    let stdout = String::from_utf8_lossy(&out.stdout);
+     assert!(
+-        out.stdout.is_empty(),
+-        "stdout: {}",
+-        String::from_utf8_lossy(&out.stdout)
++        stdout.contains("tracks[0].match"),
++        "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
+     );
+     let stderr = String::from_utf8_lossy(&out.stderr);
+     assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
+ }
+ 
+ /// Task 6 review finding 2: an `EmptyPlan`-only batch (a plan resolving to
+ /// zero output tracks, warning severity, spec 5.2) must surface end-to-end
+ /// through `--json`, not just in the core-crate unit tests. The fixture's
+ /// only audio track is tagged `eng`; the profile's only rule is `optional`
+ /// and requires `de`, so it is satisfied-but-unmatched and the plan renders
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index ef160a3..36801dc 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -571,41 +571,48 @@ fn run_json_emits_a_document_when_the_language_query_fails() {
+         report["summary"],
+         serde_json::json!({ "ok": 0, "warning": 0, "failed": 0, "cancelled": 0 })
+     );
+     assert_eq!(
+         report["mkvmerge_found"], true,
+         "locate() succeeded on this path (only the language query failed), \
+          so mkvmerge_found must be true, got: {report}"
+     );
+ }
+ 
+-/// Same forced-broken-mkvmerge condition, human mode: pins down that
+-/// today's behavior (bare stderr message, empty stdout, exit 2, no job
+-/// ever runs) is untouched by the `--json` fix.
++/// Same forced-broken-mkvmerge condition, human mode. Like dry-run, `run`
++/// runs the config-time validate pass before the mkvmerge query, and spec
++/// 5.5's superset-of-validate guarantee is unconditional: human mode must
++/// surface those config diagnostics on stdout, before the stderr failure
++/// line and without ever touching the queue. (This branch used to drop them,
++/// stderr only; item vii.)
+ #[test]
+ #[cfg(unix)]
+-fn run_human_mode_still_just_reports_the_language_query_failure_on_stderr() {
++fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
+     let fake_path = fake_mkvmerge_that_fails_queries();
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("p.yaml");
++    // An empty match expression is a config-time warning; it must reach stdout.
+     std::fs::write(
+         &profile,
+-        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
++        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: {}\n",
+     )
+     .unwrap();
+ 
+     let out = muxsmith()
+         .env("PATH", fake_path.path())
+         .args(["run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert_eq!(out.status.code(), Some(2));
+     let stdout = String::from_utf8_lossy(&out.stdout);
+     asserts_no_job_ran(&stdout);
+-    assert!(stdout.is_empty(), "stdout: {stdout}");
++    assert!(
++        stdout.contains("tracks[0].match"),
++        "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
++    );
+     let stderr = String::from_utf8_lossy(&out.stderr);
+     assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
+ }
+diff --git a/crates/muxsmith-core/src/identify.rs b/crates/muxsmith-core/src/identify.rs
+index 4e64344..f843473 100644
+--- a/crates/muxsmith-core/src/identify.rs
++++ b/crates/muxsmith-core/src/identify.rs
+@@ -259,20 +259,27 @@ pub enum IdentifyError {
+     /// The file could not be stat'd for the cache key.
+     Stat(String),
+ }
+ 
+ impl From<RuntimeError> for IdentifyError {
+     fn from(e: RuntimeError) -> Self {
+         IdentifyError::Runtime(e)
+     }
+ }
+ 
++// This `Display` is core-authored English framing ("mkvmerge failed: ...")
++// around inherently unstructured third-party error text (mkvmerge subprocess
++// stderr, serde parse errors, std::io errors). It reaches the user only via
++// the `detail` param of `UnidentifiableSource`, never as a `DiagCode`-templated
++// message. That is a deliberate, documented spec 8.4 exception to "core is
++// prose-free": the payload is not catalog-templatable, and v1 ships
++// English-only. Keep it here rather than routing it through a catalog key.
+ impl std::fmt::Display for IdentifyError {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         match self {
+             IdentifyError::Runtime(RuntimeError::NotFound) => {
+                 write!(f, "mkvmerge failed: executable not found")
+             }
+             IdentifyError::Runtime(RuntimeError::Spawn(e)) => write!(f, "mkvmerge failed: {e}"),
+             IdentifyError::Runtime(RuntimeError::NonZero { code, stderr }) => {
+                 let code = code
+                     .map(|c| c.to_string())
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 60071a7..6e83f9b 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -501,21 +501,44 @@ fn resolve_file(
+                             diagnostics.push(
+                                 Diagnostic::warning(
+                                     DiagCode::DonorIsPrimary,
+                                     format!("{base}.source.external"),
+                                 )
+                                 .for_file(&primary.path)
+                                 .with("donor", donor.display().to_string()),
+                             );
+                         }
+                         match id.identify(&donor) {
+-                            Ok(di) => (donor, di),
++                            Ok(di) => {
++                                // Same predicate as the primary branch: a donor
++                                // that identifies but whose container is not a
++                                // supported muxing source is UnsupportedSource,
++                                // not a silent skip (spec 5.1).
++                                if !di.container_recognized || !di.container_supported {
++                                    diagnostics.push(
++                                        Diagnostic::error(
++                                            DiagCode::UnsupportedSource,
++                                            format!("{base}.source.external"),
++                                        )
++                                        .for_file(&primary.path),
++                                    );
++                                    assignments.push(Assignment {
++                                        rule_index: ri,
++                                        source: primary.path.clone(),
++                                        track_id: None,
++                                        track_kind: None,
++                                        changes: vec![],
++                                    });
++                                    continue;
++                                }
++                                (donor, di)
++                            }
+                             Err(e) => {
+                                 diagnostics.push(
+                                     Diagnostic::error(
+                                         DiagCode::UnidentifiableSource,
+                                         format!("{base}.source.external"),
+                                     )
+                                     .for_file(&primary.path)
+                                     .with("detail", format!("{e}")),
+                                 );
+                                 assignments.push(Assignment {
+@@ -600,27 +623,29 @@ fn resolve_file(
+                     source: source_path,
+                     track_id: None,
+                     track_kind: None,
+                     changes: vec![],
+                 });
+             }
+         }
+     }
+ 
+     // OverlappingRules: one track claimed by two or more rules (spec 5.2).
++    // Names every claimant, not just the first pair: three rules colliding on
++    // one track is one diagnostic listing all three.
+     for ((_src, tid), rules) in &claims {
+         if rules.len() >= 2 {
++            let refs: Vec<String> = rules.iter().map(|r| format!("tracks[{r}]")).collect();
+             diagnostics.push(
+                 Diagnostic::error(DiagCode::OverlappingRules, format!("tracks[{}]", rules[0]))
+                     .for_file(&primary.path)
+-                    .with("rule_a", format!("tracks[{}]", rules[0]))
+-                    .with("rule_b", format!("tracks[{}]", rules[1]))
++                    .with("rules", refs.join(", "))
+                     .with("track", tid.to_string()),
+             );
+         }
+     }
+ 
+     let output = render_output(profile, primary, output_dir, &mut diagnostics);
+     let title = resolve_title(profile, primary);
+     let tags = resolve_tags(profile);
+     let chapters = resolve_chapters(profile, primary, primary_dir, &mut diagnostics);
+     let attachments = resolve_attachments(
+@@ -706,21 +731,25 @@ fn resolve_changes(
+             if property == "language" {
+                 let valid = matches!(value, Scalar::Str(s) if lang.is_valid_value(s));
+                 if !valid {
+                     diags.push(
+                         Diagnostic::error(
+                             DiagCode::InvalidPropertyValue,
+                             format!("{base}.changes.language"),
+                         )
+                         .for_file(primary_path)
+                         .with("property", "language")
+-                        .with("value", scalar_display(value)),
++                        .with("value", scalar_display(value))
++                        // `invalid-property-value` requires `allowed`; the
++                        // sibling emitter in `walk_exact_languages` sets it, so
++                        // this site must too or `{$allowed}` leaks to the user.
++                        .with("allowed", "a valid ISO 639/BCP-47 language code"),
+                     );
+                 }
+             }
+             AppliedChange {
+                 property: property.clone(),
+                 value: value.clone(),
+             }
+         })
+         .collect()
+ }
+diff --git a/crates/muxsmith-core/src/profile/lint.rs b/crates/muxsmith-core/src/profile/lint.rs
+index 47c1990..c5f1b39 100644
+--- a/crates/muxsmith-core/src/profile/lint.rs
++++ b/crates/muxsmith-core/src/profile/lint.rs
+@@ -25,22 +25,25 @@ pub fn provable_overlaps(profile: &Profile) -> Vec<Diagnostic> {
+         .filter(|(_, r)| matches!(&r.source, SourceCfg::Keyword(k) if k == "primary"))
+         .filter(|(_, r)| is_exact_only(&r.match_expr))
+         .map(|(i, r)| (i, &r.match_expr))
+         .collect();
+ 
+     for (ai, (a_idx, a)) in exact_only.iter().enumerate() {
+         for (b_idx, b) in exact_only.iter().skip(ai + 1) {
+             if subset_of(a, b) || subset_of(b, a) {
+                 diags.push(
+                     Diagnostic::warning(DiagCode::ProvableOverlap, format!("tracks[{b_idx}]"))
+-                        .with("rule_a", a_idx.to_string())
+-                        .with("rule_b", b_idx.to_string()),
++                        // Rule references use the planner's `tracks[N]` form so
++                        // lint (5.4) and the runtime OverlappingRules (5.2)
++                        // format identically.
++                        .with("rule_a", format!("tracks[{a_idx}]"))
++                        .with("rule_b", format!("tracks[{b_idx}]")),
+                 );
+             }
+         }
+     }
+     diags
+ }
+ 
+ fn is_exact_only(e: &MatchExpr) -> bool {
+     e.substring.is_none()
+         && e.regex.is_none()
+@@ -74,22 +77,22 @@ mod tests {
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio } }
+     - match: { exact: { type: audio, language: en } }
+ "#;
+         let diags = lint(y);
+         assert_eq!(diags.len(), 1);
+         assert_eq!(diags[0].code, DiagCode::ProvableOverlap);
+-        assert_eq!(diags[0].params["rule_a"], "0");
+-        assert_eq!(diags[0].params["rule_b"], "1");
++        assert_eq!(diags[0].params["rule_a"], "tracks[0]");
++        assert_eq!(diags[0].params["rule_b"], "tracks[1]");
+     }
+ 
+     #[test]
+     fn identical_exact_rules_are_provable_overlap() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+@@ -134,22 +137,22 @@ tracks:
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio, language: en } }
+     - match: { exact: { type: audio } }
+ "#;
+         let diags = lint(y);
+         assert_eq!(diags.len(), 1);
+-        assert_eq!(diags[0].params["rule_a"], "0");
+-        assert_eq!(diags[0].params["rule_b"], "1");
++        assert_eq!(diags[0].params["rule_a"], "tracks[0]");
++        assert_eq!(diags[0].params["rule_b"], "tracks[1]");
+     }
+ 
+     #[test]
+     fn rules_with_any_are_skipped() {
+         let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles } }
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index f0a1ef6..d075a04 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -56,24 +56,33 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
+         ));
+     }
+ 
+     if profile.tracks.rules.is_empty() {
+         diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks.rules"));
+     }
+ 
+     for (i, rule) in profile.tracks.rules.iter().enumerate() {
+         let base = format!("tracks[{i}]");
+         if rule.match_expr.is_empty() {
+-            diags.push(Diagnostic::warning(
+-                DiagCode::EmptyMatchExpression,
+-                format!("{base}.match"),
+-            ));
++            // Suppress the generic EmptyMatchExpression when the emptiness is
++            // caused by an empty top-level `any`/`not` list, which already
++            // gets its own, more specific EmptyMatchList error for the same
++            // node (validate_expr below). Otherwise a `{ any: [] }` match
++            // double-reports.
++            let empty_list_here = rule.match_expr.any.as_ref().is_some_and(|v| v.is_empty())
++                || rule.match_expr.not.as_ref().is_some_and(|v| v.is_empty());
++            if !empty_list_here {
++                diags.push(Diagnostic::warning(
++                    DiagCode::EmptyMatchExpression,
++                    format!("{base}.match"),
++                ));
++            }
+         }
+         validate_expr(
+             &rule.match_expr,
+             &format!("{base}.match"),
+             track_prop_type,
+             &mut diags,
+         );
+         if let Some(changes) = &rule.changes {
+             validate_changes(changes, &format!("{base}.changes"), &mut diags);
+         }
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 653bf83..ff54317 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -272,20 +272,52 @@ tracks:
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none());
+     assert!(
+         fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::OverlappingRules)
+     );
+ }
+ 
++#[test]
++fn overlapping_rules_names_every_claimant_not_just_the_first_two() {
++    // Three rules each resolve to the single audio track (track 1): the
++    // OverlappingRules diagnostic must name all three, not only the first
++    // pair. The `rules` param is the rendered claimant list.
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: audio } }
++    - match: { exact: { codec_id: A_AAC } }
++    - match: { exact: { type: audio, language: en } }
++"#;
++    let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    let overlap = fr
++        .diagnostics
++        .iter()
++        .find(|d| d.code == DiagCode::OverlappingRules)
++        .unwrap_or_else(|| panic!("expected OverlappingRules, got: {:?}", fr.diagnostics));
++    let rules = &overlap.params["rules"];
++    for expected in ["tracks[0]", "tracks[1]", "tracks[2]"] {
++        assert!(
++            rules.contains(expected),
++            "claimant {expected} missing from rules list {rules:?}"
++        );
++    }
++    assert_eq!(overlap.params["track"], "1");
++}
++
+ #[test]
+ fn keep_filename_renders_mkv_output() {
+     let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     let plan = batch.files[0].plan.as_ref().unwrap();
+     assert!(
+         plan.output
+             .file_name()
+             .unwrap()
+             .to_str()
+             .unwrap()
+@@ -443,20 +475,80 @@ tracks:
+     );
+     assert!(
+         !fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::MissingExternal),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+ 
++#[test]
++fn unmuxable_donor_yields_unsupported_source_not_unidentifiable() {
++    // A donor that identifies cleanly but whose container is not a supported
++    // muxing source must get the same UnsupportedSource treatment as a primary
++    // (spec 5.1), not silently resolve to nothing and not be mislabelled
++    // UnidentifiableSource (which is for identify() outright failing).
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(dir.path().join("Donor.S01E01.srt"), b"y").unwrap();
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++    - source:
++        external: { path: '.', extensions: [srt], match_to_source: true }
++      match: { exact: { type: subtitles } }
++      optional: true
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    // The donor identifies fine, but its container is recognized-yet-unsupported.
++    let donor_json = r#"{ "container": { "recognized": true, "supported": false },
++                          "file_name": "Donor.S01E01.srt", "identification_format_version": 20,
++                          "tracks": [] }"#;
++    by_name.insert(
++        "Donor.S01E01.srt".to_string(),
++        Identification::from_json(donor_json).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
++    assert!(
++        fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::UnsupportedSource),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++    assert!(
++        !fr.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::UnidentifiableSource),
++        "diags: {:?}",
++        fr.diagnostics
++    );
++}
++
+ #[test]
+ fn unrecognized_container_yields_unsupported_source_not_missing_track() {
+     let json = r#"{ "container": { "recognized": false, "supported": true },
+                     "file_name": "Show.S01E01.mkv", "identification_format_version": 20,
+                     "tracks": [] }"#;
+     let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", json);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let count = fr
+         .diagnostics
+diff --git a/crates/muxsmith-core/tests/validate_hardening.rs b/crates/muxsmith-core/tests/validate_hardening.rs
+index c4add83..ab1da73 100644
+--- a/crates/muxsmith-core/tests/validate_hardening.rs
++++ b/crates/muxsmith-core/tests/validate_hardening.rs
+@@ -53,17 +53,35 @@ fn empty_any_list_is_empty_match_list() {
+     let y = format!("{HEAD}    - match: {{ any: [] }}\n");
+     assert!(codes(&y).contains(&DiagCode::EmptyMatchList));
+ }
+ 
+ #[test]
+ fn empty_not_list_is_empty_match_list() {
+     let y = format!("{HEAD}    - match: {{ not: [] }}\n");
+     assert!(codes(&y).contains(&DiagCode::EmptyMatchList));
+ }
+ 
++#[test]
++fn empty_any_list_reports_only_empty_match_list_not_empty_match_expression() {
++    // A `{ any: [] }` match is "empty" solely because of the empty list, which
++    // already gets the more specific EmptyMatchList error; the generic
++    // EmptyMatchExpression warning must not also fire for the same node.
++    let y = format!("{HEAD}    - match: {{ any: [] }}\n");
++    let c = codes(&y);
++    assert!(
++        !c.contains(&DiagCode::EmptyMatchExpression),
++        "EmptyMatchExpression must be suppressed when EmptyMatchList fires: {c:?}"
++    );
++    assert_eq!(
++        c,
++        vec![DiagCode::EmptyMatchList],
++        "expected exactly one diagnostic for an empty any list: {c:?}"
++    );
++}
++
+ #[test]
+ fn populated_any_and_not_are_not_empty_match_list() {
+     let y = format!(
+         "{HEAD}    - match: {{ any: [{{ exact: {{ type: subtitles }} }}], not: [{{ exact: {{ type: audio }} }}] }}\n"
+     );
+     assert!(!codes(&y).contains(&DiagCode::EmptyMatchList));
+ }
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index d10bc8b..98756be 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -378,21 +378,21 @@ On top of that, an integrated **help mode**:
+ - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
+ - Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings).
+ - Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked or help mode exits.
+ 
+ Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
+ 
+ ### 8.4 Internationalization architecture
+ 
+ Localization readiness is structural, not deferred polish:
+ 
+-- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, and third-party error text passed through as a `detail` param (regex, serde, I/O).
++- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), and the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text.
+ - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
+ - Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
+ - v1 ships English content only (non-goal 11); the mechanism ships complete.
+ 
+ ## 9. Capability model and version skew
+ 
+ 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code, including the closed value domains of enum-typed properties (e.g. `type`) for config-time `InvalidPropertyValue` checks. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
+ 2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`; if it is newer than the pinned one, unknown track properties become matchable as untyped values with an `UnknownPropertySkew` warning instead of failing (forward compatibility without lying about type safety).
+ 
+ ## 10. Testing
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 8f1c7b4..3ef921c 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -17,21 +17,21 @@ locator-conflict = match_to_source and match_pattern are mutually exclusive; set
+ invalid-template = Invalid template: { $kind ->
+     [unclosed-brace] unclosed brace at position { $pos }
+    *[empty-field] empty field at position { $pos }
+ }
+ unknown-template-field = Unknown template field "{ $field }". Available fields: { $allowed }.
+ unknown-template-filter = Unknown template filter "{ $name }".
+ path-separator-in-template = Filename templates must not contain path separators.
+ attachment-rule-shape = Each attachment rule needs exactly one of select, drop, add (found { $found }).
+ provable-overlap = Rules { $rule_a } and { $rule_b } provably overlap: every track matching one also matches the other. Add a distinguishing condition to one of them.
+ ambiguous-rule = Rule matches { $count } tracks; it must match exactly one.
+-overlapping-rules = Rules { $rule_a } and { $rule_b } both claim track { $track }.
++overlapping-rules = Rules { $rules } all claim track { $track }.
+ missing-track = No track matches this non-optional rule.
+ missing-external = No file matches this external locator.
+ ambiguous-external = { $count } files match this external locator; exactly one is required.
+ output-collision = Output path { $path } collides with an existing file or another planned output.
+ source-overwrite = Output path { $path } would overwrite a source file. This is never allowed.
+ duplicate-identifier = Files { $file_a } and { $file_b } share the identifier "{ $identifier }".
+ donor-is-primary = External donor file { $donor } is itself a primary source.
+ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.

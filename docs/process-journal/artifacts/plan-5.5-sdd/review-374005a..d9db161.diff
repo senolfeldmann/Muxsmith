@@ -1,0 +1,503 @@
+# Review package: 374005a..d9db161
+
+## Commits
+d9db161 feat(planner): validate profile extensions against mkvmerge --list-types (#3)
+
+## Files changed
+ crates/muxsmith-core/src/capability/runtime.rs   |   9 ++
+ crates/muxsmith-core/src/identify.rs             |  29 +++++
+ crates/muxsmith-core/src/planner.rs              |  27 +++++
+ crates/muxsmith-core/src/profile/model.rs        |   9 +-
+ crates/muxsmith-core/src/report/mod.rs           |   2 +
+ crates/muxsmith-core/tests/planner_resolution.rs | 146 ++++++++++++++++++++++-
+ locales/en/diagnostics.ftl                       |   1 +
+ 7 files changed, 219 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/capability/runtime.rs b/crates/muxsmith-core/src/capability/runtime.rs
+index 38fa6b5..62f0480 100644
+--- a/crates/muxsmith-core/src/capability/runtime.rs
++++ b/crates/muxsmith-core/src/capability/runtime.rs
+@@ -176,20 +176,29 @@ impl Mkvmerge {
+         }
+         parse_version_pair(&self.version()?)
+     }
+ 
+     /// Lowercase source-file extensions the local mkvmerge accepts, from
+     /// `--list-types`, deduped and sorted (spec 4.2 validation input).
+     pub fn list_types(&self) -> Result<Vec<String>, RuntimeError> {
+         Ok(parse_list_types(&self.run(&["--list-types"])?))
+     }
+ 
++    /// [`Mkvmerge::list_types`], degrading a query failure to `None` (spec
++    /// 4.2). Unlike identification or [`Mkvmerge::list_languages`], whose
++    /// failure blocks planning outright, `profile.input.extensions`
++    /// validation is advisory: a missing or broken mkvmerge should not stop
++    /// batch planning, only skip the typo check (walkthrough #3).
++    pub fn known_extensions(&self) -> Option<Vec<String>> {
++        self.list_types().ok()
++    }
++
+     /// The language normalization index from `--list-languages` (spec 4.4).
+     pub fn list_languages(&self) -> Result<LanguageIndex, RuntimeError> {
+         Ok(parse_list_languages(&self.run(&["--list-languages"])?))
+     }
+ 
+     /// Runs `mkvmerge -J <file>` and returns the raw JSON stdout (spec 5.5).
+     /// mkvmerge exits 0 for a non-media file too (with
+     /// `container.recognized: false`), so a non-zero exit here is a genuine
+     /// invocation failure, not a "not media" signal.
+     pub fn identify_json(&self, file: &Path) -> Result<String, RuntimeError> {
+diff --git a/crates/muxsmith-core/src/identify.rs b/crates/muxsmith-core/src/identify.rs
+index 24f29ad..fb3abc0 100644
+--- a/crates/muxsmith-core/src/identify.rs
++++ b/crates/muxsmith-core/src/identify.rs
+@@ -289,20 +289,25 @@ impl std::fmt::Display for IdentifyError {
+         }
+     }
+ }
+ 
+ /// In-memory identification cache for one session (spec 5.5). Keyed on path
+ /// plus (mtime, size); a changed file re-identifies, so a dry run is never
+ /// stale. On-disk caching is a future candidate (spec non-goals).
+ #[derive(Debug, Default)]
+ pub struct IdentifyCache {
+     entries: HashMap<PathBuf, (CacheKey, Identification)>,
++    /// Memoized [`Mkvmerge::known_extensions`] result: outer `None` means
++    /// not yet queried, inner `None` means the query failed (degrade). Batch
++    /// planning asks for this at most once per `plan_core` call (spec 4.2,
++    /// mirroring `entries`' per-file memoization at the batch scope).
++    known_extensions: Option<Option<Vec<String>>>,
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ struct CacheKey {
+     mtime_ns: i128,
+     size: u64,
+ }
+ 
+ impl IdentifyCache {
+     /// A fresh, empty cache.
+@@ -320,20 +325,30 @@ impl IdentifyCache {
+     ) -> Result<&Identification, IdentifyError> {
+         let key = cache_key(path)?;
+         let fresh = matches!(self.entries.get(path), Some((k, _)) if *k == key);
+         if !fresh {
+             let out = mkv.identify_json(path)?;
+             let id = Identification::from_json(&out)?;
+             self.entries.insert(path.to_path_buf(), (key, id));
+         }
+         Ok(&self.entries.get(path).expect("just inserted").1)
+     }
++
++    /// [`Mkvmerge::known_extensions`], queried at most once per cache
++    /// instance and memoized (spec 4.2); repeat calls (e.g. across the
++    /// suggestion engine's re-simulated `plan_core` passes) never respawn
++    /// mkvmerge.
++    pub fn known_extensions(&mut self, mkv: &Mkvmerge) -> Option<Vec<String>> {
++        self.known_extensions
++            .get_or_insert_with(|| mkv.known_extensions())
++            .clone()
++    }
+ }
+ 
+ fn cache_key(path: &Path) -> Result<CacheKey, IdentifyError> {
+     let meta = std::fs::metadata(path).map_err(|e| IdentifyError::Stat(e.to_string()))?;
+     let mtime_ns = meta
+         .modified()
+         .ok()
+         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+         .map(|d| d.as_nanos() as i128)
+         .unwrap_or(0);
+@@ -342,35 +357,49 @@ fn cache_key(path: &Path) -> Result<CacheKey, IdentifyError> {
+         size: meta.len(),
+     })
+ }
+ 
+ /// Abstracts identification so the planner can be unit-tested against fixture
+ /// data without spawning mkvmerge. Returns an owned [`Identification`] (a clone
+ /// from the cache in the live impl) to keep the trait object simple.
+ pub trait Identify {
+     /// Identifies `path`, or returns why it could not be identified.
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError>;
++
++    /// The runtime's known source-file extensions (spec 4.2), for
++    /// `plan_core`'s batch-wide `profile.input.extensions` validation.
++    /// `None` when the capability is unavailable (mkvmerge absent, or a
++    /// fixture-backed test double that does not model it); the check
++    /// degrades to a no-op rather than blocking planning. Defaulted here so
++    /// existing `Identify` fakes need no change to keep compiling.
++    fn known_extensions(&mut self) -> Option<Vec<String>> {
++        None
++    }
+ }
+ 
+ /// The production [`Identify`]: an [`IdentifyCache`] plus the resolved
+ /// mkvmerge, wired together so `plan_batch` can drive real identification.
+ pub struct LiveIdentifier<'a> {
+     /// The per-session identification cache (spec 5.5).
+     pub cache: IdentifyCache,
+     /// The resolved external mkvmerge.
+     pub mkv: &'a Mkvmerge,
+ }
+ 
+ impl Identify for LiveIdentifier<'_> {
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+         self.cache.get_or_identify(self.mkv, path).cloned()
+     }
++
++    fn known_extensions(&mut self) -> Option<Vec<String>> {
++        self.cache.known_extensions(self.mkv)
++    }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     const SAMPLE: &str = include_str!("../tests/fixtures/identify/series-s01e01.json");
+ 
+     #[test]
+     fn parses_tracks_and_container() {
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index bc494d1..71be796 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -232,20 +232,22 @@ pub struct Batch {
+ /// candidate suggestions against the cached identification (spec 5.3, D6).
+ pub fn plan_core(
+     profile: &Profile,
+     run: &RunInputs,
+     primaries: &[PrimaryFile],
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+ ) -> Batch {
+     let mut batch_diagnostics = Vec::new();
+     validate_language_values(profile, lang, &mut batch_diagnostics);
++    let known_extensions = id.known_extensions();
++    validate_extension_values(profile, known_extensions.as_deref(), &mut batch_diagnostics);
+ 
+     let primary_paths: Vec<PathBuf> = primaries.iter().map(|p| p.path.clone()).collect();
+     let output_dir = run
+         .output
+         .clone()
+         .or_else(|| profile.output.directory.clone())
+         .unwrap_or_else(|| run.source.clone());
+     let policy = run.on_collision.unwrap_or(profile.output.on_collision);
+ 
+     let mut files: Vec<FileReport> = Vec::new();
+@@ -293,20 +295,45 @@ pub fn plan_batch(
+     batch.batch_diagnostics.extend(cap_diagnostics);
+     batch
+ }
+ 
+ fn validate_language_values(profile: &Profile, lang: &LanguageIndex, diags: &mut Vec<Diagnostic>) {
+     for (i, rule) in profile.tracks.rules.iter().enumerate() {
+         walk_exact_languages(&rule.match_expr, &format!("tracks[{i}].match"), lang, diags);
+     }
+ }
+ 
++// Batch-wide, once per plan_core call (spec 4.2, walkthrough #3): checks
++// `profile.input.extensions` against the runtime's `--list-types` output,
++// mirroring `validate_language_values`'s structure. `known` is `None` when
++// the capability is unavailable (mkvmerge absent or the query failed); the
++// check then degrades to a no-op rather than blocking planning, unlike
++// `validate_language_values`'s `lang`, which callers must always resolve
++// before planning can start at all.
++fn validate_extension_values(
++    profile: &Profile,
++    known: Option<&[String]>,
++    diags: &mut Vec<Diagnostic>,
++) {
++    let Some(known) = known else { return };
++    for (i, ext) in profile.input.extensions.iter().enumerate() {
++        let normalized = ext.to_ascii_lowercase();
++        if !known.contains(&normalized) {
++            diags.push(
++                Diagnostic::warning(DiagCode::UnknownExtension, format!("input.extensions[{i}]"))
++                    .with("extension", ext.clone())
++                    .with("known", known.join(", ")),
++            );
++        }
++    }
++}
++
+ // Recurses match expressions collecting exact `language` values, checking each
+ // against the runtime index (plan-time InvalidPropertyValue, D2).
+ fn walk_exact_languages(
+     expr: &MatchExpr,
+     path: &str,
+     lang: &LanguageIndex,
+     diags: &mut Vec<Diagnostic>,
+ ) {
+     if let Some(exact) = &expr.exact
+         && let Some(Scalar::Str(v)) = exact.get("language")
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index 8ca3179..7bb7361 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -63,23 +63,26 @@ pub struct Meta {
+ 
+ /// Primary-file selection and directory-walk options (spec 4.2).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct Input {
+     /// Regex searched (not anchored) against each candidate file's
+     /// basename; the first match's span and capture groups become the
+     /// identifier (spec 3) and populate template fields (`{match}`,
+     /// `{g1}`, named groups).
+     pub pattern: String,
+-    /// Candidate file extensions, matched case-insensitively and validated
+-    /// at runtime against the local `mkvmerge --list-types` (spec 4.2); not
+-    /// restricted to MKV.
++    /// Candidate file extensions, matched case-insensitively; not restricted
++    /// to MKV. Checked once per batch against the local `mkvmerge
++    /// --list-types` (spec 4.2): an entry absent from that list is still
++    /// used for matching (so a typo silently excludes candidates) but
++    /// raises `UnknownExtension`. Skipped, not raised, when the runtime
++    /// capability is unavailable.
+     pub extensions: Vec<String>,
+     /// Whether the source directory walk descends into subdirectories.
+     /// Defaults to `true`.
+     #[serde(default = "default_true")]
+     pub recursive: bool,
+ }
+ 
+ fn default_true() -> bool {
+     true
+ }
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 32699b0..fe28e71 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -137,20 +137,22 @@ diag_codes! {
+     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
+     DuplicateIdentifier => "duplicate-identifier",
+     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
+     DonorIsPrimary => "donor-is-primary",
+     /// A file's extension matches but `input.pattern` does not; the file is skipped (info).
+     IgnoredFile => "ignored-file",
+     /// `input.pattern` matched more than once in a basename; the first match is used as the identifier (info, spec 4.2).
+     MultipleIdentifierMatches => "multiple-identifier-matches",
+     /// Property reported by a newer mkvmerge identification schema than this build knows; matched untyped (spec 9.2).
+     UnknownPropertySkew => "unknown-property-skew",
++    /// A `profile.input.extensions` entry is not among the local mkvmerge's `--list-types` output (spec 4.2); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
++    UnknownExtension => "unknown-extension",
+     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
+     SuggestionsCapped => "suggestions-capped",
+ }
+ 
+ /// One diagnostic (spec 5.2): a data record, never prose. `code` +
+ /// `params` select and fill a message/hint template at presentation time
+ /// (spec 8.4); core itself never renders text.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ pub struct Diagnostic {
+     /// Which condition produced this diagnostic (spec 5.2 catalog).
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index f76ca41..770f498 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1,13 +1,14 @@
+ use std::collections::HashMap;
++use std::path::Path;
+ 
+-use muxsmith_core::identify::Identification;
++use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+ use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::match_expr::Scalar;
+ use muxsmith_core::profile::model::CollisionPolicy;
+ use muxsmith_core::report::{DiagCode, Severity};
+ 
+ mod support;
+ use support::{FakeIdent, lang};
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+@@ -1045,20 +1046,163 @@ tracks:
+     assert!(
+         batch
+             .batch_diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::InvalidPropertyValue),
+         "batch diags: {:?}",
+         batch.batch_diagnostics
+     );
+ }
+ 
++/// A [`FakeIdent`] wrapper that also answers [`Identify::known_extensions`],
++/// standing in for a runtime whose `--list-types` output is known (Task 5,
++/// #3): the batch-validation tests below need to control this independently
++/// of the per-file identification `FakeIdent` already provides.
++struct FakeIdentWithExtensions {
++    inner: FakeIdent,
++    known_extensions: Option<Vec<String>>,
++}
++
++impl Identify for FakeIdentWithExtensions {
++    fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
++        self.inner.identify(path)
++    }
++
++    fn known_extensions(&mut self) -> Option<Vec<String>> {
++        self.known_extensions.clone()
++    }
++}
++
++fn plan_one_with_extensions(
++    profile_yaml: &str,
++    file_name: &str,
++    ident_json: &str,
++    known_extensions: Option<Vec<&str>>,
++) -> (Batch, tempfile::TempDir) {
++    let dir = tempfile::tempdir().unwrap();
++    std::fs::write(dir.path().join(file_name), b"x").unwrap();
++    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        file_name.to_string(),
++        Identification::from_json(ident_json).unwrap(),
++    );
++    let mut ident = FakeIdentWithExtensions {
++        inner: FakeIdent { by_name },
++        known_extensions: known_extensions.map(|exts| exts.into_iter().map(String::from).collect()),
++    };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++    (batch, dir)
++}
++
++// Task 5 (#3): `input.extensions` checked once per batch against the
++// runtime's `--list-types` output, mirroring
++// `bad_language_value_is_batch_invalid_property_value`'s layout.
++#[test]
++fn unknown_extension_is_batch_warning_naming_the_extension() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let (batch, _dir) = plan_one_with_extensions(
++        p,
++        "Show.S01E01.mkv",
++        SERIES,
++        Some(vec!["mkv", "mp4", "avi"]),
++    );
++    let unknown: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::UnknownExtension)
++        .collect();
++    assert_eq!(
++        unknown.len(),
++        1,
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    assert_eq!(unknown[0].severity, Severity::Warning);
++    assert_eq!(
++        unknown[0].params.get("extension").map(String::as_str),
++        Some("mp4a")
++    );
++    // Batch continues: the file still resolves to a plan despite the warning.
++    assert!(
++        batch.files[0].plan.is_some(),
++        "diags: {:?}",
++        batch.files[0].diagnostics
++    );
++}
++
++// Task 5 (#3): the runtime's extension list is unavailable (mkvmerge
++// absent/query failed): the check degrades to a no-op rather than blocking
++// planning, unlike `lang`'s hard batch-planning precondition.
++#[test]
++fn unknown_extension_check_degrades_when_runtime_unavailable() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv, mp4a] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let (batch, _dir) = plan_one_with_extensions(p, "Show.S01E01.mkv", SERIES, None);
++    assert!(
++        !batch
++            .batch_diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::UnknownExtension),
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++    assert!(
++        batch.files[0].plan.is_some(),
++        "diags: {:?}",
++        batch.files[0].diagnostics
++    );
++}
++
++// Task 5 (#3): extension matching (and its validation) is case-insensitive
++// (model.rs `Input.extensions` doc).
++#[test]
++fn known_extension_case_insensitive_is_not_flagged() {
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [MKV] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++"#;
++    let (batch, _dir) = plan_one_with_extensions(
++        p,
++        "Show.S01E01.mkv",
++        SERIES,
++        Some(vec!["mkv", "mp4", "avi"]),
++    );
++    assert!(
++        !batch
++            .batch_diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::UnknownExtension),
++        "batch diags: {:?}",
++        batch.batch_diagnostics
++    );
++}
++
+ // Task 7: `chapters: drop` resolves to `ChapterSource::Drop`.
+ #[test]
+ fn chapters_drop_keyword_resolves_to_drop() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: drop
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+diff --git a/locales/en/diagnostics.ftl b/locales/en/diagnostics.ftl
+index 477499b..6537d1e 100644
+--- a/locales/en/diagnostics.ftl
++++ b/locales/en/diagnostics.ftl
+@@ -28,18 +28,19 @@ overlapping-rules = Rules { $rule_a } and { $rule_b } both claim track { $track
+ missing-track = No track matches this non-optional rule.
+ missing-external = No file matches this external locator.
+ ambiguous-external = { $count } files match this external locator; exactly one is required.
+ output-collision = Output path { $path } collides with an existing file or another planned output.
+ source-overwrite = Output path { $path } would overwrite a source file. This is never allowed.
+ duplicate-identifier = Files { $file_a } and { $file_b } share the identifier "{ $identifier }".
+ donor-is-primary = External donor file { $donor } is itself a primary source.
+ ignored-file = File matches the extension list but not the input pattern.
+ multiple-identifier-matches = The input pattern matches more than once in "{ $name }"; the first match is used.
+ unknown-property-skew = This file was identified by a newer mkvmerge format (version { $version }) than this build pins; unknown track properties are matched untyped.
++unknown-extension = Extension "{ $extension }" is not among the extensions mkvmerge supports ({ $known }). If this is a typo, matching files are silently never found; if intentional, mkvmerge will not be able to process them.
+ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
+ invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+ path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
+ empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+ empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
+ unidentifiable-source = A source file exists but could not be identified: { $detail }.
+ unsupported-source = mkvmerge identified this file but its container is not a supported muxing source.
+ suggestions-capped = { $dropped } further suggestion(s) for this rule were capped at 3 and not shown.

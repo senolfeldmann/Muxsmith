@@ -1,0 +1,258 @@
+# Review package: 543259b..004e1e8
+
+## Commits
+004e1e8 ci: cargo doc -D warnings as ninth gate part (#18b)
+
+## Files changed
+ .github/workflows/ci.yml                       | 10 ++++++++++
+ BUILDING.md                                    | 11 ++++++++---
+ crates/muxsmith-cli/src/i18n.rs                |  4 ++--
+ crates/muxsmith-core/src/capability/runtime.rs |  5 +++--
+ crates/muxsmith-core/src/executor/joblog.rs    |  6 +++---
+ crates/muxsmith-core/src/executor/queue.rs     |  5 +++--
+ src-tauri/src/lib.rs                           |  4 ++--
+ 7 files changed, 31 insertions(+), 14 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e31d751..8fc0cff 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -64,20 +64,30 @@ jobs:
+           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+       # One version source for node+pnpm: mise.toml (root, committed).
+       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+         with:
+           cache: true
+       - name: Install frontend dependencies
+         run: pnpm install --frozen-lockfile
+       - run: cargo fmt --all --check
+       - run: cargo clippy --workspace --all-targets -- -D warnings
+       - run: cargo test --workspace
++      # Plan 5.5 Task 12 (#18b): rustdoc correctness as the ninth gate part.
++      # #![deny(missing_docs)] already gates presence; it says nothing about
++      # correctness, so a broken intra-doc link (queue.rs:73, linking a
++      # private item) rotted silently since Plan 4 until this task. All
++      # legs, matching the cross-target lint rule (cfg-gated items can
++      # differ per platform).
++      - name: cargo doc (rustdoc warnings as errors)
++        run: cargo doc --workspace --no-deps
++        env:
++          RUSTDOCFLAGS: "-D warnings"
+       # Task 2 (#14): assert the gated tests actually exercised mkvmerge
+       # instead of silently self-skipping, now that mkvtoolnix is
+       # installed on every leg. --nocapture is required: cargo test
+       # captures stdout/stderr of PASSING tests by default, so the
+       # self-skip eprintln would be invisible without it. --test-threads=1
+       # avoids --nocapture output from concurrent test threads interleaving
+       # and corrupting the marker line. A genuinely missing mkvmerge
+       # (install regression) trips the count above zero and fails the
+       # step - "otherwise silent skipping is traded for silent skipping"
+       # (walkthrough #14).
+diff --git a/BUILDING.md b/BUILDING.md
+index 8bdff97..e83af34 100644
+--- a/BUILDING.md
++++ b/BUILDING.md
+@@ -60,40 +60,45 @@ the system libraries above are installed).
+ pnpm install         # frontend + Tauri JS dependencies (frozen lockfile in CI)
+ pnpm dev             # Tauri dev window: Vite dev server + hot-reloading webview
+ pnpm build            # vue-tsc type-check + production frontend build
+ ```
+ 
+ `pnpm build` only builds the frontend bundle (`dist/`); it does not invoke
+ `cargo tauri build`. Building the desktop bundle itself
+ (`pnpm exec tauri build`) is out of scope for local development and not
+ part of the CI gate yet.
+ 
+-### The Rust gate (four parts, run from the repo root, workspace-wide)
++### The Rust gate (five parts, run from the repo root, workspace-wide)
+ 
+ ```bash
+ cargo fmt --all --check
+ cargo clippy --workspace --all-targets -- -D warnings
+ cargo test --workspace
++RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+ cargo deny check
+ ```
+ 
++`#![deny(missing_docs)]` gates presence of rustdoc comments; the `cargo doc`
++run above is what gates their *correctness* (broken intra-doc links and
++other rustdoc warnings), which presence-only enforcement cannot catch.
++
+ ### Frontend checks
+ 
+ ```bash
+ pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
+ pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
+ pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
+ ```
+ 
+-CI (`.github/workflows/ci.yml`) runs the same four-part Rust gate plus
++CI (`.github/workflows/ci.yml`) runs the same five-part Rust gate plus
+ `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and `pnpm test:e2e` on every
+-push/PR; `cargo deny check` runs as an
++push/PR (nine parts total); `cargo deny check` runs as an
+ independent job.
+ 
+ ## Tooling quirks
+ 
+ - vue-tsc + `withDefaults` with `T | null`-typed props has a known quirk
+   (surfaced in Plan 5, task 11; details in the archived task-11 report,
+   docs/process-journal/artifacts/plan-5-sdd/). Check there before fighting
+   a TS error on a withDefaults call.
+ 
+ ## Documentation standard
+diff --git a/crates/muxsmith-cli/src/i18n.rs b/crates/muxsmith-cli/src/i18n.rs
+index e7d85c7..a22949b 100644
+--- a/crates/muxsmith-cli/src/i18n.rs
++++ b/crates/muxsmith-cli/src/i18n.rs
+@@ -43,27 +43,27 @@ impl Renderer {
+     /// output instead of silently disappearing (CI's catalog-completeness
+     /// guard, spec 10, is the other half of this contract).
+     pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
+         let mut fargs = FluentArgs::new();
+         for (k, v) in args {
+             fargs.set(*k, *v);
+         }
+         self.render(id, fargs)
+     }
+ 
+-    /// Renders one Fluent message like [`msg`], but sets `count_key` as a
++    /// Renders one Fluent message like [`Self::msg`], but sets `count_key` as a
+     /// numeric `FluentValue::Number` rather than a string. Fluent's plural
+     /// selector (`[one]`/`*[other]`) resolves CLDR plural categories only
+     /// against `FluentValue::Number`; a `FluentValue::String` selector
+     /// always falls through to `*[other]`, so a message with a `{ $count ->
+     /// [one] ... *[other] ... }` selector needs its count passed through
+-    /// this method instead of [`msg`].
++    /// this method instead of [`Self::msg`].
+     pub fn msg_with_count(
+         &self,
+         id: &str,
+         args: &[(&str, &str)],
+         count_key: &str,
+         count: usize,
+     ) -> String {
+         let mut fargs = FluentArgs::new();
+         for (k, v) in args {
+             fargs.set(*k, *v);
+diff --git a/crates/muxsmith-core/src/capability/runtime.rs b/crates/muxsmith-core/src/capability/runtime.rs
+index 38fa6b5..197d083 100644
+--- a/crates/muxsmith-core/src/capability/runtime.rs
++++ b/crates/muxsmith-core/src/capability/runtime.rs
+@@ -100,22 +100,23 @@ impl Mkvmerge {
+             Ok(_) => Ok(m),
+             Err(RuntimeError::Spawn(_)) => Err(RuntimeError::NotFound),
+             Err(e) => Err(e),
+         }
+     }
+ 
+     /// Detection ladder for first-run/GUI use (spec 8.2, D28): an explicit
+     /// `override_path` (if given) is authoritative, probed with
+     /// `--version` and returned or failed outright, PATH and platform
+     /// candidates are never consulted. Without an override, tries PATH via
+-    /// [`Mkvmerge::locate`], then each of [`platform_candidates`] in order;
+-    /// the first one that answers `--version` with a parseable version wins.
++    /// [`Mkvmerge::locate`], then each of the private `platform_candidates`
++    /// in order; the first one that answers `--version` with a parseable
++    /// version wins.
+     /// A found mkvmerge below [`MIN_SUPPORTED`] stops the ladder immediately
+     /// with `TooOld` rather than being silently skipped in favor of another
+     /// candidate: that is real, actionable signal ("upgrade this install"),
+     /// not a "not found here" result. Exhausting every rung without finding
+     /// any usable mkvmerge is `NotFound`.
+     pub fn detect(override_path: Option<&Path>) -> Result<Mkvmerge, RuntimeError> {
+         if let Some(path) = override_path {
+             return enforce_floor(Mkvmerge::at(path));
+         }
+ 
+diff --git a/crates/muxsmith-core/src/executor/joblog.rs b/crates/muxsmith-core/src/executor/joblog.rs
+index 323ccfd..844be18 100644
+--- a/crates/muxsmith-core/src/executor/joblog.rs
++++ b/crates/muxsmith-core/src/executor/joblog.rs
+@@ -114,23 +114,23 @@ pub struct RunLogger {
+ }
+ 
+ impl RunLogger {
+     /// Creates the run's log directory under `runs_root`, named `run_id`
+     /// (`mkdir -p runs_root` first, then the leaf directory itself). A
+     /// leaf-name collision (a directory of that name already exists, e.g. a
+     /// prior run with the same-second `run_id`) appends a numeric suffix:
+     /// `<run_id>-2`, then `<run_id>-3`, and so on, until an unused name is
+     /// found.
+     ///
+-    /// `specs` seeds one [`JobAccumulator`] per index (its `argv`/`output`),
+-    /// so a job's identity is known even if it never receives a single
+-    /// event before the batch ends.
++    /// `specs` seeds one private `JobAccumulator` per index (its
++    /// `argv`/`output`), so a job's identity is known even if it never
++    /// receives a single event before the batch ends.
+     pub fn create(runs_root: &Path, run_id: &str, specs: &[JobSpec]) -> io::Result<RunLogger> {
+         fs::create_dir_all(runs_root)?;
+ 
+         let mut dir = runs_root.join(run_id);
+         let mut suffix = 1u32;
+         loop {
+             match fs::create_dir(&dir) {
+                 Ok(()) => break,
+                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                     suffix += 1;
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 113b430..9845a33 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -63,22 +63,23 @@ pub enum JobEvent {
+         index: usize,
+         /// The line, verbatim (tags included).
+         line: String,
+     },
+ }
+ 
+ /// Queue policy (spec 6, D14).
+ #[derive(Debug, Clone, Copy)]
+ pub struct QueueOpts {
+     /// Requested worker count; clamped to >= 1, then further capped at the
+-    /// batch's spec count (see [`worker_count`]) so a `--jobs` far larger
+-    /// than the batch never spawns idle OS threads. Default 1 (sequential).
++    /// batch's spec count (see the private `worker_count` helper) so a
++    /// `--jobs` far larger than the batch never spawns idle OS threads.
++    /// Default 1 (sequential).
+     pub jobs: usize,
+     /// Soft fail-fast (D14): on the first Failed, dequeue nothing further;
+     /// in-flight jobs finish; queued jobs become Cancelled.
+     pub fail_fast: bool,
+ }
+ 
+ /// How often the watcher thread polls the batch-cancel flag.
+ const CANCEL_POLL: Duration = Duration::from_millis(50);
+ 
+ /// Batch- and per-job cancellation control (D25). Wraps a single shared
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 2a999bf..fbc6f21 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -387,22 +387,22 @@ fn get_settings(state: State<AppState>) -> Result<AppSettings, IpcError> {
+ /// frontend hands over; [`settings::save`] caps `recent_profiles` at write
+ /// time regardless of what the caller sent.
+ #[tauri::command]
+ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), IpcError> {
+     state.save_settings(&settings)
+ }
+ 
+ /// Builds and runs the Tauri application: registers the `dialog`,
+ /// `clipboard-manager`, `os`, and `fs` plugins (capabilities in
+ /// `capabilities/default.json` gate what each grants to the *frontend*; the
+-/// shell's own Rust-side dialog use in [`run::on_close_requested`] bypasses
+-/// the IPC permission layer and needs no capability entry), manages the
++/// shell's own Rust-side dialog use in the private `run::on_close_requested`
++/// bypasses the IPC permission layer and needs no capability entry), manages the
+ /// single unified [`AppState`], registers both tasks' IPC commands under
+ /// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
+ /// type, so the read-only/settings commands and the run-lifecycle commands
+ /// must share the same registration), wires the D31 close-with-active-run
+ /// confirmation, and launches the main window from `tauri.conf.json`.
+ ///
+ /// The `os` plugin (T9, D28) is here rather than in `@tauri-apps/api`
+ /// (which this task's brief names): Tauri 2 moved OS/platform detection
+ /// out of the core API into this separate plugin (`@tauri-apps/plugin-os`
+ /// on the frontend side), so `FirstRun.vue`'s per-OS guidance needs it

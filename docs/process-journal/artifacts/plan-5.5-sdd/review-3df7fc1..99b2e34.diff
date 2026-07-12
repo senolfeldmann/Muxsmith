@@ -1,0 +1,379 @@
+# Review package: 3df7fc1..99b2e34
+
+## Commits
+99b2e34 fix(planner): protect chapters donors of render-failed files (#7 class closure)
+ca238dc fix(planner): protect attachment donors of render-failed files (#7 completion)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs              |  57 ++++--
+ crates/muxsmith-core/tests/planner_resolution.rs | 212 +++++++++++++++++++++++
+ 2 files changed, 253 insertions(+), 16 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index ebd3567..9951bfe 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -400,24 +400,25 @@ fn walk_exact_languages(
+             walk_exact_languages(sub, &format!("{path}.any[{i}]"), lang, diags);
+         }
+     }
+     if let Some(not) = &expr.not {
+         for (i, sub) in not.iter().enumerate() {
+             walk_exact_languages(sub, &format!("{path}.not[{i}]"), lang, diags);
+         }
+     }
+ }
+ 
+-// Returns the file's report alongside every assignment source path it
+-// resolved (primaries and donors alike), independent of whether the file's
+-// own plan ends up `Some` - `detect_source_overwrites` needs the latter even
+-// when this file's own output never renders (Plan-2 FINAL M2 / #7).
++// Returns the file's report alongside every source path it resolved -
++// assignment sources (primaries and track donors) plus attachment `add`
++// donors (Task 7.5) - independent of whether the file's own plan ends up
++// `Some`; `detect_source_overwrites` needs the latter even when this file's
++// own output never renders (Plan-2 FINAL M2 / #7).
+ fn resolve_file(
+     profile: &Profile,
+     primary: &PrimaryFile,
+     primary_paths: &[PathBuf],
+     output_dir: &Path,
+     id: &mut dyn Identify,
+     lang: &LanguageIndex,
+ ) -> (FileReport, Vec<PathBuf>) {
+     let mut diagnostics = Vec::new();
+     let primary_dir = primary.path.parent().unwrap_or(Path::new("."));
+@@ -629,24 +630,41 @@ fn resolve_file(
+         &ident.attachments,
+         lang,
+         &mut diagnostics,
+     );
+ 
+     let keep_unmatched = matches!(
+         profile.tracks.unmatched,
+         crate::profile::model::KeepDrop::Keep
+     );
+ 
+-    // Captured before `assignments` moves into `Plan` below: every source
+-    // this file resolved (primary or donor) is known at this point already,
+-    // regardless of whether `output` renders successfully.
+-    let resolved_sources: Vec<PathBuf> = assignments.iter().map(|a| a.source.clone()).collect();
++    // Captured before `assignments`, `attachments` and `chapters` move into
++    // `Plan` below: every source this file resolved is known at this point
++    // already, regardless of whether `output` renders successfully.
++    // Completeness (Task 7.6, #7 class closure): every donor kind reaches
++    // this chain - track rules (`Assignment.source`), attachment `add`
++    // donors (`AttachmentPlan.add_files`, Task 7.5), and now chapters
++    // (`ChapterSource::External`, Task 7.6). `model.rs` has exactly two
++    // `Locator` field sites feeding these three kinds:
++    // `ExternalBlock.external` (shared by `SourceCfg::External` and
++    // `ChaptersCfg::External`) and `AttachmentRule.add`. A future third
++    // `Locator` field site must be chained in here too, or it silently
++    // re-opens this class.
++    let resolved_sources: Vec<PathBuf> = assignments
++        .iter()
++        .map(|a| a.source.clone())
++        .chain(attachments.add_files.iter().cloned())
++        .chain(match &chapters {
++            ChapterSource::External(path) => Some(path.clone()),
++            ChapterSource::Keep | ChapterSource::Drop => None,
++        })
++        .collect();
+ 
+     let plan = output.map(|output| Plan {
+         source: primary.path.clone(),
+         output,
+         assignments,
+         attachments,
+         chapters,
+         tags,
+         title,
+         keep_unmatched,
+@@ -969,34 +987,41 @@ fn resolve_attachments(
+     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+     add_files.retain(|p| seen.insert(p.clone()));
+ 
+     AttachmentPlan {
+         primary: primary_disposition,
+         add_files,
+     }
+ }
+ 
+ // A rendered output must never equal an input path anywhere in the batch:
+-// every primary, plus every donor any file's rules resolved (spec 4.8, 5.2).
+-// Batch-wide because one primary's output can equal a donor a *different*
+-// primary reads from; `resolved_sources` (built in `resolve_file`, before
+-// that file's own output ever renders) already carries every assignment's
+-// source path - donor or primary - independent of whether the file's own
+-// plan survives, so the union of `resolved_sources` plus the primaries is
+-// the complete input set. Runs before `finalize_plans` drops anything.
++// every primary, plus every donor any file's rules resolved - track donors
++// (`Assignment.source`), attachment donors (`AttachmentPlan.add_files`,
++// Task 7.5), and chapters donors (`ChapterSource::External`, Task 7.6)
++// alike (spec 4.8, 5.2). Batch-wide because one primary's output can equal
++// a donor a *different* primary reads from; `resolved_sources` (built in
++// `resolve_file`, before that file's own output ever renders) already
++// carries every one of those source paths - donor or primary - independent
++// of whether the file's own plan survives, so the union of
++// `resolved_sources` plus the primaries is the complete input set. Runs
++// before `finalize_plans` drops anything.
+ //
+ // Plan-2 FINAL M2 / #7: sources are known before rendering, so a file whose
+ // own output fails to render (`plan == None`) must still contribute its
+ // donors here - the previous version read `plan.assignments`, which does
+ // not exist once `plan` is `None`, so a donor referenced solely by such a
+ // file escaped protection and a colliding output could overwrite it
+-// silently.
++// silently. Task 7.5 closed the same gap for attachment donors, Task 7.6
++// for chapters donors: neither was ever in `resolved_sources` at all
++// (gathered only from `Assignment`), regardless of render outcome. #7 is
++// now closed by construction (see the completeness comment at
++// `resolved_sources`'s gathering site in `resolve_file`).
+ //
+ // S11 guard: `resolve_file`'s `AmbiguousExternal` branch (2+ candidate
+ // donors for one locator) deliberately pushes a placeholder assignment
+ // sourced at the primary path, not at any of the n candidates - which one
+ // is "the" donor is genuinely unknown, so none of them is protected here.
+ // Safe only because `AmbiguousExternal` is unconditionally Error-severity
+ // (that file's own plan never survives regardless, per `finalize_plans`);
+ // if it is ever downgraded to non-fatal, this function needs to start
+ // protecting all n candidates explicitly (F5 report).
+ fn detect_source_overwrites(
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 73a9a78..f1c8147 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -751,20 +751,232 @@ tracks:
+     assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
+     assert!(
+         b.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::SourceOverwrite),
+         "diags: {:?}",
+         b.diagnostics
+     );
+ }
+ 
++// Plan-5.5 Task 7.5: #7 completion. T7 above covers a track-rule donor; this
++// is the same class through an attachment donor
++// (`attachments.rules[i].add`, resolved by `resolve_attachments`). Same
++// three-way constellation: primary A's `add` locator resolves donor D (real,
++// on disk), but A's own filename template renders empty
++// (EmptyRenderedName), so A.plan is None; primary B's own `add` locator
++// finds nothing (its sibling "donors" directory does not exist for B), yet
++// B's rendered output lands on D's exact path. D is referenced SOLELY
++// through A's (render-failed) `attachments.add_files` - before this fix,
++// `resolved_sources` only gathered `Assignment.source` (track donors), never
++// `AttachmentPlan.add_files`, so this collision went undetected and B would
++// have silently overwritten D.
++#[test]
++fn source_overwrite_protects_attachment_donor_of_render_failed_file() {
++    let root = tempfile::tempdir().unwrap();
++    let a_dir = root.path().join("a_dir");
++    let b_dir = root.path().join("b_dir");
++    let donors_dir = a_dir.join("donors");
++    std::fs::create_dir_all(&donors_dir).unwrap();
++    std::fs::create_dir_all(&b_dir).unwrap();
++    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
++    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
++    std::fs::write(donors_dir.join("Z.mkv"), b"d").unwrap(); // attachment donor D, resolved only by A
++
++    // `tag` is optional and only present in B's own filename: A's template
++    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
++    // basename. The `add` locator path is relative ("donors"), resolved
++    // against each primary's own directory, so it only finds D for A -
++    // `b_dir/donors` does not exist, and B's own `add` locator finds
++    // nothing (a MissingExternal warning, not an error - spec 4.9).
++    let profile_yaml = r#"
++profile_version: 1
++input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
++output:
++  filename: { template: '{tag}' }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++attachments:
++  rules:
++    - add: { path: 'donors', extensions: [mkv] }
++"#;
++    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: root.path().to_path_buf(),
++        // Every primary's output lands in donors_dir, so B's rendered
++        // "Z.mkv" collides byte-for-byte with the attachment donor A alone
++        // resolved.
++        output: Some(donors_dir.clone()),
++        // Overwrite, not the Error default: proves SourceOverwrite is what
++        // stops this, not the ordinary on-disk-collision path (same
++        // reasoning as T7's test above).
++        on_collision: Some(CollisionPolicy::Overwrite),
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Prime.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    by_name.insert(
++        "PrimeZ.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    by_name.insert(
++        "Z.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++
++    let a = batch
++        .files
++        .iter()
++        .find(|f| f.source.ends_with("Prime.mkv"))
++        .unwrap();
++    let b = batch
++        .files
++        .iter()
++        .find(|f| f.source.ends_with("PrimeZ.mkv"))
++        .unwrap();
++
++    // A's own render fails on its own terms, independent of this fix.
++    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
++    assert!(
++        a.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::EmptyRenderedName),
++        "diags: {:?}",
++        a.diagnostics
++    );
++
++    // B's rendered output collides with the attachment donor A resolved;
++    // must be caught even though A's own plan never rendered.
++    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
++    assert!(
++        b.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::SourceOverwrite),
++        "diags: {:?}",
++        b.diagnostics
++    );
++}
++
++// Plan-5.5 Task 7.6: #7 class closure. T7 and T7.5 above cover a track-rule
++// donor and an attachment donor; this is the same class through the
++// chapters donor (`profile.chapters.external`, resolved by
++// `resolve_chapters`). Same three-way constellation, adapted for chapters'
++// stricter uniqueness rule (spec 4.9: unlike a track rule's external
++// source, there is no `optional` escape - zero matches is always
++// `MissingExternal`) - so, unlike T7/T7.5 where B's own locator finds
++// nothing because its sibling "donors" directory does not exist at all,
++// here B needs its OWN successful chapters resolution (a distinct,
++// harmless donor under its own "donors" directory) so its plan survives
++// long enough to reach `detect_source_overwrites`. Primary A's chapters
++// locator resolves donor D (real, on disk), but A's own filename template
++// renders empty (EmptyRenderedName), so A.plan is None; primary B's own
++// chapters locator resolves its own distinct donor (`b_dir/donors/Z.mkv`),
++// yet B's rendered output lands on D's exact path (`a_dir/donors/Z.mkv`).
++// D is referenced SOLELY through A's (render-failed)
++// `ChapterSource::External` - before this fix, `resolved_sources` never
++// gathered chapters at all (only `Assignment.source` and, since Task 7.5,
++// `AttachmentPlan.add_files`), so this collision went undetected and B
++// would have silently overwritten D.
++#[test]
++fn source_overwrite_protects_chapters_donor_of_render_failed_file() {
++    let root = tempfile::tempdir().unwrap();
++    let a_dir = root.path().join("a_dir");
++    let b_dir = root.path().join("b_dir");
++    let a_donors = a_dir.join("donors");
++    let b_donors = b_dir.join("donors");
++    std::fs::create_dir_all(&a_donors).unwrap();
++    std::fs::create_dir_all(&b_donors).unwrap();
++    std::fs::write(a_dir.join("Prime.mkv"), b"a").unwrap(); // primary A
++    std::fs::write(b_dir.join("PrimeZ.mkv"), b"b").unwrap(); // primary B
++    std::fs::write(a_donors.join("Z.mkv"), b"d").unwrap(); // chapters donor D, resolved only by A
++    std::fs::write(b_donors.join("Z.mkv"), b"e").unwrap(); // B's own distinct chapters donor
++
++    // `tag` is optional and only present in B's own filename: A's template
++    // renders empty (EmptyRenderedName); B's renders "Z.mkv", exactly D's
++    // basename. The chapters locator (no `match_pattern`/`match_to_source`,
++    // same as T7's track-rule locator) matches every file in its target
++    // directory; each primary's "donors" subdirectory holds exactly one
++    // `.mkv` file of its own, so each resolves to exactly one hit and
++    // neither triggers chapters' `MissingExternal`.
++    let profile_yaml = r#"
++profile_version: 1
++input: { pattern: 'Prime(?<tag>Z)?', extensions: [mkv] }
++output:
++  filename: { template: '{tag}' }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++chapters:
++  external: { path: 'donors', extensions: [mkv] }
++"#;
++    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: root.path().to_path_buf(),
++        // Every primary's output lands in a_donors, so B's rendered
++        // "Z.mkv" collides byte-for-byte with the chapters donor A alone
++        // resolved.
++        output: Some(a_donors.clone()),
++        // Overwrite, not the Error default: proves SourceOverwrite is what
++        // stops this, not the ordinary on-disk-collision path (same
++        // reasoning as T7's and T7.5's tests above).
++        on_collision: Some(CollisionPolicy::Overwrite),
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Prime.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    by_name.insert(
++        "PrimeZ.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++
++    let a = batch
++        .files
++        .iter()
++        .find(|f| f.source.ends_with("Prime.mkv"))
++        .unwrap();
++    let b = batch
++        .files
++        .iter()
++        .find(|f| f.source.ends_with("PrimeZ.mkv"))
++        .unwrap();
++
++    // A's own render fails on its own terms, independent of this fix.
++    assert!(a.plan.is_none(), "diags: {:?}", a.diagnostics);
++    assert!(
++        a.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::EmptyRenderedName),
++        "diags: {:?}",
++        a.diagnostics
++    );
++
++    // B's rendered output collides with the chapters donor A resolved;
++    // must be caught even though A's own plan never rendered.
++    assert!(b.plan.is_none(), "diags: {:?}", b.diagnostics);
++    assert!(
++        b.diagnostics
++            .iter()
++            .any(|d| d.code == DiagCode::SourceOverwrite),
++        "diags: {:?}",
++        b.diagnostics
++    );
++}
++
+ #[test]
+ fn empty_rendered_name_when_template_renders_to_dot() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ output:
+   filename: { template: '.' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }

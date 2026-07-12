@@ -171,7 +171,9 @@ polish entry.
   cfg(unix) (T3-m1); overlap_conflicts re-parses claimants from the
   rendered param string (whole-branch M2); UnknownExtension "once per
   batch" rustdoc vs once-per-entry (M3); de catalog headers overclaim
-  what check-i18n enforces (M1). Dimensions: unidiomatic constructs;
+  what check-i18n enforces (M1); §5.2 WorkerPanicked severity cell says
+  info where "n/a (job-error token, not a rendered diagnostic)" is
+  tighter (final-verification nit). Dimensions: unidiomatic constructs;
   near-duplicate reimplementations (reuse violations); hand-rolled code
   where the stdlib or an established library is the human-normal solution;
   the inverse dependency sweep (is every current dependency earned and

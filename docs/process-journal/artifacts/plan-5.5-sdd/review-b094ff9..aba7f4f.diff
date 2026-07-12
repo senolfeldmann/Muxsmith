@@ -1,0 +1,883 @@
+# Review package: b094ff9..aba7f4f
+
+## Commits
+aba7f4f test(cli): insta snapshots replace wording-coupled asserts (spec §10, #2)
+
+## Files changed
+ Cargo.lock                                         | 57 ++++++++++++++++++++
+ crates/muxsmith-cli/Cargo.toml                     | 10 ++++
+ crates/muxsmith-cli/tests/cli_validate.rs          | 35 +++++++++----
+ crates/muxsmith-cli/tests/dry_run_cli.rs           | 42 ++++++++-------
+ crates/muxsmith-cli/tests/run_cli.rs               | 61 +++++++++++++---------
+ crates/muxsmith-cli/tests/run_live.rs              | 19 +++++--
+ ...lid_profile_exits_two_and_renders_messages.snap |  8 +++
+ ...__valid_profile_exits_zero_with_ok_message.snap |  5 ++
+ .../cli_validate__warnings_only_exits_one.snap     |  6 +++
+ ...empty_source_dir_instead_of_staying_silent.snap |  5 ++
+ ...ig_diagnostics_on_a_language_query_failure.snap |  5 ++
+ ...s_config_diagnostics_when_mkvmerge_missing.snap |  5 ++
+ ..._profile_exits_two_without_executing_a_job.snap |  6 +++
+ ...mkvmerge_exits_two_without_executing_a_job.snap |  5 ++
+ ...empty_source_dir_instead_of_staying_silent.snap |  5 ++
+ ...ig_diagnostics_on_a_language_query_failure.snap |  5 ++
+ ...un_muxes_two_sources_and_reports_exit_zero.snap |  5 ++
+ crates/muxsmith-cli/tests/support/mod.rs           | 52 ++++++++++++++++++
+ 18 files changed, 276 insertions(+), 60 deletions(-)
+
+## Diff
+diff --git a/Cargo.lock b/Cargo.lock
+index 4f4b2f3..ab494c0 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -488,20 +488,31 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
+ [[package]]
+ name = "combine"
+ version = "4.6.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
+ dependencies = [
+  "bytes",
+  "memchr",
+ ]
+ 
++[[package]]
++name = "console"
++version = "0.16.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4fe5f465a4f6fee88fad41b85d990f84c835335e85b5d9e6e63e0d06d28cba7c"
++dependencies = [
++ "encode_unicode",
++ "libc",
++ "windows-sys 0.61.2",
++]
++
+ [[package]]
+ name = "cookie"
+ version = "0.18.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "4ddef33a339a91ea89fb53151bd0a4689cfce27055c291dfa69945475d22c747"
+ dependencies = [
+  "time",
+  "version_check",
+ ]
+ 
+@@ -887,20 +898,26 @@ dependencies = [
+  "vswhom",
+  "winreg",
+ ]
+ 
+ [[package]]
+ name = "embed_plist"
+ version = "1.2.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
+ 
++[[package]]
++name = "encode_unicode"
++version = "1.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
++
+ [[package]]
+ name = "equivalent"
+ version = "1.0.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+ 
+ [[package]]
+ name = "erased-serde"
+ version = "0.4.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -1774,20 +1791,34 @@ dependencies = [
+ 
+ [[package]]
+ name = "infer"
+ version = "0.19.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a588916bfdfd92e71cacef98a63d9b1f0d74d6599980d11894290e7ddefffcf7"
+ dependencies = [
+  "cfb",
+ ]
+ 
++[[package]]
++name = "insta"
++version = "1.48.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "86f0f8fee8c926415c58d6ae43a08523a26faccb2323f5e6b644fe7dd4ef6b82"
++dependencies = [
++ "console",
++ "once_cell",
++ "regex",
++ "similar",
++ "strip-ansi-escapes",
++ "tempfile",
++]
++
+ [[package]]
+ name = "intl-memoizer"
+ version = "0.5.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "310da2e345f5eb861e7a07ee182262e94975051db9e4223e909ba90f392f163f"
+ dependencies = [
+  "type-map",
+  "unic-langid",
+ ]
+ 
+@@ -2112,22 +2143,24 @@ dependencies = [
+ 
+ [[package]]
+ name = "muxsmith-cli"
+ version = "0.1.0"
+ dependencies = [
+  "assert_cmd",
+  "clap",
+  "ctrlc",
+  "fluent-bundle",
+  "fluent-syntax",
++ "insta",
+  "muxsmith-core",
+  "predicates",
++ "regex",
+  "schemars 1.2.1",
+  "serde_json",
+  "sys-locale",
+  "tempfile",
+  "unic-langid",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-core"
+ version = "0.1.0"
+@@ -3387,20 +3420,26 @@ name = "shlex"
+ version = "2.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+ 
+ [[package]]
+ name = "simd-adler32"
+ version = "0.3.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
+ 
++[[package]]
++name = "similar"
++version = "2.7.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
++
+ [[package]]
+ name = "siphasher"
+ version = "1.0.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
+ 
+ [[package]]
+ name = "slab"
+ version = "0.4.12"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3493,20 +3532,29 @@ name = "string_cache_codegen"
+ version = "0.6.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "585635e46db231059f76c5849798146164652513eb9e8ab2685939dd90f29b69"
+ dependencies = [
+  "phf_generator",
+  "phf_shared",
+  "proc-macro2",
+  "quote",
+ ]
+ 
++[[package]]
++name = "strip-ansi-escapes"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2a8f8038e7e7969abb3f1b7c2a811225e9296da208539e0f79c5251d6cac0025"
++dependencies = [
++ "vte",
++]
++
+ [[package]]
+ name = "strsim"
+ version = "0.11.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+ 
+ [[package]]
+ name = "swift-rs"
+ version = "1.0.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -4501,20 +4549,29 @@ dependencies = [
+ [[package]]
+ name = "vswhom-sys"
+ version = "0.1.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "fb067e4cbd1ff067d1df46c9194b5de0e98efd2810bbc95c5d5e5f25a3231150"
+ dependencies = [
+  "cc",
+  "libc",
+ ]
+ 
++[[package]]
++name = "vte"
++version = "0.14.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "231fdcd7ef3037e8330d8e17e61011a2c244126acc0a982f4040ac3f9f0bc077"
++dependencies = [
++ "memchr",
++]
++
+ [[package]]
+ name = "wait-timeout"
+ version = "0.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
+ dependencies = [
+  "libc",
+ ]
+ 
+ [[package]]
+diff --git a/crates/muxsmith-cli/Cargo.toml b/crates/muxsmith-cli/Cargo.toml
+index 04d3454..2539f64 100644
+--- a/crates/muxsmith-cli/Cargo.toml
++++ b/crates/muxsmith-cli/Cargo.toml
+@@ -15,12 +15,22 @@ ctrlc = "3.5.2"
+ fluent-bundle = "0.16.0"
+ muxsmith-core = { path = "../muxsmith-core" }
+ schemars = "1.2.1"
+ serde_json = "1.0.150"
+ sys-locale = "0.3.2"
+ unic-langid = "0.9.6"
+ 
+ [dev-dependencies]
+ assert_cmd = "2.2.2"
+ fluent-syntax = "0.12.0"
++# Exact-pin per toolchain doctrine; registry-verified current stable
++# (crates.io API, 2026-07-12): insta 1.48.0 is max_stable_version.
++# `filters`: plain-string regex redaction for CLI stdout/stderr snapshots
++# (tempdir paths, mkvmerge version banners, job durations); `redactions`
++# is the wrong feature here, it targets structured (JSON/YAML) snapshots.
++insta = { version = "=1.48.0", features = ["filters"] }
+ predicates = "3.1.4"
++# Already pinned identically in muxsmith-core; reused here (not a new
++# dependency in the resolved tree) only for `regex::escape` when building
++# a per-test tempdir filter (tests/support/mod.rs).
++regex = "1.12.4"
+ tempfile = "3.27.0"
+diff --git a/crates/muxsmith-cli/tests/cli_validate.rs b/crates/muxsmith-cli/tests/cli_validate.rs
+index de9d603..907c673 100644
+--- a/crates/muxsmith-cli/tests/cli_validate.rs
++++ b/crates/muxsmith-cli/tests/cli_validate.rs
+@@ -1,62 +1,75 @@
+ use assert_cmd::Command;
+-use predicates::prelude::*;
++
++mod support;
+ 
+ fn muxsmith() -> Command {
+     Command::cargo_bin("muxsmith").unwrap()
+ }
+ 
+ fn fixture(name: &str) -> String {
+     format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
+ }
+ 
++/// Spec 10: human-rendered CLI text is snapshot-tested (insta), not pinned
++/// via `predicate::str::contains` on fragments of the wording -- a copy
++/// edit to the Fluent template used to fail unrelated-looking asserts here.
++/// No path/version/duration redaction needed: `validate` never touches
++/// mkvmerge or the queue, and its diagnostics render schema-relative
++/// `config_path`s (e.g. `input.pattern`), never the profile file's own
++/// filesystem location.
+ #[test]
+ fn valid_profile_exits_zero_with_ok_message() {
+-    muxsmith()
++    let out = muxsmith()
+         .args(["validate", &fixture("good.yaml")])
+         .assert()
+         .success()
+-        .stdout(predicate::str::contains("Profile is valid."));
++        .get_output()
++        .stdout
++        .clone();
++    insta::assert_snapshot!(String::from_utf8(out).unwrap());
+ }
+ 
+ #[test]
+ fn invalid_profile_exits_two_and_renders_messages() {
+-    muxsmith()
++    let out = muxsmith()
+         .args(["validate", &fixture("bad.yaml")])
+         .assert()
+         .code(2)
+-        .stdout(
+-            predicate::str::contains("Invalid regular expression")
+-                .and(predicate::str::contains("input.pattern"))
+-                .and(predicate::str::contains("forced_track")),
+-        );
++        .get_output()
++        .stdout
++        .clone();
++    insta::assert_snapshot!(String::from_utf8(out).unwrap());
+ }
+ 
+ #[test]
+ fn warnings_only_exits_one() {
+     // good.yaml plus an overlap warning: audio subset rule.
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: audio } }
+     - match: { exact: { type: audio, language: en } }
+ "#;
+     let dir = tempfile::tempdir().unwrap();
+     let path = dir.path().join("warn.yaml");
+     std::fs::write(&path, y).unwrap();
+-    muxsmith()
++    let out = muxsmith()
+         .args(["validate", path.to_str().unwrap()])
+         .assert()
+         .code(1)
+-        .stdout(predicate::str::contains("provably overlap"));
++        .get_output()
++        .stdout
++        .clone();
++    insta::assert_snapshot!(String::from_utf8(out).unwrap());
+ }
+ 
+ #[test]
+ fn json_output_is_machine_readable() {
+     let out = muxsmith()
+         .args(["validate", &fixture("bad.yaml"), "--json"])
+         .assert()
+         .code(2)
+         .get_output()
+         .stdout
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index 1661a3e..3a44116 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -1,18 +1,20 @@
+ //! End-to-end CLI test, gated on a real mkvmerge (self-skips otherwise).
+ //! Builds a fixture MKV via mkvmerge, writes a profile, runs `dry-run --json`,
+ //! and checks the batch report shape and exit code.
+ 
+ use std::process::Command;
+ 
+ use assert_cmd::cargo::CommandCargoExt;
+ 
++mod support;
++
+ fn have_mkvmerge() -> bool {
+     Command::new("mkvmerge")
+         .arg("--version")
+         .output()
+         .map(|o| o.status.success())
+         .unwrap_or(false)
+ }
+ 
+ #[test]
+ fn dry_run_plans_a_single_file() {
+@@ -229,33 +231,29 @@ fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent()
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert!(
+         out.status.success(),
+         "exit: {:?}, stderr: {}",
+         out.status.code(),
+         String::from_utf8_lossy(&out.stderr)
+     );
+-    let stdout = String::from_utf8_lossy(&out.stdout);
+-    assert!(
+-        stdout.contains("0 files matched"),
+-        "expected the zero-count batch summary line, got stdout: {stdout}"
+-    );
+-    assert!(
+-        stdout.contains(&dir.path().display().to_string()),
+-        "expected the searched root in the summary line, got stdout: {stdout}"
+-    );
+-    assert!(
+-        stdout.contains("mkv"),
+-        "expected the configured extensions in the summary line, got stdout: {stdout}"
+-    );
++    let stdout = String::from_utf8(out.stdout).unwrap();
++    // The zero-count, searched-root and configured-extensions facts (Task
++    // 8) all live in the one rendered `dry-run-summary` line; a single
++    // redacted snapshot covers all three instead of three separate
++    // substring checks. The searched root is `dir.path()` itself, real and
++    // machine-specific, so it is filtered to a stable placeholder.
++    support::insta_settings_with_tmp(dir.path()).bind(|| {
++        insta::assert_snapshot!(stdout);
++    });
+ }
+ 
+ /// Points a child process's PATH at a directory with no `mkvmerge`, so
+ /// `Mkvmerge::locate()` fails deterministically regardless of whether the
+ /// real mkvmerge is installed on the machine running the test. Confirmed by
+ /// hand (see F1 fix report) that `Command::new("mkvmerge")` under an
+ /// overridden child `PATH` fails with a spawn error, which `locate()` maps
+ /// to `RuntimeError::NotFound`.
+ fn empty_path_dir() -> tempfile::TempDir {
+     tempfile::tempdir().unwrap()
+@@ -489,26 +487,23 @@ fn dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing() {
+         .unwrap()
+         .env("PATH", no_mkvmerge_path.path())
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert_eq!(out.status.code(), Some(2));
+-    let stdout = String::from_utf8_lossy(&out.stdout);
++    let stdout = String::from_utf8(out.stdout).unwrap();
+     let stderr = String::from_utf8_lossy(&out.stderr);
+-    assert!(
+-        stdout.contains("Invalid regular expression") || stdout.to_lowercase().contains("regex"),
+-        "expected the config-time diagnostic in stdout, got stdout: {stdout}, stderr: {stderr}"
+-    );
++    insta::assert_snapshot!(stdout);
+     assert!(
+         stderr.contains("mkvmerge"),
+         "expected the mkvmerge-not-found message on stderr, got: {stderr}"
+     );
+ }
+ 
+ /// Fastfollow bug 1: `load::from_file` failure (e.g. a nonexistent profile
+ /// path) is the very first branch in `dry_run::run`. Under `--json` it must
+ /// still emit exactly one parseable document (the `config_only_json` shape,
+ /// with this single load diagnostic folded in, spec 5.5's superset-of-
+@@ -674,26 +669,33 @@ fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure()
+         .env("PATH", fake_path.path())
+         .args(["dry-run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert_eq!(out.status.code(), Some(2));
+     let stdout = String::from_utf8_lossy(&out.stdout);
++    // `tracks[0].match` is the schema-relative `config_path` the
++    // `diagnostic-line` template echoes verbatim; a structural identifier
++    // from the profile, not translatable wording, so it stays a plain
++    // substring check (superset-of-validate) rather than becoming a
++    // snapshot.
+     assert!(
+         stdout.contains("tracks[0].match"),
+         "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
+     );
+-    let stderr = String::from_utf8_lossy(&out.stderr);
+-    assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
++    // `mkvmerge-query-failed`'s fixed, param-free wording ("Querying
++    // mkvmerge failed."): a genuine wording pin, converted to a snapshot.
++    let stderr = String::from_utf8(out.stderr).unwrap();
++    insta::assert_snapshot!(stderr);
+ }
+ 
+ /// Task 6 review finding 2: an `EmptyPlan`-only batch (a plan resolving to
+ /// zero output tracks, warning severity, spec 5.2) must surface end-to-end
+ /// through `--json`, not just in the core-crate unit tests. The fixture's
+ /// only audio track is tagged `eng`; the profile's only rule is `optional`
+ /// and requires `de`, so it is satisfied-but-unmatched and the plan renders
+ /// with zero assignments. Exit code mirrors mkvmerge: 1, since the worst
+ /// diagnostic present is a warning, not an error.
+ #[test]
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index 36801dc..0d849e8 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -3,20 +3,22 @@
+ //! document (a real mux, the specs-empty path, and the mkvmerge-not-found
+ //! path) must emit exactly one, with `jobs`/`summary` matching the actual
+ //! outcomes. Beyond the single-fixture case here, a real end-to-end mux
+ //! under concurrency and failure/warning job states is Task 11's gated
+ //! end-to-end test, not this file's job.
+ 
+ use std::process::Command;
+ 
+ use assert_cmd::cargo::CommandCargoExt;
+ 
++mod support;
++
+ fn muxsmith() -> Command {
+     Command::cargo_bin("muxsmith").unwrap()
+ }
+ 
+ fn have_mkvmerge() -> bool {
+     Command::new("mkvmerge")
+         .arg("--version")
+         .output()
+         .map(|o| o.status.success())
+         .unwrap_or(false)
+@@ -72,25 +74,34 @@ fn bad_regex_profile_exits_two_without_executing_a_job() {
+         .output()
+         .unwrap();
+ 
+     assert_eq!(
+         out.status.code(),
+         Some(2),
+         "stdout: {}, stderr: {}",
+         String::from_utf8_lossy(&out.stdout),
+         String::from_utf8_lossy(&out.stderr)
+     );
+-    let stdout = String::from_utf8_lossy(&out.stdout);
+-    assert!(
+-        stdout.contains("Invalid regular expression"),
+-        "expected the config-time diagnostic in stdout, got: {stdout}"
+-    );
++    let stdout = String::from_utf8(out.stdout).unwrap();
++    // Unlike the sibling test right below (mkvmerge forced missing), this
++    // one runs with whatever mkvmerge situation the test machine actually
++    // has (deliberate, see the doc comment above): when mkvmerge IS on
++    // PATH -- true of every CI leg since Plan 5.5 Task 2, and of this dev
++    // machine -- `run` still reaches `plan_batch`/`print_batch_human`
++    // despite the config-time error, so stdout also carries a "0 files
++    // matched (searched {dir}, ...)" line with this test's own real tmp
++    // path, caught here reviewing the first `.snap.new` (an unredacted
++    // absolute path would have made the snapshot fail on every other
++    // machine and CI leg).
++    support::insta_settings_with_tmp(dir.path()).bind(|| {
++        insta::assert_snapshot!(stdout);
++    });
+     asserts_no_job_ran(&stdout);
+ }
+ 
+ /// Same malformed profile, with mkvmerge forced missing via `PATH` (so the
+ /// assertion does not depend on whether the test machine happens to have
+ /// mkvmerge installed): the config-time diagnostic is still surfaced (spec
+ /// 5.5's superset-of-validate guarantee), the mkvmerge-not-found message
+ /// lands on stderr, exit code stays 2, and again no job ever runs.
+ #[test]
+ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
+@@ -106,26 +117,23 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
+     let out = muxsmith()
+         .env("PATH", no_mkvmerge_path.path())
+         .args(["run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert_eq!(out.status.code(), Some(2));
+-    let stdout = String::from_utf8_lossy(&out.stdout);
++    let stdout = String::from_utf8(out.stdout).unwrap();
+     let stderr = String::from_utf8_lossy(&out.stderr);
+-    assert!(
+-        stdout.contains("Invalid regular expression"),
+-        "expected the config-time diagnostic in stdout, got: {stdout}"
+-    );
++    insta::assert_snapshot!(stdout);
+     assert!(stderr.contains("mkvmerge"), "got stderr: {stderr}");
+     asserts_no_job_ran(&stdout);
+ }
+ 
+ /// Task 9 (D15): a real single-file mux under `--json` produces exactly one
+ /// stdout document (all human lines suppressed, per the module doc), whose
+ /// `jobs` array has one index-0 entry with the real output path, `state:
+ /// "ok"`, `exit_code: 0`, no captured warnings/errors, and a numeric
+ /// `duration_ms`; `summary` counts that same job as `ok`; and the
+ /// dry-run-shaped base fields (`files`, `batch_diagnostics`, `suggestions`)
+@@ -350,33 +358,29 @@ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert!(
+         out.status.success(),
+         "exit: {:?}, stderr: {}",
+         out.status.code(),
+         String::from_utf8_lossy(&out.stderr)
+     );
+-    let stdout = String::from_utf8_lossy(&out.stdout);
+-    assert!(
+-        stdout.contains("0 files matched"),
+-        "expected the zero-count batch summary line, got stdout: {stdout}"
+-    );
+-    assert!(
+-        stdout.contains(&dir.path().display().to_string()),
+-        "expected the searched root in the summary line, got stdout: {stdout}"
+-    );
+-    assert!(
+-        stdout.contains("mkv"),
+-        "expected the configured extensions in the summary line, got stdout: {stdout}"
+-    );
++    let stdout = String::from_utf8(out.stdout).unwrap();
++    // The zero-count, searched-root and configured-extensions facts (Task
++    // 8) all live in the one rendered `dry-run-summary` line; a single
++    // redacted snapshot covers all three instead of three separate
++    // substring checks. The searched root is `dir.path()` itself, real and
++    // machine-specific, so it is filtered to a stable placeholder.
++    support::insta_settings_with_tmp(dir.path()).bind(|| {
++        insta::assert_snapshot!(stdout);
++    });
+ }
+ 
+ /// Task 9 (D15): the mkvmerge-not-found path must surface the same document
+ /// dry-run's `config_only_json` builds for the same condition (spec 5.5
+ /// superset-of-validate guarantee), extended with an empty `jobs` array and
+ /// a zeroed `summary`. Forces the condition via an empty `PATH`, so this
+ /// does not depend on whether the test machine actually has mkvmerge
+ /// installed (compare `dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing`
+ /// in dry_run_cli.rs).
+ #[test]
+@@ -602,17 +606,24 @@ fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
+         .args(["run"])
+         .arg(&profile)
+         .args(["--source"])
+         .arg(dir.path())
+         .output()
+         .unwrap();
+ 
+     assert_eq!(out.status.code(), Some(2));
+     let stdout = String::from_utf8_lossy(&out.stdout);
+     asserts_no_job_ran(&stdout);
++    // `tracks[0].match` is the schema-relative `config_path` the
++    // `diagnostic-line` template echoes verbatim; a structural identifier
++    // from the profile, not translatable wording, so it stays a plain
++    // substring check (superset-of-validate) rather than becoming a
++    // snapshot.
+     assert!(
+         stdout.contains("tracks[0].match"),
+         "config diagnostics must be surfaced on stdout (superset-of-validate); stdout: {stdout}"
+     );
+-    let stderr = String::from_utf8_lossy(&out.stderr);
+-    assert!(stderr.contains("Querying mkvmerge"), "stderr: {stderr}");
++    // `mkvmerge-query-failed`'s fixed, param-free wording ("Querying
++    // mkvmerge failed."): a genuine wording pin, converted to a snapshot.
++    let stderr = String::from_utf8(out.stderr).unwrap();
++    insta::assert_snapshot!(stderr);
+ }
+diff --git a/crates/muxsmith-cli/tests/run_live.rs b/crates/muxsmith-cli/tests/run_live.rs
+index 5373f88..ad868ee 100644
+--- a/crates/muxsmith-cli/tests/run_live.rs
++++ b/crates/muxsmith-cli/tests/run_live.rs
+@@ -126,25 +126,36 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
+     // i.e. the full source stem (see the identical comment in
+     // `run_cli.rs`'s `run_json_on_a_real_mux_...` test, which pins the same
+     // mapping down).
+     let out1 = output_dir.join("Show.S01E01.mkv");
+     let out2 = output_dir.join("Show.S01E02.mkv");
+     assert!(out1.exists(), "missing {out1:?}");
+     assert!(out2.exists(), "missing {out2:?}");
+     assert_identifies_as_matroska(&out1);
+     assert_identifies_as_matroska(&out2);
+ 
++    // The run-summary line ("{ok} ok, {warning} warning, ...", `run.rs`'s
++    // `render_summary`) is a genuine wording pin, snapshotted rather than
++    // hardcoded here (spec 10). Only that one line, not the full stdout:
++    // the per-job milestone lines above it carry real elapsed seconds and
++    // (for a near-instant fixture mux) a nondeterministic subset of the 25/
++    // 50/75% progress thresholds, neither safe to pin byte-for-byte even
++    // with duration redaction. `run-joblog-written` may follow it as the
++    // last line instead (a logger is created whenever a real runs-root
++    // resolves), so the summary line is found by its distinctive shape
++    // rather than assumed to be `stdout`'s last line.
+     let stdout = String::from_utf8_lossy(&out.stdout);
+-    assert!(
+-        stdout.contains("2 ok, 0 warning, 0 failed, 0 cancelled"),
+-        "expected the run-summary line in stdout, got: {stdout}"
+-    );
++    let summary_line = stdout
++        .lines()
++        .find(|l| l.contains(" ok, ") && l.contains(" cancelled"))
++        .unwrap_or_else(|| panic!("expected the run-summary line in stdout, got: {stdout}"));
++    insta::assert_snapshot!(summary_line);
+ }
+ 
+ /// Backdates `path`'s mtime by an hour and returns the value actually
+ /// stored (re-read from the filesystem rather than trusted from memory, so
+ /// any precision loss the filesystem applies is already baked into the
+ /// reference the later assertion compares against).
+ fn backdate_mtime(path: &Path) -> SystemTime {
+     let target = SystemTime::now() - Duration::from_secs(3600);
+     // Open with write access: Windows requires FILE_WRITE_ATTRIBUTES to set_modified.
+     let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+diff --git a/crates/muxsmith-cli/tests/snapshots/cli_validate__invalid_profile_exits_two_and_renders_messages.snap b/crates/muxsmith-cli/tests/snapshots/cli_validate__invalid_profile_exits_two_and_renders_messages.snap
+new file mode 100644
+index 0000000..bf685ec
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/cli_validate__invalid_profile_exits_two_and_renders_messages.snap
+@@ -0,0 +1,8 @@
++---
++source: crates/muxsmith-cli/tests/cli_validate.rs
++expression: "String::from_utf8(out).unwrap()"
++---
++[error] input.pattern: Invalid regular expression: regex parse error: ([ ^ error: unclosed character class
++[error] tracks[2].match.substring.forced_track: Property "forced_track" has type boolean; substring conditions require a string property.
++[warning] tracks[1]: Rules tracks[0] and tracks[1] provably overlap: every track matching one also matches the other. Add a distinguishing condition to one of them.
++2 errors, 1 warning, 0 infos.
+diff --git a/crates/muxsmith-cli/tests/snapshots/cli_validate__valid_profile_exits_zero_with_ok_message.snap b/crates/muxsmith-cli/tests/snapshots/cli_validate__valid_profile_exits_zero_with_ok_message.snap
+new file mode 100644
+index 0000000..1377e1f
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/cli_validate__valid_profile_exits_zero_with_ok_message.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/cli_validate.rs
++expression: "String::from_utf8(out).unwrap()"
++---
++Profile is valid.
+diff --git a/crates/muxsmith-cli/tests/snapshots/cli_validate__warnings_only_exits_one.snap b/crates/muxsmith-cli/tests/snapshots/cli_validate__warnings_only_exits_one.snap
+new file mode 100644
+index 0000000..0e4350e
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/cli_validate__warnings_only_exits_one.snap
+@@ -0,0 +1,6 @@
++---
++source: crates/muxsmith-cli/tests/cli_validate.rs
++expression: "String::from_utf8(out).unwrap()"
++---
++[warning] tracks[1]: Rules tracks[0] and tracks[1] provably overlap: every track matching one also matches the other. Add a distinguishing condition to one of them.
++0 errors, 1 warning, 0 infos.
+diff --git a/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent.snap b/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent.snap
+new file mode 100644
+index 0000000..5228058
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/dry_run_cli.rs
++expression: stdout
++---
++0 files matched (searched [TMPDIR], extensions mkv)
+diff --git a/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure.snap b/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure.snap
+new file mode 100644
+index 0000000..14c4405
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/dry_run_cli.rs
++expression: stderr
++---
++Querying mkvmerge failed.
+diff --git a/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing.snap b/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing.snap
+new file mode 100644
+index 0000000..7e293ea
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/dry_run_cli__dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/dry_run_cli.rs
++expression: stdout
++---
++[error] input.pattern: Invalid regular expression: regex parse error: S(?<s>\d{2}E(?<e>\d{2}) ^ error: unclosed group
+diff --git a/crates/muxsmith-cli/tests/snapshots/run_cli__bad_regex_profile_exits_two_without_executing_a_job.snap b/crates/muxsmith-cli/tests/snapshots/run_cli__bad_regex_profile_exits_two_without_executing_a_job.snap
+new file mode 100644
+index 0000000..2eca59d
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/run_cli__bad_regex_profile_exits_two_without_executing_a_job.snap
+@@ -0,0 +1,6 @@
++---
++source: crates/muxsmith-cli/tests/run_cli.rs
++expression: stdout
++---
++[error] input.pattern: Invalid regular expression: regex parse error: S(?<s>\d{2}E(?<e>\d{2}) ^ error: unclosed group
++0 files matched (searched [TMPDIR], extensions mkv)
+diff --git a/crates/muxsmith-cli/tests/snapshots/run_cli__bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job.snap b/crates/muxsmith-cli/tests/snapshots/run_cli__bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job.snap
+new file mode 100644
+index 0000000..9b29a2a
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/run_cli__bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/run_cli.rs
++expression: stdout
++---
++[error] input.pattern: Invalid regular expression: regex parse error: S(?<s>\d{2}E(?<e>\d{2}) ^ error: unclosed group
+diff --git a/crates/muxsmith-cli/tests/snapshots/run_cli__run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent.snap b/crates/muxsmith-cli/tests/snapshots/run_cli__run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent.snap
+new file mode 100644
+index 0000000..2de58c6
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/run_cli__run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/run_cli.rs
++expression: stdout
++---
++0 files matched (searched [TMPDIR], extensions mkv)
+diff --git a/crates/muxsmith-cli/tests/snapshots/run_cli__run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure.snap b/crates/muxsmith-cli/tests/snapshots/run_cli__run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure.snap
+new file mode 100644
+index 0000000..ee75294
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/run_cli__run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/run_cli.rs
++expression: stderr
++---
++Querying mkvmerge failed.
+diff --git a/crates/muxsmith-cli/tests/snapshots/run_live__live_run_muxes_two_sources_and_reports_exit_zero.snap b/crates/muxsmith-cli/tests/snapshots/run_live__live_run_muxes_two_sources_and_reports_exit_zero.snap
+new file mode 100644
+index 0000000..6d17a25
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/snapshots/run_live__live_run_muxes_two_sources_and_reports_exit_zero.snap
+@@ -0,0 +1,5 @@
++---
++source: crates/muxsmith-cli/tests/run_live.rs
++expression: summary_line
++---
++2 ok, 0 warning, 0 failed, 0 cancelled
+diff --git a/crates/muxsmith-cli/tests/support/mod.rs b/crates/muxsmith-cli/tests/support/mod.rs
+new file mode 100644
+index 0000000..bd13c76
+--- /dev/null
++++ b/crates/muxsmith-cli/tests/support/mod.rs
+@@ -0,0 +1,52 @@
++//! Shared test helpers for muxsmith-cli's integration test suites.
++//!
++//! A `tests/` SUBDIRECTORY module (`tests/support/mod.rs`), not a
++//! `tests/*.rs` file: Cargo's test-target autodiscovery only globs
++//! `tests/*.rs`, so this file is never compiled as its own test binary. Each
++//! consumer test file pulls it in with `mod support;` (mirrors
++//! `muxsmith-core/tests/support/mod.rs`'s existing convention).
++
++use std::path::Path;
++
++use insta::Settings;
++
++/// Baseline `insta` filters shared by every CLI snapshot test (spec 10):
++/// two kinds of machine-dependent text a human-rendered CLI line can carry
++/// regardless of which test produced it.
++///
++/// - `mkvmerge v...` version banners: no current call site echoes
++///   `Mkvmerge::version()`'s raw `--version` output into CLI text (grepped
++///   the whole crate for this task); nothing stops a future `RuntimeError`
++///   `Display` from doing so through spec 10's accepted third-party-text
++///   exception, and CI genuinely runs divergent mkvmerge builds per leg
++///   (Plan 5.5 Task 2: apt ships 97.0-1build1 on Linux, choco/brew ship
++///   100.0.0 on Windows/macOS) -- a future leak would silently diverge the
++///   two without this filter already in place.
++/// - job duration text (`run-job-ok`/`-warning`/`-failed`'s `{ $seconds }`,
++///   always `format!("{:.1}", ms as f64 / 1000.0)`, see `commands/run.rs`):
++///   genuinely nondeterministic wall-clock time, machine- and load-dependent.
++///
++/// Absolute filesystem paths are deliberately NOT handled here: each test
++/// builds its own `TempDir` at a fresh, unpredictable location, so the
++/// exact path is only known to that one call site. Register it there via
++/// [`insta_settings_with_tmp`] -- an exact, escaped literal match, not a
++/// generic "looks like an absolute path" regex that could also swallow
++/// unrelated content (e.g. a `config_path` value) and mask a real bug.
++#[allow(dead_code)]
++pub fn insta_settings() -> Settings {
++    let mut settings = Settings::clone_current();
++    settings.add_filter(r"mkvmerge v\d+(?:\.\d+){1,3}[^\n]*", "mkvmerge v[VERSION]");
++    settings.add_filter(r"\d+\.\d+s\b", "[N.Ns]");
++    settings
++}
++
++/// [`insta_settings`]'s baseline plus an exact-literal filter for `path`
++/// (escaped via [`regex::escape`], not a pattern -- `path` is a real
++/// `TempDir` root, e.g. containing a literal `.` on Unix, which would
++/// otherwise be interpreted as "any character").
++#[allow(dead_code)]
++pub fn insta_settings_with_tmp(path: &Path) -> Settings {
++    let mut settings = insta_settings();
++    settings.add_filter(&regex::escape(&path.display().to_string()), "[TMPDIR]");
++    settings
++}
