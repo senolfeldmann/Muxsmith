@@ -736,3 +736,71 @@ project's non-repo material (md + house-style HTML).
 **Open threads.** Idiomacy review is fully prepared (six dimensions, 13
 named inputs, output contract) and awaits the owner's go; then the
 mixed-language allowed-param polish; then Plan 6.
+
+## 2026-07-12 | Idiomacy review executed (pre-1.0 gate) | session 10 (Peter, Fable 5 -> Opus 4.8 1M mid-session)
+
+Scope: ran the whole-codebase idiomacy review (the pre-1.0 gate anchored in
+ROADMAP). Findings only; no code changed. Dispatch prompt and the generic
+reusable template persisted outside the repo (project non-repo material); a
+merged ranked findings report likewise, pending triage with Şenol. No repo
+commits this session except this journal entry. `.superpowers/sdd/
+idiomacy-review/` holds 67 finder/seed/verifier artifacts, PENDING salvage
+at review close (fix wave not yet run).
+
+Design of the pass. Six dimensions (idiom, dup, stdlib, dep, yagni, native),
+correctness/security/perf explicitly out of scope and routed to a separate
+list. Orchestration: 11 finders (9 subsystem slices, the two largest crates
+split in two by file-list to keep each finder under ~5k lines, plus whole-tree
+dup and dep sweeps), 13 seed verifications (Plan 5.5 funnel items routed in as
+their vehicle), then a code-level dedup barrier with n-in/n-out accounting,
+then one adversarial verifier per deduped finding. All agents inherited the
+main-loop model with no override.
+
+Results. 74 raw -> 73 deduped findings; 70 confirmed, 1 refuted, 2 tracked,
+11 routed out of scope, 13/13 seeds confirmed still-open. net: -483 lines,
+-0 deps. The dep sweep returned clean - every direct Cargo and npm dependency
+judged earned and healthy (registry-verified). Biggest single finding: a
+four-copy planning pipeline (load -> validate+lint -> detect mkvmerge ->
+list_languages -> plan_batch, plus three identical soft-failure branches)
+across muxsmith-cli dry_run.rs/run.rs and src-tauri lib.rs/run.rs (~100 lines),
+flagged as its own mini-refactor because spec 5.5/7 mandate the copies stay
+behaviorally identical; Şenol to decide idiomacy-wave vs fold into Plan 6
+(the injectable-planner-seam question S4/S5/S6 is already open there). Other
+real catches: MkvmergeInfo.meets_minimum is dead (always true once
+Mkvmerge::detect rejects too-old); five copies of the spawn_blocking IPC
+wrapper; config-diagnostics collection duplicated at six sites; `rustup show`
+as a no-op "install" step (pre-rustup-1.28 idiom, works only via later proxy
+auto-install).
+
+Friction and failure (the point of this entry). The verifier fan-out was
+too fine-grained: one agent per finding meant ~73 verifier dispatches on top
+of 24 finder/seed agents, 97 total. Run 1 (Fable 5) exhausted the Fable
+usage limit partway through verification - 34 verifiers failed. Switched
+main-loop to Opus 4.8 1M and RESUMED the same workflow (Workflow scriptPath +
+resumeFromRunId): the 63 agents with journal result lines replayed from cache
+for free, only the 34 failures re-ran. Run 2 hit the ROLLING SESSION limit
+and 24 more failed. Nothing was lost either time: stage 1 (the expensive
+whole-codebase read) had fully completed and cached, every completed agent had
+already written its report to disk (artifact-at-creation), and the workflow
+captured each finding BEFORE its verdict (parallel() -> null -> a
+VERIFIER_FAILED entry carrying the full finding), so the failures were a clean
+re-runnable worklist, not data loss. The final 24 were verified inline by the
+Opus main-loop (reading the cited code directly) rather than a third
+dispatch, to stop burning a strained limit on doomed parallel agents. All 24
+confirmed on inspection; zero refuted, which also says the finders were
+accurate on location.
+
+Lesson (Şenol's correction, recorded as a rule): the workflow over-extended
+parallelism. The fix is not lower concurrency alone (the tool already caps
+in-flight at ~16) but COARSER agents - batch many findings per verifier
+instead of one-per-finding - and sizing the total fan-out to the available
+budget with budget-guarding, so a limit wall does not leave a trail of failed
+dispatches. Cap in-flight at 30. Two usage-limit classes bit here and they
+differ: the per-model Fable quota (recoverable by switching model) and the
+rolling session limit (recoverable only by waiting for the reset).
+
+Open threads. Triage the 70 confirmed findings with Şenol -> accepted set
+becomes the idiomacy fix wave (own plan, SDD execution). Salvage
+`.superpowers/sdd/idiomacy-review/` at that close. Two idiom findings rest on
+current-tooling deprecation claims (typescript-eslint config(), cargo-deny
+version field) that want a doc re-check before applying; both are drop-ins.
