@@ -441,24 +441,29 @@ test.describe("jobs view: live run", () => {
 });
 
 // Task 21 (#17 step 3): the German catalog renders end-to-end. The locale
-// is pinned via the mocked `get_settings.locale = "de"` (the same channel
-// `main.ts`'s locale bootstrap reads before mount), and `buildBundles`
-// primary-subtag-normalizes it to the `locales/de/` directory. Assertions
-// are LITERAL German strings, not `en(id)`/a `de()` helper: the point is
-// proving the app actually loaded the de bundle rather than falling back
-// to en, so each asserted string is one that ONLY exists in de (en renders
-// "Batch"/"Selected profile:"/"Dry run"). `visibleText` strips the
-// U+2066-2069 directional-isolate marks the GUI bundle wraps around the
-// `{ $path }` placeable -- without stripping, the exact-equality check on
+// is pinned via the mocked `get_settings.locale = "de-AT"` (the same
+// channel `main.ts`'s locale bootstrap reads before mount) -- a
+// region-qualified tag, deliberately not the bare "de" primary subtag, so
+// this exercises `buildBundles`'s `primarySubtag` normalization (S15,
+// T21 review) rather than an accidental exact-string match: without the
+// normalization, "de-AT" would miss the `locales/de/` directory entirely
+// and silently fall through to the en-only bundle, which the assertions
+// below would then fail against. Assertions are LITERAL German strings,
+// not `en(id)`/a `de()` helper: the point is proving the app actually
+// loaded the de bundle rather than falling back to en, so each asserted
+// string is one that ONLY exists in de (en renders "Batch"/"Selected
+// profile:"/"Dry run"). `visibleText` strips the U+2066-2069
+// directional-isolate marks the GUI bundle wraps around the `{ $path }`
+// placeable -- without stripping, the exact-equality check on
 // `batch-profile-current` would fail on invisible marks (same mechanism
 // the T19 plural assertions document).
 test.describe("german locale", () => {
   const PROFILE_PATH = "/profiles/demo.yaml";
 
-  const DE_SETTINGS: AppSettings = {
+  const DE_AT_SETTINGS: AppSettings = {
     mkvmerge_path: null,
     default_jobs: 1,
-    locale: "de",
+    locale: "de-AT",
     recent_profiles: [],
     dir_memory: {},
   };
@@ -471,12 +476,12 @@ test.describe("german locale", () => {
     mkvmerge_found: true,
   };
 
-  test("a de-locale settings value renders the German catalog, not the en fallback", async ({
+  test("a de-AT-locale settings value normalizes to the German catalog, not the en fallback", async ({
     page,
   }) => {
     await installTauriMocks(page, {
       commands: {
-        get_settings: [resolveWith(DE_SETTINGS)],
+        get_settings: [resolveWith(DE_AT_SETTINGS)],
         detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
         "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
         validate_profile: [resolveWith(emptyReport)],
