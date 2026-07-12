@@ -23,6 +23,14 @@ schematize as `anyOf [object, string]`, the keywords live only in
 validate.rs (Plan-1 final review minor #7, trigger "a GUI generating an
 editor from the schema" now fires with Plan 6).
 
+Further named inputs (2026-07-12, Plan 5.5 roll-up funnel): route
+JobOutcome.errors codes through the diagnostics catalog so
+worker-panicked renders on live surfaces (T4-i2); core logging facade
+replacing the single eprintln in queue.rs (T4-i1); reject bare `raw:`
+with empty property name at validate (T16-m1); live in-session locale
+switch (T21.5-m1, bootstrap-once today); sort JSON config_diagnostics
+errors-first for validate parity (T9-m-iv).
+
 Further named inputs (2026-07-11, docs-tree sweep): the GUI test-harness
 question as ONE block - no Vitest component harness, no tauri::test
 integration harness, start_run's orchestration body untested including
@@ -57,17 +65,20 @@ action:
 - First real-world report of unwanted empty outputs, or a request to
   fail batches on empty plans -> IDEAS #5.
 - Next parity-audit round or output-plausibility work -> IDEAS #6.
+- A second fixture needs a _comment-style source-of-truth note ->
+  promote the T11 ad-hoc pattern to a written convention (BUILDING.md
+  test section).
 
 ## Pre-1.0 release gates
 
 Must be resolved before the first tagged release; none blocks Plan 6 work.
-The code gates from the 2026-07-11 sweep are covered by **Plan 5.5**
-(docs/superpowers/plans/2026-07-11-plan-5.5-pre-1.0-hardening.md, authored
-2026-07-11, awaiting Şenol's execution go). Tracked individually outside
-Plan 5.5: README, guide/blogs, the whole-codebase idiomacy review, and the
-D35 auto-prune implementation. (Resolved so far: CSP 2026-07-11 -> D34,
-policy set and verified; log-pruning decided 2026-07-11 -> D35,
-implementation entry below.)
+**Plan 5.5 EXECUTED AND CLOSED 2026-07-12** (30 tasks incl. seven added
+in-flight by review routings and Şenol gate decisions; commits
+e8e85d9..close; per-task verdicts + whole-branch review in the salvaged
+plan-5.5 archive). Still OPEN before the tag: README placeholder items
+(at-tag), guide/blogs (at 1.0), the whole-codebase idiomacy review (with
+its named-input list below), and the mixed-language `allowed`-param
+polish entry.
 
 - **README**: v1 draft shipped 2026-07-11 (sell-tone per Şenol's register
   override - a case-scoped exception to the writeup-stimme rule; WIP
@@ -112,12 +123,9 @@ implementation entry below.)
     disjoint audiences and half-lives -> two posts.
   - The process-learnings distillate kept with the project's non-repo material
     remains a second primary source.
-- **Run-log auto-prune implementation (D35)**: decided 2026-07-11 (D35,
-  pre-1.0 memo) - core auto-prunes run dirs older than 14 days, fixed, no
-  configuration in v1 (configurability parked in IDEAS #7); parity match
-  with mkvtoolnix defaults. Vehicle decided at the Plan 5.5 execution go
-  (Şenol 2026-07-11): rides Plan 5.5 as added wave-1 stream-A Task 4.5 -
-  the milestone gate blocks on this entry until that task lands.
+- **Run-log auto-prune implementation (D35)**: DONE 2026-07-12 (Plan 5.5
+  Task 4.5, merged d18f1b7): name-parse-based 14-day prune in
+  RunLogger::create, parser moved to core, shell delegates.
 - **mkvtoolnix version pin in CI + mac/win runners**: DONE 2026-07-11
   (Plan 5.5 Task 2, commits 374005a+19deec3+24ac702, verified in run
   29165610230): per-OS install steps, pins apt 97.0-1build1 /
@@ -127,157 +135,43 @@ implementation entry below.)
   everywhere ("3-OS green" now means live-binary tests on 3 of 3).
   First live Windows run immediately surfaced and fixed a real
   Windows-only defect (read-only handle + set_modified, 24ac702).
-- **`.gitattributes` (`* text=auto eol=lf`)**: promised for Plan 2's
-  first commit (2026-07-08 CRLF risk assessment), never created. A public
-  repo inherits every contributor's autocrlf config, and the insta
-  snapshots decided in walkthrough #2 are byte-exact artifacts vulnerable
-  to CRLF drift. Şenol 2026-07-11 (sweep walkthrough #15): add before
-  1.0, early in the hardening block (before the snapshot work); mark
-  binary test assets `-text`; renormalization (`git add --renormalize .`)
-  as its own isolated commit.
-- **Catalog param-drift guard**: catalog_completeness.rs renders every
-  DiagCode message with EMPTY args, so emitter-vs-message param drift is
-  structurally invisible - the class already reached a user once (literal
-  `{$property}`, fixed as F9 without closing the guard gap; the guard fix
-  was prescribed verbatim by the Plan-1 final review and its trigger
-  fired unnoticed). Şenol 2026-07-11 (sweep walkthrough #16): before
-  1.0 - per-code param fixtures asserting no unreplaced `{$...}` in
-  rendered output, plus coverage for non-DiagCode keys (the 8 `run-*`
-  keys in cli.ftl are currently entirely unguarded; docs-tree find S3).
-- **German locale (de) before 1.0**: only locales/en/ exists; the Fluent
-  infrastructure is locale-agnostic and ready. Şenol 2026-07-11 (sweep
-  walkthrough #17): 1.0 ships bilingual. Work order: (1) convert the
-  "error(s)"-style strings to Fluent plural selectors FIRST (cli.ftl:2,
-  gui-batch.ftl:31 - their recorded trigger "first real second locale
-  lands" fires with this decision), (2) extend check:i18n to enforce key
-  parity across locales, (3) translate the six catalogs (agent draft,
-  Şenol reviews terminology), (4) loader/scanner primary-subtag
-  normalization - the mechanics half of the "locale #2 lands" trigger
-  (docs-tree S15). Every new message from the hardening block onward is
-  born bilingual.
-- **Test-hardening rider (sweep group T)**: (i) donor-ordering golden for
-  mixed `track_id: None/Some` assignments (behavior currently unpinned);
-  (ii) identify parse-edge tests (wrong-typed id, non-numeric
-  num_entries, absent properties key - documented at identify.rs:225,
-  untested); (iii) Plan-4 test gaps: exit-1 output-kept assertion,
-  fail-fast-with-non-first-failing-job queue test, dry_run_cli
-  default-branch severity assertion; (iv) fix with-attachments.json to
-  1-based attachment ids (real mkvmerge wire format; code id-agnostic
-  today, fixture fidelity regardless). Şenol 2026-07-11 (walkthrough #21,
-  split decision, group T).
-- **rustdoc gate step + dead intra-doc link**: cargo doc warnings are
-  invisible to the eight-part gate although the repo enforces
-  #![deny(missing_docs)] - presence is gated, correctness is not
-  (queue.rs:73 links private [worker_count], rotting since Plan 4). Şenol
-  2026-07-11 (sweep walkthrough #18b): fix the link in the hardening
-  block AND add `cargo doc --no-deps` with RUSTDOCFLAGS="-D warnings" as
-  the ninth gate part (locally and in CI).
+- **`.gitattributes` (`* text=auto eol=lf`)**: DONE 2026-07-12 (Plan 5.5 T1, 209218c; repo was already LF-clean, wav asset marked -text).
+- **Catalog param-drift guard**: DONE 2026-07-12 (Plan 5.5 T10 + merge-time fixtures for every later DiagCode; exhaustive-match guard live; known single-site blind spot documented at fixture_args, instance fixed via T9-ix).
+- **German locale (de) before 1.0**: DONE 2026-07-12 (Plan 5.5 T19/T20/T21/T21.5: plural selectors, parity gate, six catalogs Şenol-reviewed incl. corrections Starten/Meldungen/Verweis, UI-selectable with endonym labels).
+- **Test-hardening rider (sweep group T)**: DONE 2026-07-12 (Plan 5.5 T11; attachment ids empirically verified 1-based).
+- **rustdoc gate step + dead intra-doc link**: DONE 2026-07-12 (Plan 5.5 T12; gate is nine parts, four dead links fixed).
 - **Packaging pipeline**: msi/dmg/deb/rpm/AppImage on release tags (spec 10;
   deliberately deferred out of Plan 5's CI work). Lands via Plan 6.
-- **Spec-§10 test mandates: proptest + insta**: both spec-mandated since
-  the root spec commit, deferred out of Plans 2/3, dropped by the D18
-  condensation, never implemented. Şenol 2026-07-10 (sweep walkthrough
-  #1+#2): implement before 1.0 as one correctness-hardening SDD block.
-  proptest scope: match-algebra laws, language-normalization idempotence,
-  planner determinism / rendered-name invariants, D6 "suggestion survives
-  next dry-run" property. insta scope: CLI human-output snapshots with
-  path/version redactions, replacing the wording-coupled asserts the
-  Plan-1 final review flagged as "don't grow the pattern"
-  (cli_validate.rs:18,52 and successors); strict compare in CI.
-- **`--list-types` extension validation (spec §4.2)**: capability layer
-  built in Plan 2 (`list_types()`), never wired to a consumer - profile
-  `extensions` are accepted unchecked (typo = silent file exclusion), and
-  model.rs:73-75 doc-claims the validation exists. Şenol 2026-07-11 (sweep
-  walkthrough #3): wire it before 1.0 next to the language-validation walk
-  (new diagnostic for unknown extensions; degrade-with-warning when
-  mkvmerge is absent, consistent with the existing pattern) and make the
-  model.rs doc comment true.
-- **UnknownPropertySkew forward-compat path (spec §9.2)**: the spec
-  promises unknown newer-mkvmerge properties become matchable as untyped
-  values with an UnknownPropertySkew warning, but validate.rs:345
-  hard-rejects unknown property names config-time - the promised path is
-  unreachable (flagged by the Plan-2 review as "worth spec'ing", then
-  lost). Şenol 2026-07-11 (sweep walkthrough #4): implement as spec'd
-  before 1.0. Opens with a design round (brainstorming): how to keep
-  typo protection while allowing skew matching (did-you-mean suggestion
-  vs explicit opt-in syntax vs warning-only).
-- **Suggestion-engine D6 completion (spec §5.3 + D6 remainders)**: three
-  fragments, ONE engine block before 1.0 (Şenol 2026-07-11, sweep
-  walkthrough #5 + #12). (i) No-single-fix partition report (spec §5.3):
-  when no single suggestion survives the whole batch, list the files
-  grouped by the resolution each would need - flagged-deferred into the
-  HANDOFF chain and lost, sole trace planner.rs:985. (ii) Suggestions for
-  external-source rules: planner.rs:1014 skips them ("external deferred"),
-  an unexplained asymmetry vs primary rules; symmetry completion with the
-  existing algorithm. (iii) OverlappingRules auto-suggestions: algorithm
-  not yet designed (D6 never specified what a good overlap-narrowing
-  proposal is) - opens with its own design round / D-decision inside the
-  block. Plus two latent D6 gaps from the Plan-2 review archive (residue
-  round R1, 2026-07-11): (iv) candidate generation ignores top-level
-  `codec`/`id` as narrowing dimensions; (v) `diag_signature` uses a
-  BTreeSet where a multiset is meant (duplicate diagnostics collapse).
-- **Diagnostics polish block (review minors, Plans 1-4)**: five
-  loud-but-suboptimal presentation defects, one pass before 1.0 (Şenol
-  2026-07-11, sweep walkthrough #13): (i) OverlappingRules names only 2
-  of >=3 claimants (planner.rs:526-533; implement inside the D6 engine
-  block - overlap suggestions need all claimants anyway); (ii)
-  `any: []` double-reports EmptyMatchExpression + EmptyMatchList
-  (validate.rs:65+301); (iii) human mode prints the filename twice per
-  diagnostic (commands/mod.rs:46ff); (iv) dry-run/run human output not
-  severity-sorted while validate sorts errors-first; (v) lint `0` vs
-  planner `tracks[0]` rule-reference formatting; (vi) donor-side
-  UnsupportedSource gate (D21 remainder: identifiable-but-unmuxable donor
-  falls back to UnidentifiableSource / per-rule noise, planner.rs ~:431,
-  wrong remediation for the user - walkthrough #11, revised 2026-07-11
-  into this block); (vii) mkvmerge-query-failed human-mode path still
-  drops config diagnostics while JSON emits them (residue R1 - pre-check
-  whether the asymmetry is deliberate, then fix or document); (viii)
-  IdentifyError writes English into `detail`, a prose-free-core violation
-  accepted by review but never documented (residue R1 - fix or record as
-  a spec-8.4-family exception).
-- **Zero-track plan warning**: a plan resolving to zero output tracks
-  muxes a valid-but-empty MKV, exit 0, no diagnostic (verified live in
-  the Plan-3 whole-branch review; deferred via D18's cleanup-pass list,
-  tracker-orphaned). Şenol 2026-07-11 (sweep walkthrough #6): implement
-  before 1.0 as a per-file WARNING plus batch-report visibility. Decided:
-  warning only, one sane default, no error/skip options (option
-  proliferation rejected; skip/error-as-option parked in IDEAS #5).
-- **SourceOverwrite completeness (Plan-2 FINAL minor M2)**:
-  `detect_source_overwrites` (planner.rs:893) gathers protected source
-  paths only from files whose plan rendered; a donor referenced solely by
-  a render-failed file drops out of the protection set, so a colliding
-  output overwrites a source silently (code-verified still open). Şenol
-  2026-07-11 (sweep walkthrough #7): fix before 1.0 - feed the protection
-  set from ALL files including render-failed ones, plus a regression test
-  for the three-way constellation. Only audit finding with data-loss
-  potential. While touching detect_source_overwrites: add the guard
-  comment for the ambiguous-external reconsider-trigger (F5 report - that
-  branch deliberately contributes no donor paths while it is fatal;
-  revisit if it ever becomes non-fatal; docs-tree S11).
-- **Empty-batch human output (D15 gap)**: human mode prints nothing on a
-  zero-file batch (exit 0, silent success) while JSON prints a zeroed
-  summary (run.rs:168-179; ledgered 2026-07-09 as "Şenol decision for
-  v1.x", never actually put to him). Şenol 2026-07-11 (sweep walkthrough
-  #8): fix before 1.0 - ALWAYS print the batch summary line in human
-  mode, so the empty case reads "0 files matched (searched <root>,
-  extensions ...)"; info level, exit code unchanged. Recorded divergence
-  from mkvtoolnix: the interactive GUI shows "nothing to do" by
-  construction, a batch tool must say it.
-- **Robust event-stream reads (Plan-4 T1 minor, severity upgraded)**:
-  spawn.rs:104 treats a read_line Err (non-UTF-8 line, e.g. a
-  broken-encoding filename quoted in a mkvmerge warning) as EOF. Verified
-  escalation (2026-07-11): LiveJob keeps the stdout pipe open during
-  wait(), so once the consumer stops reading, a child with >pipe-buffer
-  pending output blocks on write and wait() never returns - one bad line
-  can hang a worker indefinitely mid-batch (short remainders: silent
-  log truncation only). Şenol 2026-07-11 (sweep walkthrough #9): fix
-  before 1.0 - read_until(b'\n') + from_utf8_lossy, keep consuming after
-  a decode-degraded line; TWO regression tests: truncation and no-hang
-  (the hang path additionally assumes run_job's post-None wait(),
-  spawn.rs-verified, job.rs loop to be pinned by the test).
+- **Spec-§10 test mandates: proptest + insta**: DONE 2026-07-12 (Plan 5.5 T14 proptest =1.11.0, 18 properties + T22 insta =1.48.0, 11 redacted snapshots, CI strict).
+- **`--list-types` extension validation (spec §4.2)**: DONE 2026-07-12 (Plan 5.5 T5 input + T5.9 locators; UnknownExtension warning, model docs true).
+- **UnknownPropertySkew forward-compat path (spec §9.2)**: DONE 2026-07-12 (Plan 5.5 T15/T16 per D32 raw: opt-in + T16.5 once-per-batch SchemaDrift notice; B-8 single-field ratified; spec §9.2 amended).
+- **Suggestion-engine D6 completion (spec §5.3 + D6 remainders)**: DONE 2026-07-12 (Plan 5.5 T13 mechanical parts + T17/T18 per D33 overlap narrowings; suggestion-keyed partition ratified via §5.3).
+- **Diagnostics polish block (review minors, Plans 1-4)**: DONE 2026-07-12 (Plan 5.5 T9 nine items + T9.5 donor naming; vii fixed as not-deliberate, viii kept with spec §8.4 entry).
+- **Zero-track plan warning**: DONE 2026-07-12 (Plan 5.5 T6; EmptyPlan decided post-finalize, batch-report test; deliberate divergence recorded in the plan-5.5 memo).
+- **SourceOverwrite completeness (Plan-2 FINAL minor M2)**: DONE 2026-07-12 (Plan 5.5 T7 + T7.5 + T7.6; class closed by construction over all three donor kinds, completeness comment at the gathering site).
+- **Empty-batch human output (D15 gap)**: DONE 2026-07-12 (Plan 5.5 T8; always-print summary, recorded divergence).
+- **Robust event-stream reads (Plan-4 T1 minor, severity upgraded)**: DONE 2026-07-12 (Plan 5.5 T3; read_until + lossy, no-hang live regression).
+- **Mixed-language `allowed` param (pre-1.0 polish, whole-branch I2)**:
+  core emits English prose via the `allowed` param at planner.rs:428/:841
+  ("a valid ISO 639/BCP-47 language code") - in de mode
+  invalid-property-value renders mixed German/English; not on the spec
+  §8.4 exception list. Fix catalog-side (kind selector or dedicated
+  language-domain message), bilingual. Small task before the tag
+  (bilingual launch makes it user-visible).
 - **Whole-codebase idiomacy review**: one large, deliberately costly review
   pass before the 1.0 tag - Rust workspace, TS/Vue frontend, configs -
-  against ecosystem idiom. Dimensions: unidiomatic constructs;
+  against ecosystem idiom. NAMED INPUTS from the Plan 5.5 roll-up funnel
+  (2026-07-12, whole-branch triage; details in the salvaged
+  whole-branch-verdict): skip-marker shared const (T2-m1);
+  dry-run-summary -> batch-summary rename (T8-m2); known_extensions
+  required-method idiom (T5-m2); prop_assume->prop_assert in D6 property
+  (T14-m1); test-side logic mirrors (T14-m3); partition best=None
+  invariant comment (T13-m1); lock_active doc precision (T4-m1);
+  attachments/chapters-only EmptyPlan test (T6-m1); redundant fn-level
+  cfg(unix) (T3-m1); overlap_conflicts re-parses claimants from the
+  rendered param string (whole-branch M2); UnknownExtension "once per
+  batch" rustdoc vs once-per-entry (M3); de catalog headers overclaim
+  what check-i18n enforces (M1). Dimensions: unidiomatic constructs;
   near-duplicate reimplementations (reuse violations); hand-rolled code
   where the stdlib or an established library is the human-normal solution;
   the inverse dependency sweep (is every current dependency earned and
@@ -288,16 +182,7 @@ implementation entry below.)
   existed - this pass covers everything written before). Timing anchor:
   after the feature plans (5.5, 6) land, immediately before the
   release-facing gates.
-- **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: the
-  queue swallows worker panics (`let _ = handle.join()`, queue.rs:270) -
-  a panicked worker's job is backfilled as Cancelled (wrong label), and a
-  poisoned killers/outcomes mutex later panics the whole process via
-  into_inner().unwrap() (inconsistent failure mode). Şenol 2026-07-11
-  (sweep walkthrough #10): fix before 1.0 - check join() results, record
-  a panic as Failed with a distinct "worker panicked (internal error)"
-  outcome, poison-recovery instead of unwrap. Bundled with the
-  AppState.active poison-recovery item promoted out of the v1.x list
-  (same hygiene class, both spots in one pass).
+- **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
 ## Near-1.0
 
@@ -398,6 +283,10 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   this into the pre-1.0 hardening block. (Recovered twice: four sweep
   reports carried it, then Peter's own 23-point condensation dropped it -
   the M3 mechanism catching its own auditor.)
+- **check-i18n.mjs fixture self-test (T20-m2)**: the script grew real
+  logic (parity + drift classes); its own fixture-based self-test per the
+  plan T20 condition (the e2e real-parse guard covers only the
+  parser-blindness half).
 - **Test-hygiene collection (docs-tree B-minors, one pass)**:
   yaml_fragment type fidelity untested (bool/int suggestions must render
   unquoted, B1); substring-precondition lockout deserves an explaining
