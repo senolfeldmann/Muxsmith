@@ -19,9 +19,11 @@ const NUMERIC_DIAGNOSTIC_PARAMS: Record<string, readonly string[]> = {
 /**
  * Fluent params for one diagnostic `(code, params)`, promoting every name
  * [`NUMERIC_DIAGNOSTIC_PARAMS`] lists for `code` from its wire string form
- * to a real number. A listed value that does not parse as a finite number
- * is left as a string rather than dropped, so it degrades to the
+ * to a real number. A listed value that does not parse as a non-negative
+ * integer is left as a string rather than dropped, so it degrades to the
  * selector's `*[other]`/`*[group]` branch instead of leaking `{$name}`.
+ * Mirrors the Rust side's `parse::<usize>()` strictness: rejects negative
+ * numbers, floats, empty strings, and scientific notation.
  */
 export function diagnosticFluentParams(
   code: string,
@@ -37,8 +39,13 @@ export function diagnosticFluentParams(
     if (raw === undefined) {
       continue;
     }
+    // Reject empty / whitespace-only strings explicitly since Number("") === 0.
+    if (raw.trim() === "") {
+      continue;
+    }
     const n = Number(raw);
-    if (Number.isFinite(n)) {
+    // Only accept non-negative integers (usize parity with Rust side).
+    if (Number.isInteger(n) && n >= 0) {
       result[key] = n;
     }
   }

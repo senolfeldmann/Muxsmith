@@ -396,4 +396,49 @@ mod tests {
             "[info] tracks[0].match: 2 further resolution groups were capped at 5 and not shown."
         );
     }
+
+    // T19 (#17 step 1): Pin the mirrored list contract between `numeric_diagnostic_params`
+    // (Rust side, here) and `NUMERIC_DIAGNOSTIC_PARAMS` (TS side, src/diagnosticFluentParams.ts).
+    // This test mirrors the TS implementation directly; changing either list alone will fail this test.
+    // The expected list exactly replicates `NUMERIC_DIAGNOSTIC_PARAMS` from the TS file.
+    #[test]
+    fn numeric_diagnostic_params_list_is_mirrored_to_ts_side() {
+        use muxsmith_core::report::DiagCode;
+
+        // Expected (code, param_name) pairs. Mirrors src/diagnosticFluentParams.ts's
+        // NUMERIC_DIAGNOSTIC_PARAMS; keep both in lockstep if either changes.
+        let expected = [
+            (DiagCode::SuggestionsCapped, &["dropped"] as &[&str]),
+            (DiagCode::SuggestionPartition, &["dropped", "count"]),
+        ];
+
+        for (code, expected_params) in expected {
+            let actual = numeric_diagnostic_params(code);
+            assert_eq!(
+                actual, expected_params,
+                "numeric_diagnostic_params({:?}): expected {:?}, got {:?}. \
+                 Keep this Rust list in sync with src/diagnosticFluentParams.ts's NUMERIC_DIAGNOSTIC_PARAMS.",
+                code, expected_params, actual
+            );
+        }
+
+        // Ensure no other codes have numeric params (a silent addition would otherwise go unnoticed).
+        let all_codes = [
+            DiagCode::IgnoredFile,
+            DiagCode::UnknownProperty,
+            DiagCode::UnsupportedSource,
+            DiagCode::EmptyMatchExpression,
+        ];
+        for code in all_codes {
+            let params = numeric_diagnostic_params(code);
+            assert_eq!(
+                params.len(),
+                0,
+                "DiagCode::{:?} unexpectedly has numeric params: {:?}. \
+                 Update NUMERIC_DIAGNOSTIC_PARAMS in src/diagnosticFluentParams.ts if this was intentional.",
+                code,
+                params
+            );
+        }
+    }
 }
