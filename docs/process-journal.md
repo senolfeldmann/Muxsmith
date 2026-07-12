@@ -604,3 +604,102 @@ session-7 close (byte-exact from the transcript Write op, md5-verified).
 EVERY HANDOFF rewrite snapshots the new state in the same turn to
 artifacts/handoffs/; the publication-grade rule moved from intro prose
 into the same SI. Session-8-close state snapshotted under the new rule.
+
+## 2026-07-12 | Plan 5.5 complete (pre-1.0 hardening, 30 tasks) | session 9 (Peter, Fable 5)
+
+**Scope.** Plan 5.5 end to end in one overnight session (2026-07-11 evening
+to 2026-07-12 morning): 23 planned tasks plus 7 added in-flight by review
+routings and owner gate decisions (4.5, 5.9, 7.5, 7.6, 9.5, 21.5, 16.5).
+Commits e8e85d9..f25b02d plus close-out. Includes a mid-session
+publication-grade correction pass over this journal itself (separate
+commit, per the new PROMPT carve-out).
+
+**Decisions and why.**
+- D35 vehicle (Şenol at the go): ride the plan as wave-1 task 4.5, one SDD
+  apparatus over a standalone run.
+- D32 raw: opt-in and D33 symmetric overlap narrowing decided mid-session
+  from agent-drafted steelman analyses; two D32 sub-decisions surfaced by
+  the T16 review (the design round's dead-code premise was FALSE - a live
+  per-file skew warner existed) and ruled at the T21 gate: schema-drift
+  notice rebuilt once per batch as its own diagnostic ("wichtiger
+  Hinweis"), B-8 single-field ratified (raw: opts out of ALL magic).
+- German terminology gate: approved with three corrections (Starten,
+  Meldungen, Verweis); new standing README anchor: properties with
+  language-like matching magic must be explicitly listed.
+- Resequencings, each reasoned in the ledger: T9 pulled out of stream C
+  (the plan's disjointness note was wrong for it); T22 ran parallel to
+  T21 because the human terminology gate would have blocked the tail.
+
+**What the process caught.** Real defects, stage in parens:
+- 18 silently skipped Windows tests on the skip-marker assertion's maiden
+  run (T2's own new CI step; cause GITHUB_PATH), then a real Windows-only
+  bug on the first live run ever: set_modified on a read-only handle
+  (live CI).
+- A literal {$allowed} reaching users on the plan-time language path
+  (T10 review's fixture-fidelity spot-check; the guard itself is
+  structurally blind to single-site divergence - documented).
+- Locator extension validation missing = spec 4.6 gap (T5 review);
+  attachment- and chapters-donor overwrite exposure (T7 review + T7.5
+  implementer; #7 class closed by construction with two follow-up tasks).
+- Windows clippy break from ungated unix-only test imports (T3 review);
+  EmptyPlan false-warning window on cross-file drops incl. an
+  unenumerated skip-collision case (T6 review; post-finalize relocation).
+- Spec recorded SchemaDrift as warning against the owner's info ruling -
+  introduced by a review-fix wave itself, each side locally consistent,
+  caught only by the whole-branch review (C1); plus three shipped
+  diagnostics missing from the spec 5.2 catalog (one since Plan 3.5).
+- A reviewer's own suggested guard mechanism disproven by the fixer from
+  library source (Fluent addResource never reports Junk drops); the
+  reviewer conceded and the stronger presence-cross-check landed.
+- Controller failures caught by the process: a zsh no-word-splitting bug
+  broke the first gate-runner script (the doctrine's own
+  environment-assumption case); a queue.rs merge resolution silently
+  dropped T12's doc delink (caught by the next fix wave's doc check).
+
+**Mechanics.** Controller main loop Fable 5 throughout. ~30 implementer
+dispatches (sonnet for most, opus for T9/T13/T14/T16/T18/T21, haiku for
+T1 and small fix waves), ~20 task reviews (sonnet/opus split by
+subtlety), ~12 fix/re-review waves, 2 design-round agents (opus), 1
+transcript-mining agent (sonnet), whole-branch review + final
+verification on fable. A handful of utility dispatches ran without
+override on the controller model, Fable 5. Wave 1 as six parallel git
+worktrees; 3 merge conflicts total, all additive/test-interleave,
+resolved by the controller. Gate grew eight -> nine parts (rustdoc);
+controller re-ran the full gate before every push (~15 runs). Suite
+~370 -> 500+ tests incl. 18 property tests and 11 insta snapshots; every
+push CI-green on three OSes with live mkvmerge on all legs (new this
+plan). Roll-up funnel: 37 ledger minors in -> 3 fixed in the close wave,
+16 deferred with named vehicles, 14 discarded with reasons, 4 resolved
+in-plan.
+
+**Friction and failure.**
+- The question-dialog overlay swallowed pre-question context twice; the
+  owner could not see what he was deciding. Pattern now: context as a
+  plain message first, question after (or prose answers).
+- A doc fixer double-applied its edits to the main tree besides its
+  worktree branch; caught at merge as a dirty-tree abort, content was
+  byte-identical, discarded safely.
+- The task-brief extractor's numbering regex cannot separate "Task 4"
+  from "Task 4.5"; worked around with explicit outfile + truncation.
+
+**Moments.**
+- The T2 assertion step failing its own first CI run - on exactly the
+  silent-skip class it was built to kill - and being right.
+- The D6 property test traced to ~100% suggestion-path reach by the
+  reviewer before it was believed non-vacuous.
+- "wie dumm ist das bitte schön?" has a bookend: the go-public trigger
+  that was missed in session 7 closed this session as the plan's first
+  substantive task, verified live on all three legs.
+
+**Deltas.** Plan grew 23 -> 30 tasks entirely through review findings and
+owner rulings, none through scope drift; the anchor-precise plan style
+held (two brief factual errors corrected by implementers: runner OS,
+marker location). The "dead code" premise in a decided design memo was
+the sharpest delta: decisions written on wrong premises do not decide
+what they never saw.
+
+**Open threads.** Şenol veto pending on the T21.5 settings-hint wording
+(texts in the task report). Idiomacy review is the next pre-1.0 gate
+(named-input list in the ROADMAP entry); then the mixed-language
+allowed-param polish; README at-tag items unchanged. Plan 6 anchor
+carries five new named inputs from the funnel.
