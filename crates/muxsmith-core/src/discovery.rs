@@ -58,34 +58,27 @@ pub fn scan_primaries(source: &Path, input: &Input) -> (Vec<PrimaryFile>, Vec<Di
         Ok(re) => re,
         Err(_) => return (Vec::new(), diags), // validate already reported InvalidRegex
     };
-    let exts: Vec<String> = input
-        .extensions
-        .iter()
-        .map(|e| e.to_ascii_lowercase())
-        .collect();
-
     let mut primaries = Vec::new();
     for path in walk_files(source, input.recursive) {
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n,
             None => continue,
         };
-        if !extension_matches(&path, &exts) {
+        if !extension_matches(&path, &input.extensions) {
             continue; // not a candidate at all; silent
         }
-        let mut matches = re.find_iter(name);
-        let Some(first) = matches.next() else {
+        let mut it = re.captures_iter(name);
+        let Some(caps) = it.next() else {
             diags.push(Diagnostic::info(DiagCode::IgnoredFile, "input.pattern").for_file(&path));
             continue;
         };
-        if matches.next().is_some() {
+        if it.next().is_some() {
             diags.push(
                 Diagnostic::info(DiagCode::MultipleIdentifierMatches, "input.pattern")
                     .for_file(&path)
                     .with("name", name),
             );
         }
-        let caps = re.captures(name).expect("first match implies captures");
         let mut groups = BTreeMap::new();
         for (i, opt_name) in re.capture_names().enumerate() {
             if i == 0 {
@@ -101,7 +94,7 @@ pub fn scan_primaries(source: &Path, input: &Input) -> (Vec<PrimaryFile>, Vec<Di
         primaries.push(PrimaryFile {
             path: path.clone(),
             identifier: Identifier {
-                whole: first.as_str().to_string(),
+                whole: caps[0].to_string(),
                 groups,
             },
         });
@@ -144,12 +137,6 @@ pub fn resolve_locator(
     } else {
         primary_dir.join(&locator.path)
     };
-    let exts: Vec<String> = locator
-        .extensions
-        .iter()
-        .map(|e| e.to_ascii_lowercase())
-        .collect();
-
     // The basename-matching regex: match_to_source is sugar for the template
     // "{match}" (spec 4.6). A validated template parses; on the off chance it
     // does not, match nothing rather than panic.
@@ -166,7 +153,7 @@ pub fn resolve_locator(
 
     let mut hits = Vec::new();
     for path in walk_files(&base, locator.recursive) {
-        if !extension_matches(&path, &exts) {
+        if !extension_matches(&path, &locator.extensions) {
             continue;
         }
         let name = match path.file_name().and_then(|n| n.to_str()) {
@@ -184,9 +171,9 @@ pub fn resolve_locator(
     hits
 }
 
-fn extension_matches(path: &Path, exts_lower: &[String]) -> bool {
+fn extension_matches(path: &Path, exts: &[String]) -> bool {
     match path.extension().and_then(|e| e.to_str()) {
-        Some(e) => exts_lower.iter().any(|x| x == &e.to_ascii_lowercase()),
+        Some(e) => exts.iter().any(|x| x.eq_ignore_ascii_case(e)),
         None => false,
     }
 }
