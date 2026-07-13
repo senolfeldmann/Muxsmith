@@ -869,3 +869,31 @@ Open threads: doctrine section 7 + conventions.md "Match the house pattern"
 bullet + the dossier are UNCOMMITTED framework-side (Şenol's commit); the
 zero-rule-keep passthrough implementation + docs (ROADMAP); the pre-1.0
 idiomacy fix wave, the routed-items correctness review, Plan 6.
+
+## 2026-07-13 | Session 10 addendum: source-axis collapse + worked example | session 10 cont. (Peter, Opus 4.8 1M)
+
+Refinements after the house-knowledge build, same session.
+
+- SOURCE axis collapsed from three values (user-decree / controller-adr /
+  agent-emergent) to TWO (human / agent-emergent). Reason: user-decree and
+  controller-adr both mean "a human signed off" (both count 1), and their
+  origination-vs-ratification boundary is undecidable for collaborative work
+  (no clean requirements doc ever existed; the ADRs emerged from the
+  back-and-forth). A metric whose boundary you cannot decide is noise. The
+  load-bearing cut is human-signed-off (count 1) vs agent-emergent (count 3).
+  controller-adr was first pinned to = human-ratified ADR (not autonomous
+  controller decisions), which made it identical to user-decree - hence the
+  collapse. Re-tagged the 3 Tier-2 files (commit 9e4bc36); doctrine section 7
+  + dossier updated (framework, uncommitted).
+- Deferred (dossier section 10): at autonomous scale, re-split `human` by
+  RATIFYING AUTHORITY (owner vs controller-delegated - decidable, unlike
+  origination); the promotion counts need re-discussion there (a delegated
+  controller must not bind a codebase-wide change at count 1).
+- Worked example added (dossier section 11 + a standalone convention-lifecycle
+  doc, md + house-style HTML, in the non-repo project material): the full
+  httparty-wrapper lifecycle - birth, recurrence, the conflicting
+  counter-pattern, controller-side conflict detection (global ledger view),
+  the deliberation panel, resolution, and the two authority routes (HITL vs
+  the autonomous route established here). Includes the Faraday case: an expert
+  agent can propose a better tool and move the house rule; the convention
+  change is cheap, the codebase migration is the higher-stakes call.

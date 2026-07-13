@@ -117,9 +117,14 @@ rejections into the ledger; the controller is the single ledger writer.
 - Master in sync with origin at the session-close commit, tree clean, CI green.
 - House-knowledge files live and committed; ledger has zero tier overlap.
 - **UNCOMMITTED, framework-side (Şenol's own commit, NOT this repo):**
-  doctrine section 7 additions, the `_shared/conventions.md` "Match the house
-  pattern" bullet, and the Nextcloud dossier + the two staged skills. These
-  are in ~/agents and ~/Nextcloud, edited but awaiting Şenol's commit.
+  doctrine section 7 (house-knowledge mechanism + the source-axis collapse to
+  `human` / `agent-emergent`), the `_shared/conventions.md` "Match the house
+  pattern" bullet, four Peter memories (project_muxsmith,
+  feedback_limit_resilient_bulk_runs, new project_house_knowledge_mechanism,
+  MEMORY.md), and the Nextcloud material (dossier incl. sections 10-11, the
+  `convention-lifecycle-example` worked example md + house-style HTML, two
+  staged skills, the session-to-posts bilingual-LinkedIn patch). Edited in
+  ~/agents and ~/Nextcloud, awaiting Şenol's commit.
 
 ## Next steps (priority order)
 
