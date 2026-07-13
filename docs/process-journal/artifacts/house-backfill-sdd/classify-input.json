@@ -1,0 +1,1659 @@
+{
+"promotions": [
+{
+"id": "core-03-suggestion-verified-edit",
+"kind": "pattern",
+"domain": "core",
+"statement": "Suggestions are structured edits simulated against the cached identification of the whole batch before being shown; only refinements that resolve every instance and add no new diagnostic are emitted; an applied suggestion survives the next dry run (re-run through the real planning pass, no parallel matcher).",
+"occ_refs": [
+"spec \u00a72/\u00a75.3 (\u015eenol's amendment)",
+"journal Plan 1",
+"commit 61249f9",
+"memo D6 steps 3-4"
+]
+},
+{
+"id": "core-06-schema-build-time-extraction",
+"kind": "pattern",
+"domain": "core",
+"statement": "Matchable property names/types are generated into the capability model at build time by an xtask into a committed generated.rs; only derived facts ship, the identification schema itself is never redistributed, and there is no build.rs network dependency.",
+"occ_refs": [
+"spec \u00a72 rows 8-9 + \u00a79",
+"journal Plan 1",
+"commits 830dc47/4750abb/61249f9 (impl set)",
+"handoff plan-1-close"
+]
+},
+{
+"id": "core-12-unknown-keys-are-errors",
+"kind": "pattern",
+"domain": "core",
+"statement": "An unknown profile key is a config-time hard error, not a warning; #[serde(deny_unknown_fields)] on every profile struct. Enforcement: the attribute was silently ineffective on inline untagged struct variants until the TemplateBlock/ExternalBlock newtype fix restored rejection.",
+"occ_refs": [
+"spec \u00a74 + Plan 1 Global Constraints",
+"handoff plan-1-close",
+"commit 1f00aa6",
+"task-4 review event",
+"commit b5eaa3d (newtype block variants)"
+]
+},
+{
+"id": "core-31-rendered-filename-invariant",
+"kind": "pattern",
+"domain": "core",
+"statement": "The planner re-checks the rendered filename independently of the config-time template-text check (no separators, non-empty stem, not ./..); new per-file errors PathSeparatorInRenderedName + EmptyRenderedName. Enforcement: the empty-stem case (template ''.mkv' -> hidden .mkv) slipped through the fix pass because the check ran on the pre-append value; whole-branch review caught what per-task reviews missed.",
+"occ_refs": [
+"memo D4",
+"commit af76a3a",
+"FINAL review I1",
+"commit 59d24c8"
+]
+},
+{
+"id": "core-34-suggestion-cap-non-silent",
+"kind": "pattern",
+"domain": "core",
+"statement": "Deterministic preference order among accepted candidates; emit at most 3 per conflict group; if more were accepted, log the cap (SuggestionsCapped info) - bounded output, no silent truncation. Enforcement: the inline code truncated silently; F7 added the diag code threaded through report.rs + diagnostics.ftl + spec 5.2.",
+"occ_refs": [
+"memo D6 step 5",
+"independent review nit (cap not logged)",
+"F7 review (c)",
+"commit 68ec6aa"
+]
+},
+{
+"id": "core-35-overlap-auto-suggestions",
+"kind": "pattern",
+"domain": "core",
+"statement": "OverlappingRules auto-narrowing suggestions: generate narrowing candidates for ALL overlap claimants symmetrically (including claimant 0); the existing resolves_without_regression criterion selects the feasible ones - feasibility, not a precedence guess, decides which rule narrows. Deferred out of Plan 2, decided as D33 in Plan 5.5, shipped at T18.",
+"occ_refs": [
+"journal Plan 2 (Open threads)",
+"memo D33 (\u015eenol)",
+"task-18 verdict"
+]
+},
+{
+"id": "core-37-prose-free-core",
+"kind": "pattern",
+"domain": "core",
+"statement": "muxsmith-core emits a diagnostic code + structured params only; all human text lives in the Fluent catalog / an injected DiagnosticRenderer port; core never originates, hardcodes or localizes prose. Recurring enforcement: bug K (identification failure misreported as MissingTrack with an authored English string) fixed to emit UnidentifiableSource carrying only the third-party error text (pass-through allowed).",
+"occ_refs": [
+"independent review bug K",
+"F5 fix (commits 0e141d1/6f475b3)",
+"FINAL review M3 + F5-review Minor #4 (residual English framing accepted)",
+"Plan 3 Global Constraints",
+"task-2 verdict (DiagnosticRenderer port/adapter)",
+"CONVENTIONS.md Patterns"
+]
+},
+{
+"id": "core-38-absent-bool-equals-false",
+"kind": "pattern",
+"domain": "core",
+"statement": "An absent boolean-typed matchable property compares equal to false for exact matching (mirrors mkvmerge/Matroska), so exact:{flag:false} matches a track lacking the flag; :true still does not. Scope is any boolean matchable, not just the four vanity flags.",
+"occ_refs": [
+"independent review decision #1(b)",
+"F4 review (SPEC pass)",
+"commit 213e1e9"
+]
+},
+{
+"id": "core-40-output-collision-planned-twice",
+"kind": "pattern",
+"domain": "core",
+"statement": "Two planned outputs colliding is always a hard OutputCollision error (drop both plans) regardless of on_collision; the policy (error/warn+drop/info+keep) governs only pre-existing on-disk files. Corrected an inline deviation that collapsed Overwrite into Error and made skip a no-op; spec 4.8 amended.",
+"occ_refs": [
+"independent review decision #3(c)",
+"F6 review",
+"commit b5acada"
+]
+},
+{
+"id": "core-41-sourceoverwrite-batch-wide",
+"kind": "pattern",
+"domain": "core",
+"statement": "Collect all input paths batch-wide (primaries + every resolved track/attachment/chapters donor) before rendering and fire SourceOverwrite if any rendered output equals any of them; capture is independent of render success, so donors of render-failed files are protected too. The protection set was repeatedly found incomplete and progressively closed by construction.",
+"occ_refs": [
+"F5 review (per-primary -> batch-wide, commit 6f475b3)",
+"FINAL review M2 (render-failed-donor gap accepted for v1)",
+"task-7 (render-failed donors protected)",
+"task-7.5 (attachment donors)",
+"task-7.6 (chapters donors, class closed by exhaustive match)"
+]
+},
+{
+"id": "core-44-suggestion-no-clobber",
+"kind": "pattern",
+"domain": "core",
+"statement": "with_rule_match must not overwrite an existing exact/substring key (or_insert semantics); a clobbering candidate becomes a no-op then rejected by the acceptance sim; not-list append stays additive. Bug C: the inline engine merged via BTreeMap::extend, widening an existing track_name substring (violating D6 'never relax').",
+"occ_refs": [
+"independent review bug C",
+"F7 review (a)",
+"commit 68ec6aa"
+]
+},
+{
+"id": "core-45-yaml-fragment-serializer",
+"kind": "pattern",
+"domain": "core",
+"statement": "Render the suggestion yaml_fragment by serializing the real MatchExpr delta via yaml_serde, not by hand-formatting, so any value (colon/comma/brace, bool/int) round-trips. Bug D: the inline code interpolated values unquoted, breaking the YAML the CLI prints verbatim; the serializer also fixed an unstated bool/int-stringification bug.",
+"occ_refs": [
+"independent review bug D",
+"F7 review (b)",
+"commit 68ec6aa"
+]
+},
+{
+"id": "core-47-with-severity-builder",
+"kind": "pattern",
+"domain": "core",
+"statement": "Add a rustdoc'd Diagnostic::with_severity builder and use it instead of mutating the public severity field directly (Diagnostic::info then .severity = ...).",
+"occ_refs": [
+"fix plan F6",
+"independent review Reviewer 2 #10",
+"F6 review"
+]
+},
+{
+"id": "core-48-extension-validation",
+"kind": "pattern",
+"domain": "core",
+"statement": "Profile and locator extensions are validated against mkvmerge --list-types once per batch (not per file), degrading to a warning when mkvmerge is absent, mirroring the language-validation walk; new UnknownExtension warning. Deferred without a diag code in Plan 2, built for profile extensions at T5 and locator extensions (recursive walk reusing validate_extension_values) at T5.9.",
+"occ_refs": [
+"journal Plan 2 (Open threads, no diag code yet)",
+"task-5 (profile extensions)",
+"task-5.9 (locator extensions)"
+]
+},
+{
+"id": "core-54-reuse-plan2-machinery",
+"kind": "pattern",
+"domain": "core",
+"statement": "Every new Plan-3 resolution site reuses a Plan-2 mechanism (locator machinery, template engine, LanguageIndex, existing DiagCode variants) rather than introducing a new one; add no new DiagCodes; defaults match spec 4.9 so an omitted section never silently drops data.",
+"occ_refs": [
+"memo D10 (Rationale)",
+"Plan 3 Global Constraints",
+"whole-branch verdict (Strengths)"
+]
+},
+{
+"id": "core-59-matchable-trait",
+"kind": "pattern",
+"domain": "core",
+"statement": "The matcher is genericized over a Matchable trait implemented for both Track and Attachment so one match algebra evaluates both. The plan brief's 'resolves via type inference' regression-guard claim was factually wrong (Iterator::filter hands &&Track); solved with a blanket impl<M: Matchable> Matchable for &M, verified sound and right-sized.",
+"occ_refs": [
+"Plan 3 Architecture + Task 2/3",
+"journal Plan 3 (&&Track unification)",
+"task-2 verdict (blanket &M impl)"
+]
+},
+{
+"id": "core-63-input-group-membership",
+"kind": "pattern",
+"domain": "core",
+"statement": "input_groups = primary always (group 0) + donor sources with at least one track_id=Some assignment; exclude track-less donors. The first impl unconditionally included every distinct assignment.source (misreading the canonical reference's primary-only carve-out). Separately, the exclusion-comment's 'mkvmerge may reject empty groups' rationale was empirically false against v100 and corrected while keeping the guard.",
+"occ_refs": [
+"task-9 verdict (membership fix + test)",
+"commit d55f19d",
+"whole-branch verdict Minor 2 (false rationale)",
+"commit 7d46547"
+]
+},
+{
+"id": "core-65-empty-plan-warning",
+"kind": "pattern",
+"domain": "core",
+"statement": "A plan resolving to zero track assignments emits EmptyPlan (warning, per-file, batch-visible); keep-mode plans are naturally exempt. A deliberate divergence from mkvtoolnix-gui: an interactive GUI shows selection state by construction, a declarative batch tool must state it. Deferred twice (Plan 3, Plan 4/D18) before being built at T6, where the check was relocated post-finalize (gated on plan.is_some()), closing an unenumerated CollisionPolicy::Skip false-warning case.",
+"occ_refs": [
+"whole-branch verdict Minor 3 (Plan 3)",
+"memo D18 (Plan-4 cleanup)",
+"task-6 (EmptyPlan built)",
+"task-6 fix a60e9a0 (relocation)"
+]
+},
+{
+"id": "core-72-exact-typed-value-equality",
+"kind": "pattern",
+"domain": "core",
+"statement": "exact compares each property in its own domain (numbers numerically, languages canonicalized so de==ger, pt-Latn-BR==pt-BR), preserving meaningful distinctions; regex is the byte-literal escape hatch. One of the tool's core semantics; surfaced in spec 4.3 at 1.0.",
+"occ_refs": [
+"memo D19 Principle",
+"spec 4.3 (Task 5 step 6)",
+"whole-branch verdict (load-bearing flag)"
+]
+},
+{
+"id": "core-80-keep-mode-track-order",
+"kind": "pattern",
+"domain": "core",
+"statement": "Under keep, --track-order lists all primary tracks first in source order (0:id), donors trailing (g:id in rule order). The initial assumption (only matched tracks listed, mkvmerge appending kept-unmatched after) placed a donor-only-keep profile's added track ahead of the primary's video/audio; the whole-branch review flagged this as a usability trap and it was reversed to option B (kept-unmatched primary tracks count as matched). Both variants live-verified against v100.",
+"occ_refs": [
+"memo D20 / Plan 3 Task 3 (assumption A)",
+"whole-branch verdict Important #1 (donor-first trap)",
+"journal + memo D20-B (reversal, commit c1d5614)",
+"task-7 verdict (option B built, commits 51567d7/aa75025)"
+]
+},
+{
+"id": "core-81-unsupported-source-gate",
+"kind": "pattern",
+"domain": "core",
+"statement": "A source mkvmerge identifies (exit 0) but cannot mux emits one clear UnsupportedSource error (distinct code from UnidentifiableSource, different remediation) before rule resolution and skips the file, instead of per-rule MissingTrack noise. The gate fires on !container_recognized || !container_supported only, not is_identifiable(); a recognized+supported zero-track container stays a per-rule MissingTrack.",
+"occ_refs": [
+"memo D21",
+"task-6 verdict (three corner tests)",
+"whole-branch verdict (Strengths)"
+]
+},
+{
+"id": "core-85-report-json-dry",
+"kind": "pattern",
+"domain": "core",
+"statement": "The batch/config/run JSON report documents (spec 7) are hoisted from the CLI into core::report::json, lifted 1:1, so CLI and GUI render byte-identical report structures from a single core module; neither surface owns document logic.",
+"occ_refs": [
+"Plan T2",
+"spec \u00a77",
+"task-2 verdict"
+]
+},
+{
+"id": "core-89-homebrew-apple-silicon-path",
+"kind": "pattern",
+"domain": "core",
+"statement": "/opt/homebrew/bin/mkvmerge (Apple-Silicon Homebrew) is a detection candidate: a Finder-launched Tauri app does not inherit the shell PATH, so without it detection fails for the most common macOS install route. First excluded under the SI-3 evidence rule (no formula in the mkvtoolnix source tree), then added when the exclusion was found to rest on the wrong authority.",
+"occ_refs": [
+"task-3 verdict Minor (product-scoping to T7)",
+"whole-branch verdict triage-14 (FIX-NOW)",
+"commit 5e76a15"
+]
+},
+{
+"id": "core-99-schema-drift-advisory",
+"kind": "pattern",
+"domain": "core",
+"statement": "A newer-schema advisory is its own SchemaDrift diagnostic, once per batch (info severity), message carrying the raw: discovery hint. T16 removed the mis-scoped per-file skew warner (its 'dead code' premise was false) and raised whether any advisory should survive; \u015eenol ruled it should, rebuilt once-per-batch at T16.5 (single emission site outside the loop, found_version(max)+pinned params, Option-guarded).",
+"occ_refs": [
+"task-16 verdict (per-file warner dropped, open question)",
+"memo D32 addendum RESOLVED / plan T16.5",
+"task-16.5 verdict (shipped)"
+]
+},
+{
+"id": "exec-19-delete-partial-errsurface",
+"kind": "pattern",
+"domain": "executor",
+"statement": "Surfacing a failed partial-output delete via outcome.errors was flagged and deferred twice at Plan-4 review (no JobOutcome error channel existed, and a failed remove leaves a broken partial that on_collision:skip would accept), then implemented in T5 as a 'delete_partial_failed: <io error>' passthrough into outcome.errors; NotFound stays silently ignored.",
+"occ_refs": [
+"plan-4 task-2-review-verdict.md",
+"plan-4 whole-branch-review-verdict.md (ledger #2)",
+"plan-5 T5 step1.4 / task-5-review-verdict.md"
+]
+},
+{
+"id": "exec-44-runlog-14day-autoprune",
+"kind": "pattern",
+"domain": "executor",
+"statement": "Run-log pruning was left out of v1 at D26 (location documented, prune facility parked), then reversed at D35 to an automatic 14-day fixed prune with no v1 config, implemented in core executor/joblog so CLI and GUI both inherit; age is decided by the parsed run-id name only (never mtime), pruning best-effort and symlink-safe with every IO error ignored. Parity MATCH with mkvtoolnix removeOldJobs=true/14 days.",
+"occ_refs": [
+"memo D26",
+"plan T4.5 (D35) / plan-5.5 task-4.5-verdict.md",
+"memo D35"
+]
+},
+{
+"id": "cross-01-stack",
+"kind": "pattern",
+"domain": "cross",
+"statement": "Build on Tauri 2 with a Rust core crate, a web frontend and a clap CLI; Rust accepted despite being only recently picked up. React was the initial frontend, later swapped to Vue (D27 / 2026-07-10, outside the cross era) - a within-frontend refinement, not a stack reversal, so the stack itself stays settled.",
+"occ_refs": [
+"spec \u00a72 (Stack row)",
+"journal 2026-07-08 (Plan 1, bullet 4)",
+"commit 61249f9",
+"handoff 2026-07-09-plan-1-close.md"
+]
+},
+{
+"id": "proc-01-sdd",
+"kind": "pattern",
+"domain": "process",
+"statement": "Plans run via subagent-driven-development under a controller: a fresh implementer per task, an independent task reviewer, fix/re-review waves, and a final whole-branch review; the plan never grades its own work. Adopted at Plan 1, deviated to inline once at Plan 2 (self-verified '125 tests green' but shipped ~11 bugs, retrofit review caught them all before merge), then held for every subsequent plan and folded into the packaged doctrine.",
+"occ_refs": [
+"journal 2026-07-08 'Mechanics' + handoff plan-1-close + Plan 1 REQUIRED SUB-SKILL header (E0[3]/E1[14])",
+"journal 2026-07-09 Plan 2 Decisions + fix-pass; plan-2-review/independent-review-2026-07-09.md (E2[21]/[22])",
+"journal 2026-07-09 Plan 3 complete (Scope) + progress.md (E3[27])",
+"Plan 3.5 Global Constraints + progress ledger (E4[35])",
+"Plan 5 waves + journal Plan 5 (E6[50])",
+"Plan 5.5 Global Constraints + progress.md (E7[61])",
+"journal session 7 pt2 (E8[82])"
+]
+},
+{
+"id": "proc-02-whole-branch-review",
+"kind": "pattern",
+"domain": "process",
+"statement": "A separate final whole-branch review grades the plan's code against its own constraints after every per-task review passes; it repeatedly caught cross-task drift no task-scoped review could see. At close it runs on the strongest model plus a roll-up funnel over reviewer minors.",
+"occ_refs": [
+"journal 2026-07-08 'Moments' (E0[4])",
+"journal fix-pass + plan-2-fixes-sdd/FINAL-review.md I1 + commit 59d24c8 (E2[23])",
+"whole-branch-review-verdict.md + journal Plan 5 (E6[51])",
+"whole-branch-verdict.md + plan T23 (E7[69])"
+]
+},
+{
+"id": "proc-03-model-assignment",
+"kind": "pattern",
+"domain": "process",
+"statement": "Model strength goes where judgment is, cheaper capacity where transcription is: strongest model for the final review and the decision memos, mid-tier for judgment implementers and every task reviewer, cheapest for tasks whose code the plan already carries.",
+"occ_refs": [
+"journal 2026-07-08 model-split bullet (E0[6])",
+"journal 2026-07-09 Plan 2 Decisions (E2[19])",
+"journal 2026-07-09 Plan 3 complete metrics (E3[28])"
+]
+},
+{
+"id": "proc-04-spec-wins",
+"kind": "pattern",
+"domain": "process",
+"statement": "The design spec is the binding contract; on any plan/code/spec conflict the spec wins and the conflict is flagged, not improvised around. Corollaries: normative decisions are folded into the spec (a decision left only in a memo can be silently overridden by stale spec text), a self-contradiction sweep runs after any spec amendment, and code wins only where the spec itself is wrong, after which the spec is amended.",
+"occ_refs": [
+"journal 2026-07-08 'What the process caught' + Plan 1 Global Constraints + commits 3c24845, cd3f239/f7afa8d (E0[7]/E1[16])",
+"memo 2026-07-09-plan-2-design-decisions.md header + commit d4390d7 (E2[20])",
+"Plan 5.5 Global Constraints + T16 + memo D32 (E7[68])",
+"journal session 7 pt2 (E8[83])"
+]
+},
+{
+"id": "proc-05-commit-signing",
+"kind": "pattern",
+"domain": "process",
+"statement": "Agent commits and merges are deliberately left unsigned via -c commit.gpgsign=false. Origin was mechanical (GPG blocks agent commits); elevated to policy (SI-4) because a signature is \u015eenol's authorship claim, applied even when signing would succeed; reinforced after five wave-1 merges were accidentally signed.",
+"occ_refs": [
+"journal 2026-07-08 'Friction' (E0[9])",
+"journal session-4-close + progress-ledger SI-4 (E5[43])",
+"journal Plan-4-complete (E5[44])"
+]
+},
+{
+"id": "proc-06-mkvtoolnix-parity",
+"kind": "pattern",
+"domain": "process",
+"statement": "Because mkvtoolnix is interactive-GUI and Muxsmith is declarative-batch, only muxing semantics/output are parity targets, not input-time convenience guesses. Comparable behavior is verified against the real mkvtoolnix binary/source (not memory), match or deliberate divergence recorded in the memo. Licensing boundary: reading GPL source for behavior/facts/interfaces is MIT-compatible, literal expression is not, and modeled wordings are recorded as explicit memo decisions.",
+"occ_refs": [
+"Plan 3.5 memo Origin/Grounding + journal (standing method, HANDOFF SI-3) (E4[32]/[33])",
+"memo D30/D31 (E6[47])",
+"journal session-6 close + HANDOFF SI-3 (E6[56])",
+"Plan 5.5 Global Constraints + d32-analysis.md SI-3 + task-6-verdict.md (E7[66])"
+]
+},
+{
+"id": "proc-07-verify-against-source",
+"kind": "pattern",
+"domain": "process",
+"statement": "Load-bearing tooling and dependency behavior is confirmed against the crate's actual source or the registry, never from a brief's claim, a docs sentence, or training-data memory.",
+"occ_refs": [
+"task-5-review-verdict.md + journal Task 5 (E4[34])",
+"journal Plan 5 (what the process caught) (E6[49])",
+"journal session-8 close (E8[88])"
+]
+},
+{
+"id": "proc-08-parallel-worktrees",
+"kind": "pattern",
+"domain": "process",
+"statement": "Genuinely independent task streams run as parallel git worktrees with a full gate per merge, not strictly serial. Origin was a failure (strictly-serial execution of the independent D19/D20/D21 streams was the clearest miss of Plan 3.5; SI-1 rewritten to parallelize-independent). Only truly independent streams parallelize; a real dependency chain stays serial (challenged mid-Plan-4 and held).",
+"occ_refs": [
+"journal 2026-07-09 Plan 3.5 (Friction/failure) (E4[36])",
+"journal session-4-close (plan c0c0ef7) (E5[39])",
+"journal Plan-4-complete (E5[40]/[41])",
+"progress.md + plan dependency graph (E7[62])"
+]
+},
+{
+"id": "proc-09-idiomacy-review",
+"kind": "pattern",
+"domain": "process",
+"statement": "A whole-codebase idiomacy review is a distinct pre-1.0 gate scoped to complexity only (correctness/security/perf routed to a separate list). The rubric is six dimensions (idiom, dup, stdlib, dep, yagni/over-abstraction, native/platform-reinvention) with a ranked one-line-per-finding output contract; executed with many finders + seed-verification + a code-level dedup barrier + one adversarial verifier per finding.",
+"occ_refs": [
+"journal session-8 close (E8[86])",
+"commit b535038 + ponytail-mining.md candidate 2 (E8[91])",
+"journal session 10 + idiomacy-review-findings.md header (E8[96])"
+]
+},
+{
+"id": "i18n-02-prose-free-core",
+"kind": "pattern",
+"domain": "i18n",
+"statement": "muxsmith-core emits diagnostic codes + structured params only, never user-facing prose; all labels, messages and hints live in shared Fluent catalogs (and per-locale markdown) rendered at presentation time. A new DiagCode without a matching .ftl message fails the catalog-completeness test. (Open residual breach tracked as i18n-17.)",
+"occ_refs": [
+"spec 2026-07-08 \u00a75.2 + \u00a78.4 + journal 2026-07-08 bullet 6 tail",
+"spec \u00a72 + \u00a78.4; Plan 1 Global Constraints; commits 61249f9 / a671949",
+"journal 2026-07-08 final review + whole-branch-review-verdict.md (Important #1), round-2 confirmation; fix commit 3c24845",
+"plan Global Constraints + Task 6 (UnsupportedSource)",
+"plan Global Constraints + task-3-review-verdict.md"
+]
+},
+{
+"id": "i18n-05-plural-selectors",
+"kind": "pattern",
+"domain": "i18n",
+"statement": "Count-dependent user-facing messages pluralize via Fluent CLDR plural selectors ({ $n -> [one] ... *[other] ... }), not an error(s)/(s) provisional. First applied to run-job-warning, later extended to five keys replacing the error(s) provisional, with singular+plural renderer assertions.",
+"occ_refs": [
+"task-8-review-verdict.md",
+"memo D15 amendment 2026-07-10 + commit 79f0447",
+"task-19-verdict.md / plan T19"
+]
+},
+{
+"id": "ci-01-matrix-strategy",
+"kind": "pattern",
+"domain": "ci",
+"statement": "While the repo is private, branch pushes run Linux only and the full windows/macos/linux matrix runs only on PRs, tags and manual dispatch via a dynamic fromJSON matrix (macOS bills 10x, Windows 2x); the trim was always framed as reverting to a static 3-OS matrix on every push once the repo goes public, and that revert was enacted at go-public.",
+"occ_refs": [
+"spec 2026-07-08 \u00a710 + journal 2026-07-08 'CI while private' + commit 97ae031",
+"journal 2026-07-08 Pending decisions + handoff plan-1-close",
+"commit 226fa06 + journal Plan 5"
+]
+},
+{
+"id": "ci-06-per-commit-gate",
+"kind": "pattern",
+"domain": "ci",
+"statement": "Standing house rule: cargo test --workspace, cargo fmt --all --check, cargo clippy --workspace --all-targets -D warnings and cargo deny check must all pass before every commit, never skipped. The CI test job caught fmt-dirty commits when tasks 3 and 5 were pushed after clippy but not fmt --check (run 0e64c1e failed, fixed 72c59d2); a controller-discipline gap, not a plan gap.",
+"occ_refs": [
+"journal 2026-07-09 Plan 2 'What the process caught' + commit 72c59d2",
+"plan Global Constraints + progress.md (Plan 3)",
+"plan Global Constraints + progress ledger (Plan 4)"
+]
+},
+{
+"id": "ci-08-gated-tests-run",
+"kind": "pattern",
+"domain": "ci",
+"statement": "The mkvmerge-gated integration tier must run in CI, not self-skip. E2 accepted the self-skip (mkvtoolnix not installed) as a coverage gap; E5 installed mkvtoolnix Linux-only (minute economy) and verified post-push it ran (0 skip markers); go-public extended the install to all three legs (apt/choco/brew) with a skip-marker count-zero assertion per leg (otherwise silent skipping is just traded for silent skipping), which immediately caught 18 silently-skipped Windows tests (choco writes machine PATH the job never re-reads; fixed via GITHUB_PATH) and then a real Windows-only set_modified-on-read-only-handle bug.",
+"occ_refs": [
+"journal 2026-07-09 Plan 2 Open threads",
+"memo D18",
+"task-6-review-verdict.md",
+"journal 2026-07-10 session-5-close",
+"task-2-verdict.md / plan T2",
+"progress.md T2 fix waves / journal"
+]
+},
+{
+"id": "ci-10-pin-everything",
+"kind": "pattern",
+"domain": "ci",
+"statement": "Every toolchain and CI input is pinned exactly - rust 1.96.1 over floating stable, all GitHub Actions SHA-pinned, runner images pinned, ctrlc full-pinned, npm save-exact, and mkvmerge CI versions pinned per package manager (standing preference is pin, not float). The cross-leg mkvmerge divergence (apt 97 vs choco/brew 100) is sanctioned and recorded in a ci.yml comment. A floating version is a defect, not a convenience.",
+"occ_refs": [
+"commits 2ee2d0c, 45e941a / journal Plan 5",
+"plan T2 step 2 / progress.md T2-m3/m4 / whole-branch funnel",
+"CONVENTIONS.md Patterns (b38a46f)"
+]
+},
+{
+"id": "testing-si3-run-binary",
+"kind": "pattern",
+"domain": "testing",
+"statement": "mkvmerge behavior (flag spellings, argv semantics, -J shape, cross-file donor+keep ordering) is confirmed by running the installed real binary (v100), never asserted from memory; golden tests then lock the exact strings and the -J shape is pinned to identification schema v20. Standing SI-3 house rule, re-issued as a per-plan global constraint and independently upheld by implementers (hand-ran mkvmerge before encoding order assertions, unprompted) and whole-branch reviewers (drove real v100 beyond the goldens, confirming the -J attachment id equals the --attachments selector id - the one silent-wrong-file risk).",
+"occ_refs": [
+"plan Global Constraints + memo D9/D11 (Plan 3)",
+"whole-branch-review-verdict.md (Plan 3, Strengths)",
+"plan Global Constraints (Plan 3.5)",
+"whole-branch-review-verdict.md (Plan 3.5, header + Important #1)",
+"journal 2026-07-09 (Moments) + task-3/task-7 verdicts"
+]
+},
+{
+"id": "testing-support-helpers",
+"kind": "pattern",
+"domain": "testing",
+"statement": "Cross-file test helpers (FakeIdent, lang()) are consolidated into a shared tests/support/mod.rs subdirectory module - deliberately a submodule, not its own tests/*.rs binary, to avoid Cargo autodiscovery - and duplicating a helper within a crate is a defect. Flagged at 3x duplication in Plan 3, scheduled (D18), implemented byte-identical in Plan 4, codified in CONVENTIONS.",
+"occ_refs": [
+"whole-branch-review-verdict.md (Plan 3, Minor 7) + task-12-review-verdict.md",
+"memo D18",
+"task-5-review-verdict.md",
+"CONVENTIONS.md Patterns (b38a46f); idiomacy finding run_cli.rs:L498"
+]
+},
+{
+"id": "testing-command-golden",
+"kind": "pattern",
+"domain": "testing",
+"statement": "Command generation (Plan -> mkvmerge argv) is verified by golden tests mapping fixture identification JSON to expected argv; built incrementally with full-vector assert_eq goldens where each command task extends and re-locks the prior task's golden as an intended contract change (Task 11 added donor --no-attachments to Task 10's golden), culminating in the full spec 4.1 reference example locked as a pure golden.",
+"occ_refs": [
+"spec 2026-07-08 \u00a710",
+"plan Tasks 9-12 + journal Deltas + task-11-review-verdict.md",
+"plan Task 12 + task-12-review-verdict.md"
+]
+},
+{
+"id": "testing-rich-gated-live-guard",
+"kind": "pattern",
+"domain": "testing",
+"statement": "The Plan-3 one-off manual v100 validation is converted into a standing gated live guard: the test builds a primary MKV with a real attachment (--attach-file / --attachment-mime-type text/plain, SI-3 probed), renames/changes a track, keeps the attachment, and re-identifies via -J (asserting track_name==Renamed, default_track true, attachment file_name preserved), guarding the real argv surface rather than only golden string equality. Deferred in Plan 3, scheduled (D18), implemented in Plan 4.",
+"occ_refs": [
+"whole-branch-review-verdict.md (Plan 3, Minor 1) + journal open threads",
+"memo D18",
+"task-7-review-verdict.md"
+]
+},
+{
+"id": "cli-02-dryrun-config-diags",
+"kind": "pattern",
+"domain": "cli",
+"statement": "Dry-run must run profile::validate + lint::provable_overlaps and fold config-time diagnostics in on every code path (happy, mkvmerge-not-found, mkvmerge-query-failed) and both renderers (human + JSON), per spec 5.5. Caught and enforced repeatedly across eras as the same defect class - bug A (dry-run never ran validate/lint), the not-found branch dropping them, the query-failed path deferred, then the query-failed human path fixed. Resolved by E7.",
+"occ_refs": [
+"independent-review-2026-07-09 bug A + journal fix-pass + commit b507f6e",
+"journal fix-pass F1 + progress.md ledger F1 + commit 09d7244",
+"plan-2-fixes-sdd/progress.md ledger F1 residual + journal fix-pass Open threads",
+"task-9-verdict.md (vii)"
+]
+},
+{
+"id": "cli-09-collision-parity",
+"kind": "pattern",
+"domain": "cli",
+"statement": "--on-collision <error|skip|overwrite> is exposed on both run and dry-run for parity, via a CLI-local CollisionArg (core stays clap-free) mapping 1:1 to CollisionPolicy and threading into the pre-existing RunInputs.on_collision. run reuses CollisionArg verbatim; the rerun workflow (D14/D17) is where the flag is needed.",
+"occ_refs": [
+"memo D15",
+"task-4-review-verdict.md",
+"task-8-review-verdict.md"
+]
+}
+],
+"restraints": [
+{
+"id": "core-02-ordered-consumption-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Ordered consumption (first-match-wins with track consumption) and a global constraint solver were both rejected in favor of strict independent uniqueness.",
+"count": 1,
+"occ_refs": [
+"journal Plan 1 (Decisions and why)"
+]
+},
+{
+"id": "core-05-global-toggles-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Exposing attachments/chapters/tags/title as simple global on/off toggles instead of full declarative control was rejected.",
+"count": 1,
+"occ_refs": [
+"journal Plan 1"
+]
+},
+{
+"id": "core-07-runtime-fetching-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Fetching the identification schema at runtime or over the network at build was rejected.",
+"count": 2,
+"occ_refs": [
+"spec \u00a72/\u00a79",
+"journal Plan 1"
+]
+},
+{
+"id": "core-15-transcoding-out",
+"kind": "restraint",
+"domain": "core",
+"statement": "Transcoding is permanently out of scope; the tool only muxes.",
+"count": 1,
+"occ_refs": [
+"spec \u00a711"
+]
+},
+{
+"id": "core-16-season-episode-arithmetic-out",
+"kind": "restraint",
+"domain": "core",
+"statement": "Cross-file season/episode renumbering/offsetting is excluded; identifiers are opaque match keys and transforms are per-file.",
+"count": 1,
+"occ_refs": [
+"spec \u00a711"
+]
+},
+{
+"id": "core-17-wildcard-multitrack-out",
+"kind": "restraint",
+"domain": "core",
+"statement": "'Keep all remaining audio' wildcard rules are rejected for v1 because they break strict independent uniqueness; a later explicit multi:true form is named but not committed.",
+"count": 1,
+"occ_refs": [
+"spec \u00a711"
+]
+},
+{
+"id": "core-18-blanket-private-doc-lint-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Public items are doc-gated by deny(missing_docs); private items are documented by judgment only, a blanket private-doc lint rejected as comment-noise.",
+"count": 2,
+"occ_refs": [
+"journal Docs bullet",
+"commit c402914"
+]
+},
+{
+"id": "core-27-codec-kind-exact-only",
+"kind": "restraint",
+"domain": "core",
+"statement": "codec_kind may appear only under exact conditions; a pattern over the curated alias token is ill-defined, so it is a validate-time error (new CodecKindExactOnly), not a silent never-match.",
+"count": 1,
+"occ_refs": [
+"memo D1"
+]
+},
+{
+"id": "core-33-suggestion-narrow-only",
+"kind": "restraint",
+"domain": "core",
+"statement": "The suggestion edit grammar is a deliberately closed StructuredEdit enum (v1): suggestions only ever narrow the conflicted rule's match, never reorder, never touch other rules, never relax; narrow-only guarantees convergence and keeps YAML rendering and simulation trivial.",
+"count": 1,
+"occ_refs": [
+"memo D6"
+]
+},
+{
+"id": "core-61-primary-ctx-helper-declined",
+"kind": "restraint",
+"domain": "core",
+"statement": "Declined to extract a shared primary_ctx() helper for a ~4-line, two-instance duplication between render_output and resolve_title (does not clear the codebase's 'three similar lines beat a premature abstraction' bar).",
+"count": 1,
+"occ_refs": [
+"task-6 verdict (Strengths)"
+]
+},
+{
+"id": "core-70-registry-validate-not-called",
+"kind": "restraint",
+"domain": "core",
+"statement": "registry.validate() is deliberately not called on the language accept side; over-accepting a pathological well-formed tag is less harmful than over-rejecting real ones, and mkvmerge rejects it at mux time.",
+"count": 2,
+"occ_refs": [
+"memo D19",
+"Plan self-review"
+]
+},
+{
+"id": "core-82-donor-side-gate-not-built",
+"kind": "restraint",
+"domain": "core",
+"statement": "The UnsupportedSource gate is deliberately primary-only; no donor-side gate was built (D21 scope).",
+"count": 2,
+"occ_refs": [
+"Plan self-review",
+"task-6 verdict (deferred-by-decision)"
+]
+},
+{
+"id": "core-92-raw-shape-a-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Shape A (enrich UnknownProperty with a nearest-name did-you-mean suggestion, drop the \u00a79.2 automatic-untyped promise) rejected because the \u00a79.2 forward-compat promise is kept deliberately.",
+"count": 2,
+"occ_refs": [
+"memo D32",
+"d32-analysis.md"
+]
+},
+{
+"id": "core-93-raw-shape-c-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Shape C (unknown name becomes a warning at every level + untyped match, no opt-in) rejected outright - guts typo protection unconditionally, including on non-skewed mkvmerge, and opens the optional-rule and not:-inversion silent holes.",
+"count": 1,
+"occ_refs": [
+"memo D32"
+]
+},
+{
+"id": "core-94-raw-version-gated-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "The obvious version-gated hybrid (error at validate, warning at dry-run) rejected pre-emptively - it inverts spec 5.5's 'dry-run is a strict superset of validate', so the disambiguator must be stable across levels.",
+"count": 1,
+"occ_refs": [
+"d32-analysis.md"
+]
+},
+{
+"id": "core-96-rawproperty-minimal-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "The minimal variant that omits RawProperty and relies only on plan-time UnknownPropertySkew rejected - it trades validate-time honesty for fewer codes.",
+"count": 1,
+"occ_refs": [
+"d32-analysis.md"
+]
+},
+{
+"id": "core-100-schemadrift-primaries-only",
+"kind": "restraint",
+"domain": "core",
+"statement": "SchemaDrift is emitted from primaries only; extending it to donors rejected as over-engineering for a structurally unreachable case (schema version is a build constant of the one local mkvmerge binary).",
+"count": 1,
+"occ_refs": [
+"task-16.5 verdict adjudication 1"
+]
+},
+{
+"id": "core-102-overlap-selection-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Neither 'later-by-list-order' (narrow rules[1]) nor 'broader-by-match-domain-size' was adopted as the policy for which overlap rule gets narrowed; the model has no rule precedence, both are intent guesses, and the earlier rule is frequently the accidental over-broad one. Both survive only as a rank tiebreak (core-103).",
+"count": 2,
+"occ_refs": [
+"memo D33 / d33-analysis (policy 1 later-by-list)",
+"memo D33 / d33-analysis (policy 2 broader-by-domain)"
+]
+},
+{
+"id": "core-105-overlap-seed-positive-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "Mirroring the ambiguous path's both-polarity generation on the overlap path rejected - positive edits cannot redirect and only add near-tie noise to the ranked list.",
+"count": 1,
+"occ_refs": [
+"d33-analysis.md (open taste call 3)"
+]
+},
+{
+"id": "core-106-overlap-specific-dimension-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "A separate overlap-specific dimension (diff the two rules' matched track sets) rejected - on the single contested file the two rules match the identical track so the difference set is empty; reuse candidates_for_rule instead.",
+"count": 1,
+"occ_refs": [
+"d33-analysis.md"
+]
+},
+{
+"id": "core-109-two-required-no-fix",
+"kind": "restraint",
+"domain": "core",
+"statement": "Two required rules colliding on one track in one file yield no suggestion, only the explicit no-fix/partition report - an unavoidable property of the narrow-only v1 grammar.",
+"count": 1,
+"occ_refs": [
+"memo D33 Tradeoff (accepted)"
+]
+},
+{
+"id": "core-112-contested-property-dimension-rejected",
+"kind": "restraint",
+"domain": "core",
+"statement": "A contested-property selection dimension (to honor the memo's default_track-vs-forced_track TC-A illustration) rejected - it would be a new selection mechanism D33 forbids.",
+"count": 1,
+"occ_refs": [
+"task-18 verdict adjudication 1"
+]
+},
+{
+"id": "exec-02-no-in-place",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Muxsmith never writes over its inputs; in-place replacement is excluded as a hard, non-configurable rule, and an output path equal to any input is always a hard error.",
+"count": 1,
+"occ_refs": [
+"spec \u00a71 + \u00a72 row 4 + \u00a711"
+]
+},
+{
+"id": "exec-05-std-threadpool",
+"kind": "restraint",
+"domain": "executor",
+"statement": "--jobs N uses a bounded std thread pool with no async runtime (tokio), because muxing is external-process / I-O-bound so std suffices and the dependency surface stays minimal.",
+"count": 1,
+"occ_refs": [
+"memo D7 (Plan 4 forward decisions)"
+]
+},
+{
+"id": "exec-09-event-delivery-callback-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "A callback/sink trait was rejected for event delivery in favour of the mpsc event stream.",
+"count": 1,
+"occ_refs": [
+"memo D13 (alternative rejected)"
+]
+},
+{
+"id": "exec-10-event-delivery-polled-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Polled shared state was rejected for event delivery in favour of the event stream.",
+"count": 1,
+"occ_refs": [
+"memo D13 (alternative rejected)"
+]
+},
+{
+"id": "exec-15-batch-no-hardkill-default",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Hard-kill of in-flight jobs on first failure was rejected as the batch default; a failure does not abort the batch. mkvtoolnix-gui has no fail-fast (model.cpp:337-380 calls startNextAutoJob unconditionally); make/cargo/GNU-parallel stop scheduling and let running jobs finish; kill+delete-partial is reserved for mkvmerge error or user cancel.",
+"count": 1,
+"occ_refs": [
+"memo D14"
+]
+},
+{
+"id": "exec-26-perjob-cancel-defer-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Shipping only batch cancel with per-job cancel deferred to a later plan was declined by \u015eenol (a deviation from spec 8.2).",
+"count": 1,
+"occ_refs": [
+"memo D25 (alternative rejected)"
+]
+},
+{
+"id": "exec-32-percent-clamp-wontfix",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Clamping the 101-255 progress-percent range was deliberately not done (wontfix): the grammar caps at 100 and milestones only compare >=, so no observable harm today; clamp opportunistically only if the parser is next touched.",
+"count": 1,
+"occ_refs": [
+"plan-4 whole-branch-review-verdict.md (#3)"
+]
+},
+{
+"id": "exec-35-poison-testlocks-bare",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Test-only lock sites are deliberately left without poison-recovery: a poisoned test lock should fail loudly rather than be recovered by the into_inner idiom used in production code.",
+"count": 1,
+"occ_refs": [
+"plan-5.5 task-4-verdict.md (concern 2)"
+]
+},
+{
+"id": "exec-39-raw-output-accumulate-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Accumulating full output into JobOutcome was rejected in favour of the raw event variant.",
+"count": 1,
+"occ_refs": [
+"memo D24 (alternative rejected)"
+]
+},
+{
+"id": "exec-41-persist-logs-format-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Three persistence alternatives were rejected in favour of JSON-per-job + summary: plain-text log + JSON index (two-artifact consistency burden), GUI-only persistence (spec divergence + CLI loses post-mortem logs), and a single NDJSON journal per run (NDJSON events are deferred to v1.x anyway).",
+"count": 1,
+"occ_refs": [
+"memo D26 (alternatives rejected)"
+]
+},
+{
+"id": "exec-46-runlog-keepforever-prunefacility-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Keeping run logs forever with deletion as an explicit prune facility (Peter's recommendation) was overruled at D35: the audit-value premise does not hold for this tool class in \u015eenol's judgment and unbounded history clutter is the worse default.",
+"count": 1,
+"occ_refs": [
+"memo D35 (rejected alternatives)"
+]
+},
+{
+"id": "exec-47-runlog-keepforever-plain-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "Doing no pruning at all was rejected at D35 (unbounded growth, cleanup nobody performs).",
+"count": 1,
+"occ_refs": [
+"memo D35"
+]
+},
+{
+"id": "exec-48-runlog-mkvtoolnix-immediate-rejected",
+"kind": "restraint",
+"domain": "executor",
+"statement": "mkvtoolnix-gui's additional immediate-removal-on-completion / on-exit policies were deliberately not adopted; only the 14-day default is, because immediate removal would delete the post-mortem record spec 6 mandates persisting.",
+"count": 1,
+"occ_refs": [
+"memo D35 (parity note)"
+]
+},
+{
+"id": "cross-02-wails-rejected",
+"kind": "restraint",
+"domain": "cross",
+"statement": "Wails v3 was weighed and rejected as the desktop shell.",
+"count": 1,
+"occ_refs": [
+"journal 2026-07-08 Plan 1 entry"
+]
+},
+{
+"id": "cross-03-avalonia-rejected",
+"kind": "restraint",
+"domain": "cross",
+"statement": "Avalonia (C#/.NET) was weighed and rejected as the UI stack.",
+"count": 1,
+"occ_refs": [
+"journal 2026-07-08 Plan 1 entry"
+]
+},
+{
+"id": "cross-06-no-bundling-v1",
+"kind": "restraint",
+"domain": "cross",
+"statement": "Muxsmith does not bundle mkvtoolnix binaries in v1; a Windows convenience downloader is named as a v1.x candidate only.",
+"count": 1,
+"occ_refs": [
+"spec \u00a711 + \u00a712"
+]
+},
+{
+"id": "proc-47-just-rejected",
+"kind": "restraint",
+"domain": "process",
+"statement": "No just task runner adopted; xtask already covers every dev task and a second entry point drifts.",
+"count": 1,
+"occ_refs": [
+"BUILDING.md 'Deliberately not used' (Plan-1 stock-take) (E0[2])"
+]
+},
+{
+"id": "proc-48-docsurface-delink",
+"kind": "restraint",
+"domain": "process",
+"statement": "An intra-doc link to a private item (on_close_requested) was satisfied by delinking, not by publicizing it or adding a pub-use re-export: growing the public surface to satisfy a doc link inverts the relationship (docs describe architecture, they do not dictate it).",
+"count": 1,
+"occ_refs": [
+"task-12-verdict.md judgment (E7[60])"
+]
+},
+{
+"id": "proc-49-eager-memory-rejected",
+"kind": "restraint",
+"domain": "process",
+"statement": "Carrying the process doctrine as always-loaded eager persona-memory ambience was rejected by \u015eenol in favor of the packaged, adopt-or-not skill.",
+"count": 1,
+"occ_refs": [
+"journal session 7 pt2 (E8[76])"
+]
+},
+{
+"id": "proc-50-ponytail-ladder-rejected",
+"kind": "restraint",
+"domain": "process",
+"statement": "Importing ponytail's full seven-rung laziness decision ladder wholesale as a new rule block was rejected as redundant with the existing idiomacy directive and scale rule (ours is bidirectional on deps; the inbound ladder isn't).",
+"count": 1,
+"occ_refs": [
+"ponytail-mining.md REJECTED (E8[92])"
+]
+},
+{
+"id": "proc-51-aggressive-minimalism-rejected",
+"kind": "restraint",
+"domain": "process",
+"statement": "The aggressive-minimalism 'laziest thing that works / shortest diff wins' framing and its lite/full/ultra intensity levels were rejected as inverting the correctness > precision > maintainability > simplicity ordering.",
+"count": 1,
+"occ_refs": [
+"ponytail-mining.md REJECTED (E8[93])"
+]
+},
+{
+"id": "proc-52-cornercut-ledger-rejected",
+"kind": "restraint",
+"domain": "process",
+"statement": "Grepped in-code corner-cut markers with a /ponytail-debt grep ledger were rejected as redundant with software-dev-process's HITL deferral record.",
+"count": 1,
+"occ_refs": [
+"ponytail-mining.md REJECTED (E8[94])"
+]
+},
+{
+"id": "proc-53-shrink-axis-rejected",
+"kind": "restraint",
+"domain": "process",
+"statement": "A shrink / line-golf (same-logic-fewer-lines) review dimension was rejected as noise for a pre-1.0 idiomacy pass; value is in idiomacy/reuse/dead-abstraction, not counting lines.",
+"count": 1,
+"occ_refs": [
+"ponytail-mining.md REJECTED (E8[95])"
+]
+},
+{
+"id": "i18n-07-plurality-render-boundary",
+"kind": "restraint",
+"domain": "i18n",
+"statement": "Plurality is resolved at the render boundary (promotion), not carried through a typed-params wire change - the wire change would touch dozens of call sites plus JSON schema and IPC types for only two codes' benefit.",
+"count": 1,
+"occ_refs": [
+"task-19-verdict.md (c)"
+]
+},
+{
+"id": "gui-02",
+"kind": "restraint",
+"domain": "gui",
+"statement": "The GUI offers no per-file manual override; users needing that go to mkvtoolnix-gui, with an 'open in mkvtoolnix-gui' escape hatch left as a v1.x candidate.",
+"count": 1,
+"occ_refs": [
+"spec 2026-07-08 \u00a711"
+]
+},
+{
+"id": "gui-04",
+"kind": "restraint",
+"domain": "gui",
+"statement": "Four frontend alternatives rejected: React (author veto), Svelte 5, SolidJS, Leptos-WASM.",
+"count": 1,
+"occ_refs": [
+"memo D27 (alternatives rejected 2026-07-10)"
+]
+},
+{
+"id": "gui-08",
+"kind": "restraint",
+"domain": "gui",
+"statement": "Rejected a sidecar CLI process (parsing --json) and an async/tokio adapter runtime.",
+"count": 1,
+"occ_refs": [
+"memo D23 (alternatives rejected)"
+]
+},
+{
+"id": "gui-16",
+"kind": "restraint",
+"domain": "gui",
+"statement": "Rejected both a dialog-less abort and keeping the immediate close.",
+"count": 1,
+"occ_refs": [
+"memo D31 (alternatives rejected)"
+]
+},
+{
+"id": "gui-21",
+"kind": "restraint",
+"domain": "gui",
+"statement": "Justified divergence from mkvtoolnix-gui: no user-assembled, reorderable, persistent job queue. The batch is derived declaratively at run time, so the Jobs view shows the live run + history instead of an editable queue.",
+"count": 1,
+"occ_refs": [
+"memo D30 (justified divergence)"
+]
+},
+{
+"id": "gui-22",
+"kind": "restraint",
+"domain": "gui",
+"statement": "Justified divergence: no automatic 'remove completed jobs after N days' setting in v1; v1 keeps all run logs, pruning is v1.x.",
+"count": 1,
+"occ_refs": [
+"memo D30 (justified divergence)"
+]
+},
+{
+"id": "gui-29",
+"kind": "restraint",
+"domain": "gui",
+"statement": "The common Tauri default-src 'self'; connect-src ipc string-form baseline was considered and rejected.",
+"count": 1,
+"occ_refs": [
+"memo D34 rejected-alternatives"
+]
+},
+{
+"id": "gui-30",
+"kind": "restraint",
+"domain": "gui",
+"statement": "A separate devCsp block was initially proposed then withdrawn the same day.",
+"count": 1,
+"occ_refs": [
+"memo D34; journal session-8 close"
+]
+},
+{
+"id": "gui-31",
+"kind": "restraint",
+"domain": "gui",
+"statement": "Leaving the scaffold default csp:null (carried since Plan 5 T4) was rejected.",
+"count": 1,
+"occ_refs": [
+"memo D34"
+]
+},
+{
+"id": "gui-34",
+"kind": "restraint",
+"domain": "gui",
+"statement": "An idiomacy finder proposed switching to Vue 3.5 reactive-props destructure; verification refuted it because it would make the component the lone outlier vs its siblings, and the refute was materialized as a standing CONVENTIONS restraint.",
+"count": 2,
+"occ_refs": [
+"idiomacy-review-findings.md Refuted, BatchView.vue:L53",
+"CONVENTIONS.md Restraints (b38a46f)"
+]
+},
+{
+"id": "ci-02-sccache-rejected",
+"kind": "restraint",
+"domain": "ci",
+"statement": "No sccache: there is no compile-time pain at this workspace size.",
+"count": 1,
+"occ_refs": [
+"BUILDING.md 'Deliberately not used'"
+]
+},
+{
+"id": "ci-03-cargo-outdated-rejected",
+"kind": "restraint",
+"domain": "ci",
+"statement": "No cargo-outdated: Renovate/Dependabot will replace it once activated.",
+"count": 1,
+"occ_refs": [
+"BUILDING.md 'Deliberately not used'"
+]
+},
+{
+"id": "ci-16-mise-not-ci",
+"kind": "restraint",
+"domain": "ci",
+"statement": "CI must not fetch a floating mise binary at run time: jdx/mise-action downloads and executes the latest mise release, contradicting the pin-everything doctrine. The restraint is recorded although current CI (mise-action without a version pin, ci.yml:L73) still violates it; dropping mise from CI is deferred to post-1.0.",
+"count": 2,
+"occ_refs": [
+"CONVENTIONS.md Restraints (b38a46f) / idiomacy routed-out ci.yml:L73",
+"CONVENTIONS.md Restraints note / ROADMAP c38a197"
+]
+},
+{
+"id": "testing-keep-track-order-assumption",
+"kind": "restraint",
+"domain": "testing",
+"statement": "Assumption #3 (keep-mode --track-order lists only matched tracks; mkvmerge appends kept-unmatched tracks after, in source order) was confirmed against real mkvmerge v100 - ordering only id1 of a 3-track source yields BRAVO,ALPHA,CHARLIE - and needed no planner change, before it was later reversed on usability grounds.",
+"count": 1,
+"occ_refs": [
+"task-3-review-verdict.md + progress ledger Task 3"
+]
+},
+{
+"id": "testing-catalog-completeness-rejected",
+"kind": "restraint",
+"domain": "testing",
+"statement": "A completeness test over all cli.ftl keys was rejected as unnecessary (wontfix): the renderer unit tests assert rendered fragments, so a missing run-* key fails as a raw-id render, and milestone tests already cover the run-* keys - that guard is adequate.",
+"count": 1,
+"occ_refs": [
+"whole-branch-review-verdict.md (#9) + task-8 Minor"
+]
+},
+{
+"id": "cli-14-reject-handrolled-signals",
+"kind": "restraint",
+"domain": "cli",
+"statement": "Hand-rolling libc/WinAPI signal handling across three OSes was rejected in favour of one vetted crate (ctrlc).",
+"count": 1,
+"occ_refs": [
+"memo D16"
+]
+},
+{
+"id": "cli-19-reject-indicatif",
+"kind": "restraint",
+"domain": "cli",
+"statement": "Live ANSI progress bars via indicatif were rejected for run progress rendering.",
+"count": 1,
+"occ_refs": [
+"memo D15"
+]
+},
+{
+"id": "cli-20-reject-quiet-output",
+"kind": "restraint",
+"domain": "cli",
+"statement": "Quiet start/end-only output was rejected for run progress rendering.",
+"count": 1,
+"occ_refs": [
+"memo D15"
+]
+},
+{
+"id": "cli-23-identifyerror-passthrough",
+"kind": "restraint",
+"domain": "cli",
+"statement": "IdentifyError's English detail text is kept (not routed through a catalog key) and added explicitly to the spec \u00a78.4 exception list; the exception is noted as slightly broader than pure pass-through.",
+"count": 1,
+"occ_refs": [
+"task-9-verdict.md (viii)"
+]
+}
+],
+"non_decisions": [
+{
+"id": "core-19-sync-delay-stretch",
+"kind": "non-decision",
+"domain": "core",
+"statement": "Per-file --sync delay/stretch changes deferred; per-file offsets do not generalize to batch rules (v1.x candidate).",
+"count": 1,
+"blocked_on": "no batch-generalizable model for per-file offsets",
+"occ_refs": [
+"spec \u00a711"
+]
+},
+{
+"id": "core-20-ondisk-cache",
+"kind": "non-decision",
+"domain": "core",
+"statement": "The identification cache is in-memory per session (keyed path+mtime+size); an on-disk cache is a future candidate, not built in v1.",
+"count": 2,
+"blocked_on": "in-memory per-session cache suffices for v1, no measured need",
+"occ_refs": [
+"spec \u00a75.5/\u00a711",
+"handoff plan-1-close"
+]
+},
+{
+"id": "core-56-batch-level-language-fold",
+"kind": "non-decision",
+"domain": "core",
+"statement": "Optionally folding settable-language validation into walk_exact_languages (to catch the all-optional-unmatched invalid-language case) left for v1 - low value since the uncaught case is inert.",
+"count": 1,
+"blocked_on": "optional refinement, not required for v1 correctness",
+"occ_refs": [
+"whole-branch verdict (Recommendations) + progress roll-up"
+]
+},
+{
+"id": "core-64-donor-group-ordering",
+"kind": "non-decision",
+"domain": "core",
+"statement": "With a donor whose assignments mix None/Some, its group position is set by its first Some (can differ from a literal first-appearance reading); no golden arbitrates it, left as a conscious choice into Task 12.",
+"count": 1,
+"blocked_on": "no golden arbitrates the ordering; pinning left pending",
+"occ_refs": [
+"task-9 verdict round-2 (Minor) + progress roll-up"
+]
+},
+{
+"id": "core-66-eager-resolution-discarded-plan",
+"kind": "non-decision",
+"domain": "core",
+"statement": "On a render_output failure, resolve_chapters/resolve_attachments still run (wasted I/O + stray diagnostics on plans that will be discarded); consistent with the deliberate pre-finalize design (detect_source_overwrites needs pre-drop plans), left as-is.",
+"count": 1,
+"blocked_on": "tied to detect_source_overwrites pre-finalize design; low priority",
+"occ_refs": [
+"whole-branch verdict Minor 6 + progress roll-up"
+]
+},
+{
+"id": "core-83-zero-rule-keep-passthrough",
+"kind": "non-decision",
+"domain": "core",
+"statement": "Whether a zero-rule keep profile should be a legal pure-passthrough remux is open; the assumption stands that it remains a NoTrackRules error.",
+"count": 1,
+"blocked_on": "\u015eenol veto - whether a pure-passthrough keep profile should be legal instead of a NoTrackRules error",
+"occ_refs": [
+"memo D20 (Open mechanics, plan-time)"
+]
+},
+{
+"id": "core-84-regex-recompile",
+"kind": "non-decision",
+"domain": "core",
+"statement": "The regex recompiled per matches call is deferred to a later cleanup pass.",
+"count": 1,
+"blocked_on": "later cleanup pass",
+"occ_refs": [
+"memo D18"
+]
+},
+{
+"id": "core-115-partition-unresolvable-file",
+"kind": "non-decision",
+"domain": "core",
+"statement": "A fixless affected file is silently dropped from the partition (best=None skip, unreachable under v1 id-uniqueness); hardening with an invariant comment or an explicit 'unresolvable' group deferred.",
+"count": 2,
+"blocked_on": "idiomacy review (internal)",
+"occ_refs": [
+"task-13 verdict m1",
+"whole-branch funnel T13-m1"
+]
+},
+{
+"id": "core-117-known-extensions-make-required",
+"kind": "non-decision",
+"domain": "core",
+"statement": "known_extensions default-None on Identify inverts the idiom (sole production impl overrides; a future impl silently gets vacuous validation); making the method required deferred.",
+"count": 1,
+"blocked_on": "idiomacy review (internal)",
+"occ_refs": [
+"task-5 verdict m2 + progress T5-m2"
+]
+},
+{
+"id": "exec-03-mkvpropedit-fastpath",
+"kind": "non-decision",
+"domain": "executor",
+"statement": "A mkvpropedit fast path for metadata-only changes is deferred; the full remux path ships first.",
+"count": 1,
+"blocked_on": "v1.x optimization; full remux path ships first",
+"occ_refs": [
+"spec \u00a711"
+]
+},
+{
+"id": "exec-16-failfast-now-deferred",
+"kind": "non-decision",
+"domain": "executor",
+"statement": "A --fail-fast=now value that also kills in-flight jobs (GNU-parallel now,fail=1 analog) is deferred to v1.x pending real usage demand.",
+"count": 1,
+"blocked_on": "external: real usage demand",
+"occ_refs": [
+"memo D14"
+]
+},
+{
+"id": "exec-23-loop-resweep-watcher",
+"kind": "non-decision",
+"domain": "executor",
+"statement": "A loop-and-re-sweep watcher that would narrow the register-after-sweep window further (a design change to the one-shot watcher) is deferred; today a job registering its killer after the sweep runs to natural completion under cancel, bounded to one job per worker and recorded honestly.",
+"count": 1,
+"blocked_on": "internal: design change if stronger cancel ever wanted",
+"occ_refs": [
+"plan-4 task-3-review-verdict.md (named-risk 2)"
+]
+},
+{
+"id": "exec-36-core-stderr-logging",
+"kind": "non-decision",
+"domain": "executor",
+"statement": "The single eprintln! in core (queue.rs) is the first direct stderr I/O in core; the idiomatic fix is a log/tracing facade the binaries route, deferred.",
+"count": 1,
+"blocked_on": "Plan 6 (internal)",
+"occ_refs": [
+"plan-5.5 task-4-verdict.md (I1) / whole-branch-verdict.md (I3)"
+]
+},
+{
+"id": "exec-37-panicked-msg-catalog",
+"kind": "non-decision",
+"domain": "executor",
+"statement": "The rich worker-panicked message renders on no live surface (only JSON carries the token); routing JobOutcome.errors codes through the diagnostics catalog was deferred.",
+"count": 1,
+"blocked_on": "Plan 6 (internal)",
+"occ_refs": [
+"plan-5.5 task-4-verdict.md (I2) / whole-branch-verdict.md (I3)"
+]
+},
+{
+"id": "exec-45-runlog-config-deferred",
+"kind": "non-decision",
+"domain": "executor",
+"statement": "Making the run-log retention period configurable (disable / change days) is deferred to IDEAS #7; v1 ships a fixed 14-day prune with no setting or flag, the configuration surface not yet earned. Recurred across plan T4.5 and memo D35, still unadopted.",
+"count": 2,
+"blocked_on": "internal: option surface not earned; parked to IDEAS #7 pending real demand",
+"occ_refs": [
+"plan T4.5",
+"memo D35"
+]
+},
+{
+"id": "cross-07-watch-daemon-mode",
+"kind": "non-decision",
+"domain": "cross",
+"statement": "Watch/daemon mode is a v1 non-goal with no rationale and no reconsider trigger: deferred rather than principled-rejected.",
+"count": 1,
+"blocked_on": "post-v1 scope; no v1 use case established",
+"occ_refs": [
+"spec \u00a711"
+]
+},
+{
+"id": "cross-08-minor-findings-deferred",
+"kind": "non-decision",
+"domain": "cross",
+"statement": "The whole-branch review's 6 Minor items (double-report, render-fail donor gap, IdentifyError English, TempDir leaks, double file print, mkvmerge_found JSON asymmetry) were recorded for a follow-up rather than blocking the fix-pass merge.",
+"count": 1,
+"blocked_on": "internal: pending dev work / owner disposition",
+"occ_refs": [
+"plan-2-fixes-sdd/FINAL-review.md MINOR section + journal fix-pass Open threads"
+]
+},
+{
+"id": "proc-54-doc-deliverables-deferred",
+"kind": "non-decision",
+"domain": "process",
+"statement": "1.0 documentation formats are fixed (single-file EN GUIDE.md at maximal scope + two EN+DE blog posts) but the authoring itself is deferred to the 1.0 tag via three fresh sessions.",
+"count": 1,
+"blocked_on": "external: awaiting the 1.0 tag",
+"occ_refs": [
+"journal session-8 close (format interview) (E8[90])"
+]
+},
+{
+"id": "proc-55-correctness-gate-deferred",
+"kind": "non-decision",
+"domain": "process",
+"statement": "The 11 correctness/security/perf findings routed out of the idiomacy pass are deferred to a dedicated normal-review gate, deliberately not blended into the complexity hunt (a complexity hunt and a bug hunt want different mindsets).",
+"count": 1,
+"blocked_on": "internal: the dedicated correctness/security/perf review not yet run",
+"occ_refs": [
+"ROADMAP c38a197 + idiomacy-review-findings.md routed-out section (E8[99])"
+]
+},
+{
+"id": "proc-56-idiomacy-fix-wave-deferred",
+"kind": "non-decision",
+"domain": "process",
+"statement": "The 70 confirmed idiomacy findings await triage with \u015eenol; the accepted set becomes its own SDD-executed fix-wave plan (mechanical + low-risk), with the review scratch salvaged at that close.",
+"count": 1,
+"blocked_on": "internal: triage of the 70 confirmed findings with \u015eenol",
+"occ_refs": [
+"journal session 10 open threads + ROADMAP L220 (E8[100])"
+]
+},
+{
+"id": "i18n-12-de-placeable-parity-deferred",
+"kind": "non-decision",
+"domain": "i18n",
+"statement": "Placeable-name and selector-structure drift in the German catalogs is not machine-checked (check:i18n enforces id parity only); a check:i18n extension to cover placeable/selector structure was deferred, no actual drift found at close.",
+"count": 1,
+"blocked_on": "future check:i18n extension (internal)",
+"occ_refs": [
+"task-21-verdict.md residual / whole-branch-verdict.md M1"
+]
+},
+{
+"id": "i18n-13-cli-key-rename-deferred",
+"kind": "non-decision",
+"domain": "i18n",
+"statement": "The dry-run-summary cli.ftl key serves both run and dry-run (a latent catalog-skimming trap); renaming it to batch-summary was deferred (touches en+de+allowlist+2 snapshots).",
+"count": 1,
+"blocked_on": "idiomacy review (internal)",
+"occ_refs": [
+"task-8-verdict.md m2 / whole-branch funnel T8-m2"
+]
+},
+{
+"id": "i18n-17-mixed-language-allowed-deferred",
+"kind": "non-decision",
+"domain": "i18n",
+"statement": "Core emits English prose through the allowed param at two sites, rendering a mixed-language diagnostic in de mode on the marquee language property - a residual breach of prose-free core (i18n-02); the catalog-side fix (a kind selector) was too large for the branch close and deferred to pre-1.0 polish.",
+"count": 1,
+"blocked_on": "pre-1.0 polish / Plan 6 (internal)",
+"occ_refs": [
+"whole-branch-verdict.md I2"
+]
+},
+{
+"id": "gui-17",
+"kind": "non-decision",
+"domain": "gui",
+"statement": "The abort-confirmation-suppression setting (mkvtoolnix m_warnBeforeAbortingJobs) is parked as a v1.x settings candidate, not v1 scope.",
+"count": 1,
+"blocked_on": "external (product / v1.x)",
+"occ_refs": [
+"memo D31"
+]
+},
+{
+"id": "gui-26",
+"kind": "non-decision",
+"domain": "gui",
+"statement": "No live in-session locale switch (bootstrap-once architecture; a restart notice was added); a live switch was deferred as a Plan 6 candidate.",
+"count": 1,
+"blocked_on": "Plan 6 (internal)",
+"occ_refs": [
+"task-21.5-verdict.md / whole-branch funnel T21.5-m1"
+]
+},
+{
+"id": "ci-04-dependabot-cadence",
+"kind": "non-decision",
+"domain": "ci",
+"statement": "Dependabot/Renovate activation is deferred to \u015eenol's call; the eventual cadence is a CI-cost decision because every dependency PR triggers the full 3-OS matrix.",
+"count": 1,
+"blocked_on": "go-public/1.0 timing (free only once the repo is public); activation remains \u015eenol's call",
+"occ_refs": [
+"journal 2026-07-08 open threads + ROADMAP residue R3"
+]
+},
+{
+"id": "ci-09-skipmarker-contract",
+"kind": "non-decision",
+"domain": "ci",
+"statement": "The skip-marker string is an unenforced cross-file contract (19 call sites + 1 CI grep, no shared const), so a future reword silently reintroduces the false-negative that ci-08's assertion exists to catch; hardening with a shared const was deferred.",
+"count": 1,
+"blocked_on": "internal - idiomacy review",
+"occ_refs": [
+"task-2-verdict.md m1 / whole-branch funnel T2-m1"
+]
+},
+{
+"id": "ci-13-packaging-deferred",
+"kind": "non-decision",
+"domain": "ci",
+"statement": "Release-tag packaging artifacts (msi/dmg/deb/rpm/AppImage) remain deferred until go-public, because tags trigger the full 3-OS matrix and paid minutes while the repo is private.",
+"count": 1,
+"blocked_on": "external - go-public / paid-minutes cost",
+"occ_refs": [
+"memo D29"
+]
+},
+{
+"id": "testing-coverage-tooling",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "Coverage tooling (cargo-llvm-cov) was left out of the Plan-1 tooling stock-take as a signal not yet needed, with a revisit at v1.x planning.",
+"count": 1,
+"blocked_on": "no measured coverage need in v1 (revisit at v1.x planning)",
+"occ_refs": [
+"BUILDING.md 'Deliberately not used' (2026-07-08)"
+]
+},
+{
+"id": "testing-warning-path-coverage",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "The exit-1 warning path lacks an output-kept assertion and WarningLine/ErrorLine on_progress surfacing is untested; deferred to v1.x.",
+"count": 1,
+"blocked_on": "internal: v1.x test work",
+"occ_refs": [
+"task-2-review-verdict.md (ledger #4 whole-branch)"
+]
+},
+{
+"id": "testing-concurrencytracker-hygiene",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "ConcurrencyTracker is pure test instrumentation in the public lib surface; doc-hiding (#[doc(hidden)]) or relocating it is deferred until before go-public.",
+"count": 1,
+"blocked_on": "internal: before go-public",
+"occ_refs": [
+"whole-branch-review-verdict.md (Minor)"
+]
+},
+{
+"id": "testing-cli-helper-dedup",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "have_mkvmerge/muxsmith/fake-stub helpers are duplicated 2-3x across CLI test files (each tests/*.rs is its own crate, no shared common module); applying the T5 consolidation to the CLI crate is deferred until the next CLI test file appears.",
+"count": 1,
+"blocked_on": "internal: next CLI test file",
+"occ_refs": [
+"whole-branch-review-verdict.md (Minor)"
+]
+},
+{
+"id": "testing-comment-fixture-convention",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "The _comment fixture-note convention introduced ad hoc for one file is left ad hoc; promotion to a written convention is trigger-gated on a second fixture needing it.",
+"count": 1,
+"blocked_on": "second use (trigger-gated, internal)",
+"occ_refs": [
+"task-11-verdict.md m1 / whole-branch funnel T11-m1"
+]
+},
+{
+"id": "testing-proptest-assert-locality",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "D6 property guards use prop_assume where prop_assert would localize a future generator regression (which currently dies opaquely as 'too many global rejects'); the switch was deferred.",
+"count": 1,
+"blocked_on": "idiomacy review (internal)",
+"occ_refs": [
+"task-14-verdict.md m1 / whole-branch funnel T14-m1"
+]
+},
+{
+"id": "testing-check-i18n-self-test",
+"kind": "non-decision",
+"domain": "testing",
+"statement": "check-i18n.mjs has no fixture self-test despite grown logic; adding one was deferred (the e2e guard covers only the parser-blindness half).",
+"count": 1,
+"blocked_on": "v1.x test-hardening (internal)",
+"occ_refs": [
+"task-20-verdict.md m2 / whole-branch funnel T20-m2"
+]
+},
+{
+"id": "cli-07-ndjson-deferred",
+"kind": "non-decision",
+"domain": "cli",
+"statement": "A streaming NDJSON event mode (--json-events) riding the D13 enum is a v1.x candidate, explicitly not built in Plan 4. Reviewer confirmed no NDJSON in the diff.",
+"count": 2,
+"blocked_on": "external: v1.x demand",
+"occ_refs": [
+"memo D15",
+"task-9-review-verdict.md"
+]
+},
+{
+"id": "cli-08-config-diags-json-ordering",
+"kind": "non-decision",
+"domain": "cli",
+"statement": "The flat config_diags JSON is unsorted, inconsistent with validate's sorted JSON; sorting for parity was deferred because consumers key on the severity field and ordering is cosmetic. Same theme as cli-01 but a distinct, deliberately-deferred decision on a specific surface.",
+"count": 1,
+"blocked_on": "internal: Plan 6 / idiomacy sweep",
+"occ_refs": [
+"task-9-verdict.md (iv) + whole-branch funnel"
+]
+},
+{
+"id": "cli-16-ctrlc-pin-deferred",
+"kind": "non-decision",
+"domain": "cli",
+"statement": "ctrlc is pinned to major only ('3') unlike siblings' full-patch pins (clap=4.6.1, serde_json=1.0.150); folding it to a full pin is deferred to the next Cargo.toml touch. Cargo.lock pins 3.5.2; a brief-literal style inconsistency.",
+"count": 1,
+"blocked_on": "internal: next Cargo.toml edit",
+"occ_refs": [
+"task-10-review-verdict.md + whole-branch ledger #12"
+]
+},
+{
+"id": "cli-22-jobs-index-doc-deferred",
+"kind": "non-decision",
+"domain": "cli",
+"statement": "jobs[].index indexes the queue, not files; correlating a job to its file requires joining on the output path. One doc sentence in run_json_document (or a source field later) prevents consumer misreads in Plan 5; deferred until Plan 5 consumes it.",
+"count": 1,
+"blocked_on": "internal: before Plan 5 consumption",
+"occ_refs": [
+"whole-branch-review-verdict.md (Minor) + progress backlog"
+]
+}
+]
+}

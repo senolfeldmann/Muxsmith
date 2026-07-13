@@ -804,3 +804,68 @@ becomes the idiomacy fix wave (own plan, SDD execution). Salvage
 `.superpowers/sdd/idiomacy-review/` at that close. Two idiom findings rest on
 current-tooling deprecation claims (typescript-eslint config(), cargo-deny
 version field) that want a doc re-check before applying; both are drop-ins.
+
+## 2026-07-13 | House-knowledge mechanism designed + built | session 10 cont. (Peter, Opus 4.8 1M)
+
+Scope: the idiomacy review's `house`-dimension question - how does an agent
+know "we do it like this here" - became the design and build of a full
+house-knowledge mechanism for the agent framework, with Muxsmith as its first
+instance. Also: idiomacy findings triaged (routing in ROADMAP), and a
+retroactive reconstruction that bootstrapped the mechanism from project history.
+
+Decisions and why (the durable design; full mechanism in software-dev-process
+doctrine section 7, full vision in the non-repo automated-software-department
+dossier):
+- Two-tier house knowledge. Tier 2 = always-checked convention files (the
+  reviewer's per-diff corpus); Tier 1 = a low-visibility ledger. An agent has
+  no ambient memory, so tribal knowledge must be written or it does not exist
+  for the next agent.
+- Tier 2 split by NATURE into three files - product-boundaries.yaml
+  (product-scope), conventions.yaml (technical-code), process-conventions.yaml
+  (process/operational) - because nature decides who reads a rule and where it
+  is enforced (owner-at-scoping vs reviewer-per-diff vs controller).
+- A count is a list of CITED OCCURRENCES, not an integer (count == len); no
+  occurrence, no increment (anti-fabrication + backtraceability). An occurrence
+  is a distinct EVENT, not a distinct document of one event.
+- Promotion Tier1->Tier2 by a SOURCE x NATURE matrix: user-decree/controller-adr
+  promote at count 1 (authority binds immediately); agent-emergent at count 3
+  (recurrence); agent-emergent x product-scope ESCALATES to the owner (an agent
+  must not set a product boundary). kind became descriptive; source drives
+  promotion.
+- Post-promotion violated-corrected occurrences are a work-quality signal
+  (ambiguous - transmission-failure vs wrong-rule vs churn - so it triggers
+  investigation, not a verdict).
+- Escalation flow persisted: surface-with-context -> owner-resolves-per-item
+  (ratify / decide / defer-blocked-on-condition) -> controller records.
+  Deferring-with-a-trigger is a first-class resolution.
+- D-memo terminology renamed to ADR throughout forward-active docs.
+
+What the process caught (process-value evidence): the session repeatedly
+debugged its OWN thesis - the human-in-the-loop caught the parts the agent
+improvised and had not persisted (the escalation resolution options; the exact
+schema living only in the non-wired dossier; "controller judgment" where a
+persisted counter belonged). The mechanism meant to replace tribal knowledge
+was corrected by the human-review process it encodes.
+
+Process mechanics: two Workflow fan-outs. Idiomacy review 97 agents, 70
+findings. Reconstruction sweep 81 agents: 549 occurrence records -> 358
+clusters -> 48 recurrence + 54 authority promotions + 5 escalations (3
+ratified, 1 decided [zero-rule-keep passthrough], 1 deferred [locale switch]).
+Tier-2 105 / Tier-1 252, zero tier overlap. Models: Fable 5 -> Opus 4.8 1M.
+
+Friction and failure: (1) fan-out too fine - one agent per finding (97 total)
+against a strained quota; the Fable per-model limit then the rolling session
+limit both hit mid-verification. Recovery: Workflow resume (scriptPath +
+resumeFromRunId) replays journal-cached agents free, re-runs only the failed -
+nothing lost, because stage 1 was cached and every agent wrote its report at
+creation. Lesson: coarser agents (batch, not one-per-finding), size the fan-out
+to budget. (2) improvised the escalation flow and put the exact schema only in
+the non-wired dossier - both caught by Şenol, then persisted into the doctrine.
+
+Deltas: planned an idiomacy review; produced a framework mechanism. The actual
+idiomacy fix wave (the code cleanups) is still unstarted.
+
+Open threads: doctrine section 7 + conventions.md "Match the house pattern"
+bullet + the dossier are UNCOMMITTED framework-side (Şenol's commit); the
+zero-rule-keep passthrough implementation + docs (ROADMAP); the pre-1.0
+idiomacy fix wave, the routed-items correctness review, Plan 6.
