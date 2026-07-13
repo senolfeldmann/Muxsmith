@@ -138,7 +138,7 @@ pub fn run_document(
 
 /// Maps each diagnostic to its JSON value with a `"rendered"` field
 /// injected (mirrors `validate`'s own `--json` rendering, spec 5.2).
-fn rendered_diags(
+pub fn rendered_diags(
     diags: &[Diagnostic],
     renderer: &dyn DiagnosticRenderer,
 ) -> Vec<serde_json::Value> {

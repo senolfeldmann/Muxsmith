@@ -32,7 +32,6 @@ use insta::Settings;
 /// [`insta_settings_with_tmp`] -- an exact, escaped literal match, not a
 /// generic "looks like an absolute path" regex that could also swallow
 /// unrelated content (e.g. a `config_path` value) and mask a real bug.
-#[allow(dead_code)]
 pub fn insta_settings() -> Settings {
     let mut settings = Settings::clone_current();
     settings.add_filter(r"mkvmerge v\d+(?:\.\d+){1,3}[^\n]*", "mkvmerge v[VERSION]");
@@ -44,9 +43,32 @@ pub fn insta_settings() -> Settings {
 /// (escaped via [`regex::escape`], not a pattern -- `path` is a real
 /// `TempDir` root, e.g. containing a literal `.` on Unix, which would
 /// otherwise be interpreted as "any character").
-#[allow(dead_code)]
 pub fn insta_settings_with_tmp(path: &Path) -> Settings {
     let mut settings = insta_settings();
     settings.add_filter(&regex::escape(&path.display().to_string()), "[TMPDIR]");
     settings
+}
+
+/// Points a child process's PATH at a fake `mkvmerge` script that succeeds
+/// on `--version` (so `Mkvmerge::locate()` succeeds) but fails on every
+/// other invocation, including `--list-languages`: a cheap, deterministic
+/// stand-in for an installed but broken mkvmerge, no real MKVToolNix
+/// needed. Unix-only: a `#!/bin/sh` script has no direct Windows
+/// equivalent, and `Command::new("mkvmerge")` would look for
+/// `mkvmerge.exe`/`.cmd`/`.bat` there instead. Shared by `run_cli.rs` and
+/// `dry_run_cli.rs`.
+#[cfg(unix)]
+pub fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("mkvmerge");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo 'mkvmerge v99.0.0 (fake, for tests)'\n  exit 0\nfi\nexit 1\n",
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).unwrap();
+    dir
 }

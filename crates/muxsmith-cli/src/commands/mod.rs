@@ -24,31 +24,31 @@ pub(crate) fn severity_sorted(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
     sorted
 }
 
-/// Every diagnostic belonging to a planned [`Batch`] plus the config-time
-/// set collected before it ran: config-time, then batch-level, then
-/// per-file, in that order. Shared by `dry-run` and `run` (spec 5.5): both
-/// re-plan via `plan_batch` and fold the same diagnostic set into their
-/// exit code.
-pub(crate) fn all_diags<'a>(
-    config_diags: &'a [Diagnostic],
-    batch: &'a Batch,
-) -> impl Iterator<Item = &'a Diagnostic> {
-    config_diags
-        .iter()
-        .chain(batch.batch_diagnostics.iter())
-        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()))
+/// Maps the worst severity present (`None` for no diagnostics at all) to
+/// the mkvmerge-style exit code (spec 5.1/8.1): 2 for an error, 1 for a
+/// warning, 0 otherwise. Shared by `diag_exit_code` and `validate::run`.
+pub(crate) fn severity_exit(worst: Option<Severity>) -> i32 {
+    match worst {
+        Some(Severity::Error) => 2,
+        Some(Severity::Warning) => 1,
+        _ => 0,
+    }
 }
 
 /// The worst-of diagnostic fold (spec 8.1): 2 if any diagnostic in
 /// `config_diags`/`batch` is error-severity, 1 if the worst present is
 /// warning-severity, else 0. `dry-run` uses this as its exit code directly;
-/// `run` combines it with its own job-outcome fold via `max` (D15).
+/// `run` combines it with its own job-outcome fold via `max` (D15). Folds
+/// over every diagnostic belonging to the planned [`Batch`] plus the
+/// config-time set collected before it ran: config-time, then batch-level,
+/// then per-file, in that order (order is irrelevant to the fold itself,
+/// but matches `dry-run`'s human report so the two stay easy to compare).
 pub(crate) fn diag_exit_code(config_diags: &[Diagnostic], batch: &Batch) -> i32 {
-    match all_diags(config_diags, batch).map(|d| d.severity).max() {
-        Some(Severity::Error) => 2,
-        Some(Severity::Warning) => 1,
-        _ => 0,
-    }
+    let all = config_diags
+        .iter()
+        .chain(batch.batch_diagnostics.iter())
+        .chain(batch.files.iter().flat_map(|f| f.diagnostics.iter()));
+    severity_exit(all.map(|d| d.severity).max())
 }
 
 /// Prints a planned [`Batch`] in dry-run's human format (spec 5.5): per file

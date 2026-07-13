@@ -1,7 +1,5 @@
 use assert_cmd::Command;
 
-mod support;
-
 fn muxsmith() -> Command {
     Command::cargo_bin("muxsmith").unwrap()
 }

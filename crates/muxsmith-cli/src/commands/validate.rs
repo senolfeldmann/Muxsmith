@@ -5,8 +5,10 @@
 use std::path::Path;
 
 use muxsmith_core::profile::{lint, load, validate};
+use muxsmith_core::report::json::rendered_diags;
 use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
 
+use crate::commands::{severity_exit, severity_sorted};
 use crate::i18n::Renderer;
 
 /// Runs `muxsmith validate` (spec 8.1): loads and statically validates the
@@ -15,23 +17,14 @@ use crate::i18n::Renderer;
 /// diagnostic is a warning, 2 worst is an error).
 pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
     // Error-first, stable within a severity; both output modes share it.
-    let mut diagnostics = collect(profile_path);
-    diagnostics.sort_by_key(|d| std::cmp::Reverse(d.severity));
-    let exit = match worst_severity(&diagnostics) {
-        Some(Severity::Error) => 2,
-        Some(Severity::Warning) => 1,
-        _ => 0,
-    };
+    let diagnostics: Vec<Diagnostic> = severity_sorted(&collect(profile_path))
+        .into_iter()
+        .cloned()
+        .collect();
+    let exit = severity_exit(worst_severity(&diagnostics));
 
     if json {
-        let entries: Vec<serde_json::Value> = diagnostics
-            .iter()
-            .map(|d| {
-                let mut v = serde_json::to_value(d).unwrap();
-                v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
-                v
-            })
-            .collect();
+        let entries = rendered_diags(&diagnostics, renderer);
         println!("{}", serde_json::json!({ "diagnostics": entries }));
     } else if diagnostics.is_empty() {
         println!("{}", renderer.msg("validate-ok", &[]));

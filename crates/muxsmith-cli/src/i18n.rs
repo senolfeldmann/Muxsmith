@@ -43,11 +43,7 @@ impl Renderer {
     /// output instead of silently disappearing (CI's catalog-completeness
     /// guard, spec 10, is the other half of this contract).
     pub fn msg(&self, id: &str, args: &[(&str, &str)]) -> String {
-        let mut fargs = FluentArgs::new();
-        for (k, v) in args {
-            fargs.set(*k, *v);
-        }
-        self.render(id, fargs)
+        self.msg_with_counts(id, args, &[])
     }
 
     /// Renders one Fluent message like [`Self::msg`], but sets every

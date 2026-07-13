@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
+use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;
 use muxsmith_core::capability::runtime::LanguageIndex;
 use muxsmith_core::identify::{Identification, Identify, IdentifyError};
@@ -45,93 +45,57 @@ fn every_diag_code_has_a_catalog_message() {
 /// sibling set it -- is fixed and pinned by
 /// [`invalid_changes_language_diagnostic_renders_without_placeholder_leak`],
 /// which renders the real emitter-site diagnostic rather than a fixture.
-fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
-    let mut args = FluentArgs::new();
+fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
     match code {
-        DiagCode::UnsupportedProfileVersion => {
-            args.set("found", "2");
-            args.set("supported", "1");
-        }
-        DiagCode::ParseError => {
-            args.set("detail", "unexpected end of input");
-            args.set("at", "tracks[0].match");
-        }
-        DiagCode::NoTrackRules => {}
-        DiagCode::EmptyMatchExpression => {}
-        DiagCode::EmptyExtensions => {}
-        DiagCode::InvalidRegex => {
-            args.set("detail", "unclosed group");
-        }
-        DiagCode::UnknownProperty => {
-            args.set("property", "bogus_property");
-        }
-        DiagCode::RawProperty => {
-            args.set("property", "dolby_complexity_index");
-        }
-        DiagCode::RawOnKnownProperty => {
-            args.set("property", "language");
-        }
-        DiagCode::CodecKindExactOnly => {
-            args.set("condition", "substring");
-        }
-        DiagCode::InvalidPropertyValue => {
-            args.set("property", "language");
-            args.set("value", "xx-not-a-code");
-            args.set("allowed", "a valid ISO 639/BCP-47 language code");
-        }
-        DiagCode::EmptyMatchList => {}
-        DiagCode::NotStringProperty => {
-            args.set("property", "channels");
-            args.set("actual_type", "integer");
-            args.set("condition", "substring");
-        }
-        DiagCode::ValueTypeMismatch => {
-            args.set("property", "default");
-            args.set("found", "string");
-            args.set("expected", "boolean");
-        }
-        DiagCode::UnknownSettableProperty => {
-            args.set("property", "bogus_settable");
-        }
-        DiagCode::InvalidKeyword => {
-            args.set("found", "bogus");
-            args.set("allowed", "primary");
-        }
-        DiagCode::LocatorConflict => {}
-        DiagCode::InvalidTemplate => {
-            args.set("kind", "unclosed-brace");
-            args.set("pos", "12");
-        }
-        DiagCode::UnknownTemplateField => {
-            args.set("field", "bogus_field");
-            args.set("allowed", "match, g1, source_stem");
-        }
-        DiagCode::UnknownTemplateFilter => {
-            args.set("name", "bogus_filter");
-        }
-        DiagCode::PathSeparatorInTemplate => {}
-        DiagCode::AttachmentRuleShape => {
-            args.set("found", "0");
-        }
-        DiagCode::ProvableOverlap => {
-            args.set("rule_a", "tracks[0]");
-            args.set("rule_b", "tracks[1]");
-        }
-        DiagCode::AmbiguousRule => {
-            args.set("count", "2");
-        }
+        DiagCode::UnsupportedProfileVersion => vec![("found", "2"), ("supported", "1")],
+        DiagCode::ParseError => vec![
+            ("detail", "unexpected end of input"),
+            ("at", "tracks[0].match"),
+        ],
+        DiagCode::NoTrackRules => vec![],
+        DiagCode::EmptyMatchExpression => vec![],
+        DiagCode::EmptyExtensions => vec![],
+        DiagCode::InvalidRegex => vec![("detail", "unclosed group")],
+        DiagCode::UnknownProperty => vec![("property", "bogus_property")],
+        DiagCode::RawProperty => vec![("property", "dolby_complexity_index")],
+        DiagCode::RawOnKnownProperty => vec![("property", "language")],
+        DiagCode::CodecKindExactOnly => vec![("condition", "substring")],
+        DiagCode::InvalidPropertyValue => vec![
+            ("property", "language"),
+            ("value", "xx-not-a-code"),
+            ("allowed", "a valid ISO 639/BCP-47 language code"),
+        ],
+        DiagCode::EmptyMatchList => vec![],
+        DiagCode::NotStringProperty => vec![
+            ("property", "channels"),
+            ("actual_type", "integer"),
+            ("condition", "substring"),
+        ],
+        DiagCode::ValueTypeMismatch => vec![
+            ("property", "default"),
+            ("found", "string"),
+            ("expected", "boolean"),
+        ],
+        DiagCode::UnknownSettableProperty => vec![("property", "bogus_settable")],
+        DiagCode::InvalidKeyword => vec![("found", "bogus"), ("allowed", "primary")],
+        DiagCode::LocatorConflict => vec![],
+        DiagCode::InvalidTemplate => vec![("kind", "unclosed-brace"), ("pos", "12")],
+        DiagCode::UnknownTemplateField => vec![
+            ("field", "bogus_field"),
+            ("allowed", "match, g1, source_stem"),
+        ],
+        DiagCode::UnknownTemplateFilter => vec![("name", "bogus_filter")],
+        DiagCode::PathSeparatorInTemplate => vec![],
+        DiagCode::AttachmentRuleShape => vec![("found", "0")],
+        DiagCode::ProvableOverlap => vec![("rule_a", "tracks[0]"), ("rule_b", "tracks[1]")],
+        DiagCode::AmbiguousRule => vec![("count", "2")],
         DiagCode::OverlappingRules => {
-            args.set("rules", "tracks[0], tracks[1], tracks[2]");
-            args.set("track", "3");
+            vec![("rules", "tracks[0], tracks[1], tracks[2]"), ("track", "3")]
         }
-        DiagCode::MissingTrack => {}
-        DiagCode::MissingExternal => {}
-        DiagCode::AmbiguousExternal => {
-            args.set("count", "2");
-        }
-        DiagCode::UnidentifiableSource => {
-            args.set("detail", "mkvmerge exited with status 2");
-        }
+        DiagCode::MissingTrack => vec![],
+        DiagCode::MissingExternal => vec![],
+        DiagCode::AmbiguousExternal => vec![("count", "2")],
+        DiagCode::UnidentifiableSource => vec![("detail", "mkvmerge exited with status 2")],
         // `unsupported-source`'s message selects on `kind` (planner.rs
         // `resolve_file`): the `*[primary]` default branch (kind other than
         // "donor") needs no further params, the `[donor]` branch also
@@ -139,51 +103,28 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
         // so it is the one exercised here (same single-fixture-per-code
         // limitation the doc comment above calls out for
         // `InvalidPropertyValue`).
-        DiagCode::UnsupportedSource => {
-            args.set("kind", "donor");
-            args.set("donor", "/in/movie.donor.srt");
-        }
-        DiagCode::EmptyPlan => {}
-        DiagCode::OutputCollision => {
-            args.set("path", "/out/movie.mkv");
-        }
-        DiagCode::PathSeparatorInRenderedName => {
-            args.set("name", "sub/dir");
-        }
-        DiagCode::EmptyRenderedName => {
-            args.set("name", "");
-        }
-        DiagCode::SourceOverwrite => {
-            args.set("path", "/in/movie.mkv");
-        }
-        DiagCode::DuplicateIdentifier => {
-            args.set("identifier", "movie");
-            args.set("file_a", "/in/movie.1080p.mkv");
-            args.set("file_b", "/in/movie.720p.mkv");
-        }
-        DiagCode::DonorIsPrimary => {
-            args.set("donor", "/in/movie.donor.mkv");
-        }
-        DiagCode::IgnoredFile => {}
-        DiagCode::MultipleIdentifierMatches => {
-            args.set("name", "movie.1080p.1080p.mkv");
-        }
-        DiagCode::UnknownPropertySkew => {
-            args.set("property", "new_prop");
-            args.set("found_version", "21");
-            args.set("pinned", "20");
-        }
-        DiagCode::SchemaDrift => {
-            args.set("found_version", "21");
-            args.set("pinned", "20");
-        }
-        DiagCode::UnknownExtension => {
-            args.set("extension", "avi");
-            args.set("known", "mkv, mp4, ac3");
-        }
-        DiagCode::SuggestionsCapped => {
-            args.set("dropped", "2");
-        }
+        DiagCode::UnsupportedSource => vec![("kind", "donor"), ("donor", "/in/movie.donor.srt")],
+        DiagCode::EmptyPlan => vec![],
+        DiagCode::OutputCollision => vec![("path", "/out/movie.mkv")],
+        DiagCode::PathSeparatorInRenderedName => vec![("name", "sub/dir")],
+        DiagCode::EmptyRenderedName => vec![("name", "")],
+        DiagCode::SourceOverwrite => vec![("path", "/in/movie.mkv")],
+        DiagCode::DuplicateIdentifier => vec![
+            ("identifier", "movie"),
+            ("file_a", "/in/movie.1080p.mkv"),
+            ("file_b", "/in/movie.720p.mkv"),
+        ],
+        DiagCode::DonorIsPrimary => vec![("donor", "/in/movie.donor.mkv")],
+        DiagCode::IgnoredFile => vec![],
+        DiagCode::MultipleIdentifierMatches => vec![("name", "movie.1080p.1080p.mkv")],
+        DiagCode::UnknownPropertySkew => vec![
+            ("property", "new_prop"),
+            ("found_version", "21"),
+            ("pinned", "20"),
+        ],
+        DiagCode::SchemaDrift => vec![("found_version", "21"), ("pinned", "20")],
+        DiagCode::UnknownExtension => vec![("extension", "avi"), ("known", "mkv, mp4, ac3")],
+        DiagCode::SuggestionsCapped => vec![("dropped", "2")],
         // `suggestion-partition`'s message selects on `kind` (planner.rs
         // `partition_for_rule`): the `*[group]` default branch (kind other
         // than "overflow") uses count/fix/files, the `[overflow]` branch
@@ -192,15 +133,14 @@ fn fixture_args(code: DiagCode) -> FluentArgs<'static> {
         // branch's `dropped` param is not proven to match the template by
         // this test (same single-fixture-per-code limitation the doc
         // comment above already calls out for `InvalidPropertyValue`).
-        DiagCode::SuggestionPartition => {
-            args.set("kind", "group");
-            args.set("count", "2");
-            args.set("fix", "tracks[0].match.exact.codec_id: A_AC3");
-            args.set("files", "/in/a.mkv, /in/b.mkv");
-        }
-        DiagCode::WorkerPanicked => {}
+        DiagCode::SuggestionPartition => vec![
+            ("kind", "group"),
+            ("count", "2"),
+            ("fix", "tracks[0].match.exact.codec_id: A_AC3"),
+            ("files", "/in/a.mkv, /in/b.mkv"),
+        ],
+        DiagCode::WorkerPanicked => vec![],
     }
-    args
 }
 
 /// Every DiagCode message, rendered with the params its emitter actually
@@ -264,105 +204,79 @@ const ALLOWLISTED_CLI_KEYS: &[&str] = &[
 /// error, since `&str` cannot be matched exhaustively): an allowlist entry
 /// with no arm here panics loudly instead of silently rendering with an
 /// empty arg list.
-fn allowlisted_cli_key_args(key: &str) -> FluentArgs<'static> {
-    let mut args = FluentArgs::new();
+fn allowlisted_cli_key_args(key: &str) -> Vec<(&'static str, &'static str)> {
     match key {
         "validate-ok"
         | "mkvmerge-not-found"
         | "mkvmerge-query-failed"
-        | "run-joblog-unavailable" => {}
-        "validate-summary" => {
-            args.set("errors", "1");
-            args.set("warnings", "2");
-            args.set("infos", "0");
-        }
-        "diagnostic-line" => {
-            args.set("severity", "error");
-            args.set("config_path", "tracks[0].match");
-            args.set("message", "example message");
-        }
-        "diagnostic-line-file" => {
-            args.set("severity", "warning");
-            args.set("file", "/in/movie.mkv");
-            args.set("config_path", "tracks[0].match");
-            args.set("message", "example message");
-        }
-        "identify-failed" | "identify-not-media" => {
-            args.set("file", "/in/movie.mkv");
-        }
-        "identify-track-line" => {
-            args.set("id", "0");
-            args.set("type", "audio");
-            args.set("codec", "AC-3");
-            args.set("language", "eng");
-        }
-        "dry-run-file" => {
-            args.set("file", "/in/movie.mkv");
-            args.set("id", "movie");
-        }
-        "dry-run-assignment" => {
-            args.set("rule", "0");
-            args.set("track", "1");
-        }
-        "dry-run-output" => {
-            args.set("path", "/out/movie.mkv");
-        }
-        "dry-run-suggestion" => {
-            args.set("config_path", "tracks[0].match");
-        }
-        "dry-run-summary" => {
-            args.set("count", "3");
-            args.set("root", "/in");
-            args.set("extensions", "mkv, mp4");
-        }
+        | "run-joblog-unavailable" => vec![],
+        "validate-summary" => vec![("errors", "1"), ("warnings", "2"), ("infos", "0")],
+        "diagnostic-line" => vec![
+            ("severity", "error"),
+            ("config_path", "tracks[0].match"),
+            ("message", "example message"),
+        ],
+        "diagnostic-line-file" => vec![
+            ("severity", "warning"),
+            ("file", "/in/movie.mkv"),
+            ("config_path", "tracks[0].match"),
+            ("message", "example message"),
+        ],
+        "identify-failed" | "identify-not-media" => vec![("file", "/in/movie.mkv")],
+        "identify-track-line" => vec![
+            ("id", "0"),
+            ("type", "audio"),
+            ("codec", "AC-3"),
+            ("language", "eng"),
+        ],
+        "dry-run-file" => vec![("file", "/in/movie.mkv"), ("id", "movie")],
+        "dry-run-assignment" => vec![("rule", "0"), ("track", "1")],
+        "dry-run-output" => vec![("path", "/out/movie.mkv")],
+        "dry-run-suggestion" => vec![("config_path", "tracks[0].match")],
+        "dry-run-summary" => vec![("count", "3"), ("root", "/in"), ("extensions", "mkv, mp4")],
         "run-job-start" | "run-job-cancelled" => {
-            args.set("index", "1");
-            args.set("total", "3");
-            args.set("output", "/out/movie.mkv");
+            vec![("index", "1"), ("total", "3"), ("output", "/out/movie.mkv")]
         }
-        "run-job-progress" => {
-            args.set("index", "1");
-            args.set("total", "3");
-            args.set("output", "/out/movie.mkv");
-            args.set("percent", "42");
-        }
-        "run-job-notice" => {
-            args.set("index", "1");
-            args.set("total", "3");
-            args.set("output", "/out/movie.mkv");
-            args.set("text", "muxing");
-        }
-        "run-job-ok" => {
-            args.set("index", "1");
-            args.set("total", "3");
-            args.set("output", "/out/movie.mkv");
-            args.set("seconds", "12.3");
-        }
-        "run-job-warning" => {
-            args.set("index", "1");
-            args.set("total", "3");
-            args.set("output", "/out/movie.mkv");
-            args.set("count", "2");
-            args.set("seconds", "12.3");
-        }
-        "run-job-failed" => {
-            args.set("index", "1");
-            args.set("total", "3");
-            args.set("output", "/out/movie.mkv");
-            args.set("code", "1");
-        }
-        "run-summary" => {
-            args.set("ok", "2");
-            args.set("warning", "1");
-            args.set("failed", "0");
-            args.set("cancelled", "0");
-        }
-        "run-joblog-written" | "run-joblog-incomplete" => {
-            args.set("dir", "/data/logs");
-        }
+        "run-job-progress" => vec![
+            ("index", "1"),
+            ("total", "3"),
+            ("output", "/out/movie.mkv"),
+            ("percent", "42"),
+        ],
+        "run-job-notice" => vec![
+            ("index", "1"),
+            ("total", "3"),
+            ("output", "/out/movie.mkv"),
+            ("text", "muxing"),
+        ],
+        "run-job-ok" => vec![
+            ("index", "1"),
+            ("total", "3"),
+            ("output", "/out/movie.mkv"),
+            ("seconds", "12.3"),
+        ],
+        "run-job-warning" => vec![
+            ("index", "1"),
+            ("total", "3"),
+            ("output", "/out/movie.mkv"),
+            ("count", "2"),
+            ("seconds", "12.3"),
+        ],
+        "run-job-failed" => vec![
+            ("index", "1"),
+            ("total", "3"),
+            ("output", "/out/movie.mkv"),
+            ("code", "1"),
+        ],
+        "run-summary" => vec![
+            ("ok", "2"),
+            ("warning", "1"),
+            ("failed", "0"),
+            ("cancelled", "0"),
+        ],
+        "run-joblog-written" | "run-joblog-incomplete" => vec![("dir", "/data/logs")],
         other => panic!("allowlisted_cli_key_args: no fixture for {other:?}"),
     }
-    args
 }
 
 /// Enumerates every message key in `locales/en/cli.ftl` (real Fluent
@@ -435,26 +349,13 @@ fn every_cli_ftl_key_is_a_diag_code_or_allowlisted() {
 /// `"id: rendered"` for any output that still contains a raw `{$`
 /// placeholder marker (Fluent's syntax for an unresolved reference).
 fn render_and_find_leaks<'a>(
-    entries: impl Iterator<Item = (&'a str, FluentArgs<'a>)>,
+    entries: impl Iterator<Item = (&'a str, Vec<(&'a str, &'a str)>)>,
     renderer: &muxsmith_cli::i18n::Renderer,
 ) -> Vec<String> {
     entries
         .filter_map(|(id, args)| {
-            let pairs = string_pairs(&args);
-            let rendered = renderer.msg(id, &pairs);
+            let rendered = renderer.msg(id, &args);
             rendered.contains("{$").then(|| format!("{id}: {rendered}"))
-        })
-        .collect()
-}
-
-/// Converts a [`FluentArgs`] built entirely from string values (true of
-/// every fixture in this file) into the `&[(&str, &str)]` shape
-/// [`muxsmith_cli::i18n::Renderer::msg`] takes.
-fn string_pairs<'a>(args: &'a FluentArgs<'a>) -> Vec<(&'a str, &'a str)> {
-    args.iter()
-        .map(|(k, v)| match v {
-            FluentValue::String(s) => (k, s.as_ref()),
-            other => panic!("fixture value for {k:?} is not a string: {other:?}"),
         })
         .collect()
 }
