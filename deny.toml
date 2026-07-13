@@ -3,7 +3,6 @@
 # policy, and multiple-version detection for the whole workspace.
 
 [advisories]
-version = 2
 yanked = "deny"
 # All entries below are transitive, from Tauri 2's Linux windowing stack
 # (Task 4 scaffold) - not dependencies we chose directly. Re-run
@@ -46,7 +45,6 @@ ignore = [
 ]
 
 [licenses]
-version = 2
 # MIT project (spec 12); allow exactly the permissive licenses our dependency
 # tree actually uses today. Extend deliberately when a new dependency needs
 # one, never with a blanket allow. MPL-2.0 (cssparser, via Tauri's webview
