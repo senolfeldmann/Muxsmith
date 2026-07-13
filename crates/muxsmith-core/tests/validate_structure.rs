@@ -120,10 +120,7 @@ fn unknown_template_filter_carries_name() {
 
 #[test]
 fn unknown_keywords_are_flagged() {
-    for (snippet, _section) in [
-        ("chapters: discard\n", "chapters"),
-        ("title: wipe\n", "title"),
-    ] {
+    for snippet in ["chapters: discard\n", "title: wipe\n"] {
         let y = BASE.to_string() + snippet;
         assert!(
             codes(&y).contains(&DiagCode::InvalidKeyword),

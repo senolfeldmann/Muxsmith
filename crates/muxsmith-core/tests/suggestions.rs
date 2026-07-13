@@ -6,7 +6,7 @@ use muxsmith_core::identify::Identification;
 use muxsmith_core::planner::{Batch, RunInputs, StructuredEdit, plan_batch};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
-use muxsmith_core::report::DiagCode;
+use muxsmith_core::report::{DiagCode, Diagnostic, Severity};
 
 mod support;
 use support::{FakeIdent, lang};
@@ -21,7 +21,7 @@ tracks:
     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
 "#;
 
-fn plan(profile_yaml: &str) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
+fn plan(profile_yaml: &str) -> (Batch, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
@@ -191,16 +191,6 @@ const GUARDED_FOO: &str = r#"
 }
 "#;
 
-fn no_clobber_batch() -> (Batch, tempfile::TempDir) {
-    plan_multi(
-        P_NO_CLOBBER,
-        &[
-            ("Show.S01E01.mkv", AMBIGUOUS_FOO),
-            ("Show.S01E02.mkv", GUARDED_FOO),
-        ],
-    )
-}
-
 // Rebuild the edited profile YAML the same way a literal/naive splice of the
 // structured edit would (what a buggy overwrite-based with_rule_match, or a
 // GUI/CLI apply mirroring it, would produce): AddExact/AddNotExact/
@@ -230,7 +220,11 @@ fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
 
 #[test]
 fn with_rule_match_never_widens_an_existing_substring_constraint() {
-    let (batch, _dir) = no_clobber_batch();
+    let files = [
+        ("Show.S01E01.mkv", AMBIGUOUS_FOO),
+        ("Show.S01E02.mkv", GUARDED_FOO),
+    ];
+    let (batch, _dir) = plan_multi(P_NO_CLOBBER, &files);
     assert!(
         batch.files[0]
             .diagnostics
@@ -263,13 +257,7 @@ fn with_rule_match_never_widens_an_existing_substring_constraint() {
     // decoy (id 2) -- the behavioral form of "never widens."
     for s in &batch.suggestions {
         let edited = apply_edit_to_no_clobber_rule(&s.edit);
-        let (re, _dir) = plan_multi(
-            &edited,
-            &[
-                ("Show.S01E01.mkv", AMBIGUOUS_FOO),
-                ("Show.S01E02.mkv", GUARDED_FOO),
-            ],
-        );
+        let (re, _dir) = plan_multi(&edited, &files);
         assert!(
             !re.files[0]
                 .diagnostics
@@ -588,14 +576,6 @@ tracks:
     - match: { exact: { type: subtitles } }
 "#;
 
-fn partition_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
-    batch
-        .batch_diagnostics
-        .iter()
-        .filter(|d| d.code == DiagCode::SuggestionPartition)
-        .collect()
-}
-
 #[test]
 fn no_single_fix_produces_a_two_group_partition() {
     let (batch, _dir) = plan_multi(
@@ -624,9 +604,13 @@ fn no_single_fix_produces_a_two_group_partition() {
             .collect::<Vec<_>>()
     );
 
-    let groups: Vec<_> = partition_diags(&batch)
-        .into_iter()
-        .filter(|d| d.params.get("kind").map(String::as_str) == Some("group"))
+    let groups: Vec<_> = batch
+        .batch_diagnostics
+        .iter()
+        .filter(|d| {
+            d.code == DiagCode::SuggestionPartition
+                && d.params.get("kind").map(String::as_str) == Some("group")
+        })
         .collect();
     assert_eq!(
         groups.len(),
@@ -634,8 +618,11 @@ fn no_single_fix_produces_a_two_group_partition() {
         "expected a two-group partition, got {:?}",
         groups.iter().map(|d| &d.params).collect::<Vec<_>>()
     );
-    assert!(groups.iter().all(|d| d.config_path == "tracks[0].match"
-        && d.severity == muxsmith_core::report::Severity::Info),);
+    assert!(
+        groups
+            .iter()
+            .all(|d| d.config_path == "tracks[0].match" && d.severity == Severity::Info),
+    );
 
     // One group is the forced_track file, the other the language file, and the
     // files are partitioned accordingly.
@@ -664,7 +651,7 @@ fn no_single_fix_produces_a_two_group_partition() {
 // TC-A..TC-D are the D33 acceptance cases.
 // ===========================================================================
 
-fn overlap_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
+fn overlap_diags(batch: &Batch) -> Vec<&Diagnostic> {
     batch
         .files
         .iter()

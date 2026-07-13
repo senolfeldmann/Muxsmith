@@ -118,68 +118,66 @@ fn reference_example_end_to_end() {
     assert_ne!(donor_disp, primary_disp);
     assert!(donor_disp.ends_with("Show.S01E01.srt"));
 
-    let expected: Vec<String> = [
-        "--output",
-        &output_disp,
-        "--title",
-        "",
-        // --- primary group (spec 4.9 item 2, D10) ---
-        "--no-global-tags", // tags.global: drop
-        "--video-tracks",
-        "0",
-        "--audio-tracks",
-        "1,2",
-        "--subtitle-tracks",
-        "3,4,5,6,7,8",
-        "--no-buttons",
-        "--default-track-flag",
-        "1:1", // audio en: changes.default_track
-        "--default-track-flag",
-        "3:1", // subtitle en forced: changes (default_track < track_name)
-        "--track-name",
-        "3:English forced",
-        "--track-name",
-        "4:English", // subtitle en plain
-        "--hearing-impaired-flag",
-        "5:1", // subtitle en SDH (flag_hearing_impaired < track_name)
-        "--track-name",
-        "5:English SDH",
-        "--default-track-flag",
-        "6:1", // subtitle de forced
-        "--track-name",
-        "6:German forced",
-        "--track-name",
-        "7:German", // subtitle de plain
-        "--hearing-impaired-flag",
-        "8:1", // subtitle de SDH
-        "--track-name",
-        "8:German SDH",
-        "(",
-        &primary_disp,
-        ")",
-        // --- donor group: external Turkish subtitle ---
-        "--no-global-tags",
-        "--no-attachments", // donor attachments always dropped (D10)
-        "--no-video",
-        "--no-audio",
-        "--subtitle-tracks",
-        "0",
-        "--no-buttons",
-        "--language",
-        "0:tr", // changes (language < track_name)
-        "--track-name",
-        "0:Türkçe",
-        "(",
-        &donor_disp,
-        ")",
-        "--track-order",
-        "0:0,0:1,0:2,0:3,0:4,0:5,0:6,0:7,0:8,1:0",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect();
-
-    assert_eq!(command(plan), expected);
+    assert_eq!(
+        command(plan),
+        [
+            "--output",
+            &output_disp,
+            "--title",
+            "",
+            // --- primary group (spec 4.9 item 2, D10) ---
+            "--no-global-tags", // tags.global: drop
+            "--video-tracks",
+            "0",
+            "--audio-tracks",
+            "1,2",
+            "--subtitle-tracks",
+            "3,4,5,6,7,8",
+            "--no-buttons",
+            "--default-track-flag",
+            "1:1", // audio en: changes.default_track
+            "--default-track-flag",
+            "3:1", // subtitle en forced: changes (default_track < track_name)
+            "--track-name",
+            "3:English forced",
+            "--track-name",
+            "4:English", // subtitle en plain
+            "--hearing-impaired-flag",
+            "5:1", // subtitle en SDH (flag_hearing_impaired < track_name)
+            "--track-name",
+            "5:English SDH",
+            "--default-track-flag",
+            "6:1", // subtitle de forced
+            "--track-name",
+            "6:German forced",
+            "--track-name",
+            "7:German", // subtitle de plain
+            "--hearing-impaired-flag",
+            "8:1", // subtitle de SDH
+            "--track-name",
+            "8:German SDH",
+            "(",
+            &primary_disp,
+            ")",
+            // --- donor group: external Turkish subtitle ---
+            "--no-global-tags",
+            "--no-attachments", // donor attachments always dropped (D10)
+            "--no-video",
+            "--no-audio",
+            "--subtitle-tracks",
+            "0",
+            "--no-buttons",
+            "--language",
+            "0:tr", // changes (language < track_name)
+            "--track-name",
+            "0:Türkçe",
+            "(",
+            &donor_disp,
+            ")",
+            "--track-order",
+            "0:0,0:1,0:2,0:3,0:4,0:5,0:6,0:7,0:8,1:0",
+        ]
+    );
 }
 
 // ---------------------------------------------------------------------------

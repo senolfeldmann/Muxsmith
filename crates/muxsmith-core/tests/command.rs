@@ -47,7 +47,7 @@ fn global_and_single_video_group() {
     };
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--title",
@@ -63,9 +63,6 @@ fn global_and_single_video_group() {
             "--track-order",
             "0:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -397,7 +394,7 @@ fn per_track_properties_and_multi_group() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--video-tracks",
@@ -429,9 +426,6 @@ fn per_track_properties_and_multi_group() {
             "--track-order",
             "0:0,0:1,1:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -466,7 +460,7 @@ fn boolean_and_string_value_encoding() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--video-tracks",
@@ -484,9 +478,6 @@ fn boolean_and_string_value_encoding() {
             "--track-order",
             "0:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -564,7 +555,7 @@ fn attachments_subset_on_primary_no_attachments_on_donor() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--attachments",
@@ -589,9 +580,6 @@ fn attachments_subset_on_primary_no_attachments_on_donor() {
             "--track-order",
             "0:0,1:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -604,7 +592,7 @@ fn attachments_drop_all_on_primary() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--no-attachments",
@@ -619,9 +607,6 @@ fn attachments_drop_all_on_primary() {
             "--track-order",
             "0:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -634,7 +619,7 @@ fn attachments_keep_all_emits_no_flag_on_primary() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--video-tracks",
@@ -648,9 +633,6 @@ fn attachments_keep_all_emits_no_flag_on_primary() {
             "--track-order",
             "0:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -663,7 +645,7 @@ fn add_files_emit_global_attach_file() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--attach-file",
@@ -679,9 +661,6 @@ fn add_files_emit_global_attach_file() {
             "--track-order",
             "0:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -701,7 +680,7 @@ fn chapters_drop_emits_no_chapters_on_every_group_and_no_global_flag() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--no-chapters",
@@ -726,9 +705,6 @@ fn chapters_drop_emits_no_chapters_on_every_group_and_no_global_flag() {
             "--track-order",
             "0:0,1:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -748,7 +724,7 @@ fn chapters_external_emits_global_chapters_and_no_chapters_on_every_group() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--chapters",
@@ -775,9 +751,6 @@ fn chapters_external_emits_global_chapters_and_no_chapters_on_every_group() {
             "--track-order",
             "0:0,1:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }
 
@@ -797,7 +770,7 @@ fn tags_dropped_emit_flags_on_every_group() {
 
     assert_eq!(
         muxsmith_core::command::command(&plan),
-        vec![
+        [
             "--output",
             "/out/e.mkv",
             "--no-global-tags",
@@ -824,8 +797,5 @@ fn tags_dropped_emit_flags_on_every_group() {
             "--track-order",
             "0:0,1:0",
         ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>()
     );
 }

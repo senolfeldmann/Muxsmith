@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use muxsmith_core::identify::{Identification, Identify, IdentifyError};
-use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
+use muxsmith_core::planner::{
+    AppliedChange, AttachmentPlan, Batch, ChapterSource, FileReport, PrimaryAttachments, RunInputs,
+    TagFlags, TitleAction, plan_batch,
+};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::Scalar;
 use muxsmith_core::profile::model::CollisionPolicy;
-use muxsmith_core::report::{DiagCode, Severity};
+use muxsmith_core::report::{DiagCode, Diagnostic, Severity};
 
 mod support;
 use support::{FakeIdent, lang};
@@ -17,11 +20,7 @@ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
 // brief's attachment-rule test cases use.
 const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
 
-fn plan_one(
-    profile_yaml: &str,
-    file_name: &str,
-    ident_json: &str,
-) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
+fn plan_one(profile_yaml: &str, file_name: &str, ident_json: &str) -> (Batch, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join(file_name), b"x").unwrap();
     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
@@ -71,20 +70,20 @@ fn plan_and_assignment_carry_resolution_field_defaults() {
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments,
-        muxsmith_core::planner::AttachmentPlan {
-            primary: muxsmith_core::planner::PrimaryAttachments::KeepAll,
+        AttachmentPlan {
+            primary: PrimaryAttachments::KeepAll,
             add_files: vec![],
         }
     );
-    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
+    assert_eq!(plan.chapters, ChapterSource::Keep);
     assert_eq!(
         plan.tags,
-        muxsmith_core::planner::TagFlags {
+        TagFlags {
             global_keep: true,
             track_keep: true,
         }
     );
-    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
+    assert_eq!(plan.title, TitleAction::Keep);
     assert_eq!(plan.assignments[0].track_kind.as_deref(), Some("video"));
     assert!(plan.assignments[0].changes.is_empty());
 }
@@ -134,7 +133,7 @@ tracks:
     - match: { exact: { raw:new_prop: foo } }
 "#;
 
-fn raw_skew_diag(fr: &muxsmith_core::planner::FileReport) -> &muxsmith_core::report::Diagnostic {
+fn raw_skew_diag(fr: &FileReport) -> &Diagnostic {
     fr.diagnostics
         .iter()
         .find(|d| d.code == DiagCode::UnknownPropertySkew)
@@ -616,7 +615,7 @@ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
         .find(|d| d.code == DiagCode::UnidentifiableSource)
         .unwrap_or_else(|| panic!("expected UnidentifiableSource, got: {:?}", fr.diagnostics));
     assert!(
-        !d.params.get("detail").unwrap_or(&String::new()).is_empty(),
+        d.params.get("detail").is_some_and(|s| !s.is_empty()),
         "expected a non-empty detail param, got: {d:?}"
     );
     assert!(
@@ -1548,7 +1547,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
+    assert_eq!(plan.title, TitleAction::Clear);
 }
 
 // Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
@@ -1567,7 +1566,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
+    assert_eq!(plan.title, TitleAction::Keep);
 }
 
 // Task 6: a title template renders via the same literal-mode engine as the
@@ -1586,10 +1585,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(
-        plan.title,
-        muxsmith_core::planner::TitleAction::Set("Show S03".into())
-    );
+    assert_eq!(plan.title, TitleAction::Set("Show S03".into()));
 }
 
 // Task 6: title has no path-separator/empty-name invariants (unlike
@@ -1609,10 +1605,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(
-        plan.title,
-        muxsmith_core::planner::TitleAction::Set(String::new())
-    );
+    assert_eq!(plan.title, TitleAction::Set(String::new()));
 }
 
 // Task 6: `source_stem` is available to a title template, exactly as it is
@@ -1632,10 +1625,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(
-        plan.title,
-        muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
-    );
+    assert_eq!(plan.title, TitleAction::Set("Show.S01E01".into()));
 }
 
 // Task 6: `tags: { global: drop, track: keep }` resolves to the matching
@@ -1656,7 +1646,7 @@ tracks:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.tags,
-        muxsmith_core::planner::TagFlags {
+        TagFlags {
             global_keep: false,
             track_keep: true,
         }
@@ -2040,7 +2030,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Drop);
+    assert_eq!(plan.chapters, ChapterSource::Drop);
 }
 
 // Task 7: `chapters: keep` resolves to `ChapterSource::Keep` (also the
@@ -2060,7 +2050,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
+    assert_eq!(plan.chapters, ChapterSource::Keep);
 }
 
 // Task 7: an external chapters locator with exactly one matching donor
@@ -2099,10 +2089,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(
-        plan.chapters,
-        muxsmith_core::planner::ChapterSource::External(expected)
-    );
+    assert_eq!(plan.chapters, ChapterSource::External(expected));
 }
 
 // Task 7: zero matches for an external chapters locator is a hard error
@@ -2209,7 +2196,7 @@ attachments:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments.primary,
-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1])
+        PrimaryAttachments::Subset(vec![1])
     );
 }
 
@@ -2230,10 +2217,7 @@ attachments:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(
-        plan.attachments.primary,
-        muxsmith_core::planner::PrimaryAttachments::KeepAll
-    );
+    assert_eq!(plan.attachments.primary, PrimaryAttachments::KeepAll);
 }
 
 // Task 8: no rules at all, `unmatched: drop` -> every attachment falls
@@ -2253,10 +2237,7 @@ attachments:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(
-        plan.attachments.primary,
-        muxsmith_core::planner::PrimaryAttachments::DropAll
-    );
+    assert_eq!(plan.attachments.primary, PrimaryAttachments::DropAll);
 }
 
 // Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id 3);
@@ -2282,7 +2263,7 @@ attachments:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments.primary,
-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1, 2])
+        PrimaryAttachments::Subset(vec![1, 2])
     );
 }
 
@@ -2476,4 +2457,71 @@ tracks:
         "diags: {:?}",
         fr.diagnostics
     );
+}
+
+// Boundary pin (seed T6-m1): attachments and chapters are not output
+// TRACKS (spec 5.2), so a plan whose only non-track resolutions succeed
+// still gets `EmptyPlan` -- `detect_empty_plans` only ever inspects
+// `plan.assignments`/`primary_track_ids` (see its doc comment), so a
+// resolved attachment donor or the (default, always-Keep) chapters
+// disposition does not suppress the warning. Same zero-rule-match profile
+// as the two neighboring tests, plus an on-disk `attachments.rules[0].add`
+// donor (fixture pattern per `source_overwrite_protects_attachment_donor_of_render_failed_file`
+// above), to confirm the donor genuinely resolves while the warning still
+// fires. This pins current, correct behavior against future widening; it
+// is not a bug fix.
+#[test]
+fn empty_plan_fires_when_only_attachments_and_chapters_resolve() {
+    let dir = tempfile::tempdir().unwrap();
+    let donors_dir = dir.path().join("donors");
+    std::fs::create_dir_all(&donors_dir).unwrap();
+    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+    std::fs::write(donors_dir.join("Font.ttf"), b"font").unwrap();
+
+    let p = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: audio, language: de } }
+      optional: true
+attachments:
+  rules:
+    - add: { path: 'donors', extensions: [ttf] }
+"#;
+    let profile = from_str(p, Format::Yaml).unwrap();
+    let run = RunInputs {
+        source: dir.path().to_path_buf(),
+        output: Some(dir.path().join("out")),
+        on_collision: None,
+    };
+    let mut by_name = HashMap::new();
+    by_name.insert(
+        "Show.S01E01.mkv".to_string(),
+        Identification::from_json(SERIES).unwrap(),
+    );
+    let mut ident = FakeIdent { by_name };
+    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+
+    let fr = &batch.files[0];
+    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+    let plan = fr.plan.as_ref().unwrap();
+    // Zero tracks resolved: the same shape as the sibling EmptyPlan tests.
+    assert_eq!(plan.assignments.len(), 1);
+    assert_eq!(plan.assignments[0].track_id, None);
+    // The attachment donor genuinely resolved (chapters stays the default
+    // `Keep`, which trivially "resolves" with no locator needed).
+    assert!(
+        !plan.attachments.add_files.is_empty(),
+        "expected the on-disk attachment donor to resolve, got: {plan:?}"
+    );
+    assert_eq!(plan.chapters, ChapterSource::Keep);
+
+    let empty_plan_warnings: Vec<_> = fr
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == DiagCode::EmptyPlan)
+        .collect();
+    assert_eq!(empty_plan_warnings.len(), 1, "diags: {:?}", fr.diagnostics);
+    assert_eq!(empty_plan_warnings[0].severity, Severity::Warning);
 }

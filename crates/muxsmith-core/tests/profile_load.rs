@@ -128,13 +128,8 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let p =
-        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
-            .expect("block-form tracks must parse");
-    assert_eq!(
-        p.tracks.unmatched,
-        muxsmith_core::profile::model::KeepDrop::Drop
-    );
+    let p = from_str(yaml, Format::Yaml).expect("block-form tracks must parse");
+    assert_eq!(p.tracks.unmatched, KeepDrop::Drop);
     assert_eq!(p.tracks.rules.len(), 1);
 }
 
@@ -148,11 +143,6 @@ tracks:
   rules:
     - match: { exact: { type: video } }
 "#;
-    let p =
-        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
-            .expect("keep must parse");
-    assert_eq!(
-        p.tracks.unmatched,
-        muxsmith_core::profile::model::KeepDrop::Keep
-    );
+    let p = from_str(yaml, Format::Yaml).expect("keep must parse");
+    assert_eq!(p.tracks.unmatched, KeepDrop::Keep);
 }
