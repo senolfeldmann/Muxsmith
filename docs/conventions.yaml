@@ -4,13 +4,13 @@
 #
 # Entry schema (canonical copy in software-dev-process doctrine section 7):
 #   id, kind (pattern|restraint|non-decision), tier (=2 here),
-#   source (user-decree|controller-adr|agent-emergent),
+#   source (human|agent-emergent),
 #   nature (product-scope|technical-code|process|operational),
 #   domain, statement, steelman (restraint), blocked_on (non-decision),
 #   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
 #   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
-# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: user-decree /
-# controller-adr promote at count 1 (authority); agent-emergent promotes at
+# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: human (decided/ratified
+# by a human) promotes at count 1 (authority); agent-emergent promotes at
 # count 3 (recurrence), except agent-emergent x product-scope which escalates
 # to the owner. count is always len(occurrences); an occurrence is a distinct
 # decision EVENT, not a distinct document of one event.
@@ -126,7 +126,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 10
+  count: 11
   occurrences:
     - {date: "2026-07-09", kind: violated-corrected, ref: "independent review bug K"}
     - {date: "2026-07-09", kind: violated-corrected, ref: "F5 fix (commits 0e141d1/6f475b3)"}
@@ -138,6 +138,7 @@ entries:
     - {date: "2026-07-08", kind: violated-corrected, ref: "journal 2026-07-08 final review + whole-branch-review-verdict.md (Important #1), round-2 confirmation; fix commit 3c24845"}
     - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + Task 6 (UnsupportedSource)"}
     - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + task-3-review-verdict.md"}
+    - {date: "2026-07-13", kind: reinforced, ref: "ADR D36 + commit 89f346b (structural claimants over display re-parse; plan-5.6 whole-branch verdict)"}
 - id: core-38-absent-bool-equals-false
   kind: pattern
   tier: 2
@@ -236,6 +237,7 @@ entries:
     - {date: "2026-07-09", kind: violated-corrected, ref: "fix plan F6"}
     - {date: "2026-07-09", kind: violated-corrected, ref: "independent review Reviewer 2 #10"}
     - {date: "2026-07-09", kind: violated-corrected, ref: "F6 review"}
+    - {date: "2026-07-13", kind: reinforced, ref: "with_claimants builder follows the precedent (commit 89f346b; plan-5.6 task-2 verdict house dimension)"}
 - id: core-48-extension-validation
   kind: pattern
   tier: 2
@@ -453,17 +455,35 @@ entries:
   source: human
   nature: technical-code
   domain: testing
-  statement: "Cross-file test helpers (FakeIdent, lang()) are consolidated into a shared tests/support/mod.rs subdirectory module - deliberately a submodule, not its own tests/*.rs binary, to avoid Cargo autodiscovery - and duplicating a helper within a crate is a defect. Flagged at 3x duplication in Plan 3, scheduled (D18), implemented byte-identical in Plan 4, codified in CONVENTIONS."
+  statement: "Cross-file test helpers (FakeIdent, lang()) are consolidated into a shared tests/support/mod.rs subdirectory module - deliberately a submodule, not its own tests/*.rs binary, to avoid Cargo autodiscovery - and duplicating a helper within a crate is a defect. Flagged at 3x duplication in Plan 3, scheduled (D18), implemented byte-identical in Plan 4, codified in CONVENTIONS. Scope: same-crate consolidation; the CROSS-crate counterpart (helper needed by another crate's tests) is core-90-doc-hidden-pub-test-access, not a support module."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "whole-branch-review-verdict.md (Plan 3, Minor 7) + task-12-review-verdict.md"}
     - {date: "2026-07-09", kind: decided, ref: "memo D18"}
     - {date: "2026-07-10", kind: reinforced, ref: "task-5-review-verdict.md"}
     - {date: "2026-07-12", kind: reinforced, ref: "CONVENTIONS.md Patterns (b38a46f); idiomacy finding run_cli.rs:L498"}
+    - {date: "2026-07-13", kind: reinforced, ref: "fake_mkvmerge_that_fails_queries hoisted into cli tests/support (commit 0e8d048; plan-5.6 whole-branch verdict), retiring the exact run_cli.rs:L498 duplication this entry names"}
+- id: core-90-doc-hidden-pub-test-access
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "An item needed by ANOTHER crate's tests (test instrumentation, helpers, splice functions) is made #[doc(hidden)] pub: visible cross-crate for integration tests (tests/*.rs compile as separate crates, so pub(crate) cannot work), hidden from rustdoc so the public API surface stays clean; workspace crates are publish=false, so the pub costs no API commitment. Same-crate consolidation stays testing-support-helpers. Formerly core-90-go-public-gates, whose original bundle also pulled the static 3-OS CI matrix forward (that half is history, see the occurrence refs)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 4
+  count: 4
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "commit 7a2bc15 (ConcurrencyTracker, spawn.rs)"}
+    - {date: "2026-07-10", kind: decided, ref: "journal Plan 5"}
+    - {date: "2026-07-13", kind: reinforced, ref: "with_rule_match + rule_index_of markers for prop_planner delegation (commit cc49337; plan-5.6 task-3 verdict named spawn.rs:257 as the uncited precedent)"}
+    - {date: "2026-07-13", kind: reinforced, ref: "MKVMERGE_SKIP_MARKER const in core lib.rs consumed by 3 crates' tests (commit 616778d; plan-5.6 task-9 verdict corrected the report's first-cross-crate-case claim against this entry)"}
 - id: testing-command-golden
   kind: pattern
   tier: 2

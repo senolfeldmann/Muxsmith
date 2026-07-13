@@ -4,13 +4,13 @@
 #
 # Entry schema (canonical copy in software-dev-process doctrine section 7):
 #   id, kind (pattern|restraint|non-decision), tier (=2 here),
-#   source (user-decree|controller-adr|agent-emergent),
+#   source (human|agent-emergent),
 #   nature (product-scope|technical-code|process|operational),
 #   domain, statement, steelman (restraint), blocked_on (non-decision),
 #   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
 #   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
-# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: user-decree /
-# controller-adr promote at count 1 (authority); agent-emergent promotes at
+# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: human (decided/ratified
+# by a human) promotes at count 1 (authority); agent-emergent promotes at
 # count 3 (recurrence), except agent-emergent x product-scope which escalates
 # to the owner. count is always len(occurrences); an occurrence is a distinct
 # decision EVENT, not a distinct document of one event.
@@ -130,11 +130,12 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-09", kind: reinforced, ref: "task-5-review-verdict.md + journal Task 5 (E4[34])"}
     - {date: "2026-07-10", kind: decided, ref: "journal Plan 5 (what the process caught) (E6[49])"}
     - {date: "2026-07-12", kind: reinforced, ref: "journal session-8 close (E8[88])"}
+    - {date: "2026-07-13", kind: reinforced, ref: "plan-5.6: T8's four VERIFY-FIRST items all confirmed at source (task-8 verdict); T1 verified time-crate parsing against vendored source"}
 - id: proc-08-parallel-worktrees
   kind: pattern
   tier: 2
@@ -195,11 +196,12 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-09", kind: violated-corrected, ref: "journal 2026-07-09 Plan 2 'What the process caught' + commit 72c59d2"}
     - {date: "2026-07-09", kind: reinforced, ref: "plan Global Constraints + progress.md (Plan 3)"}
     - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + progress ledger (Plan 4)"}
+    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 T1: gate run on full diff + final HEAD instead of per-commit; disclosed by implementer, flagged by task-1 verdict, controller retro-verified fmt+check+clippy green on all 7 intermediates (progress ledger + task-1-report/verdict)"}
 - id: ci-08-gated-tests-run
   kind: pattern
   tier: 2

@@ -511,19 +511,6 @@ entries:
   occurrences:
     - {date: "2026-07-10", kind: decided, ref: "Plan T3 step 2"}
     - {date: "2026-07-10", kind: decided, ref: "task-3 verdict"}
-- id: core-90-go-public-gates
-  kind: pattern
-  tier: 1
-  domain: core
-  statement: "Pulled-forward go-public gate: ConcurrencyTracker (test instrumentation) is doc(hidden) from rustdoc but kept pub for cross-crate tests; static 3-OS matrix pulled forward too."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-10", kind: decided, ref: "commit 7a2bc15"}
-    - {date: "2026-07-10", kind: decided, ref: "journal Plan 5"}
 - id: core-91-raw-opt-in
   kind: pattern
   tier: 1
@@ -713,17 +700,18 @@ entries:
   occurrences:
     - {date: "2026-07-11", kind: decided, ref: "task-5 verdict"}
 - id: core-117-known-extensions-make-required
-  kind: non-decision
+  kind: pattern
   tier: 1
   domain: core
-  statement: "known_extensions default-None on Identify inverts the idiom (sole production impl overrides; a future impl silently gets vacuous validation); making the method required deferred."
+  statement: "known_extensions is a required method on Identify: a capability stub whose absence silently changes production semantics gets no trait default (defaults are for derived behavior); fakes carry explicit None bodies. Was a non-decision blocked on the idiomacy review; resolved by implementing in Plan 5.6 T10."
   steelman: null
-  blocked_on: "idiomacy review (internal)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-11", kind: deferred, ref: "task-5 verdict m2 + progress T5-m2"}
+    - {date: "2026-07-13", kind: decided, ref: "commit 198fad3 (Plan 5.6 T10; 4 impls inventoried, task-10 verdict)"}
 - id: core-118-name-all-claimants
   kind: pattern
   tier: 1
@@ -3127,3 +3115,88 @@ entries:
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "memo D7 (Deferrals)"}
     - {date: "2026-07-10", kind: decided, ref: "memo D26 (format+scope Şenol)"}
+- id: core-122-single-builder-co-derived-params
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "A diagnostic carrying both a structural field and its rendered display param derives both from ONE slice in ONE builder (with_claimants sets claimants and the rules param together), so machine consumer and renderer cannot diverge; the concrete instance behind ADR D36, generalizes core-37."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "ADR D36 + commit 89f346b; plan-5.6 task-2 report/verdict"}
+- id: core-123-lazylock-derive-from-canonical
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "A list that restates another structure's contents is derived from it at first use (LazyLock over hand-re-listing + a sync test): CODEC_KIND_NAMES derives from CODEC_KINDS; the tautological sync test is deleted because construction enforces what it asserted."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "commit d7f1acc (Plan 5.6 T1); task-1 verdict harvest"}
+- id: gui-35-on-blocking-funnel
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "Tauri command bodies run through one on_blocking helper (spawn_blocking + IpcError internal-task-failed mapping) in src-tauri lib.rs instead of per-command wrapper copies; placed in lib.rs, not error.rs (it is an execution funnel, not an error type)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "commit 3d58afe (Plan 5.6 T6); task-6 verdict harvest"}
+- id: testing-gate-literal-single-source
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "A literal an external gate greps for (the CI no-silent-skip marker) has exactly one const source in code, and the gate carries a lockstep comment naming that const - a drifted copy cannot silently defeat the gate."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "commit 616778d (Plan 5.6 T9, MKVMERGE_SKIP_MARKER); plan-5.6 whole-branch verdict harvest"}
+- id: testing-import-side-effect-named-test
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "A run-gating invariant asserted as a module-import side effect becomes a named test (e2e/catalogs.spec.ts): failure attribution over opaque module-load errors; memoized helpers may stay at module scope."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "commit c740bf4 (Plan 5.6 T7); task-7 verdict harvest"}
+- id: proc-57-briefs-not-ground-truth
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A brief's or plan's load-bearing claims (line counts, external-tool behavior) are re-verified at implementation/review time; proc-07 scoping question raised: verify-against-source applies to UNTAGGED load-bearing claims too, not only items tagged VERIFY-FIRST. Two Plan-5.6 data points: T4's anchor list summed 19 vs stated 20 vs real 21; T8's brief asserted rust-toolchain.toml components apply on bare rustup toolchain install (false, rustup #4216) and only the reviewer caught it."
+  steelman: null
+  blocked_on: null
+  status: contested
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict (anchor arithmetic)"}
+    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1 + controller confirmation (rustup #4216); fix 308effc"}

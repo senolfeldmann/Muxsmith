@@ -78,6 +78,10 @@ action:
 - A second fixture needs a _comment-style source-of-truth note ->
   promote the T11 ad-hoc pattern to a written convention (BUILDING.md
   test section).
+- Next push to origin -> verify all three CI legs green (Plan 5.6 T8
+  rewrote the toolchain install step: rustup toolchain install +
+  explicit component add per rustup #4216; on-runner proof deferred
+  because pushes were blocked in the executing session).
 
 ## Pre-1.0 release gates
 
@@ -223,7 +227,12 @@ polish entry.
   after the feature plans (5.5, 6) land, immediately before the
   release-facing gates.
 - **Whole-codebase idiomacy review - STATUS 2026-07-12 (EXECUTED, triaged
-  with Şenol)**: 74 raw -> 73 deduped findings; 70 confirmed, 1 refuted, 2
+  with Şenol); FIX WAVE EXECUTED AND CLOSED 2026-07-13** (Plan 5.6,
+  commits 0b3149a..a5d506b: 12 tasks + final fix wave, 64 findings + 13
+  seeds applied, whole-branch verdict READY, zero behavior change except
+  three sanctioned interface deltas recorded in ADR D36 + the plan-5.6
+  journal entry; the Plan-6-folded and deferred items below stay open):
+  74 raw -> 73 deduped findings; 70 confirmed, 1 refuted, 2
   already-tracked, 11 routed out (correctness/security/perf), 13/13 funnel
   seeds confirmed still-open; net -483 lines, -0 deps (dep sweep clean -
   every direct Cargo/npm dep earned and healthy). Ranked findings report

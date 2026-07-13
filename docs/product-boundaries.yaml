@@ -4,7 +4,7 @@
 #
 # Entry schema (canonical copy in software-dev-process doctrine section 7):
 #   id, kind (pattern|restraint|non-decision), tier (=2 here),
-#   source (user-decree|controller-adr|agent-emergent),
+#   source (human|agent-emergent),
 #   nature (product-scope|technical-code|process|operational),
 #   domain, statement, steelman (restraint), blocked_on (non-decision),
 #   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
