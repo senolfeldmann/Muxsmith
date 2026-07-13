@@ -89,26 +89,38 @@ impl Template {
     pub fn parse(text: &str) -> Result<Template, TemplateError> {
         let mut segments = Vec::new();
         let mut literal = String::new();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = 0;
-        while i < chars.len() {
-            match chars[i] {
-                '{' if chars.get(i + 1) == Some(&'{') => {
+        let mut chars = text.chars().peekable();
+        let mut pos = 0usize;
+        while let Some(c) = chars.next() {
+            let start = pos;
+            pos += 1;
+            match c {
+                '{' if chars.peek() == Some(&'{') => {
+                    chars.next();
+                    pos += 1;
                     literal.push('{');
-                    i += 2;
                 }
-                '}' if chars.get(i + 1) == Some(&'}') => {
+                '}' if chars.peek() == Some(&'}') => {
+                    chars.next();
+                    pos += 1;
                     literal.push('}');
-                    i += 2;
                 }
                 '{' => {
-                    let close = chars[i + 1..]
-                        .iter()
-                        .position(|&c| c == '}')
-                        .ok_or(TemplateError::UnclosedBrace { pos: i })?;
-                    let inner: String = chars[i + 1..i + 1 + close].iter().collect();
+                    let mut inner = String::new();
+                    let mut closed = false;
+                    for next in chars.by_ref() {
+                        pos += 1;
+                        if next == '}' {
+                            closed = true;
+                            break;
+                        }
+                        inner.push(next);
+                    }
+                    if !closed {
+                        return Err(TemplateError::UnclosedBrace { pos: start });
+                    }
                     if inner.is_empty() {
-                        return Err(TemplateError::EmptyField { pos: i });
+                        return Err(TemplateError::EmptyField { pos: start });
                     }
                     // Split name from filter BEFORE resolving the filter, so an
                     // empty name reports EmptyField even when a filter is present.
@@ -117,7 +129,7 @@ impl Template {
                         Some((n, f)) => (n, Some(f)),
                     };
                     if name.is_empty() {
-                        return Err(TemplateError::EmptyField { pos: i });
+                        return Err(TemplateError::EmptyField { pos: start });
                     }
                     let filter = match maybe_filter {
                         None => Filter::Raw,
@@ -137,11 +149,9 @@ impl Template {
                         name: name.to_string(),
                         filter,
                     });
-                    i += close + 2;
                 }
                 c => {
                     literal.push(c);
-                    i += 1;
                 }
             }
         }
