@@ -669,11 +669,10 @@ fn resolve_file(
     // one track is one diagnostic listing all three.
     for ((_src, tid), rules) in &claims {
         if rules.len() >= 2 {
-            let refs: Vec<String> = rules.iter().map(|r| format!("tracks[{r}]")).collect();
             diagnostics.push(
                 Diagnostic::error(DiagCode::OverlappingRules, format!("tracks[{}]", rules[0]))
                     .for_file(&primary.path)
-                    .with("rules", refs.join(", "))
+                    .with_claimants(rules)
                     .with("track", tid.to_string()),
             );
         }
@@ -1841,9 +1840,10 @@ struct OverlapConflict {
 }
 
 // Collects the overlap conflicts from a baseline, one per `OverlappingRules`
-// diagnostic. Claimants are parsed back from the rendered `$rules` list
-// ("tracks[0], tracks[1], ..."), so every claimant - not just the first pair -
-// gets candidates generated for it (symmetric generation, D33).
+// diagnostic. Claimants are read from the diagnostic's structural `claimants`
+// field (D36), so every claimant - not just the first pair - gets candidates
+// generated for it (symmetric generation, D33), with no dependence on the
+// rendered `$rules` display format.
 fn overlap_conflicts(baseline: &Batch) -> Vec<OverlapConflict> {
     baseline
         .files
@@ -1853,11 +1853,7 @@ fn overlap_conflicts(baseline: &Batch) -> Vec<OverlapConflict> {
         .filter_map(|d| {
             let file = d.file.clone()?;
             let track = d.params.get("track")?.clone();
-            let claimants: Vec<usize> = d
-                .params
-                .get("rules")
-                .map(|r| r.split(',').filter_map(rule_index_of).collect())
-                .unwrap_or_default();
+            let claimants: Vec<usize> = d.claimants.clone();
             Some(OverlapConflict {
                 file,
                 track,

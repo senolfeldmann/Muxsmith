@@ -162,7 +162,7 @@ diag_codes! {
     UnknownPropertySkew => "unknown-property-skew",
     /// At least one identified file in the batch reports an `identification_format_version` newer than this build pins (spec 9.2, D32 addendum). Batch-wide, once per batch, info severity; independent of whether any rule actually consumes a `raw:` property (that is `UnknownPropertySkew`'s job, per property). `found_version` carries the max seen across the batch, `pinned` this build's schema.
     SchemaDrift => "schema-drift",
-    /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
+    /// A `profile.input.extensions` entry, or a locator's `extensions` entry (a track rule's external source, `chapters`, an `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output (spec 4.2, 4.6); the extension is still used for file matching, so a typo silently excludes candidates. Checked once per batch; emitted once per offending list entry at its own config path (no dedup by extension value); skipped (not raised) when the runtime capability is unavailable. `extension`/`known` params carry the offender and the accepted set.
     UnknownExtension => "unknown-extension",
     /// The suggestion engine accepted more than 3 candidates for one conflicted rule and capped the emitted list at 3 (spec 5.3, D6); `dropped` carries how many were capped, so the truncation is never silent.
     SuggestionsCapped => "suggestions-capped",
@@ -199,6 +199,16 @@ pub struct Diagnostic {
     /// (spec 5.3) produced a structured fix for this diagnostic.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion_ref: Option<usize>,
+    /// Claimant rule indices for an `OverlappingRules` diagnostic (D36): the
+    /// profile rule indices that all claim the shared track, carried
+    /// structurally so the suggestion engine reads them directly instead of
+    /// re-parsing the rendered `rules` display param (a display-format change
+    /// would otherwise silently break the D33 symmetric-narrowing path).
+    /// Empty for every other code and omitted from JSON via
+    /// `skip_serializing_if`, so the wire format gains `claimants` on
+    /// `overlapping-rules` only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claimants: Vec<usize>,
 }
 
 impl Diagnostic {
@@ -210,6 +220,7 @@ impl Diagnostic {
             file: None,
             params: BTreeMap::new(),
             suggestion_ref: None,
+            claimants: Vec::new(),
         }
     }
 
@@ -254,6 +265,19 @@ impl Diagnostic {
     /// public `severity` field directly.
     pub fn with_severity(mut self, severity: Severity) -> Self {
         self.severity = severity;
+        self
+    }
+
+    /// Records an `OverlappingRules` diagnostic's claimants from one `rules`
+    /// slice (D36): sets the structural `claimants` field AND the rendered
+    /// `rules` display param (`"tracks[0], tracks[1]"`) from the same source,
+    /// so the machine-readable list the suggestion engine consumes and the
+    /// human display a renderer prints can never diverge. The single point
+    /// that populates both.
+    pub fn with_claimants(mut self, rules: &[usize]) -> Self {
+        self.claimants = rules.to_vec();
+        let refs: Vec<String> = rules.iter().map(|r| format!("tracks[{r}]")).collect();
+        self.params.insert("rules".to_string(), refs.join(", "));
         self
     }
 }
