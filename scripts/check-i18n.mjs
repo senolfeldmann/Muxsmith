@@ -82,10 +82,9 @@
 //     exists.
 
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative, resolve } from "node:path";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = resolve(import.meta.dirname, "..");
 const LOCALES_ROOT = join(ROOT, "locales");
 const LOCALES_EN = join(LOCALES_ROOT, "en");
 const SRC = join(ROOT, "src");
@@ -157,19 +156,9 @@ for (const file of catalogFiles) {
   }
 }
 
-function walkSourceFiles(dir, out) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walkSourceFiles(full, out);
-    } else if (/\.(vue|ts)$/.test(entry.name)) {
-      out.push(full);
-    }
-  }
-}
-
-const sourceFiles = [];
-walkSourceFiles(SRC, sourceFiles);
+const sourceFiles = readdirSync(SRC, { recursive: true })
+  .filter((f) => /\.(vue|ts)$/.test(f))
+  .map((f) => join(SRC, f));
 
 // Requires a non-identifier character (or start of line) immediately
 // before the optional `$` -- without this, `t(` also matches the tail of
@@ -189,9 +178,7 @@ for (const file of sourceFiles) {
 
   const lines = text.split("\n");
   lines.forEach((line, i) => {
-    CALL_RE.lastIndex = 0;
-    let m;
-    while ((m = CALL_RE.exec(line)) !== null) {
+    for (const m of line.matchAll(CALL_RE)) {
       const id = m[2];
       literalCallIds.add(id);
       if (!knownIds.has(id)) {
@@ -277,8 +264,8 @@ for (const locale of otherLocales) {
     }
     const refIds = referenceIdsByFile.get(file);
     const localeIds = new Set(parseCatalogIds(join(dir, file)));
-    const missingIds = [...refIds].filter((id) => !localeIds.has(id)).sort();
-    const extraIds = [...localeIds].filter((id) => !refIds.has(id)).sort();
+    const missingIds = [...refIds.difference(localeIds)].sort();
+    const extraIds = [...localeIds.difference(refIds)].sort();
     for (const id of missingIds) {
       parityErrors.push(`locales/${locale}/${file}: missing id "${id}" (present in locales/en/${file})`);
     }
