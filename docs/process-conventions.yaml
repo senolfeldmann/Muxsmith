@@ -171,7 +171,7 @@ entries:
 - id: ci-01-matrix-strategy
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: operational
   domain: ci
   statement: "While the repo is private, branch pushes run Linux only and the full windows/macos/linux matrix runs only on PRs, tags and manual dispatch via a dynamic fromJSON matrix (macOS bills 10x, Windows 2x); the trim was always framed as reverting to a static 3-OS matrix on every push once the repo goes public, and that revert was enacted at go-public."
@@ -203,7 +203,7 @@ entries:
 - id: ci-08-gated-tests-run
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: operational
   domain: ci
   statement: "The mkvmerge-gated integration tier must run in CI, not self-skip. E2 accepted the self-skip (mkvtoolnix not installed) as a coverage gap; E5 installed mkvtoolnix Linux-only (minute economy) and verified post-push it ran (0 skip markers); go-public extended the install to all three legs (apt/choco/brew) with a skip-marker count-zero assertion per leg (otherwise silent skipping is just traded for silent skipping), which immediately caught 18 silently-skipped Windows tests (choco writes machine PATH the job never re-reads; fixed via GITHUB_PATH) and then a real Windows-only set_modified-on-read-only-handle bug."
@@ -238,7 +238,7 @@ entries:
 - id: testing-si3-run-binary
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: process
   domain: testing
   statement: "mkvmerge behavior (flag spellings, argv semantics, -J shape, cross-file donor+keep ordering) is confirmed by running the installed real binary (v100), never asserted from memory; golden tests then lock the exact strings and the -J shape is pinned to identification schema v20. Standing SI-3 house rule, re-issued as a per-plan global constraint and independently upheld by implementers (hand-ran mkvmerge before encoding order assertions, unprompted) and whole-branch reviewers (drove real v100 beyond the goldens, confirming the -J attachment id equals the --attachments selector id - the one silent-wrong-file risk)."
@@ -256,7 +256,7 @@ entries:
 - id: proc-49-eager-memory-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: process
   domain: process
   statement: "Carrying the process doctrine as always-loaded eager persona-memory ambience was rejected by Şenol in favor of the packaged, adopt-or-not skill."
@@ -270,7 +270,7 @@ entries:
 - id: proc-54-doc-deliverables-deferred
   kind: non-decision
   tier: 2
-  source: user-decree
+  source: human
   nature: process
   domain: process
   statement: "1.0 documentation formats are fixed (single-file EN GUIDE.md at maximal scope + two EN+DE blog posts) but the authoring itself is deferred to the 1.0 tag via three fresh sessions."
@@ -284,7 +284,7 @@ entries:
 - id: ci-04-dependabot-cadence
   kind: non-decision
   tier: 2
-  source: user-decree
+  source: human
   nature: operational
   domain: ci
   statement: "Dependabot/Renovate activation is deferred to Şenol's call; the eventual cadence is a CI-cost decision because every dependency PR triggers the full 3-OS matrix."
@@ -298,7 +298,7 @@ entries:
 - id: ci-13-packaging-deferred
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: operational
   domain: ci
   statement: "Release-tag packaging artifacts (msi/dmg/deb/rpm/AppImage) remain deferred until go-public, because tags trigger the full 3-OS matrix and paid minutes while the repo is private."

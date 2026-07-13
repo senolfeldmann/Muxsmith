@@ -15,7 +15,7 @@ entries:
 - id: exec-44-runlog-14day-autoprune
   kind: pattern
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "Run-log pruning was left out of v1 at D26 (location documented, prune facility parked), then reversed at D35 to an automatic 14-day fixed prune with no v1 config, implemented in core executor/joblog so CLI and GUI both inherit; age is decided by the parsed run-id name only (never mtime), pruning best-effort and symlink-safe with every IO error ignored. Parity MATCH with mkvtoolnix removeOldJobs=true/14 days."
@@ -31,7 +31,7 @@ entries:
 - id: cross-01-stack
   kind: pattern
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: cross
   statement: "Build on Tauri 2 with a Rust core crate, a web frontend and a clap CLI; Rust accepted despite being only recently picked up. React was the initial frontend, later swapped to Vue (D27 / 2026-07-10, outside the cross era) - a within-frontend refinement, not a stack reversal, so the stack itself stays settled."
@@ -47,7 +47,7 @@ entries:
 - id: core-15-transcoding-out
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: core
   statement: "Transcoding is permanently out of scope; the tool only muxes."
@@ -61,7 +61,7 @@ entries:
 - id: core-16-season-episode-arithmetic-out
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: core
   statement: "Cross-file season/episode renumbering/offsetting is excluded; identifiers are opaque match keys and transforms are per-file."
@@ -75,7 +75,7 @@ entries:
 - id: core-17-wildcard-multitrack-out
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: core
   statement: "'Keep all remaining audio' wildcard rules are rejected for v1 because they break strict independent uniqueness; a later explicit multi:true form is named but not committed."
@@ -89,7 +89,7 @@ entries:
 - id: exec-02-no-in-place
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "Muxsmith never writes over its inputs; in-place replacement is excluded as a hard, non-configurable rule, and an output path equal to any input is always a hard error."
@@ -103,7 +103,7 @@ entries:
 - id: exec-15-batch-no-hardkill-default
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: executor
   statement: "Hard-kill of in-flight jobs on first failure was rejected as the batch default; a failure does not abort the batch. mkvtoolnix-gui has no fail-fast (model.cpp:337-380 calls startNextAutoJob unconditionally); make/cargo/GNU-parallel stop scheduling and let running jobs finish; kill+delete-partial is reserved for mkvmerge error or user cancel."
@@ -117,7 +117,7 @@ entries:
 - id: exec-26-perjob-cancel-defer-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "Shipping only batch cancel with per-job cancel deferred to a later plan was declined by Şenol (a deviation from spec 8.2)."
@@ -131,7 +131,7 @@ entries:
 - id: exec-46-runlog-keepforever-prunefacility-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "Keeping run logs forever with deletion as an explicit prune facility (Peter's recommendation) was overruled at D35: the audit-value premise does not hold for this tool class in Şenol's judgment and unbounded history clutter is the worse default."
@@ -145,7 +145,7 @@ entries:
 - id: exec-47-runlog-keepforever-plain-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "Doing no pruning at all was rejected at D35 (unbounded growth, cleanup nobody performs)."
@@ -159,7 +159,7 @@ entries:
 - id: exec-48-runlog-mkvtoolnix-immediate-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "mkvtoolnix-gui's additional immediate-removal-on-completion / on-exit policies were deliberately not adopted; only the 14-day default is, because immediate removal would delete the post-mortem record spec 6 mandates persisting."
@@ -173,7 +173,7 @@ entries:
 - id: cross-06-no-bundling-v1
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: cross
   statement: "Muxsmith does not bundle mkvtoolnix binaries in v1; a Windows convenience downloader is named as a v1.x candidate only."
@@ -187,7 +187,7 @@ entries:
 - id: gui-02
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: gui
   statement: "The GUI offers no per-file manual override; users needing that go to mkvtoolnix-gui, with an 'open in mkvtoolnix-gui' escape hatch left as a v1.x candidate."
@@ -201,7 +201,7 @@ entries:
 - id: gui-04
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: gui
   statement: "Four frontend alternatives rejected: React (author veto), Svelte 5, SolidJS, Leptos-WASM."
@@ -215,7 +215,7 @@ entries:
 - id: gui-16
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: gui
   statement: "Rejected both a dialog-less abort and keeping the immediate close."
@@ -229,7 +229,7 @@ entries:
 - id: gui-21
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: gui
   statement: "Justified divergence from mkvtoolnix-gui: no user-assembled, reorderable, persistent job queue. The batch is derived declaratively at run time, so the Jobs view shows the live run + history instead of an editable queue."
@@ -243,7 +243,7 @@ entries:
 - id: gui-22
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: gui
   statement: "Justified divergence: no automatic 'remove completed jobs after N days' setting in v1; v1 keeps all run logs, pruning is v1.x."
@@ -257,7 +257,7 @@ entries:
 - id: core-19-sync-delay-stretch
   kind: non-decision
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: core
   statement: "Per-file --sync delay/stretch changes deferred; per-file offsets do not generalize to batch rules (v1.x candidate)."
@@ -271,7 +271,7 @@ entries:
 - id: exec-16-failfast-now-deferred
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: executor
   statement: "A --fail-fast=now value that also kills in-flight jobs (GNU-parallel now,fail=1 analog) is deferred to v1.x pending real usage demand."
@@ -285,7 +285,7 @@ entries:
 - id: exec-45-runlog-config-deferred
   kind: non-decision
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: executor
   statement: "Making the run-log retention period configurable (disable / change days) is deferred to IDEAS #7; v1 ships a fixed 14-day prune with no setting or flag, the configuration surface not yet earned. Recurred across plan T4.5 and memo D35, still unadopted."
@@ -300,7 +300,7 @@ entries:
 - id: cross-07-watch-daemon-mode
   kind: non-decision
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: cross
   statement: "Watch/daemon mode is a v1 non-goal with no rationale and no reconsider trigger: deferred rather than principled-rejected."
@@ -314,7 +314,7 @@ entries:
 - id: gui-17
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: gui
   statement: "The abort-confirmation-suppression setting (mkvtoolnix m_warnBeforeAbortingJobs) is parked as a v1.x settings candidate, not v1 scope."
@@ -328,7 +328,7 @@ entries:
 - id: cli-07-ndjson-deferred
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: product-scope
   domain: cli
   statement: "A streaming NDJSON event mode (--json-events) riding the D13 enum is a v1.x candidate, explicitly not built in Plan 4. Reviewer confirmed no NDJSON in the diff."
@@ -343,7 +343,7 @@ entries:
 - id: core-05-global-toggles-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: core
   statement: "Exposing attachments/chapters/tags/title as simple global on/off toggles instead of full declarative control was rejected."
@@ -358,7 +358,7 @@ entries:
 - id: cross-02-wails-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: cross
   statement: "Wails v3 was weighed and rejected as the desktop shell."
@@ -373,7 +373,7 @@ entries:
 - id: cross-03-avalonia-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: cross
   statement: "Avalonia (C#/.NET) was weighed and rejected as the UI stack."
@@ -388,7 +388,7 @@ entries:
 - id: core-83-zero-rule-keep-passthrough
   kind: pattern
   tier: 2
-  source: user-decree
+  source: human
   nature: product-scope
   domain: core
   statement: "A zero-rule profile with tracks.unmatched=keep is a LEGAL pure-passthrough remux (all primary tracks copied; use it to change only title / attachments / chapters, or to normalize the container, without any track rule). With tracks.unmatched=drop, zero rules stays a NoTrackRules error. MUST be documented and hinted - the passthrough path via unmatched=keep is non-obvious. (Şenol ruling, escalation resolution, session 10.)"

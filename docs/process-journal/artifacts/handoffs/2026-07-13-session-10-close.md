@@ -97,8 +97,8 @@ rejections into the ledger; the controller is the single ledger writer.
   technical-code, `docs/process-conventions.yaml` process/operational);
   Tier 1 = `docs/decision-ledger.yaml`. A count is a list of cited
   occurrences (count == len; an occurrence is a distinct EVENT, not a
-  document). Promotion by the source x nature matrix (user-decree/ADR -> 1,
-  agent-emergent -> 3, agent-emergent x product-scope -> escalate). Full
+  document). Promotion by the source x nature matrix (source two-valued:
+  human -> 1, agent-emergent -> 3, agent-emergent x product-scope -> escalate). Full
   mechanism: doctrine section 7. Full vision + reasoning: the non-repo
   automated-software-department dossier.
 - **Bootstrapped from history** by a reconstruction sweep (549 records -> 358

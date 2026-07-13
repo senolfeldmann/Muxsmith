@@ -19,7 +19,7 @@ entries:
 - id: core-03-suggestion-verified-edit
   kind: pattern
   tier: 2
-  source: user-decree
+  source: human
   nature: technical-code
   domain: core
   statement: "Suggestions are structured edits simulated against the cached identification of the whole batch before being shown; only refinements that resolve every instance and add no new diagnostic are emitted; an applied suggestion survives the next dry run (re-run through the real planning pass, no parallel matcher)."
@@ -35,7 +35,7 @@ entries:
 - id: core-06-schema-build-time-extraction
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Matchable property names/types are generated into the capability model at build time by an xtask into a committed generated.rs; only derived facts ship, the identification schema itself is never redistributed, and there is no build.rs network dependency."
@@ -52,7 +52,7 @@ entries:
 - id: core-12-unknown-keys-are-errors
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "An unknown profile key is a config-time hard error, not a warning; #[serde(deny_unknown_fields)] on every profile struct. Enforcement: the attribute was silently ineffective on inline untagged struct variants until the TemplateBlock/ExternalBlock newtype fix restored rejection."
@@ -69,7 +69,7 @@ entries:
 - id: core-31-rendered-filename-invariant
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The planner re-checks the rendered filename independently of the config-time template-text check (no separators, non-empty stem, not ./..); new per-file errors PathSeparatorInRenderedName + EmptyRenderedName. Enforcement: the empty-stem case (template ''.mkv' -> hidden .mkv) slipped through the fix pass because the check ran on the pre-append value; whole-branch review caught what per-task reviews missed."
@@ -86,7 +86,7 @@ entries:
 - id: core-34-suggestion-cap-non-silent
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Deterministic preference order among accepted candidates; emit at most 3 per conflict group; if more were accepted, log the cap (SuggestionsCapped info) - bounded output, no silent truncation. Enforcement: the inline code truncated silently; F7 added the diag code threaded through report.rs + diagnostics.ftl + spec 5.2."
@@ -102,7 +102,7 @@ entries:
 - id: core-35-overlap-auto-suggestions
   kind: pattern
   tier: 2
-  source: user-decree
+  source: human
   nature: technical-code
   domain: core
   statement: "OverlappingRules auto-narrowing suggestions: generate narrowing candidates for ALL overlap claimants symmetrically (including claimant 0); the existing resolves_without_regression criterion selects the feasible ones - feasibility, not a precedence guess, decides which rule narrows. Deferred out of Plan 2, decided as D33 in Plan 5.5, shipped at T18."
@@ -118,7 +118,7 @@ entries:
 - id: core-37-prose-free-core
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "muxsmith-core emits a diagnostic code + structured params only; all human text lives in the Fluent catalog / an injected DiagnosticRenderer port; core never originates, hardcodes or localizes prose. Recurring enforcement: bug K (identification failure misreported as MissingTrack with an authored English string) fixed to emit UnidentifiableSource carrying only the third-party error text (pass-through allowed)."
@@ -255,7 +255,7 @@ entries:
 - id: core-54-reuse-plan2-machinery
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Every new Plan-3 resolution site reuses a Plan-2 mechanism (locator machinery, template engine, LanguageIndex, existing DiagCode variants) rather than introducing a new one; add no new DiagCodes; defaults match spec 4.9 so an omitted section never silently drops data."
@@ -271,7 +271,7 @@ entries:
 - id: core-59-matchable-trait
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The matcher is genericized over a Matchable trait implemented for both Track and Attachment so one match algebra evaluates both. The plan brief's 'resolves via type inference' regression-guard claim was factually wrong (Iterator::filter hands &&Track); solved with a blanket impl<M: Matchable> Matchable for &M, verified sound and right-sized."
@@ -304,7 +304,7 @@ entries:
 - id: core-65-empty-plan-warning
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "A plan resolving to zero track assignments emits EmptyPlan (warning, per-file, batch-visible); keep-mode plans are naturally exempt. A deliberate divergence from mkvtoolnix-gui: an interactive GUI shows selection state by construction, a declarative batch tool must state it. Deferred twice (Plan 3, Plan 4/D18) before being built at T6, where the check was relocated post-finalize (gated on plan.is_some()), closing an unenumerated CollisionPolicy::Skip false-warning case."
@@ -321,7 +321,7 @@ entries:
 - id: core-72-exact-typed-value-equality
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "exact compares each property in its own domain (numbers numerically, languages canonicalized so de==ger, pt-Latn-BR==pt-BR), preserving meaningful distinctions; regex is the byte-literal escape hatch. One of the tool's core semantics; surfaced in spec 4.3 at 1.0."
@@ -337,7 +337,7 @@ entries:
 - id: core-80-keep-mode-track-order
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Under keep, --track-order lists all primary tracks first in source order (0:id), donors trailing (g:id in rule order). The initial assumption (only matched tracks listed, mkvmerge appending kept-unmatched after) placed a donor-only-keep profile's added track ahead of the primary's video/audio; the whole-branch review flagged this as a usability trap and it was reversed to option B (kept-unmatched primary tracks count as matched). Both variants live-verified against v100."
@@ -354,7 +354,7 @@ entries:
 - id: core-81-unsupported-source-gate
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "A source mkvmerge identifies (exit 0) but cannot mux emits one clear UnsupportedSource error (distinct code from UnidentifiableSource, different remediation) before rule resolution and skips the file, instead of per-rule MissingTrack noise. The gate fires on !container_recognized || !container_supported only, not is_identifiable(); a recognized+supported zero-track container stays a per-rule MissingTrack."
@@ -370,7 +370,7 @@ entries:
 - id: core-85-report-json-dry
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The batch/config/run JSON report documents (spec 7) are hoisted from the CLI into core::report::json, lifted 1:1, so CLI and GUI render byte-identical report structures from a single core module; neither surface owns document logic."
@@ -402,7 +402,7 @@ entries:
 - id: core-99-schema-drift-advisory
   kind: pattern
   tier: 2
-  source: user-decree
+  source: human
   nature: technical-code
   domain: core
   statement: "A newer-schema advisory is its own SchemaDrift diagnostic, once per batch (info severity), message carrying the raw: discovery hint. T16 removed the mis-scoped per-file skew warner (its 'dead code' premise was false) and raised whether any advisory should survive; Şenol ruled it should, rebuilt once-per-batch at T16.5 (single emission site outside the loop, found_version(max)+pinned params, Option-guarded)."
@@ -434,7 +434,7 @@ entries:
 - id: i18n-05-plural-selectors
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: i18n
   statement: "Count-dependent user-facing messages pluralize via Fluent CLDR plural selectors ({ $n -> [one] ... *[other] ... }), not an error(s)/(s) provisional. First applied to run-job-warning, later extended to five keys replacing the error(s) provisional, with singular+plural renderer assertions."
@@ -450,7 +450,7 @@ entries:
 - id: testing-support-helpers
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: testing
   statement: "Cross-file test helpers (FakeIdent, lang()) are consolidated into a shared tests/support/mod.rs subdirectory module - deliberately a submodule, not its own tests/*.rs binary, to avoid Cargo autodiscovery - and duplicating a helper within a crate is a defect. Flagged at 3x duplication in Plan 3, scheduled (D18), implemented byte-identical in Plan 4, codified in CONVENTIONS."
@@ -467,7 +467,7 @@ entries:
 - id: testing-command-golden
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: testing
   statement: "Command generation (Plan -> mkvmerge argv) is verified by golden tests mapping fixture identification JSON to expected argv; built incrementally with full-vector assert_eq goldens where each command task extends and re-locks the prior task's golden as an intended contract change (Task 11 added donor --no-attachments to Task 10's golden), culminating in the full spec 4.1 reference example locked as a pure golden."
@@ -483,7 +483,7 @@ entries:
 - id: testing-rich-gated-live-guard
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: testing
   statement: "The Plan-3 one-off manual v100 validation is converted into a standing gated live guard: the test builds a primary MKV with a real attachment (--attach-file / --attachment-mime-type text/plain, SI-3 probed), renames/changes a track, keeps the attachment, and re-identifies via -J (asserting track_name==Renamed, default_track true, attachment file_name preserved), guarding the real argv surface rather than only golden string equality. Deferred in Plan 3, scheduled (D18), implemented in Plan 4."
@@ -499,7 +499,7 @@ entries:
 - id: cli-02-dryrun-config-diags
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: cli
   statement: "Dry-run must run profile::validate + lint::provable_overlaps and fold config-time diagnostics in on every code path (happy, mkvmerge-not-found, mkvmerge-query-failed) and both renderers (human + JSON), per spec 5.5. Caught and enforced repeatedly across eras as the same defect class - bug A (dry-run never ran validate/lint), the not-found branch dropping them, the query-failed path deferred, then the query-failed human path fixed. Resolved by E7."
@@ -516,7 +516,7 @@ entries:
 - id: cli-09-collision-parity
   kind: pattern
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: cli
   statement: "--on-collision <error|skip|overwrite> is exposed on both run and dry-run for parity, via a CLI-local CollisionArg (core stays clap-free) mapping 1:1 to CollisionPolicy and threading into the pre-existing RunInputs.on_collision. run reuses CollisionArg verbatim; the rerun workflow (D14/D17) is where the flag is needed."
@@ -532,7 +532,7 @@ entries:
 - id: core-07-runtime-fetching-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Fetching the identification schema at runtime or over the network at build was rejected."
@@ -547,7 +547,7 @@ entries:
 - id: core-27-codec-kind-exact-only
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "codec_kind may appear only under exact conditions; a pattern over the curated alias token is ill-defined, so it is a validate-time error (new CodecKindExactOnly), not a silent never-match."
@@ -561,7 +561,7 @@ entries:
 - id: core-33-suggestion-narrow-only
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The suggestion edit grammar is a deliberately closed StructuredEdit enum (v1): suggestions only ever narrow the conflicted rule's match, never reorder, never touch other rules, never relax; narrow-only guarantees convergence and keeps YAML rendering and simulation trivial."
@@ -575,7 +575,7 @@ entries:
 - id: core-70-registry-validate-not-called
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "registry.validate() is deliberately not called on the language accept side; over-accepting a pathological well-formed tag is less harmful than over-rejecting real ones, and mkvmerge rejects it at mux time."
@@ -590,7 +590,7 @@ entries:
 - id: core-82-donor-side-gate-not-built
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The UnsupportedSource gate is deliberately primary-only; no donor-side gate was built (D21 scope)."
@@ -605,7 +605,7 @@ entries:
 - id: core-92-raw-shape-a-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Shape A (enrich UnknownProperty with a nearest-name did-you-mean suggestion, drop the §9.2 automatic-untyped promise) rejected because the §9.2 forward-compat promise is kept deliberately."
@@ -620,7 +620,7 @@ entries:
 - id: core-93-raw-shape-c-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Shape C (unknown name becomes a warning at every level + untyped match, no opt-in) rejected outright - guts typo protection unconditionally, including on non-skewed mkvmerge, and opens the optional-rule and not:-inversion silent holes."
@@ -634,7 +634,7 @@ entries:
 - id: core-94-raw-version-gated-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The obvious version-gated hybrid (error at validate, warning at dry-run) rejected pre-emptively - it inverts spec 5.5's 'dry-run is a strict superset of validate', so the disambiguator must be stable across levels."
@@ -648,7 +648,7 @@ entries:
 - id: core-96-rawproperty-minimal-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The minimal variant that omits RawProperty and relies only on plan-time UnknownPropertySkew rejected - it trades validate-time honesty for fewer codes."
@@ -662,7 +662,7 @@ entries:
 - id: core-102-overlap-selection-rejected
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: technical-code
   domain: core
   statement: "Neither 'later-by-list-order' (narrow rules[1]) nor 'broader-by-match-domain-size' was adopted as the policy for which overlap rule gets narrowed; the model has no rule precedence, both are intent guesses, and the earlier rule is frequently the accidental over-broad one. Both survive only as a rank tiebreak (core-103)."
@@ -677,7 +677,7 @@ entries:
 - id: core-105-overlap-seed-positive-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "Mirroring the ambiguous path's both-polarity generation on the overlap path rejected - positive edits cannot redirect and only add near-tie noise to the ranked list."
@@ -691,7 +691,7 @@ entries:
 - id: core-106-overlap-specific-dimension-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "A separate overlap-specific dimension (diff the two rules' matched track sets) rejected - on the single contested file the two rules match the identical track so the difference set is empty; reuse candidates_for_rule instead."
@@ -705,7 +705,7 @@ entries:
 - id: core-109-two-required-no-fix
   kind: restraint
   tier: 2
-  source: user-decree
+  source: human
   nature: technical-code
   domain: core
   statement: "Two required rules colliding on one track in one file yield no suggestion, only the explicit no-fix/partition report - an unavoidable property of the narrow-only v1 grammar."
@@ -719,7 +719,7 @@ entries:
 - id: core-112-contested-property-dimension-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "A contested-property selection dimension (to honor the memo's default_track-vs-forced_track TC-A illustration) rejected - it would be a new selection mechanism D33 forbids."
@@ -733,7 +733,7 @@ entries:
 - id: exec-05-std-threadpool
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: executor
   statement: "--jobs N uses a bounded std thread pool with no async runtime (tokio), because muxing is external-process / I-O-bound so std suffices and the dependency surface stays minimal."
@@ -747,7 +747,7 @@ entries:
 - id: exec-09-event-delivery-callback-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: executor
   statement: "A callback/sink trait was rejected for event delivery in favour of the mpsc event stream."
@@ -761,7 +761,7 @@ entries:
 - id: exec-10-event-delivery-polled-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: executor
   statement: "Polled shared state was rejected for event delivery in favour of the event stream."
@@ -775,7 +775,7 @@ entries:
 - id: exec-39-raw-output-accumulate-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: executor
   statement: "Accumulating full output into JobOutcome was rejected in favour of the raw event variant."
@@ -789,7 +789,7 @@ entries:
 - id: exec-41-persist-logs-format-rejected
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: executor
   statement: "Three persistence alternatives were rejected in favour of JSON-per-job + summary: plain-text log + JSON index (two-artifact consistency burden), GUI-only persistence (spec divergence + CLI loses post-mortem logs), and a single NDJSON journal per run (NDJSON events are deferred to v1.x anyway)."
@@ -803,7 +803,7 @@ entries:
 - id: gui-08
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: gui
   statement: "Rejected a sidecar CLI process (parsing --json) and an async/tokio adapter runtime."
@@ -817,7 +817,7 @@ entries:
 - id: gui-29
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: gui
   statement: "The common Tauri default-src 'self'; connect-src ipc string-form baseline was considered and rejected."
@@ -831,7 +831,7 @@ entries:
 - id: gui-30
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: gui
   statement: "A separate devCsp block was initially proposed then withdrawn the same day."
@@ -845,7 +845,7 @@ entries:
 - id: gui-31
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: gui
   statement: "Leaving the scaffold default csp:null (carried since Plan 5 T4) was rejected."
@@ -859,7 +859,7 @@ entries:
 - id: cli-14-reject-handrolled-signals
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: cli
   statement: "Hand-rolling libc/WinAPI signal handling across three OSes was rejected in favour of one vetted crate (ctrlc)."
@@ -873,7 +873,7 @@ entries:
 - id: cli-19-reject-indicatif
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: cli
   statement: "Live ANSI progress bars via indicatif were rejected for run progress rendering."
@@ -887,7 +887,7 @@ entries:
 - id: cli-20-reject-quiet-output
   kind: restraint
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: cli
   statement: "Quiet start/end-only output was rejected for run progress rendering."
@@ -901,7 +901,7 @@ entries:
 - id: core-20-ondisk-cache
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The identification cache is in-memory per session (keyed path+mtime+size); an on-disk cache is a future candidate, not built in v1."
@@ -916,7 +916,7 @@ entries:
 - id: core-84-regex-recompile
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: core
   statement: "The regex recompiled per matches call is deferred to a later cleanup pass."
@@ -930,7 +930,7 @@ entries:
 - id: exec-03-mkvpropedit-fastpath
   kind: non-decision
   tier: 2
-  source: controller-adr
+  source: human
   nature: technical-code
   domain: executor
   statement: "A mkvpropedit fast path for metadata-only changes is deferred; the full remux path ships first."
