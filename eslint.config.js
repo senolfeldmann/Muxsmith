@@ -1,3 +1,4 @@
+import { defineConfig } from "eslint/config";
 import pluginVue from "eslint-plugin-vue";
 import vueI18n from "@intlify/eslint-plugin-vue-i18n";
 import tseslint from "typescript-eslint";
@@ -11,7 +12,7 @@ import tseslint from "typescript-eslint";
 // has no dependency on the vue-i18n runtime or catalog format, so it works
 // standalone here (verified empirically: a raw template string trips this
 // rule with no other vue-i18n config present).
-export default tseslint.config(
+export default defineConfig(
   {
     // .worktrees/: SDD worktree checkouts (main checkout only) carry their
     // own target/ with rustdoc-generated JS that eslint must never see.
