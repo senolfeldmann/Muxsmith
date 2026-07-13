@@ -25,6 +25,10 @@ impl Identify for FakeIdent {
             .cloned()
             .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
     }
+
+    fn known_extensions(&mut self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// The standard three-language (English/German/Turkish) index shared by the

@@ -378,11 +378,8 @@ pub trait Identify {
     /// `plan_core`'s batch-wide `profile.input.extensions` validation.
     /// `None` when the capability is unavailable (mkvmerge absent, or a
     /// fixture-backed test double that does not model it); the check
-    /// degrades to a no-op rather than blocking planning. Defaulted here so
-    /// existing `Identify` fakes need no change to keep compiling.
-    fn known_extensions(&mut self) -> Option<Vec<String>> {
-        None
-    }
+    /// degrades to a no-op rather than blocking planning.
+    fn known_extensions(&mut self) -> Option<Vec<String>>;
 }
 
 /// The production [`Identify`]: an [`IdentifyCache`] plus the resolved

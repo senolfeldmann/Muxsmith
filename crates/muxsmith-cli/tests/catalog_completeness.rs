@@ -369,6 +369,10 @@ impl Identify for OneIdent {
     fn identify(&mut self, _path: &Path) -> Result<Identification, IdentifyError> {
         Ok(self.0.clone())
     }
+
+    fn known_extensions(&mut self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// Regression guard for the emitter-site divergence the two guards above are
