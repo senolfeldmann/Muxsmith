@@ -160,6 +160,17 @@ polish entry.
 - **SourceOverwrite completeness (Plan-2 FINAL minor M2)**: DONE 2026-07-12 (Plan 5.5 T7 + T7.5 + T7.6; class closed by construction over all three donor kinds, completeness comment at the gathering site).
 - **Empty-batch human output (D15 gap)**: DONE 2026-07-12 (Plan 5.5 T8; always-print summary, recorded divergence).
 - **Robust event-stream reads (Plan-4 T1 minor, severity upgraded)**: DONE 2026-07-12 (Plan 5.5 T3; read_until + lossy, no-hang live regression).
+- **Zero-rule keep = legal passthrough (Şenol ruling, escalation 2026-07-13)**:
+  a profile with zero track rules and `tracks.unmatched: keep` is a LEGAL
+  pure-passthrough remux, not a `NoTrackRules` error (use it to change only
+  title / attachments / chapters, or normalize the container, without any
+  track rule). `unmatched: drop` + zero rules stays `NoTrackRules`.
+  Implement: lift the `validate.rs` `NoTrackRules` error for the keep case
+  (the executor already has the passthrough path, job.rs / D20 "passthrough
+  counts as matched"). MUST be documented and hinted - the passthrough via
+  `unmatched: keep` is non-obvious (README + a validate-time hint, and the
+  GUIDE at 1.0). Recorded in product-boundaries.yaml (core-83). Timing:
+  Şenol's scope call (small).
 - **Mixed-language `allowed` param (pre-1.0 polish, whole-branch I2)**:
   core emits English prose via the `allowed` param at planner.rs:428/:841
   ("a valid ISO 639/BCP-47 language code") - in de mode

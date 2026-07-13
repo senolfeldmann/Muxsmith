@@ -2,21 +2,14 @@
 #
 # Every considered approach and its outcome; always recorded, on-demand load.
 # Entry schema (canonical copy in software-dev-process doctrine section 7):
-#   id, kind (pattern|restraint|non-decision), tier (1|2), source, nature,
-#   domain, statement, steelman (restraint), blocked_on (non-decision),
-#   status (settled|contested|blocked|escalated), promoted_at, count (== len(occurrences)),
-#   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
-# count is always len(occurrences); an occurrence is a distinct decision EVENT,
-# not a distinct document of one event. Promotion (Tier 1 -> a Tier-2 nature
-# file) by the source x nature matrix (doctrine section 7). Tier-1 entries carry
-# no source/nature yet (assigned at promotion).
+#   id, kind, tier(1|2), source, nature, domain, statement, steelman, blocked_on,
+#   status (settled|contested|blocked|escalated), promoted_at, count (==len(occurrences)),
+#   occurrences: [{date, kind, ref}]. An occurrence is a distinct decision EVENT.
+# Promotion (Tier 1 -> a Tier-2 nature file) by the source x nature matrix (doctrine §7).
 #
-# Bootstrapped 2026-07-13 by a retroactive reconstruction sweep over the whole
-# project trail (git, 8 ADRs, the 10-session journal, plan-1..5.5 SDD verdict
-# archives, ROADMAP/IDEAS/spec). 549 records -> 358 clusters; 48 recurrence-promoted
-# + 54 authority-promoted -> Tier-2 nature files; 5 escalated to the
-# owner (status: escalated); the rest (251) stay Tier 1 below threshold.
-# Tier-1 counts are reconstruction-stage; only promotions passed the occurrence audit.
+# Bootstrapped 2026-07-13 from a retroactive reconstruction sweep (549 records ->
+# 358 clusters). 48 recurrence + 54 authority + 4 escalation-ratified -> Tier-2
+# nature files; 1 escalation (gui-26) resolved as blocked-on-Plan-6; 252 stay Tier 1.
 
 entries:
 - id: core-02-ordered-consumption-rejected
@@ -31,18 +24,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-08", kind: decided, ref: "journal Plan 1 (Decisions and why)"}
-- id: core-05-global-toggles-rejected
-  kind: restraint
-  tier: 1
-  domain: core
-  statement: "Exposing attachments/chapters/tags/title as simple global on/off toggles instead of full declarative control was rejected."
-  steelman: "Global on/off toggles give far less config and UI surface and a simpler v1; the agent recommended them. Overruled as Şenol's scope call."
-  blocked_on: null
-  status: escalated
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
 - id: core-08-runtime-skew-untyped
   kind: pattern
   tier: 1
@@ -504,18 +485,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-09", kind: decided, ref: "memo D20 (point held open for veto)"}
-- id: core-83-zero-rule-keep-passthrough
-  kind: non-decision
-  tier: 1
-  domain: core
-  statement: "Whether a zero-rule keep profile should be a legal pure-passthrough remux is open; the assumption stands that it remains a NoTrackRules error."
-  steelman: null
-  blocked_on: "Şenol veto - whether a pure-passthrough keep profile should be legal instead of a NoTrackRules error"
-  status: escalated
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-09", kind: deferred, ref: "memo D20 (Open mechanics, plan-time)"}
 - id: core-86-mkvmerge-detection-ladder
   kind: pattern
   tier: 1
@@ -1176,30 +1145,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-12", kind: decided, ref: "plan T4.5 / plan-5.5 task-4.5-verdict.md"}
-- id: cross-02-wails-rejected
-  kind: restraint
-  tier: 1
-  domain: cross
-  statement: "Wails v3 was weighed and rejected as the desktop shell."
-  steelman: "A Go-based Wails shell would keep the core in Şenol's strongest language and dodge the Rust learning curve while still shipping small native bundles. Rejected because v3 was alpha (delivery risk)."
-  blocked_on: null
-  status: escalated
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Plan 1 entry"}
-- id: cross-03-avalonia-rejected
-  kind: restraint
-  tier: 1
-  domain: cross
-  statement: "Avalonia (C#/.NET) was weighed and rejected as the UI stack."
-  steelman: "Avalonia is a mature C#/.NET UI stack in a language Şenol already knows, with high delivery certainty and a smaller OSS dependency pull. Rejected for weaker web-native fit than the Tauri + web-frontend route."
-  blocked_on: null
-  status: escalated
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Plan 1 entry"}
 - id: cross-04-mkvtoolnix-external-cli
   kind: pattern
   tier: 1
@@ -2307,7 +2252,7 @@ entries:
   statement: "No live in-session locale switch (bootstrap-once architecture; a restart notice was added); a live switch was deferred as a Plan 6 candidate."
   steelman: null
   blocked_on: "Plan 6 (internal)"
-  status: escalated
+  status: blocked
   promoted_at: null
   count: 1
   occurrences:

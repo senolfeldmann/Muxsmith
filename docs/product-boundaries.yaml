@@ -9,11 +9,7 @@
 #   domain, statement, steelman (restraint), blocked_on (non-decision),
 #   status (settled|contested|blocked), promoted_at, count (== len(occurrences)),
 #   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
-# Promotion (Tier 1 -> Tier 2) by the source x nature matrix: user-decree /
-# controller-adr promote at count 1 (authority); agent-emergent promotes at
-# count 3 (recurrence), except agent-emergent x product-scope which escalates
-# to the owner. count is always len(occurrences); an occurrence is a distinct
-# decision EVENT, not a distinct document of one event.
+# Promotion by the source x nature matrix (doctrine section 7).
 
 entries:
 - id: exec-44-runlog-14day-autoprune
@@ -344,3 +340,63 @@ entries:
   occurrences:
     - {date: "E5", kind: deferred, ref: "memo D15"}
     - {date: "E5", kind: deferred, ref: "task-9-review-verdict.md"}
+- id: core-05-global-toggles-rejected
+  kind: restraint
+  tier: 2
+  source: user-decree
+  nature: product-scope
+  domain: core
+  statement: "Exposing attachments/chapters/tags/title as simple global on/off toggles instead of full declarative control was rejected."
+  steelman: "Global on/off toggles give far less config and UI surface and a simpler v1; the agent recommended them. Overruled as Şenol's scope call."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal Plan 1"}
+    - {date: "2026-07-13", kind: reinforced, ref: "Şenol ratification (escalation resolution, session 10)"}
+- id: cross-02-wails-rejected
+  kind: restraint
+  tier: 2
+  source: user-decree
+  nature: product-scope
+  domain: cross
+  statement: "Wails v3 was weighed and rejected as the desktop shell."
+  steelman: "A Go-based Wails shell would keep the core in Şenol's strongest language and dodge the Rust learning curve while still shipping small native bundles. Rejected because v3 was alpha (delivery risk)."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Plan 1 entry"}
+    - {date: "2026-07-13", kind: reinforced, ref: "Şenol ratification (escalation resolution, session 10)"}
+- id: cross-03-avalonia-rejected
+  kind: restraint
+  tier: 2
+  source: user-decree
+  nature: product-scope
+  domain: cross
+  statement: "Avalonia (C#/.NET) was weighed and rejected as the UI stack."
+  steelman: "Avalonia is a mature C#/.NET UI stack in a language Şenol already knows, with high delivery certainty and a smaller OSS dependency pull. Rejected for weaker web-native fit than the Tauri + web-frontend route."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 Plan 1 entry"}
+    - {date: "2026-07-13", kind: reinforced, ref: "Şenol ratification (escalation resolution, session 10)"}
+- id: core-83-zero-rule-keep-passthrough
+  kind: pattern
+  tier: 2
+  source: user-decree
+  nature: product-scope
+  domain: core
+  statement: "A zero-rule profile with tracks.unmatched=keep is a LEGAL pure-passthrough remux (all primary tracks copied; use it to change only title / attachments / chapters, or to normalize the container, without any track rule). With tracks.unmatched=drop, zero rules stays a NoTrackRules error. MUST be documented and hinted - the passthrough path via unmatched=keep is non-obvious. (Şenol ruling, escalation resolution, session 10.)"
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-09", kind: deferred, ref: "memo D20 (Open mechanics, plan-time)"}
+    - {date: "2026-07-13", kind: decided, ref: "Şenol ruling (escalation resolution, session 10): zero-rule keep = legal passthrough"}
