@@ -37,7 +37,6 @@ export interface AppSettings {
 export interface MkvmergeInfo {
   path: string;
   version: string;
-  meets_minimum: boolean;
 }
 
 /**
