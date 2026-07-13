@@ -5,7 +5,7 @@
 // is always in the persisted job file, D26/D30 -- this pane is a live tail,
 // not the record of truth). Auto-scrolls to the newest line unless the
 // user has scrolled up to read earlier output.
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import type { JobRowData } from "../jobRowState";
 
 interface LogLine {
@@ -37,7 +37,7 @@ const filtered = computed(() =>
   selected.value === "all" ? props.lines : props.lines.filter((l) => l.index === selected.value),
 );
 
-const logEl = ref<HTMLElement | null>(null);
+const logEl = useTemplateRef("logEl");
 // Sticky-bottom auto-scroll: true whenever the pane is scrolled at (or
 // near) its bottom edge, so a fresh line keeps the view pinned there; a
 // user who scrolls up to read history clears it, and new lines then land

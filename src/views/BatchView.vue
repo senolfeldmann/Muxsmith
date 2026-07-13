@@ -5,7 +5,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
 import ResolutionTable from "../components/ResolutionTable.vue";
 import SuggestionCard from "../components/SuggestionCard.vue";
-import { dryRun, getSettings, setSettings, validateProfile } from "../ipc";
+import { defaultAppSettings, dryRun, getSettings, setSettings, validateProfile } from "../ipc";
 import type {
   AppSettings,
   Diagnostic,
@@ -22,16 +22,6 @@ import type {
 // Plan 6's profile editor).
 
 const fluent = useFluent();
-
-function defaultAppSettings(): AppSettings {
-  return {
-    mkvmerge_path: null,
-    default_jobs: 1,
-    locale: null,
-    recent_profiles: [],
-    dir_memory: {},
-  };
-}
 
 const settings = ref<AppSettings>(defaultAppSettings());
 const selectedProfile = ref<string | null>(null);

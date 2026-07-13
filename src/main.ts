@@ -13,7 +13,7 @@ import { getSettings } from "./ipc";
  * `buildBundles` already falls back to "en" for any locale it cannot
  * resolve, exactly as it would for an unset setting.
  */
-async function resolveLocale(): Promise<string | null> {
+async function resolveLocale(): Promise<string> {
   try {
     return (await getSettings()).locale ?? navigator.language;
   } catch {

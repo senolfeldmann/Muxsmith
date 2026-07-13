@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, useTemplateRef } from "vue";
 import BatchView from "./views/BatchView.vue";
 import JobsView from "./views/JobsView.vue";
 import FirstRun from "./views/FirstRun.vue";
@@ -17,7 +17,7 @@ type View = "batch" | "jobs";
 const checking = ref(true);
 const blockedError = ref<IpcError | null>(null);
 const activeView = ref<View>("batch");
-const settingsDialog = ref<InstanceType<typeof SettingsDialog> | null>(null);
+const settingsDialog = useTemplateRef("settingsDialog");
 
 // Plan 5 wave-5 shell contract (T10 brief): BatchView's `start-run` emit
 // hands over the picked profile/dirs/jobs; App just stores it and switches
@@ -109,9 +109,9 @@ onMounted(checkMkvmerge);
       />
       <JobsView
         v-show="activeView === 'jobs'"
+        v-model:run-active="jobsRunActive"
         :pending-run="pendingRun"
         @consumed="pendingRun = null"
-        @update:run-active="jobsRunActive = $event"
       />
     </main>
     <SettingsDialog ref="settingsDialog" />

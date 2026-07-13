@@ -76,10 +76,8 @@ function buildBundle(locale: string): FluentBundle | null {
  * single "en" bundle. A further locale stays pure content under a new
  * `locales/<tag>/` directory.
  */
-export function buildBundles(locale: string | null | undefined): FluentBundle[] {
-  const requested = [locale, "en"]
-    .filter((tag): tag is string => typeof tag === "string" && tag.length > 0)
-    .map(primarySubtag);
+export function buildBundles(locale: string): FluentBundle[] {
+  const requested = [locale, "en"].map(primarySubtag);
   const seen = new Set<string>();
   const bundles: FluentBundle[] = [];
   for (const tag of requested) {
