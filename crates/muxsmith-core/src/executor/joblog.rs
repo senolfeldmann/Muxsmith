@@ -26,9 +26,9 @@ use super::queue::JobEvent;
 
 /// Hand-built format description for [`make_run_id`]'s "YYYYMMDD-HHMMSSZ"
 /// (UTC) stamp: `Component` values plus literals, assembled directly rather
-/// than through the `format_description!` macro or runtime string parsing,
-/// since only the `formatting` cargo feature is pinned (not `macros` or
-/// `parsing`).
+/// than through the `format_description!` macro (the `macros` cargo feature
+/// stays unpinned). The same descriptor also backs [`run_id_timestamp`]'s
+/// parse.
 const RUN_ID_FORMAT: &[BorrowedFormatItem<'_>] = &[
     BorrowedFormatItem::Component(Component::CalendarYearFullStandardRange(
         modifier::CalendarYearFullStandardRange::default(),
@@ -76,22 +76,9 @@ pub fn make_run_id(now: std::time::SystemTime) -> String {
 /// lives once in core and the shell delegates to it.
 pub fn run_id_timestamp(name: &str) -> Option<OffsetDateTime> {
     let prefix = name.get(0..16)?;
-    let b = prefix.as_bytes();
-    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
-    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
-        return None;
-    }
-    let n = |r: std::ops::Range<usize>| prefix[r].parse::<u32>().ok();
-    let year = n(0..4)? as i32;
-    let month = time::Month::try_from(u8::try_from(n(4..6)?).ok()?).ok()?;
-    let day = u8::try_from(n(6..8)?).ok()?;
-    let hour = u8::try_from(n(9..11)?).ok()?;
-    let minute = u8::try_from(n(11..13)?).ok()?;
-    let second = u8::try_from(n(13..15)?).ok()?;
-    time::Date::from_calendar_date(year, month, day)
-        .and_then(|date| date.with_hms(hour, minute, second))
-        .map(time::PrimitiveDateTime::assume_utc)
+    time::PrimitiveDateTime::parse(prefix, RUN_ID_FORMAT)
         .ok()
+        .map(time::PrimitiveDateTime::assume_utc)
 }
 
 /// D35 (Şenol 2026-07-11, fixed for v1 -- no setting, no CLI flag;

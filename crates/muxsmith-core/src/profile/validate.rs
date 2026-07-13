@@ -275,48 +275,30 @@ fn validate_expr(
                     // `raw:` opt-in (D32): bypass property existence/type
                     // checks (including the codec_kind exact-only guard, which
                     // raw: sidesteps entirely). A value-level regex-compile
-                    // error is still reported: an uncompilable pattern is a
-                    // config error independent of the property.
+                    // error is still reported below: an uncompilable pattern
+                    // is a config error independent of the property.
                     diags.push(raw_opt_in_diagnostic(&p, bare));
-                    if kind == "regex"
-                        && let Err(e) = regex::Regex::new(value)
-                    {
-                        diags.push(
-                            Diagnostic::error(DiagCode::InvalidRegex, p)
-                                .with("detail", flatten_regex_error(&e)),
-                        );
-                    }
-                    continue;
-                }
-                // codec_kind is a curated alias, matchable only under exact
-                // (D1). Guard before the string-type check so it reports
-                // CodecKindExactOnly rather than the misleading (codec_kind is
-                // String-typed) success. Only fires where codec_kind is a known
-                // property of this context (track rules, not attachments).
-                if prop == "codec_kind" && prop_type(prop).is_some() {
+                } else if prop == "codec_kind" && prop_type(prop).is_some() {
+                    // codec_kind is a curated alias, matchable only under exact
+                    // (D1). Guard before the string-type check so it reports
+                    // CodecKindExactOnly rather than the misleading (codec_kind is
+                    // String-typed) success. Only fires where codec_kind is a known
+                    // property of this context (track rules, not attachments).
                     diags.push(
                         Diagnostic::error(DiagCode::CodecKindExactOnly, p.clone())
                             .with("condition", kind.to_string()),
                     );
-                    if kind == "regex"
-                        && let Err(e) = regex::Regex::new(value)
-                    {
-                        diags.push(
-                            Diagnostic::error(DiagCode::InvalidRegex, p)
-                                .with("detail", flatten_regex_error(&e)),
-                        );
+                } else {
+                    match prop_type(prop) {
+                        None => diags.push(unknown_property(&p, prop)),
+                        Some(PropType::String) => {}
+                        Some(t) => diags.push(
+                            Diagnostic::error(DiagCode::NotStringProperty, p.clone())
+                                .with("property", prop.clone())
+                                .with("actual_type", type_label(t))
+                                .with("condition", kind.to_string()),
+                        ),
                     }
-                    continue;
-                }
-                match prop_type(prop) {
-                    None => diags.push(unknown_property(&p, prop)),
-                    Some(PropType::String) => {}
-                    Some(t) => diags.push(
-                        Diagnostic::error(DiagCode::NotStringProperty, p.clone())
-                            .with("property", prop.clone())
-                            .with("actual_type", type_label(t))
-                            .with("condition", kind.to_string()),
-                    ),
                 }
                 if kind == "regex"
                     && let Err(e) = regex::Regex::new(value)
