@@ -27,6 +27,7 @@ jobs:
       # Bare `rustup toolchain install` does not apply rust-toolchain.toml's
       # components (rustup #4216), so they are added explicitly.
       - name: Install pinned Rust toolchain
+        shell: bash
         run: |
           rustup toolchain install
           rustup component add rustfmt clippy

@@ -52,6 +52,7 @@ use muxsmith_core::report::json::{batch_document, config_only_document, run_docu
 use crate::AppState;
 use crate::ShellRenderer;
 use crate::error::IpcError;
+use crate::on_blocking;
 
 /// What currently occupies [`AppState`]'s single run slot (the struct
 /// itself, plus its `quit_after_finished` sibling field, live in `lib.rs`
@@ -439,10 +440,7 @@ pub async fn start_run(
     let cancel_flag = reservation.cancel_flag();
 
     let outcome =
-        crate::on_blocking(move || plan_run(settings_path, profile, source, output, cancel_flag))
-            .await;
-
-    let outcome = outcome?;
+        on_blocking(move || plan_run(settings_path, profile, source, output, cancel_flag)).await?;
 
     let ReadyPlan {
         run_id,

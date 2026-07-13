@@ -17,10 +17,11 @@ use crate::i18n::Renderer;
 /// diagnostic is a warning, 2 worst is an error).
 pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
     // Error-first, stable within a severity; both output modes share it.
-    let diagnostics: Vec<Diagnostic> = severity_sorted(&collect(profile_path))
-        .into_iter()
-        .cloned()
-        .collect();
+    let diagnostics: Vec<Diagnostic> =
+        severity_sorted(&validate::config_diagnostics_from_file(profile_path))
+            .into_iter()
+            .cloned()
+            .collect();
     let exit = severity_exit(worst_severity(&diagnostics));
 
     if json {
@@ -35,10 +36,6 @@ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
         println!("{}", render_summary(&diagnostics, renderer));
     }
     exit
-}
-
-fn collect(profile_path: &Path) -> Vec<Diagnostic> {
-    validate::config_diagnostics_from_file(profile_path)
 }
 
 /// The `validate-summary` line: how many of `diagnostics` are each

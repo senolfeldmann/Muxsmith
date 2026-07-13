@@ -347,6 +347,27 @@ mod tests {
     }
 
     #[test]
+    fn with_claimants_populates_structural_field_and_json_from_one_slice() {
+        // D36 wire contract: `with_claimants` derives both the structural
+        // `claimants` field and the rendered `rules` display param from the
+        // same slice, and JSON carries `claimants` only when non-empty
+        // (`skip_serializing_if`).
+        let d = Diagnostic::error(DiagCode::OverlappingRules, "tracks[0]").with_claimants(&[0, 2]);
+        assert_eq!(d.claimants, vec![0, 2]);
+        assert_eq!(d.params["rules"], "tracks[0], tracks[2]");
+
+        let json = serde_json::to_value(&d).unwrap();
+        assert_eq!(json["claimants"], serde_json::json!([0, 2]));
+
+        let without = Diagnostic::error(DiagCode::InvalidRegex, "input.pattern");
+        let json_without = serde_json::to_value(&without).unwrap();
+        assert!(
+            json_without.as_object().unwrap().get("claimants").is_none(),
+            "claimants must be omitted via skip_serializing_if when empty"
+        );
+    }
+
+    #[test]
     fn all_keys_match_serde_encoding() {
         for &code in DiagCode::ALL {
             assert_eq!(
