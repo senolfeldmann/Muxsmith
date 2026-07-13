@@ -81,28 +81,22 @@ const REGEXES: &[&str] = &[
 // --- MatchExpr constructors (struct-update to dodge field_reassign_with_default) ---
 
 fn exact_one(prop: &str, val: Scalar) -> MatchExpr {
-    let mut map = BTreeMap::new();
-    map.insert(prop.to_string(), val);
     MatchExpr {
-        exact: Some(map),
+        exact: Some(BTreeMap::from([(prop.to_string(), val)])),
         ..Default::default()
     }
 }
 
 fn substring_one(prop: &str, val: String) -> MatchExpr {
-    let mut map = BTreeMap::new();
-    map.insert(prop.to_string(), val);
     MatchExpr {
-        substring: Some(map),
+        substring: Some(BTreeMap::from([(prop.to_string(), val)])),
         ..Default::default()
     }
 }
 
 fn regex_one(prop: &str, val: &str) -> MatchExpr {
-    let mut map = BTreeMap::new();
-    map.insert(prop.to_string(), val.to_string());
     MatchExpr {
-        regex: Some(map),
+        regex: Some(BTreeMap::from([(prop.to_string(), val.to_string())])),
         ..Default::default()
     }
 }
@@ -127,7 +121,7 @@ fn not_of(v: Vec<MatchExpr>) -> MatchExpr {
 // track values) but including genuinely arbitrary UTF-8 (for totality).
 fn free_string() -> impl Strategy<Value = String> {
     prop_oneof![
-        3 => select(STRING_POOL.to_vec()).prop_map(|s| s.to_string()),
+        3 => select(STRING_POOL).prop_map(|s| s.to_string()),
         1 => any::<String>(),
     ]
 }
@@ -137,17 +131,13 @@ fn free_string() -> impl Strategy<Value = String> {
 // under exact, regex patterns compile, and `any`/`not` lists are non-empty.
 fn arb_expr() -> impl Strategy<Value = MatchExpr> {
     let leaf = prop_oneof![
-        (select(STRING_PROPS.to_vec()), free_string())
-            .prop_map(|(p, v)| exact_one(p, Scalar::Str(v))),
-        select(TYPE_VALUES.to_vec()).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
-        select(CODEC_KIND_NAMES.to_vec())
-            .prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
-        (select(BOOL_PROPS.to_vec()), any::<bool>())
-            .prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
-        (select(INT_PROPS.to_vec()), 0i64..8).prop_map(|(p, i)| exact_one(p, Scalar::Int(i))),
-        (select(STRING_PROPS.to_vec()), free_string()).prop_map(|(p, v)| substring_one(p, v)),
-        (select(STRING_PROPS.to_vec()), select(REGEXES.to_vec()))
-            .prop_map(|(p, r)| regex_one(p, r)),
+        (select(STRING_PROPS), free_string()).prop_map(|(p, v)| exact_one(p, Scalar::Str(v))),
+        select(TYPE_VALUES).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
+        select(CODEC_KIND_NAMES).prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
+        (select(BOOL_PROPS), any::<bool>()).prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
+        (select(INT_PROPS), 0i64..8).prop_map(|(p, i)| exact_one(p, Scalar::Int(i))),
+        (select(STRING_PROPS), free_string()).prop_map(|(p, v)| substring_one(p, v)),
+        (select(STRING_PROPS), select(REGEXES)).prop_map(|(p, r)| regex_one(p, r)),
     ];
     leaf.prop_recursive(3, 32, 3, |inner| {
         prop_oneof![
@@ -159,33 +149,25 @@ fn arb_expr() -> impl Strategy<Value = MatchExpr> {
 
 fn arb_prop_entry() -> impl Strategy<Value = (String, PropValue)> {
     prop_oneof![
-        (select(STRING_PROPS_TRACK.to_vec()), free_string())
+        (select(STRING_PROPS_TRACK), free_string())
             .prop_map(|(p, v)| (p.to_string(), PropValue::Str(v))),
-        (select(BOOL_PROPS.to_vec()), any::<bool>())
-            .prop_map(|(p, b)| (p.to_string(), PropValue::Bool(b))),
-        (select(INT_PROPS_TRACK.to_vec()), 0i64..8)
-            .prop_map(|(p, i)| (p.to_string(), PropValue::Int(i))),
+        (select(BOOL_PROPS), any::<bool>()).prop_map(|(p, b)| (p.to_string(), PropValue::Bool(b))),
+        (select(INT_PROPS_TRACK), 0i64..8).prop_map(|(p, i)| (p.to_string(), PropValue::Int(i))),
     ]
 }
 
 fn arb_track() -> impl Strategy<Value = Track> {
     (
-        select(TYPE_VALUES.to_vec()),
-        select(CODEC_POOL.to_vec()),
+        select(TYPE_VALUES),
+        select(CODEC_POOL),
         0u64..6,
         prop_vec(arb_prop_entry(), 0..6),
     )
-        .prop_map(|(kind, codec, id, entries)| {
-            let mut properties = BTreeMap::new();
-            for (k, v) in entries {
-                properties.insert(k, v);
-            }
-            Track {
-                id,
-                kind: kind.to_string(),
-                codec: codec.to_string(),
-                properties,
-            }
+        .prop_map(|(kind, codec, id, entries)| Track {
+            id,
+            kind: kind.to_string(),
+            codec: codec.to_string(),
+            properties: entries.into_iter().collect(),
         })
 }
 

@@ -125,21 +125,20 @@ fn arb_lang_token() -> impl Strategy<Value = String> {
 }
 
 fn track_with_language(value: &str) -> Track {
-    let mut properties = BTreeMap::new();
-    properties.insert("language".to_string(), PropValue::Str(value.to_string()));
     Track {
         id: 0,
         kind: "subtitles".to_string(),
         codec: String::new(),
-        properties,
+        properties: BTreeMap::from([("language".to_string(), PropValue::Str(value.to_string()))]),
     }
 }
 
 fn language_expr(value: &str) -> MatchExpr {
-    let mut map = BTreeMap::new();
-    map.insert("language".to_string(), Scalar::Str(value.to_string()));
     MatchExpr {
-        exact: Some(map),
+        exact: Some(BTreeMap::from([(
+            "language".to_string(),
+            Scalar::Str(value.to_string()),
+        )])),
         ..Default::default()
     }
 }

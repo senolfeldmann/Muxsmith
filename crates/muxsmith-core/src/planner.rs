@@ -1770,7 +1770,12 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
 // which `resolves_without_regression` correctly rejects for not resolving
 // the ambiguity. `not` entries are always additive (appending a not-clause
 // always narrows, never relaxes), so plain `extend` stays correct there.
-fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+//
+// `#[doc(hidden)] pub` (crate is publish=false): shared verbatim with
+// `prop_planner.rs`'s suggestion-application property so the test exercises
+// the real splice, not a duplicate copy that could silently drift from it.
+#[doc(hidden)]
+pub fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
     let mut p = profile.clone();
     let expr = &mut p.tracks.rules[ri].match_expr;
     if let Some(add) = &delta.exact {
@@ -1945,7 +1950,11 @@ fn diag_signature(batch: &Batch) -> BTreeMap<(String, String, String), usize> {
     counts
 }
 
-fn rule_index_of(config_path: &str) -> Option<usize> {
+// `#[doc(hidden)] pub` (crate is publish=false): shared verbatim with
+// `prop_planner.rs`'s D6 property so the test decodes the same rule index the
+// engine itself uses, not a duplicate copy that could silently drift from it.
+#[doc(hidden)]
+pub fn rule_index_of(config_path: &str) -> Option<usize> {
     config_path
         .split_once("tracks[")?
         .1
