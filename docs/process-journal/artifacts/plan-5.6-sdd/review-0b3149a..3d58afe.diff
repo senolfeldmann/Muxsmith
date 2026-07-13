@@ -1,0 +1,638 @@
+# Review package: 0b3149a..3d58afe
+
+## Commits
+3d58afe refactor(shell): plan-5.6 T6 idiomacy fixes (yagni/dup/idiom/native/doc)
+
+## Files changed
+ src-tauri/src/lib.rs      | 65 ++++++++++++++++++----------------
+ src-tauri/src/run.rs      | 88 +++++++++++++++++------------------------------
+ src-tauri/src/settings.rs | 10 +++---
+ src/ipc.ts                |  1 -
+ 4 files changed, 70 insertions(+), 94 deletions(-)
+
+## Diff
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index fbc6f21..3358a85 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -17,21 +17,21 @@
+ //! documented.
+ 
+ mod error;
+ mod run;
+ mod settings;
+ 
+ use std::path::{Path, PathBuf};
+ use std::sync::Mutex;
+ use std::sync::atomic::AtomicBool;
+ 
+-use muxsmith_core::capability::runtime::{MIN_SUPPORTED, Mkvmerge};
++use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report;
+ use serde::Serialize;
+ use tauri::State;
+ 
+ use error::IpcError;
+ use run::RunSlot;
+ use settings::AppSettings;
+@@ -52,20 +52,38 @@ use settings::AppSettings;
+ /// definition of this same zero-field unit struct; this is the one
+ /// surviving copy.
+ pub(crate) struct ShellRenderer;
+ 
+ impl report::json::DiagnosticRenderer for ShellRenderer {
+     fn diagnostic(&self, diagnostic: &report::Diagnostic) -> String {
+         diagnostic.code.key().to_string()
+     }
+ }
+ 
++/// Runs `f` on a Tauri blocking task and folds a task panic into an
++/// [`IpcError`] (dedup: every `#[tauri::command]` async body in this crate
++/// -- `validate_profile`/`dry_run`/`identify`/`detect_mkvmerge`/
++/// `run::start_run` -- used to repeat this same `spawn_blocking` +
++/// `.await` + `map_err("internal-task-failed")` wrapper around its own
++/// closure; this is the one surviving copy, called from each site with
++/// `f`'s body as the sole difference between them). The `Err` case here is
++/// the blocking task itself panicking (a bug, not an expected outcome,
++/// exactly as before this dedup); every expected failure is `f`'s own
++/// `Result::Err` and passes through unchanged.
++pub(crate) async fn on_blocking<T: Send + 'static>(
++    f: impl FnOnce() -> Result<T, IpcError> + Send + 'static,
++) -> Result<T, IpcError> {
++    tauri::async_runtime::spawn_blocking(f)
++        .await
++        .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
++}
++
+ /// Tauri-managed application state (D23), unified across both tasks that
+ /// contribute IPC commands to this shell: T7's settings persistence and
+ /// T8's run lifecycle. There is exactly one `AppState` value, `.manage`d
+ /// once in [`run`] -- Tauri resolves `State<AppState>` for every command
+ /// regardless of which task's module declares it, so the fields cannot be
+ /// split across two managed structs.
+ pub struct AppState {
+     /// The resolved settings file path (T7, D27); `None` if the platform
+     /// config directory itself could not be resolved (e.g. no `HOME`), in
+     /// which case every settings-touching command fails with
+@@ -120,38 +138,35 @@ impl AppState {
+     /// failure mode as [`Self::load_settings`].
+     fn save_settings(&self, settings: &AppSettings) -> Result<(), IpcError> {
+         let path = self
+             .settings_path
+             .as_deref()
+             .ok_or_else(|| IpcError::new("settings-dir-unavailable"))?;
+         settings::save(path, settings).map_err(IpcError::from)
+     }
+ }
+ 
+-/// Detected mkvmerge info for the frontend (D28): the resolved path, the
+-/// version found (`"{major}.{minor}"`), and whether it clears
+-/// [`MIN_SUPPORTED`]. `Ok` is the command's only success shape; a missing
+-/// or too-old mkvmerge is an [`IpcError`] (via the `RuntimeError` mapping
+-/// in `crate::error`, distinguishing `mkvmerge-not-found` from
+-/// `mkvmerge-too-old`), never an `Ok` with `meets_minimum: false` --
+-/// `Mkvmerge::detect` already refuses a too-old candidate outright (D28),
+-/// so `meets_minimum` here is a defensive re-check of that same fact, not
+-/// the primary signal the frontend branches on.
++/// Detected mkvmerge info for the frontend (D28): the resolved path and
++/// the version found (`"{major}.{minor}"`). `Ok` is the command's only
++/// success shape; a missing or too-old mkvmerge is an [`IpcError`] (via
++/// the `RuntimeError` mapping in `crate::error`, distinguishing
++/// `mkvmerge-not-found` from `mkvmerge-too-old`) -- `Mkvmerge::detect`
++/// already refuses a too-old candidate outright (D28), so every `Ok` here
++/// carries a version that clears the minimum by construction; there is no
++/// separate flag to double-report that same fact.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ struct MkvmergeInfo {
+     /// The resolved executable path (override, PATH, or a platform
+     /// candidate).
+     path: String,
+     /// The found version, formatted `"{major}.{minor}"`.
+     version: String,
+-    /// Whether the found version clears [`MIN_SUPPORTED`] (D28).
+-    meets_minimum: bool,
+ }
+ 
+ /// `validate_profile`'s command body (testable without a Tauri runtime):
+ /// static, mkvmerge-free validation (spec 5.4) of the profile at `path`,
+ /// mirroring `muxsmith-cli`'s `validate::collect` (load, then
+ /// `validate::validate` + `lint::provable_overlaps`), but rendered through
+ /// [`report::json::config_only_document`] per this task's brief rather
+ /// than the CLI `validate` subcommand's flatter `{diagnostics: [...]}`
+ /// shape -- every GUI report command returns the SAME document shape, so
+ /// the frontend has one rendering path, not one per command. `mkvmerge_found`
+@@ -265,94 +280,88 @@ fn identify_body(
+     let mkv = Mkvmerge::detect(mkvmerge_override)?;
+     let mut cache = IdentifyCache::new();
+     let id = cache
+         .get_or_identify(&mkv, file)
+         .map_err(|e| IpcError::from(e).with("file", file.display().to_string()))?;
+     Ok(identify_document(id))
+ }
+ 
+ /// `detect_mkvmerge`'s command body (testable without a Tauri runtime,
+ /// D28): resolves mkvmerge via the override/PATH/platform-candidate ladder
+-/// and reports its path, version, and floor status. A too-old or
+-/// unreachable mkvmerge is an [`IpcError`] (see [`MkvmergeInfo`]'s doc),
+-/// not a partial `Ok`.
++/// and reports its path and version. A too-old or unreachable mkvmerge is
++/// an [`IpcError`] (see [`MkvmergeInfo`]'s doc), not a partial `Ok`.
+ fn detect_mkvmerge_body(mkvmerge_override: Option<&Path>) -> Result<MkvmergeInfo, IpcError> {
+     let mkv = Mkvmerge::detect(mkvmerge_override)?;
+     let pair = mkv.version_pair()?;
+     Ok(MkvmergeInfo {
+         path: mkv.path().display().to_string(),
+         version: format!("{}.{}", pair.0, pair.1),
+-        meets_minimum: pair >= MIN_SUPPORTED,
+     })
+ }
+ 
+ /// `validate_profile` IPC command (D23, this task's brief): static
+ /// validation only, never touches mkvmerge. Runs on a blocking task
+ /// (`tauri::async_runtime::spawn_blocking`) since [`validate_profile_body`]
+ /// touches the filesystem; the webview thread never blocks on it. The
+ /// `Err` case here is the async task itself panicking (a bug, not an
+ /// expected outcome): every "expected" failure -- a missing or malformed
+ /// profile -- is folded into the returned document by
+ /// [`validate_profile_body`] instead.
+ #[tauri::command]
+ async fn validate_profile(path: String) -> Result<serde_json::Value, IpcError> {
+-    tauri::async_runtime::spawn_blocking(move || validate_profile_body(Path::new(&path)))
+-        .await
+-        .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))
++    on_blocking(move || Ok(validate_profile_body(Path::new(&path)))).await
+ }
+ 
+ /// `dry_run` IPC command (D23, D28): on a blocking task (never on the
+ /// webview thread), reads the mkvmerge override from settings and runs
+ /// [`dry_run_body`]. The settings read (filesystem I/O) lives INSIDE the
+ /// `spawn_blocking` closure with the body itself -- `State`'s borrow
+ /// cannot move into the closure, so the resolved settings *path* is cloned
+ /// in and loaded there. Like `validate_profile`, the outer `map_err` case
+ /// means the blocking task itself panicked; every expected planning
+ /// outcome is a document, and a settings failure is the closure's own
+ /// [`IpcError`].
+ #[tauri::command]
+ async fn dry_run(
+     state: State<'_, AppState>,
+     profile: String,
+     source: Option<String>,
+     output: Option<String>,
+ ) -> Result<serde_json::Value, IpcError> {
+     let settings_path = state.settings_path.clone();
+-    tauri::async_runtime::spawn_blocking(move || {
++    on_blocking(move || {
+         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+         Ok(dry_run_body(
+             Path::new(&profile),
+             source.map(PathBuf::from),
+             output.map(PathBuf::from),
+             mkvmerge_override.as_deref().map(Path::new),
+         ))
+     })
+     .await
+-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
+ }
+ 
+ /// `identify` IPC command (D23, D28): on a blocking task (spawns mkvmerge;
+ /// never on the webview thread), reads the mkvmerge override from settings
+ /// and runs [`identify_body`]. Settings read inside the closure for the
+ /// same reason as [`dry_run`].
+ #[tauri::command]
+ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json::Value, IpcError> {
+     let settings_path = state.settings_path.clone();
+-    tauri::async_runtime::spawn_blocking(move || {
++    on_blocking(move || {
+         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+         identify_body(
+             Path::new(&file),
+             mkvmerge_override.as_deref().map(Path::new),
+         )
+     })
+     .await
+-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
+ }
+ 
+ /// `detect_mkvmerge` IPC command (D28). Declared `async` and run on a
+ /// blocking task, deviating from this task's brief (whose terse interface
+ /// sketch omits `async`/`Result` throughout, e.g. `fn get_settings(state)
+ /// -> AppSettings`, and cannot be taken as an exact signature): unlike
+ /// `get_settings`/`set_settings` (a local JSON file, effectively
+ /// instantaneous), [`detect_mkvmerge_body`] spawns up to several `mkvmerge
+ /// --version` subprocesses in sequence (the override, then PATH, then
+ /// every platform candidate). Tauri v2 runs a non-`async` command on the
+@@ -360,26 +369,25 @@ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json
+ /// a plain `fn` here would stall the webview for however long that probing
+ /// takes -- exactly the "webview must never block" constraint this task's
+ /// context calls out for `dry_run`/`identify`. This command is called on
+ /// every GUI startup (T9's first-run flow), making that stall guaranteed,
+ /// not just possible.
+ ///
+ /// Settings read inside the closure for the same reason as [`dry_run`].
+ #[tauri::command]
+ async fn detect_mkvmerge(state: State<'_, AppState>) -> Result<MkvmergeInfo, IpcError> {
+     let settings_path = state.settings_path.clone();
+-    tauri::async_runtime::spawn_blocking(move || {
++    on_blocking(move || {
+         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+         detect_mkvmerge_body(mkvmerge_override.as_deref().map(Path::new))
+     })
+     .await
+-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
+ }
+ 
+ /// `get_settings` IPC command (D27). Plain local JSON file I/O, no
+ /// subprocess; kept a non-async, main-thread command like Tauri's own
+ /// trivial-state-access examples.
+ #[tauri::command]
+ fn get_settings(state: State<AppState>) -> Result<AppSettings, IpcError> {
+     state.load_settings()
+ }
+ 
+@@ -745,60 +753,57 @@ mod tests {
+         let dir = tempfile::tempdir().unwrap();
+         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v50.0.0 ('Old') 64-bit");
+         let err = detect_mkvmerge_body(Some(&override_path)).unwrap_err();
+         assert_eq!(err.code, "mkvmerge-too-old");
+         assert_eq!(err.params["minimum"], "86.0");
+         assert!(err.params["found"].contains("v50.0.0"));
+     }
+ 
+     #[test]
+     #[cfg(unix)]
+-    fn detect_mkvmerge_body_success_reports_version_and_meets_minimum() {
++    fn detect_mkvmerge_body_success_reports_version_and_path() {
+         let dir = tempfile::tempdir().unwrap();
+         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('New') 64-bit");
+         let info = detect_mkvmerge_body(Some(&override_path)).expect("detect");
+         assert_eq!(info.version, "123.4");
+-        assert!(info.meets_minimum);
+         assert_eq!(info.path, override_path.display().to_string());
+     }
+ 
+     /// The whole `detect_mkvmerge` command body -- `Mkvmerge::detect` plus
+     /// the `version_pair()` for `MkvmergeInfo` -- must spawn `mkvmerge
+     /// --version` exactly ONCE: `detect`'s floor check already parsed the
+     /// version, and the returned handle caches the pair (core contract,
+     /// `mkvmerge_runtime.rs`), so this every-GUI-startup path never pays a
+     /// second subprocess.
+     #[test]
+     #[cfg(unix)]
+     fn detect_mkvmerge_body_spawns_version_exactly_once() {
+         let dir = tempfile::tempdir().unwrap();
+         let (script, counter) =
+             counting_fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('Counting') 64-bit");
+ 
+         let info = detect_mkvmerge_body(Some(&script)).expect("detect");
+         assert_eq!(info.version, "123.4");
+-        assert!(info.meets_minimum);
+         assert_eq!(
+             spawn_count(&counter),
+             1,
+             "detect_mkvmerge_body must spawn --version exactly once"
+         );
+     }
+ 
+     #[test]
+     fn detect_mkvmerge_body_finds_the_real_mkvmerge_when_available() {
+         if !real_mkvmerge_available() {
+             eprintln!("mkvmerge not found; skipping");
+             return;
+         }
+-        let info = detect_mkvmerge_body(None).expect("detect");
+-        assert!(info.meets_minimum, "info: {info:?}");
++        detect_mkvmerge_body(None).expect("detect");
+     }
+ 
+     // --- AppState settings I/O ---
+ 
+     #[test]
+     fn get_settings_returns_defaults_on_first_run() {
+         let dir = tempfile::tempdir().unwrap();
+         let state = AppState {
+             settings_path: Some(dir.path().join("settings.json")),
+             ..AppState::default()
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index 2c8c7f9..4634981 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -62,48 +62,42 @@ use crate::error::IpcError;
+ /// parent module.
+ pub(crate) enum RunSlot {
+     /// [`start_run`] is mid-planning: the slot is held so a concurrent
+     /// `start_run` is rejected, but no queue exists yet. Carries the
+     /// batch-cancel flag that will become the queue's own (via
+     /// [`QueueControl::new`]) if the run materializes, so a
+     /// `cancel_run`/window-close landing in this window is not lost: the
+     /// queue is born already-cancelled and every job finishes `Cancelled`
+     /// without spawning (D16 semantics, before the first dequeue).
+     Reserved(Arc<AtomicBool>),
+-    /// The queue is running; the [`ActiveRun`]'s control reaches it.
+-    Running(ActiveRun),
+-}
+-
+-/// The running queue occupying [`AppState::active`]'s slot: the
+-/// [`QueueControl`] that reaches it for `cancel_run`/`cancel_job`/
+-/// window-close teardown. The run's id is returned to the caller directly
+-/// by [`start_run`] (as [`StartedRun::run_id`]) and is not otherwise
+-/// consumed while the run is in flight, so it is not duplicated here.
+-/// `pub(crate)`, matching [`RunSlot`]: it is reachable through
+-/// `RunSlot::Running`'s field, which is itself `pub(crate)`-visible from
+-/// `AppState` in the parent module.
+-pub(crate) struct ActiveRun {
+-    ctl: Arc<QueueControl>,
++    /// The queue is running; this [`QueueControl`] reaches it for
++    /// `cancel_run`/`cancel_job`/window-close teardown. The run's id is
++    /// returned to the caller directly by [`start_run`] (as
++    /// [`StartedRun::run_id`]) and is not otherwise consumed while the run
++    /// is in flight, so it is not duplicated here.
++    Running(Arc<QueueControl>),
+ }
+ 
+ /// Locks [`AppState::active`], recovering from poisoning instead of
+ /// propagating a second panic (hardening, mirrors
+ /// `muxsmith_core::executor::queue`'s identical treatment of its own
+-/// `killers`/`outcomes` mutexes). Recovery is sound because every write
+-/// this lock guards is a single, non-panicking assignment (`*slot =
+-/// Some(...)`/`*slot = None`) -- whatever it held right before some
+-/// earlier caller panicked while holding it is still a valid
+-/// `Option<RunSlot>`, not a half-applied one. The alternative is strictly
+-/// worse: an unrecovered poison here would make every future `start_run`,
+-/// `cancel_run`, `cancel_job`, and the close-confirmation dialog panic
+-/// forever too, wedging the whole app over one earlier bug instead of
+-/// just failing the run that triggered it.
++/// `killers`/`outcomes` mutexes). Recovery is sound because the slot value
++/// is only ever replaced wholesale by a single, non-panicking assignment
++/// (`*slot = Some(...)`/`*slot = None`); the remaining critical sections
++/// (the cancel/abort/close arms) only read the slot and call into its
++/// contents, never mutating it in place -- so even a panic while the guard
++/// is held (e.g. inside `cancel_all`) cannot leave a half-applied
++/// `Option<RunSlot>`. The alternative is strictly worse: an unrecovered
++/// poison here would make every future `start_run`, `cancel_run`,
++/// `cancel_job`, and the close-confirmation dialog panic forever too,
++/// wedging the whole app over one earlier bug instead of just failing the
++/// run that triggered it.
+ fn lock_active(state: &AppState) -> std::sync::MutexGuard<'_, Option<RunSlot>> {
+     state
+         .active
+         .lock()
+         .unwrap_or_else(|poisoned| poisoned.into_inner())
+ }
+ 
+ /// An RAII hold on [`AppState::active`]'s slot for the span of
+ /// [`start_run`]'s lock-free planning pass (D23). [`Reservation::acquire`]
+ /// installs [`RunSlot::Reserved`] and releases the mutex immediately;
+@@ -147,21 +141,21 @@ impl<'a> Reservation<'a> {
+     /// lost.
+     fn cancel_flag(&self) -> Arc<AtomicBool> {
+         Arc::clone(&self.cancel)
+     }
+ 
+     /// Promotes the reservation to a running queue: installs
+     /// [`RunSlot::Running`] over the `Reserved` placeholder. Called before
+     /// the queue thread spawns, so the thread's own end-of-run clear
+     /// ([`finish_teardown`]) can never race ahead of the install.
+     fn commit(mut self, ctl: Arc<QueueControl>) {
+-        *lock_active(self.state) = Some(RunSlot::Running(ActiveRun { ctl }));
++        *lock_active(self.state) = Some(RunSlot::Running(ctl));
+         self.committed = true;
+     }
+ }
+ 
+ impl Drop for Reservation<'_> {
+     fn drop(&mut self) {
+         if !self.committed {
+             *lock_active(self.state) = None;
+         }
+     }
+@@ -437,33 +431,25 @@ pub async fn start_run(
+     // Reserve the single-run slot synchronously, on the calling thread,
+     // BEFORE spawn_blocking -- module doc: a lock held across planning
+     // would freeze the event loop, but this is just the O(1)
+     // check-and-insert, not planning itself. Held across the .await below;
+     // dropping it uncommitted (every soft-outcome/error early return)
+     // releases the slot again.
+     let reservation = Reservation::acquire(&state)?;
+     let settings_path = state.settings_path.clone();
+     let cancel_flag = reservation.cancel_flag();
+ 
+-    let outcome = tauri::async_runtime::spawn_blocking(move || {
+-        plan_run(settings_path, profile, source, output, cancel_flag)
+-    })
+-    .await
+-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?;
++    let outcome =
++        crate::on_blocking(move || plan_run(settings_path, profile, source, output, cancel_flag))
++            .await;
+ 
+-    let outcome = match outcome {
+-        Ok(outcome) => outcome,
+-        Err(e) => {
+-            drop(reservation);
+-            return Err(e);
+-        }
+-    };
++    let outcome = outcome?;
+ 
+     let ReadyPlan {
+         run_id,
+         specs,
+         ctl,
+         logger,
+         run_dir,
+         base,
+         outputs,
+         mkv_path,
+@@ -533,38 +519,28 @@ pub fn cancel_job(state: State<AppState>, index: usize) -> Result<(), IpcError>
+ }
+ 
+ /// Lists every readable run under the runs root (D26), newest first
+ /// (`run_id` descending -- [`make_run_id`]'s fixed-width timestamp format
+ /// sorts chronologically as a plain string). A directory that cannot be
+ /// read as a complete run record (no `summary.json`, invalid JSON, or an
+ /// unparseable `run_id` prefix) is silently skipped rather than failing
+ /// the whole listing; an unresolvable or not-yet-existing runs root
+ /// yields an empty list, never an error (spec 6: a caller never dies over
+ /// the log directory).
+-///
+-/// `state` is currently unused (nothing here reads `AppState` yet) but is
+-/// part of the given interface for parity with the other run-lifecycle
+-/// commands and any future runs-root override.
+ #[tauri::command]
+-pub fn list_runs(_state: State<AppState>) -> Result<Vec<RunMeta>, IpcError> {
++pub fn list_runs() -> Result<Vec<RunMeta>, IpcError> {
+     Ok(list_runs_in(resolve_runs_root().as_deref()))
+ }
+ 
+ /// Reads one job's persisted log record (`job-<index>.json`, D26).
+-///
+-/// `state` is currently unused; see [`list_runs`]'s doc.
+ #[tauri::command]
+-pub fn get_job_log(
+-    _state: State<AppState>,
+-    run_id: String,
+-    index: usize,
+-) -> Result<serde_json::Value, IpcError> {
++pub fn get_job_log(run_id: String, index: usize) -> Result<serde_json::Value, IpcError> {
+     get_job_log_in(resolve_runs_root().as_deref(), &run_id, index)
+ }
+ 
+ /// The English GUI catalog, embedded at build time (D31): the shell's few
+ /// native-dialog strings are looked up here via [`ftl_message`] instead of
+ /// being written as Rust literals, so `locales/en/gui-common.ftl` stays
+ /// the single source of truth that T9's frontend Fluent loader will also
+ /// read.
+ const GUI_COMMON_FTL: &str = include_str!("../../locales/en/gui-common.ftl");
+ 
+@@ -660,22 +636,22 @@ pub fn on_close_requested(window: &Window, event: &WindowEvent) {
+ /// `exit` is injected (production: `app.exit`) so the exactly-once
+ /// semantics are unit-testable; the `swap` inside [`quit_if_requested`]
+ /// is what guarantees a single exit no matter which paths race.
+ fn abort_and_quit(state: &AppState, exit: impl FnOnce(i32)) {
+     state.quit_after_finished.store(true, Ordering::SeqCst);
+     let already_torn_down = match lock_active(state).as_ref() {
+         Some(RunSlot::Reserved(cancel)) => {
+             cancel.store(true, Ordering::SeqCst);
+             false
+         }
+-        Some(RunSlot::Running(run)) => {
+-            run.ctl.cancel_all();
++        Some(RunSlot::Running(ctl)) => {
++            ctl.cancel_all();
+             false
+         }
+         None => true,
+     };
+     if already_torn_down {
+         quit_if_requested(state, exit);
+     }
+ }
+ 
+ /// Consumes a pending quit-after-finished request (D31): calls `exit(0)`
+@@ -868,40 +844,40 @@ fn resolve_runs_root() -> Option<PathBuf> {
+ /// which [`start_run`] shares into [`QueueControl::new`] as the queue's
+ /// batch flag: the queue is born already-cancelled and every job finishes
+ /// `Cancelled` without spawning, so a cancel in the planning window is
+ /// honored, not lost.
+ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
+     match lock_active(state).as_ref() {
+         Some(RunSlot::Reserved(cancel)) => {
+             cancel.store(true, Ordering::SeqCst);
+             Ok(())
+         }
+-        Some(RunSlot::Running(run)) => {
+-            run.ctl.cancel_all();
++        Some(RunSlot::Running(ctl)) => {
++            ctl.cancel_all();
+             Ok(())
+         }
+         None => Err(IpcError::new("no-active-run")),
+     }
+ }
+ 
+ /// [`cancel_job`]'s testable body. During [`RunSlot::Reserved`] the job
+ /// set does not exist yet, so a per-job cancel has no target: it is
+ /// accepted as a no-op, mirroring [`QueueControl::cancel_job`]'s own
+ /// out-of-range no-op semantics. The window is unreachable from a
+ /// well-behaved frontend anyway -- job indices only become known once
+ /// `start_run` returns, and by then the slot is `Running` (commit happens
+ /// before `start_run` returns).
+ fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
+     match lock_active(state).as_ref() {
+         Some(RunSlot::Reserved(_)) => Ok(()),
+-        Some(RunSlot::Running(run)) => {
+-            run.ctl.cancel_job(index);
++        Some(RunSlot::Running(ctl)) => {
++            ctl.cancel_job(index);
+             Ok(())
+         }
+         None => Err(IpcError::new("no-active-run")),
+     }
+ }
+ 
+ fn list_runs_in(runs_root: Option<&Path>) -> Vec<RunMeta> {
+     let Some(root) = runs_root else {
+         return Vec::new();
+     };
+@@ -997,23 +973,21 @@ mod tests {
+             jobs: 1,
+             fail_fast: false,
+         }
+     }
+ 
+     fn ctl(spec_count: usize) -> Arc<QueueControl> {
+         QueueControl::new(spec_count, Arc::new(AtomicBool::new(false)))
+     }
+ 
+     fn running(control: &Arc<QueueControl>) -> RunSlot {
+-        RunSlot::Running(ActiveRun {
+-            ctl: Arc::clone(control),
+-        })
++        RunSlot::Running(Arc::clone(control))
+     }
+ 
+     // Consumed only by the #[cfg(unix)] fake-script test below; an ungated
+     // definition fails clippy -D warnings on Windows (never used).
+     #[cfg(unix)]
+     fn minimal_profile_yaml() -> &'static str {
+         "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
+     }
+ 
+     /// A fake `mkvmerge` that answers `--version` with a fixed line, fails
+diff --git a/src-tauri/src/settings.rs b/src-tauri/src/settings.rs
+index 316604b..85896fb 100644
+--- a/src-tauri/src/settings.rs
++++ b/src-tauri/src/settings.rs
+@@ -309,19 +309,17 @@ mod tests {
+             .collect();
+         assert!(
+             leftovers.is_empty(),
+             "no temp file may survive a failed publish, found: {leftovers:?}"
+         );
+     }
+ 
+     #[test]
+     fn settings_path_lives_under_a_muxsmith_subdirectory() {
+         if let Some(path) = settings_path() {
+-            assert!(
+-                path.ends_with("muxsmith/settings.json") || {
+-                    // Windows path separator.
+-                    path.to_string_lossy().ends_with("muxsmith\\settings.json")
+-                }
+-            );
++            // `Path::ends_with` matches whole components, and `std::path`
++            // recognizes '/' as a separator on Windows too, so one
++            // forward-slash literal covers every platform.
++            assert!(path.ends_with("muxsmith/settings.json"));
+         }
+     }
+ }
+diff --git a/src/ipc.ts b/src/ipc.ts
+index ba9b16b..101a33a 100644
+--- a/src/ipc.ts
++++ b/src/ipc.ts
+@@ -30,21 +30,20 @@ export interface AppSettings {
+   default_jobs: number;
+   locale: string | null;
+   recent_profiles: string[];
+   dir_memory: Record<string, DirMemory>;
+ }
+ 
+ /** Mirrors `src-tauri/src/lib.rs::MkvmergeInfo` (D28). */
+ export interface MkvmergeInfo {
+   path: string;
+   version: string;
+-  meets_minimum: boolean;
+ }
+ 
+ /**
+  * A core diagnostic as rendered into a report document (spec 5.2, 7):
+  * mirrors `muxsmith_core::report::Diagnostic` plus the `"rendered"` field
+  * every `report::json` document function injects (the shell's own
+  * passthrough renderer just echoes `code`, never real prose -- the
+  * frontend renders `code`/`params` through its own Fluent bundle instead
+  * of trusting this field).
+  */

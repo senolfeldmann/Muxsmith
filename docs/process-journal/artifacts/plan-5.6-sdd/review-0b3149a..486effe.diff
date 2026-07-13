@@ -1,0 +1,1403 @@
+# Review package: 0b3149a..486effe
+
+## Commits
+486effe refactor(tests): core integration-test idiom cleanup + EmptyPlan donor boundary test
+
+## Files changed
+ crates/muxsmith-core/tests/command.rs              |  50 ++------
+ crates/muxsmith-core/tests/command_integration.rs  | 122 +++++++++---------
+ .../muxsmith-core/tests/executor_no_hang_live.rs   |   1 -
+ crates/muxsmith-core/tests/planner_resolution.rs   | 138 ++++++++++++++-------
+ crates/muxsmith-core/tests/profile_load.rs         |  18 +--
+ crates/muxsmith-core/tests/suggestions.rs          |  55 ++++----
+ crates/muxsmith-core/tests/validate_structure.rs   |   5 +-
+ 7 files changed, 189 insertions(+), 200 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/tests/command.rs b/crates/muxsmith-core/tests/command.rs
+index 4e754a2..2aeee2e 100644
+--- a/crates/muxsmith-core/tests/command.rs
++++ b/crates/muxsmith-core/tests/command.rs
+@@ -40,39 +40,36 @@ fn global_and_single_video_group() {
+         },
+         chapters: ChapterSource::Keep,
+         tags: TagFlags {
+             global_keep: true,
+             track_keep: true,
+         },
+         title: TitleAction::Clear,
+     };
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--title",
+             "",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+             "/m/e.mkv",
+             ")",
+             "--track-order",
+             "0:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn keep_unmatched_suppresses_primary_selection_flags() {
+     let plan = Plan {
+         source: p("/m/show.mkv"),
+         output: p("/out/show.mkv"),
+         keep_unmatched: true,
+         // video(0), audio(1, matched below), subtitle(2, kept-unmatched):
+@@ -390,21 +387,21 @@ fn per_track_properties_and_multi_group() {
+         chapters: ChapterSource::Keep,
+         tags: TagFlags {
+             global_keep: true,
+             track_keep: true,
+         },
+         title: TitleAction::Keep,
+     };
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--video-tracks",
+             "0",
+             "--audio-tracks",
+             "1",
+             "--no-subtitles",
+             "--no-buttons",
+             "--default-track-flag",
+             "1:1",
+@@ -422,23 +419,20 @@ fn per_track_properties_and_multi_group() {
+             "--language",
+             "0:tr",
+             "--track-name",
+             "0:Turkce",
+             "(",
+             "/m/e.tr.srt",
+             ")",
+             "--track-order",
+             "0:0,0:1,1:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn boolean_and_string_value_encoding() {
+     let plan = Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+         keep_unmatched: false,
+         primary_track_ids: vec![0],
+@@ -459,41 +453,38 @@ fn boolean_and_string_value_encoding() {
+         chapters: ChapterSource::Keep,
+         tags: TagFlags {
+             global_keep: true,
+             track_keep: true,
+         },
+         title: TitleAction::Keep,
+     };
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "--forced-display-flag",
+             "0:0",
+             "--language",
+             "0:en",
+             "(",
+             "/m/e.mkv",
+             ")",
+             "--track-order",
+             "0:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ // A single-group plan: one primary video track, no donor. Used by the
+ // attachment/global-flag tests below where a second group is not needed to
+ // demonstrate the behavior.
+ fn single_group_plan(attachments: AttachmentPlan) -> Plan {
+     Plan {
+         source: p("/m/e.mkv"),
+         output: p("/out/e.mkv"),
+@@ -557,21 +548,21 @@ fn attachments_subset_on_primary_no_attachments_on_donor() {
+         },
+         ChapterSource::Keep,
+         TagFlags {
+             global_keep: true,
+             track_keep: true,
+         },
+     );
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--attachments",
+             "0,2",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+@@ -582,133 +573,121 @@ fn attachments_subset_on_primary_no_attachments_on_donor() {
+             "--no-audio",
+             "--subtitle-tracks",
+             "0",
+             "--no-buttons",
+             "(",
+             "/m/e.tr.srt",
+             ")",
+             "--track-order",
+             "0:0,1:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn attachments_drop_all_on_primary() {
+     let plan = single_group_plan(AttachmentPlan {
+         primary: PrimaryAttachments::DropAll,
+         add_files: vec![],
+     });
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--no-attachments",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+             "/m/e.mkv",
+             ")",
+             "--track-order",
+             "0:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn attachments_keep_all_emits_no_flag_on_primary() {
+     let plan = single_group_plan(AttachmentPlan {
+         primary: PrimaryAttachments::KeepAll,
+         add_files: vec![],
+     });
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+             "/m/e.mkv",
+             ")",
+             "--track-order",
+             "0:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn add_files_emit_global_attach_file() {
+     let plan = single_group_plan(AttachmentPlan {
+         primary: PrimaryAttachments::KeepAll,
+         add_files: vec![p("/m/x.ttf")],
+     });
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--attach-file",
+             "/m/x.ttf",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+             "/m/e.mkv",
+             ")",
+             "--track-order",
+             "0:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn chapters_drop_emits_no_chapters_on_every_group_and_no_global_flag() {
+     let plan = multi_group_plan(
+         AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         },
+         ChapterSource::Drop,
+         TagFlags {
+             global_keep: true,
+             track_keep: true,
+         },
+     );
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--no-chapters",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+             "/m/e.mkv",
+@@ -719,43 +698,40 @@ fn chapters_drop_emits_no_chapters_on_every_group_and_no_global_flag() {
+             "--no-audio",
+             "--subtitle-tracks",
+             "0",
+             "--no-buttons",
+             "(",
+             "/m/e.tr.srt",
+             ")",
+             "--track-order",
+             "0:0,1:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn chapters_external_emits_global_chapters_and_no_chapters_on_every_group() {
+     let plan = multi_group_plan(
+         AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         },
+         ChapterSource::External(p("/m/e.xml")),
+         TagFlags {
+             global_keep: true,
+             track_keep: true,
+         },
+     );
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--chapters",
+             "/m/e.xml",
+             "--no-chapters",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+@@ -768,43 +744,40 @@ fn chapters_external_emits_global_chapters_and_no_chapters_on_every_group() {
+             "--no-audio",
+             "--subtitle-tracks",
+             "0",
+             "--no-buttons",
+             "(",
+             "/m/e.tr.srt",
+             ")",
+             "--track-order",
+             "0:0,1:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+ 
+ #[test]
+ fn tags_dropped_emit_flags_on_every_group() {
+     let plan = multi_group_plan(
+         AttachmentPlan {
+             primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         },
+         ChapterSource::Keep,
+         TagFlags {
+             global_keep: false,
+             track_keep: false,
+         },
+     );
+ 
+     assert_eq!(
+         muxsmith_core::command::command(&plan),
+-        vec![
++        [
+             "--output",
+             "/out/e.mkv",
+             "--no-global-tags",
+             "--no-track-tags",
+             "--video-tracks",
+             "0",
+             "--no-audio",
+             "--no-subtitles",
+             "--no-buttons",
+             "(",
+@@ -817,15 +790,12 @@ fn tags_dropped_emit_flags_on_every_group() {
+             "--no-audio",
+             "--subtitle-tracks",
+             "0",
+             "--no-buttons",
+             "(",
+             "/m/e.tr.srt",
+             ")",
+             "--track-order",
+             "0:0,1:0",
+         ]
+-        .into_iter()
+-        .map(String::from)
+-        .collect::<Vec<_>>()
+     );
+ }
+diff --git a/crates/muxsmith-core/tests/command_integration.rs b/crates/muxsmith-core/tests/command_integration.rs
+index ed00b11..56cccd3 100644
+--- a/crates/muxsmith-core/tests/command_integration.rs
++++ b/crates/muxsmith-core/tests/command_integration.rs
+@@ -111,82 +111,80 @@ fn reference_example_end_to_end() {
+     // built to be unambiguous under the profile's match expressions).
+     assert_eq!(plan.assignments.len(), 10);
+     assert!(plan.assignments.iter().all(|a| a.track_id.is_some()));
+ 
+     let primary_disp = plan.source.display().to_string();
+     let output_disp = plan.output.display().to_string();
+     let donor_disp = plan.assignments[9].source.display().to_string();
+     assert_ne!(donor_disp, primary_disp);
+     assert!(donor_disp.ends_with("Show.S01E01.srt"));
+ 
+-    let expected: Vec<String> = [
+-        "--output",
+-        &output_disp,
+-        "--title",
+-        "",
+-        // --- primary group (spec 4.9 item 2, D10) ---
+-        "--no-global-tags", // tags.global: drop
+-        "--video-tracks",
+-        "0",
+-        "--audio-tracks",
+-        "1,2",
+-        "--subtitle-tracks",
+-        "3,4,5,6,7,8",
+-        "--no-buttons",
+-        "--default-track-flag",
+-        "1:1", // audio en: changes.default_track
+-        "--default-track-flag",
+-        "3:1", // subtitle en forced: changes (default_track < track_name)
+-        "--track-name",
+-        "3:English forced",
+-        "--track-name",
+-        "4:English", // subtitle en plain
+-        "--hearing-impaired-flag",
+-        "5:1", // subtitle en SDH (flag_hearing_impaired < track_name)
+-        "--track-name",
+-        "5:English SDH",
+-        "--default-track-flag",
+-        "6:1", // subtitle de forced
+-        "--track-name",
+-        "6:German forced",
+-        "--track-name",
+-        "7:German", // subtitle de plain
+-        "--hearing-impaired-flag",
+-        "8:1", // subtitle de SDH
+-        "--track-name",
+-        "8:German SDH",
+-        "(",
+-        &primary_disp,
+-        ")",
+-        // --- donor group: external Turkish subtitle ---
+-        "--no-global-tags",
+-        "--no-attachments", // donor attachments always dropped (D10)
+-        "--no-video",
+-        "--no-audio",
+-        "--subtitle-tracks",
+-        "0",
+-        "--no-buttons",
+-        "--language",
+-        "0:tr", // changes (language < track_name)
+-        "--track-name",
+-        "0:Türkçe",
+-        "(",
+-        &donor_disp,
+-        ")",
+-        "--track-order",
+-        "0:0,0:1,0:2,0:3,0:4,0:5,0:6,0:7,0:8,1:0",
+-    ]
+-    .into_iter()
+-    .map(String::from)
+-    .collect();
+-
+-    assert_eq!(command(plan), expected);
++    assert_eq!(
++        command(plan),
++        [
++            "--output",
++            &output_disp,
++            "--title",
++            "",
++            // --- primary group (spec 4.9 item 2, D10) ---
++            "--no-global-tags", // tags.global: drop
++            "--video-tracks",
++            "0",
++            "--audio-tracks",
++            "1,2",
++            "--subtitle-tracks",
++            "3,4,5,6,7,8",
++            "--no-buttons",
++            "--default-track-flag",
++            "1:1", // audio en: changes.default_track
++            "--default-track-flag",
++            "3:1", // subtitle en forced: changes (default_track < track_name)
++            "--track-name",
++            "3:English forced",
++            "--track-name",
++            "4:English", // subtitle en plain
++            "--hearing-impaired-flag",
++            "5:1", // subtitle en SDH (flag_hearing_impaired < track_name)
++            "--track-name",
++            "5:English SDH",
++            "--default-track-flag",
++            "6:1", // subtitle de forced
++            "--track-name",
++            "6:German forced",
++            "--track-name",
++            "7:German", // subtitle de plain
++            "--hearing-impaired-flag",
++            "8:1", // subtitle de SDH
++            "--track-name",
++            "8:German SDH",
++            "(",
++            &primary_disp,
++            ")",
++            // --- donor group: external Turkish subtitle ---
++            "--no-global-tags",
++            "--no-attachments", // donor attachments always dropped (D10)
++            "--no-video",
++            "--no-audio",
++            "--subtitle-tracks",
++            "0",
++            "--no-buttons",
++            "--language",
++            "0:tr", // changes (language < track_name)
++            "--track-name",
++            "0:Türkçe",
++            "(",
++            &donor_disp,
++            ")",
++            "--track-order",
++            "0:0,0:1,0:2,0:3,0:4,0:5,0:6,0:7,0:8,1:0",
++        ]
++    );
+ }
+ 
+ // ---------------------------------------------------------------------------
+ // Live acceptance: real mkvmerge, gated + self-skipping (spec 10).
+ // ---------------------------------------------------------------------------
+ 
+ fn mkvmerge() -> Option<Mkvmerge> {
+     Mkvmerge::locate().ok()
+ }
+ 
+diff --git a/crates/muxsmith-core/tests/executor_no_hang_live.rs b/crates/muxsmith-core/tests/executor_no_hang_live.rs
+index 9793d6c..ad3e9ea 100644
+--- a/crates/muxsmith-core/tests/executor_no_hang_live.rs
++++ b/crates/muxsmith-core/tests/executor_no_hang_live.rs
+@@ -20,21 +20,20 @@
+ #![cfg(unix)]
+ 
+ use std::io::Write as _;
+ use std::sync::mpsc;
+ use std::time::Duration;
+ 
+ use muxsmith_core::executor::job::{JobProgress, JobSpec, JobState, run_job};
+ use muxsmith_core::executor::spawn::LiveSpawner;
+ 
+ #[test]
+-#[cfg(unix)]
+ fn run_job_survives_a_non_utf8_line_and_a_pipe_filling_tail_without_hanging() {
+     use std::os::unix::fs::PermissionsExt;
+ 
+     let dir = tempfile::tempdir().unwrap();
+     let script = dir.path().join("fake-mkvmerge");
+     {
+         let mut f = std::fs::File::create(&script).unwrap();
+         // `\377\376` are raw invalid-UTF-8 bytes (POSIX `printf` octal
+         // escapes); `yes | head` emits ~140KB of filler, comfortably above
+         // a pipe's usual 64KiB OS buffer. If nothing drains the pipe past
+diff --git a/crates/muxsmith-core/tests/planner_resolution.rs b/crates/muxsmith-core/tests/planner_resolution.rs
+index 54a820a..259ea82 100644
+--- a/crates/muxsmith-core/tests/planner_resolution.rs
++++ b/crates/muxsmith-core/tests/planner_resolution.rs
+@@ -1,34 +1,33 @@
+ use std::collections::HashMap;
+ use std::path::Path;
+ 
+ use muxsmith_core::identify::{Identification, Identify, IdentifyError};
+-use muxsmith_core::planner::{AppliedChange, Batch, RunInputs, plan_batch};
++use muxsmith_core::planner::{
++    AppliedChange, AttachmentPlan, Batch, ChapterSource, FileReport, PrimaryAttachments, RunInputs,
++    TagFlags, TitleAction, plan_batch,
++};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::match_expr::Scalar;
+ use muxsmith_core::profile::model::CollisionPolicy;
+-use muxsmith_core::report::{DiagCode, Severity};
++use muxsmith_core::report::{DiagCode, Diagnostic, Severity};
+ 
+ mod support;
+ use support::{FakeIdent, lang};
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+ // Task 8: one video track plus three attachments (id1 "a.ttf", id2 "b.otf",
+ // id3 "cover.jpg" - 1-based, mkvmerge -J wire format), the fixture the
+ // brief's attachment-rule test cases use.
+ const WITH_ATTACHMENTS: &str = include_str!("fixtures/identify/with-attachments.json");
+ 
+-fn plan_one(
+-    profile_yaml: &str,
+-    file_name: &str,
+-    ident_json: &str,
+-) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
++fn plan_one(profile_yaml: &str, file_name: &str, ident_json: &str) -> (Batch, tempfile::TempDir) {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join(file_name), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+@@ -64,34 +63,34 @@ fn resolves_each_rule_to_one_track() {
+ // Task 4: Plan/Assignment resolution-field defaults (Tasks 5-8 fill real
+ // resolution; this only asserts the wiring is defaulted correctly).
+ #[test]
+ fn plan_and_assignment_carry_resolution_field_defaults() {
+     let (batch, _dir) = plan_one(P_VIDEO_AUDIO, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments,
+-        muxsmith_core::planner::AttachmentPlan {
+-            primary: muxsmith_core::planner::PrimaryAttachments::KeepAll,
++        AttachmentPlan {
++            primary: PrimaryAttachments::KeepAll,
+             add_files: vec![],
+         }
+     );
+-    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
++    assert_eq!(plan.chapters, ChapterSource::Keep);
+     assert_eq!(
+         plan.tags,
+-        muxsmith_core::planner::TagFlags {
++        TagFlags {
+             global_keep: true,
+             track_keep: true,
+         }
+     );
+-    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
++    assert_eq!(plan.title, TitleAction::Keep);
+     assert_eq!(plan.assignments[0].track_kind.as_deref(), Some("video"));
+     assert!(plan.assignments[0].changes.is_empty());
+ }
+ 
+ // Task 5: settable `changes` resolve onto a matched assignment, in
+ // property-name order (the rule's `changes` map is a BTreeMap).
+ #[test]
+ fn changes_resolve_to_applied_changes_in_property_order() {
+     let p = r#"
+ profile_version: 1
+@@ -127,21 +126,21 @@ tracks:
+ // property / found_version / pinned params, independent of match outcome.
+ 
+ const P_RAW_NEW_PROP: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { raw:new_prop: foo } }
+ "#;
+ 
+-fn raw_skew_diag(fr: &muxsmith_core::planner::FileReport) -> &muxsmith_core::report::Diagnostic {
++fn raw_skew_diag(fr: &FileReport) -> &Diagnostic {
+     fr.diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::UnknownPropertySkew)
+         .unwrap_or_else(|| panic!("expected UnknownPropertySkew; diags: {:?}", fr.diagnostics))
+ }
+ 
+ // B-9: newer schema (21 > 20), the raw: property present on a track; the rule
+ // resolves and a plan is produced, with an UnknownPropertySkew naming the
+ // property and the version gap.
+ #[test]
+@@ -609,21 +608,21 @@ fn unidentifiable_primary_yields_unidentifiable_source_not_missing_track() {
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_none(), "diags: {:?}", fr.diagnostics);
+     let d = fr
+         .diagnostics
+         .iter()
+         .find(|d| d.code == DiagCode::UnidentifiableSource)
+         .unwrap_or_else(|| panic!("expected UnidentifiableSource, got: {:?}", fr.diagnostics));
+     assert!(
+-        !d.params.get("detail").unwrap_or(&String::new()).is_empty(),
++        d.params.get("detail").is_some_and(|s| !s.is_empty()),
+         "expected a non-empty detail param, got: {d:?}"
+     );
+     assert!(
+         !fr.diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::MissingTrack),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
+@@ -1541,129 +1540,120 @@ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: clear
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Clear);
++    assert_eq!(plan.title, TitleAction::Clear);
+ }
+ 
+ // Task 6: `title: keep` resolves to `TitleAction::Keep` via the real
+ // resolution path (not just the Task-4 hardcoded default).
+ #[test]
+ fn title_keep_resolves_to_keep() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: keep
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(plan.title, muxsmith_core::planner::TitleAction::Keep);
++    assert_eq!(plan.title, TitleAction::Keep);
+ }
+ 
+ // Task 6: a title template renders via the same literal-mode engine as the
+ // filename template; `{season}` is a raw capture (no filter applied).
+ #[test]
+ fn title_template_renders_raw_capture_into_set() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<season>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: { template: 'Show S{season}' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S03E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(
+-        plan.title,
+-        muxsmith_core::planner::TitleAction::Set("Show S03".into())
+-    );
++    assert_eq!(plan.title, TitleAction::Set("Show S03".into()));
+ }
+ 
+ // Task 6: title has no path-separator/empty-name invariants (unlike
+ // filenames, spec 4.9 vs 4.8): a template rendering to an empty string is a
+ // legitimate `Set("")`, not an error.
+ #[test]
+ fn title_template_rendering_empty_is_a_legitimate_set() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})(?<x>Q)?', extensions: [mkv] }
+ title: { template: '{x}' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(
+-        plan.title,
+-        muxsmith_core::planner::TitleAction::Set(String::new())
+-    );
++    assert_eq!(plan.title, TitleAction::Set(String::new()));
+ }
+ 
+ // Task 6: `source_stem` is available to a title template, exactly as it is
+ // to output.filename templates (validate.rs allows it identically for
+ // both, so the resolve-time Ctx must supply it identically too).
+ #[test]
+ fn title_template_supports_source_stem_field() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ title: { template: '{source_stem}' }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(
+-        plan.title,
+-        muxsmith_core::planner::TitleAction::Set("Show.S01E01".into())
+-    );
++    assert_eq!(plan.title, TitleAction::Set("Show.S01E01".into()));
+ }
+ 
+ // Task 6: `tags: { global: drop, track: keep }` resolves to the matching
+ // `TagFlags`.
+ #[test]
+ fn tags_global_drop_track_keep_resolves_to_flags() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tags: { global: drop, track: keep }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.tags,
+-        muxsmith_core::planner::TagFlags {
++        TagFlags {
+             global_keep: false,
+             track_keep: true,
+         }
+     );
+ }
+ 
+ #[test]
+ fn bad_language_value_is_batch_invalid_property_value() {
+     let p = r#"
+ profile_version: 1
+@@ -2033,41 +2023,41 @@ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: drop
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Drop);
++    assert_eq!(plan.chapters, ChapterSource::Drop);
+ }
+ 
+ // Task 7: `chapters: keep` resolves to `ChapterSource::Keep` (also the
+ // default already covered by Task 4's tests, but exercised explicitly here
+ // since Task 7 is what makes the keyword branch real).
+ #[test]
+ fn chapters_keep_keyword_resolves_to_keep() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ chapters: keep
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", SERIES);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(plan.chapters, muxsmith_core::planner::ChapterSource::Keep);
++    assert_eq!(plan.chapters, ChapterSource::Keep);
+ }
+ 
+ // Task 7: an external chapters locator with exactly one matching donor
+ // resolves to `ChapterSource::External(<that path>)`. A chapters file is
+ // never run through Identify (it is XML/simple, not an mkvmerge source), so
+ // the fixture map only needs the primary.
+ #[test]
+ fn chapters_external_one_match_resolves_to_external_path() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+@@ -2092,24 +2082,21 @@ tracks:
+         "Show.S01E01.mkv".to_string(),
+         Identification::from_json(SERIES).unwrap(),
+     );
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(&profile, &run, &mut ident, &lang());
+     let expected = dir.path().join("Show.S01E01.xml");
+ 
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(
+-        plan.chapters,
+-        muxsmith_core::planner::ChapterSource::External(expected)
+-    );
++    assert_eq!(plan.chapters, ChapterSource::External(expected));
+ }
+ 
+ // Task 7: zero matches for an external chapters locator is a hard error
+ // (`MissingExternal` at `chapters.external`); the file gets no plan. Unlike
+ // a track rule's external source, chapters has no `optional` escape.
+ #[test]
+ fn chapters_external_zero_matches_yields_missing_external_and_no_plan() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     let p = r#"
+@@ -2202,68 +2189,62 @@ attachments:
+   unmatched: drop
+   rules:
+     - select: { substring: { file_name: .ttf } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1])
++        PrimaryAttachments::Subset(vec![1])
+     );
+ }
+ 
+ // Task 8: no rules at all, `unmatched: keep` -> every attachment falls
+ // through to `unmatched` and is kept, reducing to `KeepAll`.
+ #[test]
+ fn attachment_no_rules_and_unmatched_keep_resolves_to_keep_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: keep
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(
+-        plan.attachments.primary,
+-        muxsmith_core::planner::PrimaryAttachments::KeepAll
+-    );
++    assert_eq!(plan.attachments.primary, PrimaryAttachments::KeepAll);
+ }
+ 
+ // Task 8: no rules at all, `unmatched: drop` -> every attachment falls
+ // through to `unmatched` and is dropped, reducing to `DropAll`.
+ #[test]
+ fn attachment_no_rules_and_unmatched_drop_resolves_to_drop_all() {
+     let p = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   unmatched: drop
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+-    assert_eq!(
+-        plan.attachments.primary,
+-        muxsmith_core::planner::PrimaryAttachments::DropAll
+-    );
++    assert_eq!(plan.attachments.primary, PrimaryAttachments::DropAll);
+ }
+ 
+ // Task 8: a `drop` rule covers exactly one attachment (`cover.jpg`, id 3);
+ // `unmatched: keep` keeps the other two, reducing to `Subset([1, 2])`
+ // (1-based: WITH_ATTACHMENTS' "a.ttf"/"b.otf" are ids 1/2, mkvmerge -J wire
+ // format).
+ #[test]
+ fn attachment_drop_rule_covers_one_and_unmatched_keep_keeps_the_rest() {
+     let p = r#"
+ profile_version: 1
+@@ -2275,21 +2256,21 @@ attachments:
+   unmatched: keep
+   rules:
+     - drop: { substring: { file_name: cover } }
+ "#;
+     let (batch, _dir) = plan_one(p, "Show.S01E01.mkv", WITH_ATTACHMENTS);
+     let fr = &batch.files[0];
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert_eq!(
+         plan.attachments.primary,
+-        muxsmith_core::planner::PrimaryAttachments::Subset(vec![1, 2])
++        PrimaryAttachments::Subset(vec![1, 2])
+     );
+ }
+ 
+ // Task 8 (D12): an `add` locator attaches ALL files it matches, not just one;
+ // both fonts land in `add_files`, in the locator's sorted order.
+ #[test]
+ fn attachment_add_locator_attaches_all_matching_files() {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     std::fs::write(dir.path().join("b.ttf"), b"font-b").unwrap();
+@@ -2470,10 +2451,77 @@ tracks:
+     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
+     let plan = fr.plan.as_ref().unwrap();
+     assert!(plan.keep_unmatched);
+     assert!(!plan.primary_track_ids.is_empty());
+     assert!(
+         !fr.diagnostics.iter().any(|d| d.code == DiagCode::EmptyPlan),
+         "diags: {:?}",
+         fr.diagnostics
+     );
+ }
++
++// Boundary pin (seed T6-m1): attachments and chapters are not output
++// TRACKS (spec 5.2), so a plan whose only non-track resolutions succeed
++// still gets `EmptyPlan` -- `detect_empty_plans` only ever inspects
++// `plan.assignments`/`primary_track_ids` (see its doc comment), so a
++// resolved attachment donor or the (default, always-Keep) chapters
++// disposition does not suppress the warning. Same zero-rule-match profile
++// as the two neighboring tests, plus an on-disk `attachments.rules[0].add`
++// donor (fixture pattern per `source_overwrite_protects_attachment_donor_of_render_failed_file`
++// above), to confirm the donor genuinely resolves while the warning still
++// fires. This pins current, correct behavior against future widening; it
++// is not a bug fix.
++#[test]
++fn empty_plan_fires_when_only_attachments_and_chapters_resolve() {
++    let dir = tempfile::tempdir().unwrap();
++    let donors_dir = dir.path().join("donors");
++    std::fs::create_dir_all(&donors_dir).unwrap();
++    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
++    std::fs::write(donors_dir.join("Font.ttf"), b"font").unwrap();
++
++    let p = r#"
++profile_version: 1
++input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: audio, language: de } }
++      optional: true
++attachments:
++  rules:
++    - add: { path: 'donors', extensions: [ttf] }
++"#;
++    let profile = from_str(p, Format::Yaml).unwrap();
++    let run = RunInputs {
++        source: dir.path().to_path_buf(),
++        output: Some(dir.path().join("out")),
++        on_collision: None,
++    };
++    let mut by_name = HashMap::new();
++    by_name.insert(
++        "Show.S01E01.mkv".to_string(),
++        Identification::from_json(SERIES).unwrap(),
++    );
++    let mut ident = FakeIdent { by_name };
++    let batch = plan_batch(&profile, &run, &mut ident, &lang());
++
++    let fr = &batch.files[0];
++    assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
++    let plan = fr.plan.as_ref().unwrap();
++    // Zero tracks resolved: the same shape as the sibling EmptyPlan tests.
++    assert_eq!(plan.assignments.len(), 1);
++    assert_eq!(plan.assignments[0].track_id, None);
++    // The attachment donor genuinely resolved (chapters stays the default
++    // `Keep`, which trivially "resolves" with no locator needed).
++    assert!(
++        !plan.attachments.add_files.is_empty(),
++        "expected the on-disk attachment donor to resolve, got: {plan:?}"
++    );
++    assert_eq!(plan.chapters, ChapterSource::Keep);
++
++    let empty_plan_warnings: Vec<_> = fr
++        .diagnostics
++        .iter()
++        .filter(|d| d.code == DiagCode::EmptyPlan)
++        .collect();
++    assert_eq!(empty_plan_warnings.len(), 1, "diags: {:?}", fr.diagnostics);
++    assert_eq!(empty_plan_warnings[0].severity, Severity::Warning);
++}
+diff --git a/crates/muxsmith-core/tests/profile_load.rs b/crates/muxsmith-core/tests/profile_load.rs
+index c9d3787..c036647 100644
+--- a/crates/muxsmith-core/tests/profile_load.rs
++++ b/crates/muxsmith-core/tests/profile_load.rs
+@@ -121,38 +121,28 @@ tracks:
+ 
+ #[test]
+ fn tracks_block_parses_and_unmatched_defaults_to_drop() {
+     let yaml = r#"
+ profile_version: 1
+ input: { pattern: 'x', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let p =
+-        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
+-            .expect("block-form tracks must parse");
+-    assert_eq!(
+-        p.tracks.unmatched,
+-        muxsmith_core::profile::model::KeepDrop::Drop
+-    );
++    let p = from_str(yaml, Format::Yaml).expect("block-form tracks must parse");
++    assert_eq!(p.tracks.unmatched, KeepDrop::Drop);
+     assert_eq!(p.tracks.rules.len(), 1);
+ }
+ 
+ #[test]
+ fn tracks_unmatched_keep_parses() {
+     let yaml = r#"
+ profile_version: 1
+ input: { pattern: 'x', extensions: [mkv] }
+ tracks:
+   unmatched: keep
+   rules:
+     - match: { exact: { type: video } }
+ "#;
+-    let p =
+-        muxsmith_core::profile::load::from_str(yaml, muxsmith_core::profile::load::Format::Yaml)
+-            .expect("keep must parse");
+-    assert_eq!(
+-        p.tracks.unmatched,
+-        muxsmith_core::profile::model::KeepDrop::Keep
+-    );
++    let p = from_str(yaml, Format::Yaml).expect("keep must parse");
++    assert_eq!(p.tracks.unmatched, KeepDrop::Keep);
+ }
+diff --git a/crates/muxsmith-core/tests/suggestions.rs b/crates/muxsmith-core/tests/suggestions.rs
+index cec05ba..a1c00b2 100644
+--- a/crates/muxsmith-core/tests/suggestions.rs
++++ b/crates/muxsmith-core/tests/suggestions.rs
+@@ -1,34 +1,34 @@
+ use std::collections::HashMap;
+ 
+ use serde::Deserialize;
+ 
+ use muxsmith_core::identify::Identification;
+ use muxsmith_core::planner::{Batch, RunInputs, StructuredEdit, plan_batch};
+ use muxsmith_core::profile::load::{Format, from_str};
+ use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
+-use muxsmith_core::report::DiagCode;
++use muxsmith_core::report::{DiagCode, Diagnostic, Severity};
+ 
+ mod support;
+ use support::{FakeIdent, lang};
+ 
+ const SERIES: &str = include_str!("fixtures/identify/series-s01e01.json");
+ 
+ const P_AMBIGUOUS: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
+ "#;
+ 
+-fn plan(profile_yaml: &str) -> (muxsmith_core::planner::Batch, tempfile::TempDir) {
++fn plan(profile_yaml: &str) -> (Batch, tempfile::TempDir) {
+     let dir = tempfile::tempdir().unwrap();
+     std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
+     let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+     let run = RunInputs {
+         source: dir.path().to_path_buf(),
+         output: Some(dir.path().join("out")),
+         on_collision: None,
+     };
+     let mut by_name = HashMap::new();
+     by_name.insert(
+@@ -184,30 +184,20 @@ const GUARDED_FOO: &str = r#"
+     { "codec": "SubRip/SRT", "id": 1, "type": "subtitles", "properties": {
+         "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+         "language": "eng", "language_ietf": "en", "track_name": "Foo Only" } },
+     { "codec": "SubRip/SRT", "id": 2, "type": "subtitles", "properties": {
+         "codec_id": "S_TEXT/UTF8", "default_track": false, "forced_track": false,
+         "language": "eng", "language_ietf": "en", "track_name": "Director Extended" } }
+   ]
+ }
+ "#;
+ 
+-fn no_clobber_batch() -> (Batch, tempfile::TempDir) {
+-    plan_multi(
+-        P_NO_CLOBBER,
+-        &[
+-            ("Show.S01E01.mkv", AMBIGUOUS_FOO),
+-            ("Show.S01E02.mkv", GUARDED_FOO),
+-        ],
+-    )
+-}
+-
+ // Rebuild the edited profile YAML the same way a literal/naive splice of the
+ // structured edit would (what a buggy overwrite-based with_rule_match, or a
+ // GUI/CLI apply mirroring it, would produce): AddExact/AddNotExact/
+ // AddNotSubstring add alongside the existing `exact`/`substring` map or into
+ // an independent `not` list; AddSubstring replaces the substring map's
+ // `track_name` entry wholesale, since that is what overwriting a BTreeMap key
+ // via `extend` actually does.
+ fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
+     let inner = match edit {
+         StructuredEdit::AddExact { property, value } => format!(
+@@ -223,21 +213,25 @@ fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
+             "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - substring: {{ track_name: {value} }}"
+         ),
+     };
+     format!(
+         "profile_version: 1\ninput: {{ pattern: 'S(?<s>\\d{{2}})E(?<e>\\d{{2}})', extensions: [mkv] }}\ntracks:\n  rules:\n    - match:\n        {inner}\n"
+     )
+ }
+ 
+ #[test]
+ fn with_rule_match_never_widens_an_existing_substring_constraint() {
+-    let (batch, _dir) = no_clobber_batch();
++    let files = [
++        ("Show.S01E01.mkv", AMBIGUOUS_FOO),
++        ("Show.S01E02.mkv", GUARDED_FOO),
++    ];
++    let (batch, _dir) = plan_multi(P_NO_CLOBBER, &files);
+     assert!(
+         batch.files[0]
+             .diagnostics
+             .iter()
+             .any(|d| d.code == DiagCode::AmbiguousRule),
+         "expected file 1 to be ambiguous under the baseline profile"
+     );
+     assert!(!batch.suggestions.is_empty(), "expected suggestions");
+ 
+     // The specific clobber vector (bug C): overwriting the existing
+@@ -256,27 +250,21 @@ fn with_rule_match_never_widens_an_existing_substring_constraint() {
+             .iter()
+             .map(|s| &s.edit)
+             .collect::<Vec<_>>()
+     );
+ 
+     // Every suggestion that IS emitted must, once applied, still resolve
+     // file 2 to its original track (id 1, "Foo Only"), never the "Director"
+     // decoy (id 2) -- the behavioral form of "never widens."
+     for s in &batch.suggestions {
+         let edited = apply_edit_to_no_clobber_rule(&s.edit);
+-        let (re, _dir) = plan_multi(
+-            &edited,
+-            &[
+-                ("Show.S01E01.mkv", AMBIGUOUS_FOO),
+-                ("Show.S01E02.mkv", GUARDED_FOO),
+-            ],
+-        );
++        let (re, _dir) = plan_multi(&edited, &files);
+         assert!(
+             !re.files[0]
+                 .diagnostics
+                 .iter()
+                 .any(|d| d.code == DiagCode::AmbiguousRule),
+             "suggestion {:?} did not resolve the ambiguity",
+             s.edit
+         );
+         let assignment = &re.files[1].plan.as_ref().unwrap().assignments[0];
+         assert_eq!(
+@@ -581,28 +569,20 @@ const PART_B_LANG: &str = r#"
+ "#;
+ 
+ const P_SUBS_ANY: &str = r#"
+ profile_version: 1
+ input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles } }
+ "#;
+ 
+-fn partition_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
+-    batch
+-        .batch_diagnostics
+-        .iter()
+-        .filter(|d| d.code == DiagCode::SuggestionPartition)
+-        .collect()
+-}
+-
+ #[test]
+ fn no_single_fix_produces_a_two_group_partition() {
+     let (batch, _dir) = plan_multi(
+         P_SUBS_ANY,
+         &[
+             ("Show.S01E01.mkv", PART_A_FORCED),
+             ("Show.S01E02.mkv", PART_B_LANG),
+         ],
+     );
+ 
+@@ -617,32 +597,39 @@ fn no_single_fix_produces_a_two_group_partition() {
+     assert!(
+         batch.suggestions.is_empty(),
+         "no batch-wide suggestion should survive: {:?}",
+         batch
+             .suggestions
+             .iter()
+             .map(|s| &s.edit)
+             .collect::<Vec<_>>()
+     );
+ 
+-    let groups: Vec<_> = partition_diags(&batch)
+-        .into_iter()
+-        .filter(|d| d.params.get("kind").map(String::as_str) == Some("group"))
++    let groups: Vec<_> = batch
++        .batch_diagnostics
++        .iter()
++        .filter(|d| {
++            d.code == DiagCode::SuggestionPartition
++                && d.params.get("kind").map(String::as_str) == Some("group")
++        })
+         .collect();
+     assert_eq!(
+         groups.len(),
+         2,
+         "expected a two-group partition, got {:?}",
+         groups.iter().map(|d| &d.params).collect::<Vec<_>>()
+     );
+-    assert!(groups.iter().all(|d| d.config_path == "tracks[0].match"
+-        && d.severity == muxsmith_core::report::Severity::Info),);
++    assert!(
++        groups
++            .iter()
++            .all(|d| d.config_path == "tracks[0].match" && d.severity == Severity::Info),
++    );
+ 
+     // One group is the forced_track file, the other the language file, and the
+     // files are partitioned accordingly.
+     let forced = groups
+         .iter()
+         .find(|d| d.params["fix"].contains("forced_track"))
+         .expect("a forced_track group");
+     let lang = groups
+         .iter()
+         .find(|d| d.params["fix"].contains("language"))
+@@ -657,21 +644,21 @@ fn no_single_fix_produces_a_two_group_partition() {
+ // Task 18 / D33: OverlappingRules auto-narrowing suggestions.
+ //
+ // Symmetric generation for ALL overlap claimants, NOT-polarity seed from the
+ // shared track's property vector, acceptance-filtered on the target overlap
+ // INSTANCE disappearing. Reuses the AmbiguousRule machinery
+ // (candidates_for_rule / resolves_without_regression / partition) with the
+ // four D33 touch-points; no new edit variant, DiagCode, or Fluent message.
+ // TC-A..TC-D are the D33 acceptance cases.
+ // ===========================================================================
+ 
+-fn overlap_diags(batch: &Batch) -> Vec<&muxsmith_core::report::Diagnostic> {
++fn overlap_diags(batch: &Batch) -> Vec<&Diagnostic> {
+     batch
+         .files
+         .iter()
+         .flat_map(|f| f.diagnostics.iter())
+         .filter(|d| d.code == DiagCode::OverlappingRules)
+         .collect()
+ }
+ 
+ // --- TC-A: optional yielding rule -> NOT-narrowings on the optional rule ----
+ 
+diff --git a/crates/muxsmith-core/tests/validate_structure.rs b/crates/muxsmith-core/tests/validate_structure.rs
+index 0822f44..9361b46 100644
+--- a/crates/muxsmith-core/tests/validate_structure.rs
++++ b/crates/muxsmith-core/tests/validate_structure.rs
+@@ -113,24 +113,21 @@ fn unknown_template_filter_carries_name() {
+     let ds = validate(&parse(&y));
+     let d = ds
+         .iter()
+         .find(|d| d.code == DiagCode::UnknownTemplateFilter)
+         .expect("expected UnknownTemplateFilter diagnostic");
+     assert_eq!(d.params.get("name").map(String::as_str), Some("frobnicate"));
+ }
+ 
+ #[test]
+ fn unknown_keywords_are_flagged() {
+-    for (snippet, _section) in [
+-        ("chapters: discard\n", "chapters"),
+-        ("title: wipe\n", "title"),
+-    ] {
++    for snippet in ["chapters: discard\n", "title: wipe\n"] {
+         let y = BASE.to_string() + snippet;
+         assert!(
+             codes(&y).contains(&DiagCode::InvalidKeyword),
+             "expected InvalidKeyword for: {snippet}"
+         );
+     }
+     let y = BASE.replace(
+         "- match: { exact: { type: video } }",
+         "- source: secondary\n      match: { exact: { type: video } }",
+     );

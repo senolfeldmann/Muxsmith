@@ -1,0 +1,330 @@
+# Review package: 6bd1f33..9e84e02
+
+## Commits
+9e84e02 docs(i18n): Fluent comment levels + honest header claims; spec §5.2 WorkerPanicked cell
+
+## Files changed
+ .../specs/2026-07-08-muxsmith-v1-design.md         |  2 +-
+ locales/de/cli.ftl                                 | 12 ++++----
+ locales/de/diagnostics.ftl                         | 12 ++++----
+ locales/de/gui-batch.ftl                           |  9 +++---
+ locales/de/gui-common.ftl                          | 16 ++++++-----
+ locales/de/gui-jobs.ftl                            |  8 ++++--
+ locales/de/gui-settings.ftl                        |  6 ++--
+ locales/en/gui-batch.ftl                           | 16 +++++------
+ locales/en/gui-common.ftl                          | 32 +++++++++++-----------
+ locales/en/gui-settings.ftl                        |  4 +--
+ 10 files changed, 63 insertions(+), 54 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index 11b2576..12c9dc0 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -276,21 +276,21 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`); a `raw:`-prefixed name opts out (4.4, 9.2) |
+ | `RawProperty` | info | a match condition uses a `raw:`-prefixed property: an explicit opt-in that bypasses the capability checks and matches untyped; `property` carries the bare name (config-time; 4.4, 9.2) |
+ | `RawOnKnownProperty` | warning | `raw:` applied to a model property with special matching semantics (`language`, `codec_kind`), degrading it to byte-literal untyped equality (config-time; 4.4, 9.2) |
+ | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+ | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+ | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
+ | `UnknownPropertySkew` | warning | a `raw:`-opted property was consumed at plan time and matched untyped; `property`/`found_version`/`pinned` params report the property and the runtime-vs-pinned schema versions, one code covering both a genuinely newer schema and a same-version untyped match (9.2) |
+ | `SchemaDrift` | info | at least one source file's `identification_format_version` exceeds the build-time pinned schema version; `found_version`/`pinned` params carry both versions; emitted once per batch when planning concludes (9.2) |
+ | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
+ | `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
+-| `WorkerPanicked` | info | a queue worker thread panicked while running a job (a bug in this crate, never an mkvmerge failure); the job is reported `Failed`. Not a batch `Diagnostic`: carried as a `worker-panicked: job N` token in `JobOutcome.errors` (and its `--json` job encoding) instead, rendered through this same catalog entry at presentation time (6) |
++| `WorkerPanicked` | n/a (job-error token, not a rendered diagnostic) | a queue worker thread panicked while running a job (a bug in this crate, never an mkvmerge failure); the job is reported `Failed`. Not a batch `Diagnostic`: carried as a `worker-panicked: job N` token in `JobOutcome.errors` (and its `--json` job encoding) instead, rendered through this same catalog entry at presentation time (6) |
+ 
+ ### 5.3 Suggestion engine
+ 
+ Contract: for `AmbiguousRule` and `OverlappingRules`, generate candidate refinements by diffing the properties of the conflicting tracks across **all** affected files, then simulate each candidate against the cached identification data of the **entire batch**. Emit only refinements that (a) resolve every instance of the conflict batch-wide and (b) introduce no new diagnostic for any file. If no single refinement satisfies both, report that explicitly and list the files requiring different resolutions.
+ 
+ Suggestions are structured edits (`config_path` + proposed change), not prose; the GUI offers one-click apply, the CLI prints them as exact YAML fragments.
+ 
+ Algorithm (closed edit grammar, discriminator generation, batch simulation via the real planner, acceptance invariant, deterministic ranking, no-single-fix partition): `docs/superpowers/specs/2026-07-09-plan-2-design-decisions.md` D6.
+ 
+ ### 5.4 Static lint
+diff --git a/locales/de/cli.ftl b/locales/de/cli.ftl
+index 5f3c91d..5d7f201 100644
+--- a/locales/de/cli.ftl
++++ b/locales/de/cli.ftl
+@@ -1,15 +1,17 @@
+-# German (de) translation of locales/en/cli.ftl. The en catalog is the
+-# source of truth; keys, placeables and selector structure mirror it and
+-# are parity-enforced by scripts/check-i18n.mjs. Terminology per Task 21
+-# (#17): Spur/Datei/Profil/Regel/Vorschlag, mkvtoolnix-de anchors where one
+-# exists. Sie-less imperative (du-Imperativ) for direct CLI instructions.
++### German (de) translation of locales/en/cli.ftl. The en catalog is the
++### source of truth; keys mirror it (id parity enforced by
++### scripts/check-i18n.mjs); placeables and selector structure mirror it by
++### convention (reviewed manually, not machine-checked). Terminology per
++### Task 21 (#17): Spur/Datei/Profil/Regel/Vorschlag, mkvtoolnix-de anchors
++### where one exists. Sie-less imperative (du-Imperativ) for direct CLI
++### instructions.
+ validate-ok = Das Profil ist gültig.
+ validate-summary = { $errors ->
+     [one] 1 Fehler
+    *[other] { $errors } Fehler
+ }, { $warnings ->
+     [one] 1 Warnung
+    *[other] { $warnings } Warnungen
+ }, { $infos ->
+     [one] 1 Info
+    *[other] { $infos } Infos
+diff --git a/locales/de/diagnostics.ftl b/locales/de/diagnostics.ftl
+index 44e2832..e80a6b6 100644
+--- a/locales/de/diagnostics.ftl
++++ b/locales/de/diagnostics.ftl
+@@ -1,15 +1,17 @@
+-# German (de) translation of locales/en/diagnostics.ftl. The en catalog is
+-# the source of truth; keys, placeables and selector structure mirror it
+-# (parity-enforced by scripts/check-i18n.mjs). Config-field names and
+-# keywords (profile_version, codec_kind, codec_id, exact, select/drop/add,
+-# any/not, raw:) stay literal. Straight ASCII quotes as in en.
++### German (de) translation of locales/en/diagnostics.ftl. The en catalog is
++### the source of truth; keys mirror it (id parity enforced by
++### scripts/check-i18n.mjs); placeables and selector structure mirror it by
++### convention (reviewed manually, not machine-checked). Config-field names
++### and keywords (profile_version, codec_kind, codec_id, exact,
++### select/drop/add, any/not, raw:) stay literal. Straight ASCII quotes as
++### in en.
+ severity-error = Fehler
+ severity-warning = Warnung
+ severity-info = Info
+ 
+ unsupported-profile-version = Nicht unterstützte profile_version { $found } (unterstützt: { $supported }).
+ parse-error = Das Profil konnte nicht geparst werden: { $detail }
+ no-track-rules = Das Profil definiert keine Spurregeln; mindestens eine ist erforderlich.
+ empty-match-expression = Dieser Match-Ausdruck ist leer und würde auf jede Spur passen.
+ empty-extensions = Die Erweiterungsliste darf nicht leer sein.
+ invalid-regex = Ungültiger regulärer Ausdruck: { $detail }
+diff --git a/locales/de/gui-batch.ftl b/locales/de/gui-batch.ftl
+index d2b820f..3b588d2 100644
+--- a/locales/de/gui-batch.ftl
++++ b/locales/de/gui-batch.ftl
+@@ -1,14 +1,15 @@
+-# German (de) translation of locales/en/gui-batch.ftl. The en catalog is
+-# the source of truth; keys, placeables and selector structure mirror it
+-# (parity-enforced by scripts/check-i18n.mjs). Batch -> Stapel, Regel,
+-# Vorschlag, Probelauf (dry run); GUI imperative in infinitive form.
++## German (de) translation of locales/en/gui-batch.ftl. The en catalog is
++## the source of truth; keys mirror it (id parity enforced by
++## scripts/check-i18n.mjs); placeables and selector structure mirror it by
++## convention (reviewed manually, not machine-checked). Batch -> Stapel,
++## Regel, Vorschlag, Probelauf (dry run); GUI imperative in infinitive form.
+ 
+ batch-view-heading = Stapel
+ 
+ batch-profile-heading = Profil
+ batch-profile-pick = Profil auswählen...
+ batch-profile-pick-tooltip = Eine Muxsmith-Profil-YAML-Datei zum Prüfen und Starten auswählen.
+ batch-profile-filter-name = Muxsmith-Profile
+ batch-profile-none = Noch kein Profil ausgewählt. Wähle unten eines aus, um es zu prüfen und einen Stapel zu starten.
+ batch-profile-current = Ausgewähltes Profil: { $path }
+ 
+diff --git a/locales/de/gui-common.ftl b/locales/de/gui-common.ftl
+index 50d2266..45102d5 100644
+--- a/locales/de/gui-common.ftl
++++ b/locales/de/gui-common.ftl
+@@ -1,17 +1,19 @@
+-# German (de) translation of locales/en/gui-common.ftl. The en catalog is
+-# the source of truth; keys and placeables mirror it (parity-enforced by
+-# scripts/check-i18n.mjs). NOTE: the native close-confirmation dialog reads
+-# the EN catalog directly (src-tauri/src/run.rs include_str!s locales/en/
+-# gui-common.ftl), so the close-abort-* strings below are not yet shown to
+-# a de user; kept single-line and translated for parity and a later shell
+-# i18n. The IpcError-code keys mirror their en wording.
++### German (de) translation of locales/en/gui-common.ftl. The en catalog is
++### the source of truth; keys mirror it (id parity enforced by
++### scripts/check-i18n.mjs); placeables and selector structure mirror it by
++### convention (reviewed manually, not machine-checked). NOTE: the native
++### close-confirmation dialog reads the EN catalog directly
++### (src-tauri/src/run.rs include_str!s locales/en/gui-common.ftl), so the
++### close-abort-* strings below are not yet shown to a de user; kept
++### single-line and translated for parity and a later shell i18n. The
++### IpcError-code keys mirror their en wording.
+ app-title = Muxsmith
+ 
+ close-abort-title = Laufende Jobs abbrechen
+ close-abort-message = Derzeit läuft ein Job. Möchtest du wirklich alle laufenden Jobs abbrechen und beenden?
+ close-abort-confirm = Jobs abbrechen und beenden
+ close-abort-dismiss = Abbrechen
+ 
+ nav-label = Hauptnavigation
+ nav-batch = Stapel
+ nav-jobs = Jobs
+diff --git a/locales/de/gui-jobs.ftl b/locales/de/gui-jobs.ftl
+index e540e9f..05c38e2 100644
+--- a/locales/de/gui-jobs.ftl
++++ b/locales/de/gui-jobs.ftl
+@@ -1,14 +1,16 @@
+ # German (de) translation of locales/en/gui-jobs.ftl. The en catalog is the
+-# source of truth; keys, placeables and selector structure mirror it
+-# (parity-enforced by scripts/check-i18n.mjs). run -> Lauf, Job(s), Status,
+-# Verlauf, Protokoll. The IpcError-code keys mirror their en wording.
++# source of truth; keys mirror it (id parity enforced by
++# scripts/check-i18n.mjs); placeables and selector structure mirror it by
++# convention (reviewed manually, not machine-checked). run -> Lauf, Job(s),
++# Status, Verlauf, Protokoll. The IpcError-code keys mirror their en
++# wording.
+ 
+ ## Batch header + run summary
+ 
+ jobs-batch-progress = { $finished } / { $total } Jobs abgeschlossen
+ jobs-cancel-batch-label = Stapel abbrechen
+ jobs-cancel-batch-tooltip = Jeden eingereihten und laufenden Job in diesem Lauf abbrechen.
+ jobs-summary-line = { $ok } ok, { $warning } Warnung, { $failed } fehlgeschlagen, { $cancelled } abgebrochen
+ jobs-joblog-incomplete = Das Protokoll des Laufs konnte nicht vollständig auf die Festplatte geschrieben werden; einige Job-Einträge fehlen möglicherweise.
+ jobs-joblog-unavailable = Das Protokoll des Laufs konnte nicht auf die Festplatte geschrieben werden; dieser Lauf erscheint nicht im Verlauf.
+ jobs-no-run = Es ist kein Lauf aktiv. Starte einen Lauf in der Stapel-Ansicht.
+diff --git a/locales/de/gui-settings.ftl b/locales/de/gui-settings.ftl
+index e31aa16..cec95d6 100644
+--- a/locales/de/gui-settings.ftl
++++ b/locales/de/gui-settings.ftl
+@@ -1,13 +1,13 @@
+-# German (de) translation of locales/en/gui-settings.ftl. The en catalog is
+-# the source of truth; keys mirror it (parity-enforced by
+-# scripts/check-i18n.mjs).
++### German (de) translation of locales/en/gui-settings.ftl. The en catalog is
++### the source of truth; keys mirror it (parity-enforced by
++### scripts/check-i18n.mjs).
+ settings-title = Einstellungen
+ settings-mkvmerge-path-label = Abweichender mkvmerge-Pfad
+ settings-mkvmerge-path-hint = Leer lassen, um das automatisch erkannte mkvmerge zu verwenden (aus dem PATH oder dem Standard-Installationsort deines Betriebssystems).
+ settings-default-jobs-label = Standardmäßige parallele Jobs
+ settings-default-jobs-hint = Wie viele mkvmerge-Prozesse während eines Laufs gleichzeitig ausgeführt werden. 1 führt die Jobs nacheinander aus.
+ settings-locale-label = Sprache
+ settings-locale-hint = Die verfügbaren Sprachen stehen in der Auswahlliste. Eine geänderte Sprache wird erst nach einem Neustart von Muxsmith wirksam.
+ settings-locale-option-en = English
+ settings-locale-option-de = Deutsch
+ settings-save = Speichern
+diff --git a/locales/en/gui-batch.ftl b/locales/en/gui-batch.ftl
+index 3e9ee2c..ec3af94 100644
+--- a/locales/en/gui-batch.ftl
++++ b/locales/en/gui-batch.ftl
+@@ -1,18 +1,18 @@
+-# T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
+-# are show-and-copy only, never applied). `browse-button` (gui-common.ftl,
+-# the generic "Browse..." label) is reused for the source/output directory
+-# pickers, but their tooltip is `batch-browse-dir-tooltip` below, not
+-# gui-common.ftl's `browse-button-tooltip` (fix: that one says "Choose the
+-# file with a file picker", wrong noun for a directory picker; it stays
+-# reserved for genuine file pickers, e.g. FirstRun's/SettingsDialog's
+-# mkvmerge-path browse button).
++## T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
++## are show-and-copy only, never applied). `browse-button` (gui-common.ftl,
++## the generic "Browse..." label) is reused for the source/output directory
++## pickers, but their tooltip is `batch-browse-dir-tooltip` below, not
++## gui-common.ftl's `browse-button-tooltip` (fix: that one says "Choose the
++## file with a file picker", wrong noun for a directory picker; it stays
++## reserved for genuine file pickers, e.g. FirstRun's/SettingsDialog's
++## mkvmerge-path browse button).
+ 
+ batch-view-heading = Batch
+ 
+ batch-profile-heading = Profile
+ batch-profile-pick = Choose profile...
+ batch-profile-pick-tooltip = Pick a Muxsmith profile YAML file to validate and run.
+ batch-profile-filter-name = Muxsmith profiles
+ batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch.
+ batch-profile-current = Selected profile: { $path }
+ 
+diff --git a/locales/en/gui-common.ftl b/locales/en/gui-common.ftl
+index 9b1cb35..02cd0ee 100644
+--- a/locales/en/gui-common.ftl
++++ b/locales/en/gui-common.ftl
+@@ -1,59 +1,59 @@
+ app-title = Muxsmith
+ 
+-# D31: native close-confirmation dialog (window close with an active run).
+-# Consumed by the Rust shell at build time (include_str lookup in
+-# src-tauri/src/run.rs); keep these entries single-line simple messages
+-# (no attributes, no multiline continuations) -- the shell's lookup is a
+-# line parser, not a Fluent parser, and a unit test pins each key.
+-# Wording per D31's mkvtoolnix-gui reference (main_window.cpp,
+-# beforeCloseCheckRunningJobs).
++## D31: native close-confirmation dialog (window close with an active run).
++## Consumed by the Rust shell at build time (include_str lookup in
++## src-tauri/src/run.rs); keep these entries single-line simple messages
++## (no attributes, no multiline continuations) -- the shell's lookup is a
++## line parser, not a Fluent parser, and a unit test pins each key.
++## Wording per D31's mkvtoolnix-gui reference (main_window.cpp,
++## beforeCloseCheckRunningJobs).
+ close-abort-title = Abort running jobs
+ close-abort-message = There is currently a job running. Do you really want to abort all currently running jobs and quit?
+ close-abort-confirm = Abort jobs and quit
+ close-abort-dismiss = Cancel
+ 
+-# T9: app shell navigation (single window, two views + first-run + settings,
+-# spec 8.2). aria-current="page" on the active tab is set in the template,
+-# not encoded here.
++## T9: app shell navigation (single window, two views + first-run + settings,
++## spec 8.2). aria-current="page" on the active tab is set in the template,
++## not encoded here.
+ nav-label = Main navigation
+ nav-batch = Batch
+ nav-jobs = Jobs
+ settings-open-label = Settings
+ settings-open-tooltip = Open application settings (mkvmerge path, default jobs, language).
+ browse-button = Browse...
+ browse-button-tooltip = Choose the file with a file picker.
+ 
+-# T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
+-# Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
+-# selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
+-# raw code when a message exists here, and falls back to the code string
+-# itself only when a key is genuinely missing.
++## T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
++## Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
++## selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
++## raw code when a message exists here, and falls back to the code string
++## itself only when a key is genuinely missing.
+ mkvmerge-not-found = mkvmerge was not found.
+ mkvmerge-too-old = The mkvmerge found ({ $found }) is older than the required minimum version { $minimum }.
+ mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
+ # identify is registered IPC surface (src-tauri/src/lib.rs::identify) but
+ # had no gui-common.ftl entry, unlike every other IpcError code above and
+ # below it -- a missing key that fell back to the raw "identify-failed"
+ # code string. Wording adapted from cli.ftl's identical-purpose
+ # `identify-failed`, not copied verbatim: the CLI message interpolates
+ # `{ $file }`, but IpcError::from(IdentifyError) (error.rs) only ever
+ # attaches a `detail` param (the underlying JSON-parse/stat error text),
+ # never `file` -- a literal copy would reference an unpopulated variable.
+ identify-failed = Could not identify the file: { $detail }
+ mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
+ settings-dir-unavailable = The application settings location could not be determined on this system.
+ settings-io-failed = Application settings could not be read or written: { $detail }
+ settings-parse-failed = The application settings file is corrupt: { $detail }
+ internal-task-failed = An internal error occurred: { $detail }
+ 
+-# T9: first-run mkvmerge detection (D28).
++## T9: first-run mkvmerge detection (D28).
+ firstrun-detecting = Looking for mkvmerge...
+ firstrun-missing-heading = mkvmerge was not found
+ firstrun-too-old-heading = mkvmerge is too old
+ firstrun-detect-failed-heading = mkvmerge detection failed
+ firstrun-guidance-windows = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at mkvmerge.exe below (typically under %ProgramFiles%\MKVToolNix\mkvmerge.exe).
+ firstrun-guidance-macos = Install MKVToolNix from mkvtoolnix.download into /Applications, then retry, or point Muxsmith directly at the mkvmerge binary below (typically /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge or /usr/local/bin/mkvmerge).
+ firstrun-guidance-linux = Install the mkvtoolnix package from your distribution (e.g. apt, dnf, pacman), then retry, or point Muxsmith directly at the mkvmerge binary below (typically /usr/bin/mkvmerge or /usr/local/bin/mkvmerge).
+ firstrun-guidance-fallback = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at the mkvmerge binary below.
+ firstrun-picker-label = mkvmerge executable path
+ firstrun-picker-hint = Enter or browse to the mkvmerge executable if it is not installed in a standard location.
+diff --git a/locales/en/gui-settings.ftl b/locales/en/gui-settings.ftl
+index 3415c11..cd163b6 100644
+--- a/locales/en/gui-settings.ftl
++++ b/locales/en/gui-settings.ftl
+@@ -1,12 +1,12 @@
+-# T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
+-# parallel jobs, UI locale).
++### T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
++### parallel jobs, UI locale).
+ settings-title = Settings
+ settings-mkvmerge-path-label = mkvmerge path override
+ settings-mkvmerge-path-hint = Leave empty to use the automatically detected mkvmerge (PATH or the standard install location for your operating system).
+ settings-default-jobs-label = Default parallel jobs
+ settings-default-jobs-hint = How many mkvmerge processes to run at the same time during a run. 1 runs jobs one after another.
+ settings-locale-label = Language
+ settings-locale-hint = Available languages are listed in the dropdown. A changed language takes effect after restarting Muxsmith.
+ settings-locale-option-en = English
+ settings-locale-option-de = Deutsch
+ settings-save = Save

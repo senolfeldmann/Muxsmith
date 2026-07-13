@@ -1,0 +1,213 @@
+# Review package: 198fad3..6bd1f33
+
+## Commits
+6bd1f33 refactor(core): shared config-diagnostics helper (validate+lint funnel)
+
+## Files changed
+ crates/muxsmith-cli/src/commands/validate.rs | 11 ++---------
+ crates/muxsmith-core/src/profile/validate.rs | 24 ++++++++++++++++++++++++
+ docs/ROADMAP.md                              |  3 ++-
+ src-tauri/src/lib.rs                         | 15 ++++-----------
+ 4 files changed, 32 insertions(+), 21 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/src/commands/validate.rs b/crates/muxsmith-cli/src/commands/validate.rs
+index 3814640..bb185e9 100644
+--- a/crates/muxsmith-cli/src/commands/validate.rs
++++ b/crates/muxsmith-cli/src/commands/validate.rs
+@@ -1,17 +1,17 @@
+ //! `muxsmith validate` subcommand (spec 8.1): loads a profile, runs
+ //! `muxsmith-core`'s config-time checks, and renders the resulting
+ //! diagnostics.
+ 
+ use std::path::Path;
+ 
+-use muxsmith_core::profile::{lint, load, validate};
++use muxsmith_core::profile::validate;
+ use muxsmith_core::report::json::rendered_diags;
+ use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
+ 
+ use crate::commands::{severity_exit, severity_sorted};
+ use crate::i18n::Renderer;
+ 
+ /// Runs `muxsmith validate` (spec 8.1): loads and statically validates the
+ /// profile, prints diagnostics (human-readable, or as structured JSON with
+ /// `--json`), and returns the mkvmerge-style exit code (0 success, 1 worst
+ /// diagnostic is a warning, 2 worst is an error).
+@@ -31,28 +31,21 @@ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
+     } else {
+         for d in &diagnostics {
+             println!("{}", renderer.diagnostic(d));
+         }
+         println!("{}", render_summary(&diagnostics, renderer));
+     }
+     exit
+ }
+ 
+ fn collect(profile_path: &Path) -> Vec<Diagnostic> {
+-    match load::from_file(profile_path) {
+-        Err(d) => vec![d],
+-        Ok(profile) => {
+-            let mut diags = validate::validate(&profile);
+-            diags.extend(lint::provable_overlaps(&profile));
+-            diags
+-        }
+-    }
++    validate::config_diagnostics_from_file(profile_path)
+ }
+ 
+ /// The `validate-summary` line: how many of `diagnostics` are each
+ /// severity, each count through its own CLDR plural selector ("1 error" /
+ /// "2 errors", T19 #17 step 1). Split out so it is unit-testable without a
+ /// real profile file.
+ fn render_summary(diagnostics: &[Diagnostic], renderer: &Renderer) -> String {
+     let count = |s: Severity| diagnostics.iter().filter(|d| d.severity == s).count();
+     renderer.msg_with_counts(
+         "validate-summary",
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index 0c212e5..6ad173c 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -1,23 +1,25 @@
+ //! Semantic validation (spec 5.4 static checks, config-time part).
+ //! Task 9 extends this file with input/locator/template validation.
+ 
+ use std::collections::BTreeMap;
++use std::path::Path;
+ 
+ use crate::capability::{self, PropType};
+ use crate::report::{DiagCode, Diagnostic};
+ use crate::template::{Template, TemplateError};
+ 
+ use super::match_expr::{MatchExpr, Scalar};
+ use super::model::{
+     AttachmentRule, ChaptersCfg, FilenameCfg, Locator, Profile, SourceCfg, TitleCfg,
+ };
++use super::{lint, load};
+ 
+ /// Config-time semantic validation (spec 5.4): profile version, regex
+ /// compilation, template well-formedness, property existence/type checks
+ /// for every `match`/`changes`/locator, and keyword validity. Returns every
+ /// diagnostic found rather than stopping at the first (no fail-fast);
+ /// touches no filesystem beyond the profile itself and never replaces the
+ /// planner's runtime checks (5.1-5.3).
+ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
+     let mut diags = Vec::new();
+ 
+@@ -164,20 +166,42 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
+                 &fields,
+                 false,
+                 &mut diags,
+             );
+         }
+     }
+ 
+     diags
+ }
+ 
++/// Every config-time diagnostic for an already-loaded `profile`: [`validate`]'s
++/// static checks followed by [`lint::provable_overlaps`]'s cross-rule overlap
++/// check, in that order. The one funnel both config-time consumers (CLI
++/// `validate`, GUI `validate_profile`) call instead of each repeating the
++/// two-call sequence.
++pub fn config_diagnostics(profile: &Profile) -> Vec<Diagnostic> {
++    let mut diags = validate(profile);
++    diags.extend(lint::provable_overlaps(profile));
++    diags
++}
++
++/// [`config_diagnostics`] for a profile not yet loaded from `path`: a load
++/// failure (spec 4 I/O or deserialization error) short-circuits to that
++/// single [`Diagnostic`] since there is no profile to run the funnel on; a
++/// successful load runs [`config_diagnostics`] on it.
++pub fn config_diagnostics_from_file(path: &Path) -> Vec<Diagnostic> {
++    match load::from_file(path) {
++        Err(d) => vec![d],
++        Ok(profile) => config_diagnostics(&profile),
++    }
++}
++
+ fn flatten_regex_error(e: &regex::Error) -> String {
+     e.to_string()
+         .split_whitespace()
+         .collect::<Vec<_>>()
+         .join(" ")
+ }
+ 
+ fn track_prop_type(name: &str) -> Option<PropType> {
+     capability::matchable_type(name)
+ }
+diff --git a/docs/ROADMAP.md b/docs/ROADMAP.md
+index 9e7e8cd..5355588 100644
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -43,21 +43,22 @@ Fluent (locale-formatting revisit, S16). The help-mode sidebar includes
+ the spec-10 help-id completeness guard (CI fail on help-ids without a
+ topic file - S17, previously unnamed in this anchor).
+ 
+ Further named inputs (2026-07-12, idiomacy review triage): hoist the
+ four-copy planning pipeline into a shared plan_pipeline() core fn - this IS
+ the injectable-planner-seam (S4/S5/S6), spec 5.5/7 parity-critical (~100
+ lines); hoist run_batch into muxsmith_core::executor (the CLI inlines what
+ src-tauri already factored); hoist runs-root resolution to core (D26
+ debug-only seam duplicated CLI vs src-tauri). Plus the deferred Fluent
+ message-attribute reorganization (widget facets as .attribute instead of
+-suffixed siblings; touches frontend $ta + check-i18n parity).
++suffixed siblings; touches frontend $ta + check-i18n parity). plan_pipeline
++consumes profile::validate::config_diagnostics (landed Plan 5.6 T11).
+ 
+ ## Triggers
+ 
+ Observable events with registered consequences - CONSULT AT EVERY
+ MILESTONE GATE (visibility flip, release, tag, publication; doctrine §3).
+ Details live at the pointed-to entries; this list only names event ->
+ action:
+ 
+ - Renovate/Dependabot activated -> prune deny.toml RUSTSEC ignores; TS-7
+   bump arrives via its PRs (near-1.0 entry riders).
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 754da87..038087b 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -156,37 +156,30 @@ impl AppState {
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+ struct MkvmergeInfo {
+     /// The resolved executable path (override, PATH, or a platform
+     /// candidate).
+     path: String,
+     /// The found version, formatted `"{major}.{minor}"`.
+     version: String,
+ }
+ 
+ /// `validate_profile`'s command body (testable without a Tauri runtime):
+-/// static, mkvmerge-free validation (spec 5.4) of the profile at `path`,
+-/// mirroring `muxsmith-cli`'s `validate::collect` (load, then
+-/// `validate::validate` + `lint::provable_overlaps`), but rendered through
++/// static, mkvmerge-free validation (spec 5.4) of the profile at `path` via
++/// [`validate::config_diagnostics_from_file`] (the same funnel `muxsmith-cli`'s
++/// `validate` subcommand calls), rendered through
+ /// [`report::json::config_only_document`] per this task's brief rather
+ /// than the CLI `validate` subcommand's flatter `{diagnostics: [...]}`
+ /// shape -- every GUI report command returns the SAME document shape, so
+ /// the frontend has one rendering path, not one per command. `mkvmerge_found`
+ /// is always absent from the result: this command never touches mkvmerge.
+ fn validate_profile_body(path: &Path) -> serde_json::Value {
+-    let diags = match load::from_file(path) {
+-        Err(d) => vec![d],
+-        Ok(profile) => {
+-            let mut diags = validate::validate(&profile);
+-            diags.extend(lint::provable_overlaps(&profile));
+-            diags
+-        }
+-    };
++    let diags = validate::config_diagnostics_from_file(path);
+     report::json::config_only_document(&diags, None, &ShellRenderer)
+ }
+ 
+ /// `dry_run`'s command body (testable without a Tauri runtime): mirrors
+ /// `muxsmith-cli`'s `dry-run` orchestration (load -> config-time validate
+ /// -> resolve mkvmerge -> `list_languages` -> `plan_batch` -> assemble
+ /// document, `muxsmith-cli/src/commands/dry_run.rs`) with one deliberate
+ /// substitution -- [`Mkvmerge::detect`] (override + PATH + platform
+ /// candidates, D28) in place of the CLI's PATH-only [`Mkvmerge::locate`] --
+ /// so a GUI user's configured mkvmerge override (`AppSettings::mkvmerge_path`)

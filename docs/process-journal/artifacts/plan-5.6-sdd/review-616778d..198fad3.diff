@@ -1,0 +1,102 @@
+# Review package: 616778d..198fad3
+
+## Commits
+198fad3 refactor(core): known_extensions is a required Identify method (T5-m2)
+
+## Files changed
+ crates/muxsmith-cli/tests/catalog_completeness.rs | 4 ++++
+ crates/muxsmith-core/src/identify.rs              | 7 ++-----
+ crates/muxsmith-core/tests/support/mod.rs         | 4 ++++
+ 3 files changed, 10 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/tests/catalog_completeness.rs b/crates/muxsmith-cli/tests/catalog_completeness.rs
+index 590830d..40d9fbf 100644
+--- a/crates/muxsmith-cli/tests/catalog_completeness.rs
++++ b/crates/muxsmith-cli/tests/catalog_completeness.rs
+@@ -362,20 +362,24 @@ fn render_and_find_leaks<'a>(
+ 
+ /// Returns the same `Identification` for any path: enough to drive
+ /// `plan_batch` past identification so a rule resolves and its `changes`
+ /// apply.
+ struct OneIdent(Identification);
+ 
+ impl Identify for OneIdent {
+     fn identify(&mut self, _path: &Path) -> Result<Identification, IdentifyError> {
+         Ok(self.0.clone())
+     }
++
++    fn known_extensions(&mut self) -> Option<Vec<String>> {
++        None
++    }
+ }
+ 
+ /// Regression guard for the emitter-site divergence the two guards above are
+ /// structurally blind to (they render one hand-written fixture per code, so a
+ /// single emitter that omits a param its siblings set stays green there). This
+ /// drives the REAL `resolve_changes` emitter -- the plan-time invalid
+ /// `changes.language` path -- through `plan_batch`, then renders the diagnostic
+ /// it actually produced. Before the fix that added `.with("allowed", ...)` to
+ /// match its `walk_exact_languages` sibling, the `{ $allowed }` placeholder in
+ /// `invalid-property-value` reached the user verbatim; this asserts it no
+diff --git a/crates/muxsmith-core/src/identify.rs b/crates/muxsmith-core/src/identify.rs
+index 77e12f9..42962c5 100644
+--- a/crates/muxsmith-core/src/identify.rs
++++ b/crates/muxsmith-core/src/identify.rs
+@@ -371,25 +371,22 @@ fn cache_key(path: &Path) -> Result<CacheKey, IdentifyError> {
+ /// data without spawning mkvmerge. Returns an owned [`Identification`] (a clone
+ /// from the cache in the live impl) to keep the trait object simple.
+ pub trait Identify {
+     /// Identifies `path`, or returns why it could not be identified.
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError>;
+ 
+     /// The runtime's known source-file extensions (spec 4.2), for
+     /// `plan_core`'s batch-wide `profile.input.extensions` validation.
+     /// `None` when the capability is unavailable (mkvmerge absent, or a
+     /// fixture-backed test double that does not model it); the check
+-    /// degrades to a no-op rather than blocking planning. Defaulted here so
+-    /// existing `Identify` fakes need no change to keep compiling.
+-    fn known_extensions(&mut self) -> Option<Vec<String>> {
+-        None
+-    }
++    /// degrades to a no-op rather than blocking planning.
++    fn known_extensions(&mut self) -> Option<Vec<String>>;
+ }
+ 
+ /// The production [`Identify`]: an [`IdentifyCache`] plus the resolved
+ /// mkvmerge, wired together so `plan_batch` can drive real identification.
+ pub struct LiveIdentifier<'a> {
+     /// The per-session identification cache (spec 5.5).
+     pub cache: IdentifyCache,
+     /// The resolved external mkvmerge.
+     pub mkv: &'a Mkvmerge,
+ }
+diff --git a/crates/muxsmith-core/tests/support/mod.rs b/crates/muxsmith-core/tests/support/mod.rs
+index 92e4698..583ef4f 100644
+--- a/crates/muxsmith-core/tests/support/mod.rs
++++ b/crates/muxsmith-core/tests/support/mod.rs
+@@ -18,20 +18,24 @@ pub struct FakeIdent {
+ }
+ 
+ impl Identify for FakeIdent {
+     fn identify(&mut self, path: &Path) -> Result<Identification, IdentifyError> {
+         let name = path.file_name().unwrap().to_str().unwrap();
+         self.by_name
+             .get(name)
+             .cloned()
+             .ok_or_else(|| IdentifyError::Json(format!("no fixture for {name}")))
+     }
++
++    fn known_extensions(&mut self) -> Option<Vec<String>> {
++        None
++    }
+ }
+ 
+ /// The standard three-language (English/German/Turkish) index shared by the
+ /// planner/suggestions/command-integration suites.
+ #[allow(dead_code)]
+ pub fn lang() -> LanguageIndex {
+     LanguageIndex::from_rows(&[
+         ["English", "eng", "eng", "en"],
+         ["German", "ger", "ger", "de"],
+         ["Turkish", "tur", "tur", "tr"],

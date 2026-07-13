@@ -1,0 +1,728 @@
+# Review package: 0b3149a..1a70936
+
+## Commits
+1a70936 refactor(core): use clamp() for worker_count instead of chained max/min
+e1e2116 refactor(core): Template::parse via Peekable<Chars> instead of a Vec<char> index-walk
+d7f1acc refactor(core): derive CODEC_KIND_NAMES from CODEC_KINDS instead of hand-re-listing
+6902994 refactor(core): tighten discovery.rs's extension matching and identifier scan
+7680dc1 refactor(core): parse run_id_timestamp via time's PrimitiveDateTime::parse
+868ef0e refactor(core): consolidate validate_expr's repeated InvalidRegex check
+f5c71ce refactor(core): derive Default for KeepDrop, drop hand-rolled keep() helpers
+
+## Files changed
+ crates/muxsmith-core/Cargo.toml              |  2 +-
+ crates/muxsmith-core/src/capability/mod.rs   | 20 ++++-------
+ crates/muxsmith-core/src/discovery.rs        | 29 +++++----------
+ crates/muxsmith-core/src/executor/joblog.rs  | 23 +++---------
+ crates/muxsmith-core/src/executor/queue.rs   |  2 +-
+ crates/muxsmith-core/src/profile/model.rs    | 35 ++++--------------
+ crates/muxsmith-core/src/profile/validate.rs | 54 ++++++++++------------------
+ crates/muxsmith-core/src/template.rs         | 44 ++++++++++++++---------
+ 8 files changed, 74 insertions(+), 135 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 4de3c02..6d82c6a 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -6,18 +6,18 @@ license.workspace = true
+ publish = false
+ 
+ [dependencies]
+ dirs = "6.0.0"
+ language-tags = "0.3.2"
+ regex = "1.12.4"
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ serde_path_to_error = "0.1.20"
+-time = { version = "0.3.53", features = ["formatting"] }
++time = { version = "0.3.53", features = ["formatting", "parsing"] }
+ yaml_serde = "0.10.4"
+ 
+ [dev-dependencies]
+ # Exact-pin per toolchain doctrine; registry-verified current stable
+ # (crates.io API, 2026-07-11): proptest 1.11.0 is max_stable_version.
+ proptest = "=1.11.0"
+ tempfile = "3.27.0"
+diff --git a/crates/muxsmith-core/src/capability/mod.rs b/crates/muxsmith-core/src/capability/mod.rs
+index fdb48e7..f7b6f0a 100644
+--- a/crates/muxsmith-core/src/capability/mod.rs
++++ b/crates/muxsmith-core/src/capability/mod.rs
+@@ -1,16 +1,18 @@
+ //! mkvtoolnix capability model (spec 4.4 / 9). Matchable properties are
+ //! generated from the identification schema; settable properties and
+ //! codec_kind aliases are curated here. Runtime queries (--list-types,
+ //! --list-languages, --version) arrive in Plan 2.
+ // Generated from identification schema v20.
+ 
++use std::sync::LazyLock;
++
+ mod generated;
+ pub mod runtime;
+ 
+ /// The mkvmerge identification-output schema version this build was generated
+ /// against (spec 9). Reported as the `pinned` param of an `UnknownPropertySkew`
+ /// warning against the file's own `found_version`, so a `raw:`-opted untyped
+ /// match is visible whether the runtime schema is newer than this or the same
+ /// (spec 9.2, D32).
+ pub const PINNED_IDENTIFICATION_FORMAT_VERSION: u64 = 20;
+ 
+@@ -54,21 +56,21 @@ pub static TYPE_VALUES: &[&str] = &["audio", "buttons", "subtitles", "video"];
+ 
+ /// The closed set of legal values for a matchable property, or `None` if the
+ /// property is open-valued (free text, numbers) or has a runtime-only domain.
+ /// Backs the config-time `InvalidPropertyValue` check (spec 4.4, D2): `type`
+ /// and `codec_kind` are curated closed sets; `language`'s domain needs
+ /// `mkvmerge --list-languages` and is validated at plan time, so it is `None`
+ /// here.
+ pub fn matchable_domain(name: &str) -> Option<&'static [&'static str]> {
+     match name {
+         "type" => Some(TYPE_VALUES),
+-        "codec_kind" => Some(CODEC_KIND_NAMES),
++        "codec_kind" => Some(&CODEC_KIND_NAMES),
+         _ => None,
+     }
+ }
+ 
+ /// (profile name, value type, mkvmerge option) - spec 4.4 table.
+ pub static SETTABLE: &[(&str, PropType, &str)] = &[
+     ("language", PropType::String, "--language"),
+     ("track_name", PropType::String, "--track-name"),
+     ("default_track", PropType::Boolean, "--default-track-flag"),
+     ("forced_track", PropType::Boolean, "--forced-display-flag"),
+@@ -114,26 +116,24 @@ pub static CODEC_KINDS: &[(&str, &[&str])] = &[
+     ("flac", &["A_FLAC"]),
+     ("opus", &["A_OPUS"]),
+     ("mp3", &["A_MPEG/L3"]),
+     ("h264", &["V_MPEG4/ISO/AVC"]),
+     ("h265", &["V_MPEGH/ISO/HEVC"]),
+     ("av1", &["V_AV1"]),
+     ("vp9", &["V_VP9"]),
+ ];
+ 
+ /// The curated `codec_kind` alias names ([`CODEC_KINDS`] keys), the closed
+-/// domain of the `codec_kind` virtual property. Kept in sync with
+-/// `CODEC_KINDS` by the `codec_kind_domain_matches_kinds` test.
+-pub static CODEC_KIND_NAMES: &[&str] = &[
+-    "srt", "ass", "pgs", "vobsub", "webvtt", "aac", "ac3", "eac3", "dts", "truehd", "flac", "opus",
+-    "mp3", "h264", "h265", "av1", "vp9",
+-];
++/// domain of the `codec_kind` virtual property. Derived from `CODEC_KINDS`
++/// rather than hand-re-listed, so the two can never drift.
++pub static CODEC_KIND_NAMES: LazyLock<Vec<&'static str>> =
++    LazyLock::new(|| CODEC_KINDS.iter().map(|(k, _)| *k).collect());
+ 
+ /// Resolves a `codec_kind` alias (e.g. `srt`, `h264`) to the `codec_id`
+ /// prefixes it expands to at match time (spec 4.4). `None` if `kind` is not
+ /// a curated alias in [`CODEC_KINDS`].
+ pub fn codec_kind_prefixes(kind: &str) -> Option<&'static [&'static str]> {
+     CODEC_KINDS
+         .iter()
+         .find(|(k, _)| *k == kind)
+         .map(|(_, p)| *p)
+ }
+@@ -209,25 +209,19 @@ mod tests {
+         assert!(type_domain.contains(&"video"));
+         assert!(type_domain.contains(&"audio"));
+         assert!(type_domain.contains(&"subtitles"));
+         let ck = matchable_domain("codec_kind").expect("codec_kind has a closed domain");
+         assert!(ck.contains(&"srt"));
+         assert!(ck.contains(&"h264"));
+         assert_eq!(matchable_domain("track_name"), None);
+         assert_eq!(matchable_domain("language"), None); // validated at plan time
+     }
+ 
+-    #[test]
+-    fn codec_kind_domain_matches_kinds() {
+-        let from_kinds: Vec<&str> = CODEC_KINDS.iter().map(|(k, _)| *k).collect();
+-        assert_eq!(from_kinds, CODEC_KIND_NAMES);
+-    }
+-
+     #[test]
+     fn attachment_properties_are_defined() {
+         assert!(
+             ATTACHMENT_PROPERTIES
+                 .iter()
+                 .any(|(n, t)| *n == "content_type" && *t == PropType::String)
+         );
+     }
+ }
+diff --git a/crates/muxsmith-core/src/discovery.rs b/crates/muxsmith-core/src/discovery.rs
+index 002d991..6e8b4f7 100644
+--- a/crates/muxsmith-core/src/discovery.rs
++++ b/crates/muxsmith-core/src/discovery.rs
+@@ -51,64 +51,57 @@ pub struct PrimaryFile {
+ /// (case-insensitive) but whose basename does not match `input.pattern` is an
+ /// `IgnoredFile` (info); more than one pattern match in a basename is
+ /// `MultipleIdentifierMatches` (info, first match used); two primaries sharing
+ /// an identifier is `DuplicateIdentifier` (warning).
+ pub fn scan_primaries(source: &Path, input: &Input) -> (Vec<PrimaryFile>, Vec<Diagnostic>) {
+     let mut diags = Vec::new();
+     let re = match regex::Regex::new(&input.pattern) {
+         Ok(re) => re,
+         Err(_) => return (Vec::new(), diags), // validate already reported InvalidRegex
+     };
+-    let exts: Vec<String> = input
+-        .extensions
+-        .iter()
+-        .map(|e| e.to_ascii_lowercase())
+-        .collect();
+-
+     let mut primaries = Vec::new();
+     for path in walk_files(source, input.recursive) {
+         let name = match path.file_name().and_then(|n| n.to_str()) {
+             Some(n) => n,
+             None => continue,
+         };
+-        if !extension_matches(&path, &exts) {
++        if !extension_matches(&path, &input.extensions) {
+             continue; // not a candidate at all; silent
+         }
+-        let mut matches = re.find_iter(name);
+-        let Some(first) = matches.next() else {
++        let mut it = re.captures_iter(name);
++        let Some(caps) = it.next() else {
+             diags.push(Diagnostic::info(DiagCode::IgnoredFile, "input.pattern").for_file(&path));
+             continue;
+         };
+-        if matches.next().is_some() {
++        if it.next().is_some() {
+             diags.push(
+                 Diagnostic::info(DiagCode::MultipleIdentifierMatches, "input.pattern")
+                     .for_file(&path)
+                     .with("name", name),
+             );
+         }
+-        let caps = re.captures(name).expect("first match implies captures");
+         let mut groups = BTreeMap::new();
+         for (i, opt_name) in re.capture_names().enumerate() {
+             if i == 0 {
+                 continue;
+             }
+             if let Some(m) = caps.get(i) {
+                 groups.insert(format!("g{i}"), m.as_str().to_string());
+                 if let Some(n) = opt_name {
+                     groups.insert(n.to_string(), m.as_str().to_string());
+                 }
+             }
+         }
+         primaries.push(PrimaryFile {
+             path: path.clone(),
+             identifier: Identifier {
+-                whole: first.as_str().to_string(),
++                whole: caps[0].to_string(),
+                 groups,
+             },
+         });
+     }
+ 
+     // DuplicateIdentifier across the batch (spec 5.2).
+     let mut by_id: BTreeMap<&str, Vec<&PrimaryFile>> = BTreeMap::new();
+     for p in &primaries {
+         by_id
+             .entry(p.identifier.whole.as_str())
+@@ -137,63 +130,57 @@ pub fn scan_primaries(source: &Path, input: &Input) -> (Vec<PrimaryFile>, Vec<Di
+ pub fn resolve_locator(
+     locator: &Locator,
+     primary_dir: &Path,
+     identifier: &Identifier,
+ ) -> Vec<PathBuf> {
+     let base = if locator.path.is_absolute() {
+         locator.path.clone()
+     } else {
+         primary_dir.join(&locator.path)
+     };
+-    let exts: Vec<String> = locator
+-        .extensions
+-        .iter()
+-        .map(|e| e.to_ascii_lowercase())
+-        .collect();
+-
+     // The basename-matching regex: match_to_source is sugar for the template
+     // "{match}" (spec 4.6). A validated template parses; on the off chance it
+     // does not, match nothing rather than panic.
+     let pattern_src = if matches!(locator.match_to_source, Some(true)) {
+         "{match}".to_string()
+     } else {
+         locator.match_pattern.clone().unwrap_or_default()
+     };
+     let ctx = identifier.to_ctx();
+     let re = Template::parse(&pattern_src)
+         .ok()
+         .map(|t| t.render_regex_pattern(&ctx, locator.case_sensitive))
+         .and_then(|p| regex::Regex::new(&p).ok());
+ 
+     let mut hits = Vec::new();
+     for path in walk_files(&base, locator.recursive) {
+-        if !extension_matches(&path, &exts) {
++        if !extension_matches(&path, &locator.extensions) {
+             continue;
+         }
+         let name = match path.file_name().and_then(|n| n.to_str()) {
+             Some(n) => n,
+             None => continue,
+         };
+         let matched = match &re {
+             Some(re) => re.is_match(name),
+             None => false,
+         };
+         if matched {
+             hits.push(path);
+         }
+     }
+     hits
+ }
+ 
+-fn extension_matches(path: &Path, exts_lower: &[String]) -> bool {
++fn extension_matches(path: &Path, exts: &[String]) -> bool {
+     match path.extension().and_then(|e| e.to_str()) {
+-        Some(e) => exts_lower.iter().any(|x| x == &e.to_ascii_lowercase()),
++        Some(e) => exts.iter().any(|x| x.eq_ignore_ascii_case(e)),
+         None => false,
+     }
+ }
+ 
+ /// Regular files under `dir`, recursing into subdirectories only if
+ /// `recursive`. A symlink is resolved via its target's metadata: a symlink to
+ /// a regular file is included, under its own (link) path; a symlink to a
+ /// directory is never recursed into, even when `recursive` (cycle guard); a
+ /// broken symlink (unreadable target) is skipped silently. Sorted for
+ /// deterministic output; unreadable directories are skipped silently.
+diff --git a/crates/muxsmith-core/src/executor/joblog.rs b/crates/muxsmith-core/src/executor/joblog.rs
+index d39b751..4742fc2 100644
+--- a/crates/muxsmith-core/src/executor/joblog.rs
++++ b/crates/muxsmith-core/src/executor/joblog.rs
+@@ -19,23 +19,23 @@ use std::path::{Path, PathBuf};
+ 
+ use serde::Serialize;
+ use time::OffsetDateTime;
+ use time::format_description::{BorrowedFormatItem, Component, modifier};
+ 
+ use super::job::{JobSpec, JobState};
+ use super::queue::JobEvent;
+ 
+ /// Hand-built format description for [`make_run_id`]'s "YYYYMMDD-HHMMSSZ"
+ /// (UTC) stamp: `Component` values plus literals, assembled directly rather
+-/// than through the `format_description!` macro or runtime string parsing,
+-/// since only the `formatting` cargo feature is pinned (not `macros` or
+-/// `parsing`).
++/// than through the `format_description!` macro (the `macros` cargo feature
++/// stays unpinned). The same descriptor also backs [`run_id_timestamp`]'s
++/// parse.
+ const RUN_ID_FORMAT: &[BorrowedFormatItem<'_>] = &[
+     BorrowedFormatItem::Component(Component::CalendarYearFullStandardRange(
+         modifier::CalendarYearFullStandardRange::default(),
+     )),
+     BorrowedFormatItem::Component(Component::MonthNumerical(
+         modifier::MonthNumerical::default(),
+     )),
+     BorrowedFormatItem::Component(Component::Day(modifier::Day::default())),
+     BorrowedFormatItem::StringLiteral("-"),
+     BorrowedFormatItem::Component(Component::Hour24(modifier::Hour24::default())),
+@@ -69,36 +69,23 @@ pub fn make_run_id(now: std::time::SystemTime) -> String {
+ /// digit-shaped but out-of-range calendar/clock value (e.g. month `13`):
+ /// such a name is not one this crate itself produced, exactly like a name
+ /// that fails the digit-shape check outright -- [`prune_stale_runs`] relies
+ /// on that to never delete a directory it did not create.
+ ///
+ /// Moved here from the shell's own `started_at_from_run_id` (D35): both the
+ /// GUI's run history and this module's pruning need the same parse, so it
+ /// lives once in core and the shell delegates to it.
+ pub fn run_id_timestamp(name: &str) -> Option<OffsetDateTime> {
+     let prefix = name.get(0..16)?;
+-    let b = prefix.as_bytes();
+-    let all_digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+-    if b[8] != b'-' || b[15] != b'Z' || !all_digits(0..8) || !all_digits(9..15) {
+-        return None;
+-    }
+-    let n = |r: std::ops::Range<usize>| prefix[r].parse::<u32>().ok();
+-    let year = n(0..4)? as i32;
+-    let month = time::Month::try_from(u8::try_from(n(4..6)?).ok()?).ok()?;
+-    let day = u8::try_from(n(6..8)?).ok()?;
+-    let hour = u8::try_from(n(9..11)?).ok()?;
+-    let minute = u8::try_from(n(11..13)?).ok()?;
+-    let second = u8::try_from(n(13..15)?).ok()?;
+-    time::Date::from_calendar_date(year, month, day)
+-        .and_then(|date| date.with_hms(hour, minute, second))
+-        .map(time::PrimitiveDateTime::assume_utc)
++    time::PrimitiveDateTime::parse(prefix, RUN_ID_FORMAT)
+         .ok()
++        .map(time::PrimitiveDateTime::assume_utc)
+ }
+ 
+ /// D35 (Şenol 2026-07-11, fixed for v1 -- no setting, no CLI flag;
+ /// configurability parked as IDEAS #7): run logs are kept for 14 days.
+ const RUN_LOG_RETENTION: time::Duration = time::Duration::days(14);
+ 
+ /// Deletes run directories under `runs_root` older than the fixed 14-day
+ /// `RUN_LOG_RETENTION` window (D35). Called best-effort by [`RunLogger::create`]
+ /// before it creates the new run's own leaf directory, so pruning happens
+ /// on every run through the one shared entry point (D26's
+diff --git a/crates/muxsmith-core/src/executor/queue.rs b/crates/muxsmith-core/src/executor/queue.rs
+index 661e2b6..aea23d3 100644
+--- a/crates/muxsmith-core/src/executor/queue.rs
++++ b/crates/muxsmith-core/src/executor/queue.rs
+@@ -325,21 +325,21 @@ pub fn run_queue(
+ 
+ /// The worker-pool size for a batch of `spec_count` specs: `jobs` clamped to
+ /// at least 1, then capped at `spec_count` (also at least 1, so an empty
+ /// batch still gets one idle worker rather than zero). A worker beyond
+ /// `spec_count` could never dequeue a spec (each fetches a distinct index
+ /// once), so it would only ever sit idle; an oversized `--jobs` would
+ /// otherwise spawn that many real OS threads for nothing; at extreme values
+ /// enough to exhaust the OS and panic inside the scope (`Scope::spawn`
+ /// panics on a thread-creation failure).
+ fn worker_count(jobs: usize, spec_count: usize) -> usize {
+-    jobs.max(1).min(spec_count.max(1))
++    jobs.clamp(1, spec_count.max(1))
+ }
+ 
+ /// Sentinel `current_index` value meaning "this worker is between jobs (or
+ /// has not dequeued one yet)", never a real spec index.
+ const NO_JOB: usize = usize::MAX;
+ 
+ /// Locks `outcomes`, recovering from poisoning instead of propagating a
+ /// second panic. Sound for the same reason as [`QueueControl::killers`]:
+ /// the one write this lock ever guards (`outcomes[index] = Some(...)`) is a
+ /// single slot assignment, never a multi-step invariant a panic could leave
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index 7bb7361..0e465ca 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -171,25 +171,26 @@ pub enum CollisionPolicy {
+     Error,
+     /// Skip (do not produce) the colliding output.
+     Skip,
+     /// Replace the existing file. Only reaches files that are not inputs:
+     /// the `SourceOverwrite` check runs first and is never overridden.
+     Overwrite,
+ }
+ 
+ /// Binary keep-or-drop toggle shared by `attachments.unmatched`,
+ /// `tags.global` and `tags.track` (spec 4.9).
+-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(rename_all = "lowercase")]
+ pub enum KeepDrop {
+     /// Copy the corresponding structure from the sources into the output
+     /// (mkvmerge's default behavior, left untouched).
++    #[default]
+     Keep,
+     /// Exclude the corresponding structure from the output (mapped to the
+     /// matching `--no-*` mkvmerge option at command generation).
+     Drop,
+ }
+ 
+ /// One track rule (spec 4.5): selects exactly one track (subject to
+ /// strict independent uniqueness, spec 2) and optionally applies property
+ /// changes to it.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+@@ -267,41 +268,37 @@ pub struct Locator {
+     /// mutually exclusive with `match_to_source`.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub match_pattern: Option<String>,
+     /// Whether `match_pattern` matching is case-sensitive. Defaults to
+     /// `false` (the rendered pattern is prefixed `(?i)`, spec 4.7).
+     #[serde(default)]
+     pub case_sensitive: bool,
+ }
+ 
+ /// Attachment handling (spec 4.9).
+-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct AttachmentsCfg {
+     /// Policy for attachments no `rules` entry selects. Defaults to `keep`:
+     /// deliberate asymmetry with tracks (unmatched tracks are always
+     /// dropped), since dropping fonts silently breaks ASS subtitle
+     /// rendering.
+-    #[serde(default = "keep")]
++    #[serde(default)]
+     pub unmatched: KeepDrop,
+     /// Ordered select/drop/add rules (spec 4.9). Unlike track rules, not
+     /// uniqueness-constrained: a `select`/`drop` expression may match
+     /// several attachments (fonts come in sets); rules apply in list order,
+     /// first matching rule wins per attachment.
+     #[serde(default)]
+     pub rules: Vec<AttachmentRule>,
+ }
+ 
+-fn keep() -> KeepDrop {
+-    KeepDrop::Keep
+-}
+-
+ /// Track handling: the unmatched-track policy plus the ordered rules
+ /// (spec 4.5). Parallel in shape to [`AttachmentsCfg`], but `unmatched`
+ /// defaults to `drop`: only rule-matched tracks survive unless the profile
+ /// opts into `keep` (spec 4.9 asymmetry note).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct TracksCfg {
+     /// Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
+     /// `drop` (the declarative default). `keep` passes them through
+     /// untouched; consumed by `command` (Task 2). Donor tracks are
+@@ -311,29 +308,20 @@ pub struct TracksCfg {
+     /// Ordered track rules; list order defines the output `--track-order`
+     /// (spec 4.5). Uniqueness-constrained (spec 2): each rule resolves to
+     /// exactly one track.
+     pub rules: Vec<TrackRule>,
+ }
+ 
+ fn drop_policy() -> KeepDrop {
+     KeepDrop::Drop
+ }
+ 
+-impl Default for AttachmentsCfg {
+-    fn default() -> Self {
+-        AttachmentsCfg {
+-            unmatched: KeepDrop::Keep,
+-            rules: Vec::new(),
+-        }
+-    }
+-}
+-
+ /// Exactly one of `select` / `drop` / `add` must be set; enforced in
+ /// validate.rs (AttachmentRuleShape) so the parse error stays readable.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct AttachmentRule {
+     /// Select (keep) attachments matching this expression over
+     /// `file_name`/`content_type`/`description` (spec 4.9).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub select: Option<MatchExpr>,
+     /// Drop attachments matching this expression; same property set as
+@@ -359,40 +347,31 @@ pub enum ChaptersCfg {
+ }
+ 
+ impl Default for ChaptersCfg {
+     fn default() -> Self {
+         ChaptersCfg::Keyword("keep".into())
+     }
+ }
+ 
+ /// Global and per-track tag handling (spec 4.9), mapped to
+ /// `--no-global-tags`/`--no-track-tags`.
+-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct TagsCfg {
+     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
+-    #[serde(default = "keep")]
++    #[serde(default)]
+     pub global: KeepDrop,
+     /// Per-track tags: keep or drop. Defaults to `keep`.
+-    #[serde(default = "keep")]
++    #[serde(default)]
+     pub track: KeepDrop,
+ }
+ 
+-impl Default for TagsCfg {
+-    fn default() -> Self {
+-        TagsCfg {
+-            global: KeepDrop::Keep,
+-            track: KeepDrop::Keep,
+-        }
+-    }
+-}
+-
+ /// `title` value: keep, clear, or a literal-mode template (spec 4.9).
+ /// `#[serde(untagged)]`, same variant-resolution rule as the other
+ /// keyword-or-block enums above.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum TitleCfg {
+     /// Literal-mode template rendering the output title (spec 4.7).
+     Template(TemplateBlock),
+     /// Keyword form: `"keep"` or `"clear"`.
+     Keyword(String),
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index 307d48d..0c212e5 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -268,62 +268,44 @@ fn validate_expr(
+         }
+     }
+     for (map, kind) in [(&expr.substring, "substring"), (&expr.regex, "regex")] {
+         if let Some(map) = map {
+             for (prop, value) in map.iter() {
+                 let p = format!("{path}.{kind}.{prop}");
+                 if let Some(bare) = prop.strip_prefix("raw:") {
+                     // `raw:` opt-in (D32): bypass property existence/type
+                     // checks (including the codec_kind exact-only guard, which
+                     // raw: sidesteps entirely). A value-level regex-compile
+-                    // error is still reported: an uncompilable pattern is a
+-                    // config error independent of the property.
++                    // error is still reported below: an uncompilable pattern
++                    // is a config error independent of the property.
+                     diags.push(raw_opt_in_diagnostic(&p, bare));
+-                    if kind == "regex"
+-                        && let Err(e) = regex::Regex::new(value)
+-                    {
+-                        diags.push(
+-                            Diagnostic::error(DiagCode::InvalidRegex, p)
+-                                .with("detail", flatten_regex_error(&e)),
+-                        );
+-                    }
+-                    continue;
+-                }
+-                // codec_kind is a curated alias, matchable only under exact
+-                // (D1). Guard before the string-type check so it reports
+-                // CodecKindExactOnly rather than the misleading (codec_kind is
+-                // String-typed) success. Only fires where codec_kind is a known
+-                // property of this context (track rules, not attachments).
+-                if prop == "codec_kind" && prop_type(prop).is_some() {
++                } else if prop == "codec_kind" && prop_type(prop).is_some() {
++                    // codec_kind is a curated alias, matchable only under exact
++                    // (D1). Guard before the string-type check so it reports
++                    // CodecKindExactOnly rather than the misleading (codec_kind is
++                    // String-typed) success. Only fires where codec_kind is a known
++                    // property of this context (track rules, not attachments).
+                     diags.push(
+                         Diagnostic::error(DiagCode::CodecKindExactOnly, p.clone())
+                             .with("condition", kind.to_string()),
+                     );
+-                    if kind == "regex"
+-                        && let Err(e) = regex::Regex::new(value)
+-                    {
+-                        diags.push(
+-                            Diagnostic::error(DiagCode::InvalidRegex, p)
+-                                .with("detail", flatten_regex_error(&e)),
+-                        );
++                } else {
++                    match prop_type(prop) {
++                        None => diags.push(unknown_property(&p, prop)),
++                        Some(PropType::String) => {}
++                        Some(t) => diags.push(
++                            Diagnostic::error(DiagCode::NotStringProperty, p.clone())
++                                .with("property", prop.clone())
++                                .with("actual_type", type_label(t))
++                                .with("condition", kind.to_string()),
++                        ),
+                     }
+-                    continue;
+-                }
+-                match prop_type(prop) {
+-                    None => diags.push(unknown_property(&p, prop)),
+-                    Some(PropType::String) => {}
+-                    Some(t) => diags.push(
+-                        Diagnostic::error(DiagCode::NotStringProperty, p.clone())
+-                            .with("property", prop.clone())
+-                            .with("actual_type", type_label(t))
+-                            .with("condition", kind.to_string()),
+-                    ),
+                 }
+                 if kind == "regex"
+                     && let Err(e) = regex::Regex::new(value)
+                 {
+                     diags.push(
+                         Diagnostic::error(DiagCode::InvalidRegex, p)
+                             .with("detail", flatten_regex_error(&e)),
+                     );
+                 }
+             }
+diff --git a/crates/muxsmith-core/src/template.rs b/crates/muxsmith-core/src/template.rs
+index 142dfa8..f1eb975 100644
+--- a/crates/muxsmith-core/src/template.rs
++++ b/crates/muxsmith-core/src/template.rs
+@@ -82,73 +82,83 @@ impl Ctx {
+ 
+ impl Template {
+     /// Parses template source into a reusable [`Template`] (spec 4.7).
+     /// `{{`/`}}` are literal braces; `{name}` and `{name:filter}` are
+     /// fields, where `filter` must be one of `int`/`pad2`/`pad3` (default
+     /// `Raw` if omitted). Fails on an unclosed `{`, an empty field name, or
+     /// an unrecognized filter.
+     pub fn parse(text: &str) -> Result<Template, TemplateError> {
+         let mut segments = Vec::new();
+         let mut literal = String::new();
+-        let chars: Vec<char> = text.chars().collect();
+-        let mut i = 0;
+-        while i < chars.len() {
+-            match chars[i] {
+-                '{' if chars.get(i + 1) == Some(&'{') => {
++        let mut chars = text.chars().peekable();
++        let mut pos = 0usize;
++        while let Some(c) = chars.next() {
++            let start = pos;
++            pos += 1;
++            match c {
++                '{' if chars.peek() == Some(&'{') => {
++                    chars.next();
++                    pos += 1;
+                     literal.push('{');
+-                    i += 2;
+                 }
+-                '}' if chars.get(i + 1) == Some(&'}') => {
++                '}' if chars.peek() == Some(&'}') => {
++                    chars.next();
++                    pos += 1;
+                     literal.push('}');
+-                    i += 2;
+                 }
+                 '{' => {
+-                    let close = chars[i + 1..]
+-                        .iter()
+-                        .position(|&c| c == '}')
+-                        .ok_or(TemplateError::UnclosedBrace { pos: i })?;
+-                    let inner: String = chars[i + 1..i + 1 + close].iter().collect();
++                    let mut inner = String::new();
++                    let mut closed = false;
++                    for next in chars.by_ref() {
++                        pos += 1;
++                        if next == '}' {
++                            closed = true;
++                            break;
++                        }
++                        inner.push(next);
++                    }
++                    if !closed {
++                        return Err(TemplateError::UnclosedBrace { pos: start });
++                    }
+                     if inner.is_empty() {
+-                        return Err(TemplateError::EmptyField { pos: i });
++                        return Err(TemplateError::EmptyField { pos: start });
+                     }
+                     // Split name from filter BEFORE resolving the filter, so an
+                     // empty name reports EmptyField even when a filter is present.
+                     let (name, maybe_filter) = match inner.split_once(':') {
+                         None => (inner.as_str(), None),
+                         Some((n, f)) => (n, Some(f)),
+                     };
+                     if name.is_empty() {
+-                        return Err(TemplateError::EmptyField { pos: i });
++                        return Err(TemplateError::EmptyField { pos: start });
+                     }
+                     let filter = match maybe_filter {
+                         None => Filter::Raw,
+                         Some("int") => Filter::Int,
+                         Some("pad2") => Filter::Pad2,
+                         Some("pad3") => Filter::Pad3,
+                         Some(f) => {
+                             return Err(TemplateError::UnknownFilter {
+                                 name: f.to_string(),
+                             });
+                         }
+                     };
+                     if !literal.is_empty() {
+                         segments.push(Segment::Literal(std::mem::take(&mut literal)));
+                     }
+                     segments.push(Segment::Field {
+                         name: name.to_string(),
+                         filter,
+                     });
+-                    i += close + 2;
+                 }
+                 c => {
+                     literal.push(c);
+-                    i += 1;
+                 }
+             }
+         }
+         if !literal.is_empty() {
+             segments.push(Segment::Literal(literal));
+         }
+         Ok(Template { segments })
+     }
+ 
+     /// Every field name referenced by the template, in order of

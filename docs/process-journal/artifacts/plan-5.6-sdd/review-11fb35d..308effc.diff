@@ -1,0 +1,42 @@
+# Review package: 11fb35d..308effc
+
+## Commits
+308effc chore(ci): install rust-toolchain.toml components explicitly (rustup #4216)
+
+## Files changed
+ .github/workflows/ci.yml | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 86063c3..ec66ca1 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -17,22 +17,26 @@ jobs:
+     strategy:
+       fail-fast: false
+       # Static 3-OS matrix since going public (2026-07-10): Actions are free
+       # on public-repo standard runners, so every push runs all platforms.
+       # The private-era dynamic Linux-only trim is retired.
+       matrix:
+         os: ["ubuntu-26.04", "windows-2025", "macos-15"]
+     runs-on: ${{ matrix.os }}
+     steps:
+       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
++      # Bare `rustup toolchain install` does not apply rust-toolchain.toml's
++      # components (rustup #4216), so they are added explicitly.
+       - name: Install pinned Rust toolchain
+-        run: rustup toolchain install
++        run: |
++          rustup toolchain install
++          rustup component add rustfmt clippy
+       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+       # mkvtoolnix on every leg (2026-07-11, Plan 5.5 Task 2 / #14): gated
+       # integration tests previously ran live on Linux only and silently
+       # self-skipped on Windows/macOS. Version-pin decision (registries
+       # checked 2026-07-11, Şenol's standing preference is pin per-manager
+       # unless impossible): apt on ubuntu-26.04 "resolute" (the actual
+       # matrix OS, not 24.04) ships mkvtoolnix 97.0-1build1; choco and
+       # brew both currently track 100.0(.0) - majors diverge, so pin
+       # where the manager allows an install-time version. apt and choco
+       # do; both are pinned below. Homebrew's core tap keeps no versioned

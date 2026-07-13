@@ -1,0 +1,585 @@
+# Review package: 82e58d8..616778d
+
+## Commits
+616778d refactor: single source for the mkvmerge skip marker (T2-m1)
+
+## Files changed
+ .github/workflows/ci.yml                          |  1 +
+ crates/muxsmith-cli/tests/dry_run_cli.rs          | 12 ++++++------
+ crates/muxsmith-cli/tests/run_cli.rs              |  6 +++---
+ crates/muxsmith-cli/tests/run_live.rs             |  4 ++--
+ crates/muxsmith-core/src/lib.rs                   | 11 +++++++++++
+ crates/muxsmith-core/tests/command_integration.rs |  6 +++---
+ crates/muxsmith-core/tests/executor_live.rs       |  2 +-
+ crates/muxsmith-core/tests/identify_live.rs       |  2 +-
+ crates/muxsmith-core/tests/mkvmerge_runtime.rs    |  4 ++--
+ src-tauri/src/lib.rs                              |  6 +++---
+ 10 files changed, 33 insertions(+), 21 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index ec66ca1..7ba60b2 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -95,20 +95,21 @@ jobs:
+       # self-skip eprintln would be invisible without it. --test-threads=1
+       # avoids --nocapture output from concurrent test threads interleaving
+       # and corrupting the marker line. A genuinely missing mkvmerge
+       # (install regression) trips the count above zero and fails the
+       # step - "otherwise silent skipping is traded for silent skipping"
+       # (walkthrough #14).
+       - name: Assert no gated tests silently skip (mkvmerge missing)
+         shell: bash
+         run: |
+           cargo test --workspace -- --nocapture --test-threads=1 2>&1 | tee gated-test-output.log
++          # This literal must match muxsmith_core::MKVMERGE_SKIP_MARKER (crates/muxsmith-core/src/lib.rs) byte-for-byte.
+           count="$(grep -c 'mkvmerge not found; skipping' gated-test-output.log || true)"
+           echo "Skip-marker occurrences: $count"
+           if [ "$count" -ne 0 ]; then
+             echo "::error::$count gated integration test(s) silently skipped (mkvmerge not found on PATH) - expected 0 now that mkvtoolnix is installed on every leg."
+             exit 1
+           fi
+       - run: pnpm lint
+       - run: pnpm build
+       # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
+       # same guard as the mkvtoolnix/webkit2gtk steps above (win/mac legs
+diff --git a/crates/muxsmith-cli/tests/dry_run_cli.rs b/crates/muxsmith-cli/tests/dry_run_cli.rs
+index 27f1b39..846bdae 100644
+--- a/crates/muxsmith-cli/tests/dry_run_cli.rs
++++ b/crates/muxsmith-cli/tests/dry_run_cli.rs
+@@ -12,21 +12,21 @@ fn have_mkvmerge() -> bool {
+     Command::new("mkvmerge")
+         .arg("--version")
+         .output()
+         .map(|o| o.status.success())
+         .unwrap_or(false)
+ }
+ 
+ #[test]
+ fn dry_run_plans_a_single_file() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let wav = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+     );
+     let srt = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+@@ -75,21 +75,21 @@ fn dry_run_plans_a_single_file() {
+     assert!(report["files"][0]["plan"].is_object());
+ }
+ 
+ /// Bug A (spec 5.5): dry-run must run the config-time validate pass before
+ /// planning. A profile with an unbalanced-paren `input.pattern` regex must
+ /// surface `invalid-regex` (not silently plan an empty, "clean" batch) and
+ /// exit 2, not 0.
+ #[test]
+ fn dry_run_surfaces_config_time_invalid_regex() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("bad.yaml");
+     std::fs::write(
+         &profile,
+         "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2}E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+@@ -118,21 +118,21 @@ fn dry_run_surfaces_config_time_invalid_regex() {
+         config_diags.iter().any(|d| d["code"] == "invalid-regex"),
+         "expected an invalid-regex diagnostic, got: {report}"
+     );
+ }
+ 
+ /// Bug F (spec 5.2): `--json` must attach a rendered message to every
+ /// diagnostic it emits, config-time, batch-level, and per-file alike.
+ #[test]
+ fn dry_run_json_diagnostics_all_carry_rendered_text() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let wav = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+     );
+     let srt = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+@@ -205,21 +205,21 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
+ 
+ /// Task 8 (#8): human mode must speak even when nothing matched, not stay
+ /// silent on a clean exit. A clean profile over an empty source directory
+ /// plans zero primaries; asserts the batch summary line names the zero
+ /// count, the searched root, and the configured extensions (compare
+ /// `run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent`
+ /// in run_cli.rs).
+ #[test]
+ fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("p.yaml");
+     std::fs::write(
+         &profile,
+         "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+@@ -327,21 +327,21 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
+ /// `--on-collision skip` downgrades the same collision to a warning and
+ /// exits 1, with the JSON report carrying an `output-collision` diagnostic
+ /// at `warning` severity; passing `--on-collision overwrite` downgrades it
+ /// further to Info severity and exits 0 -- `diag_exit_code`'s (mod.rs) match
+ /// has only two named arms (`Error` => 2, `Warning` => 1); every other
+ /// severity, Info included, falls through its `_ => 0` default arm, which
+ /// this case is what actually exercises.
+ #[test]
+ fn dry_run_on_collision_flag_overrides_default_error_policy() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     // Separate source and output tempdirs: nesting the output dir inside
+     // the source dir would let discovery (which scans recursively) pick up
+     // the pre-existing collision file as a second primary, muddying the
+     // fixture with an unrelated `duplicate-identifier`/`source-overwrite`.
+     let src_dir = tempfile::tempdir().unwrap();
+     let out_dir = tempfile::tempdir().unwrap();
+     let wav = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+@@ -671,21 +671,21 @@ fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure()
+ /// Task 6 review finding 2: an `EmptyPlan`-only batch (a plan resolving to
+ /// zero output tracks, warning severity, spec 5.2) must surface end-to-end
+ /// through `--json`, not just in the core-crate unit tests. The fixture's
+ /// only audio track is tagged `eng`; the profile's only rule is `optional`
+ /// and requires `de`, so it is satisfied-but-unmatched and the plan renders
+ /// with zero assignments. Exit code mirrors mkvmerge: 1, since the worst
+ /// diagnostic present is a warning, not an error.
+ #[test]
+ fn dry_run_json_surfaces_empty_plan_batch_report() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let wav = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+     );
+     let media = dir.path().join("Show.S01E01.mkv");
+     let ok = Command::new("mkvmerge")
+         .args(["-q", "-o"])
+diff --git a/crates/muxsmith-cli/tests/run_cli.rs b/crates/muxsmith-cli/tests/run_cli.rs
+index f2def3e..b048ea8 100644
+--- a/crates/muxsmith-cli/tests/run_cli.rs
++++ b/crates/muxsmith-cli/tests/run_cli.rs
+@@ -122,21 +122,21 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
+ /// Task 9 (D15): a real single-file mux under `--json` produces exactly one
+ /// stdout document (all human lines suppressed, per the module doc), whose
+ /// `jobs` array has one index-0 entry with the real output path, `state:
+ /// "ok"`, `exit_code: 0`, no captured warnings/errors, and a numeric
+ /// `duration_ms`; `summary` counts that same job as `ok`; and the
+ /// dry-run-shaped base fields (`files`, `batch_diagnostics`, `suggestions`)
+ /// still carry the plan, exactly like `dry-run --json` would.
+ #[test]
+ fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let wav = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+     );
+     let srt = concat!(
+         env!("CARGO_MANIFEST_DIR"),
+         "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+@@ -274,21 +274,21 @@ fn run_json_on_specs_empty_from_a_bad_regex_still_emits_a_document_with_empty_jo
+ }
+ 
+ /// Same specs-empty path as above, reached via a clean profile over a
+ /// source directory with no matching files instead of a bad regex: nothing
+ /// errors, so the exit code is 0 (not 2) with an empty `jobs` array and a
+ /// zeroed `summary`, distinguishing "queue never ran because there was
+ /// nothing to run" from "queue never ran because planning failed".
+ #[test]
+ fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_summary() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("p.yaml");
+     std::fs::write(
+         &profile,
+         "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+@@ -321,21 +321,21 @@ fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_su
+     );
+ }
+ 
+ /// Task 8 (#8): human mode must speak even when nothing matched, not stay
+ /// silent on a clean exit. Same empty-source-dir fixture as the `--json`
+ /// sibling above, without `--json`: asserts the batch summary line names
+ /// the zero count, the searched root, and the configured extensions.
+ #[test]
+ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let profile = dir.path().join("p.yaml");
+     std::fs::write(
+         &profile,
+         "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n",
+     )
+     .unwrap();
+ 
+diff --git a/crates/muxsmith-cli/tests/run_live.rs b/crates/muxsmith-cli/tests/run_live.rs
+index ad868ee..5f90056 100644
+--- a/crates/muxsmith-cli/tests/run_live.rs
++++ b/crates/muxsmith-cli/tests/run_live.rs
+@@ -80,21 +80,21 @@ fn assert_identifies_as_matroska(path: &Path) {
+         "expected {path:?} to identify as Matroska, got: {json}"
+     );
+ }
+ 
+ /// Task 11: two tiny sources through `muxsmith run` over real mkvmerge must
+ /// exit 0, produce two real Matroska outputs, and print the human
+ /// `run-summary` line.
+ #[test]
+ fn live_run_muxes_two_sources_and_reports_exit_zero() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let source_dir = dir.path().join("source");
+     fs::create_dir_all(&source_dir).unwrap();
+     build_source_mkv(&source_dir, "Show.S01E01.mkv");
+     build_source_mkv(&source_dir, "Show.S01E02.mkv");
+ 
+     let profile = dir.path().join("p.yaml");
+     fs::write(&profile, PROFILE).unwrap();
+@@ -163,21 +163,21 @@ fn backdate_mtime(path: &Path) -> SystemTime {
+     fs::metadata(path).unwrap().modified().unwrap()
+ }
+ 
+ /// Task 11, the rerun workflow guard (D14/D17): running `run` again over
+ /// outputs that already exist on disk, with `--on-collision skip`, must
+ /// exit 1 (a collision is a warning-severity diagnostic under `skip`) and
+ /// must never touch either pre-existing output.
+ #[test]
+ fn live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched() {
+     if !have_mkvmerge() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let dir = tempfile::tempdir().unwrap();
+     let source_dir = dir.path().join("source");
+     fs::create_dir_all(&source_dir).unwrap();
+     build_source_mkv(&source_dir, "Show.S01E01.mkv");
+     build_source_mkv(&source_dir, "Show.S01E02.mkv");
+ 
+     let profile = dir.path().join("p.yaml");
+     fs::write(&profile, PROFILE).unwrap();
+diff --git a/crates/muxsmith-core/src/lib.rs b/crates/muxsmith-core/src/lib.rs
+index b2dc46f..f94d153 100644
+--- a/crates/muxsmith-core/src/lib.rs
++++ b/crates/muxsmith-core/src/lib.rs
+@@ -8,10 +8,21 @@
+ pub mod capability;
+ pub mod command;
+ pub mod discovery;
+ pub mod executor;
+ pub mod identify;
+ pub mod matcher;
+ pub mod planner;
+ pub mod profile;
+ pub mod report;
+ pub mod template;
++
++// `#[doc(hidden)] pub`: the live-mkvmerge integration tests self-skip when
++// mkvmerge is absent from PATH, and CI's no-silent-skip gate
++// (.github/workflows/ci.yml) greps test output for this exact string to
++// assert the count is zero. The marker text lived as a duplicated string
++// literal at ~21 `eprintln!` sites across muxsmith-core, muxsmith-cli and
++// muxsmith-gui (no per-crate tests/support module can span all three), so a
++// single reworded copy would silently defeat the gate; one shared const
++// keeps every site and the CI grep byte-identical by construction.
++#[doc(hidden)]
++pub const MKVMERGE_SKIP_MARKER: &str = "mkvmerge not found; skipping";
+diff --git a/crates/muxsmith-core/tests/command_integration.rs b/crates/muxsmith-core/tests/command_integration.rs
+index 56cccd3..aff109c 100644
+--- a/crates/muxsmith-core/tests/command_integration.rs
++++ b/crates/muxsmith-core/tests/command_integration.rs
+@@ -192,21 +192,21 @@ const LIVE_PROFILE: &str = r#"
+ profile_version: 1
+ input: { pattern: 'source', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles } }
+ "#;
+ 
+ #[test]
+ fn live_mkvmerge_accepts_planned_command() {
+     let Some(m) = mkvmerge() else {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     };
+ 
+     let dir = tempfile::tempdir().unwrap();
+     let srt = dir.path().join("seed.srt");
+     std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+ 
+     // A minimal one-track MKV: an SRT needs no media libs to mux (task
+     // brief), unlike audio/video which would need a real codec.
+     let source = dir.path().join("source.mkv");
+@@ -278,21 +278,21 @@ fn live_mkvmerge_accepts_planned_command() {
+ fn track_name(t: &Track) -> String {
+     match t.get("track_name") {
+         Some(PropValue::Str(s)) => s,
+         other => panic!("expected a track_name property, got {other:?}"),
+     }
+ }
+ 
+ #[test]
+ fn live_keep_donor_trails_primary() {
+     let Some(m) = mkvmerge() else {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     };
+ 
+     let dir = tempfile::tempdir().unwrap();
+     let pa_srt = dir.path().join("pa.srt");
+     let pb_srt = dir.path().join("pb.srt");
+     let donor_srt = dir.path().join("donor.srt");
+     std::fs::write(&pa_srt, "1\n00:00:00,000 --> 00:00:01,000\nPA\n").unwrap();
+     std::fs::write(&pb_srt, "1\n00:00:00,000 --> 00:00:01,000\nPB\n").unwrap();
+     std::fs::write(&donor_srt, "1\n00:00:00,000 --> 00:00:01,000\nDONOR\n").unwrap();
+@@ -449,21 +449,21 @@ profile_version: 1
+ input: { pattern: 'source', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: subtitles } }
+       changes: { track_name: Renamed, default_track: true }
+ "#;
+ 
+ #[test]
+ fn live_attachment_and_changes_round_trip() {
+     let Some(m) = mkvmerge() else {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     };
+ 
+     let dir = tempfile::tempdir().unwrap();
+     let srt = dir.path().join("seed.srt");
+     std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+     let note = dir.path().join("note.txt");
+     std::fs::write(&note, "attachment payload\n").unwrap();
+ 
+     // The primary: one subtitle track plus one attached text file, built
+diff --git a/crates/muxsmith-core/tests/executor_live.rs b/crates/muxsmith-core/tests/executor_live.rs
+index 68d86bd..fe4c1f7 100644
+--- a/crates/muxsmith-core/tests/executor_live.rs
++++ b/crates/muxsmith-core/tests/executor_live.rs
+@@ -9,21 +9,21 @@ use std::path::PathBuf;
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
+ 
+ fn mkvmerge() -> Option<Mkvmerge> {
+     Mkvmerge::locate().ok()
+ }
+ 
+ #[test]
+ fn live_gui_mode_progress_reaches_100_percent() {
+     let Some(m) = mkvmerge() else {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     };
+ 
+     let dir = tempfile::tempdir().unwrap();
+     let srt = dir.path().join("seed.srt");
+     std::fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+     let out = dir.path().join("out.mkv");
+ 
+     let spawner = LiveSpawner {
+         mkvmerge: PathBuf::from(m.path()),
+diff --git a/crates/muxsmith-core/tests/identify_live.rs b/crates/muxsmith-core/tests/identify_live.rs
+index d9ea024..479275b 100644
+--- a/crates/muxsmith-core/tests/identify_live.rs
++++ b/crates/muxsmith-core/tests/identify_live.rs
+@@ -26,21 +26,21 @@ fn make_sample(dir: &Path) -> std::path::PathBuf {
+         .arg(srt)
+         .status()
+         .expect("spawn mkvmerge to build fixture");
+     assert!(status.success(), "mkvmerge failed to build the sample");
+     out
+ }
+ 
+ #[test]
+ fn identifies_and_caches_a_real_file() {
+     let Some(m) = mkvmerge() else {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     };
+     let dir = tempfile::tempdir().unwrap();
+     let sample = make_sample(dir.path());
+ 
+     let mut cache = IdentifyCache::new();
+     let id = cache.get_or_identify(&m, &sample).unwrap().clone();
+     assert!(id.is_identifiable());
+     assert!(id.tracks.iter().any(|t| t.kind == "audio"));
+     assert!(id.tracks.iter().any(|t| t.kind == "subtitles"));
+diff --git a/crates/muxsmith-core/tests/mkvmerge_runtime.rs b/crates/muxsmith-core/tests/mkvmerge_runtime.rs
+index b08e8ae..6e95a44 100644
+--- a/crates/muxsmith-core/tests/mkvmerge_runtime.rs
++++ b/crates/muxsmith-core/tests/mkvmerge_runtime.rs
+@@ -102,21 +102,21 @@ fn counting_fake_mkvmerge(
+ fn spawn_count(counter: &std::path::Path) -> usize {
+     std::fs::read_to_string(counter)
+         .unwrap_or_default()
+         .lines()
+         .count()
+ }
+ 
+ #[test]
+ fn version_reports_mkvmerge() {
+     let Some(m) = mkvmerge() else {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     };
+     let v = m.version().expect("version query");
+     assert!(v.to_lowercase().contains("mkvmerge"), "got: {v}");
+ }
+ 
+ #[test]
+ fn list_types_includes_matroska() {
+     let Some(m) = mkvmerge() else { return };
+     let types = m.list_types().expect("list-types");
+@@ -196,20 +196,20 @@ fn detect_caches_version_pair_so_version_pair_spawns_nothing() {
+     // Contrast: an at() handle has no cache and spawns per call (unchanged).
+     assert_eq!(Mkvmerge::at(&script).version_pair().unwrap(), (123, 4));
+     assert_eq!(spawn_count(&counter), 2);
+ }
+ 
+ /// Gated: `detect(None)` falls through to PATH (like `locate()`) and finds
+ /// the real local mkvmerge, whose version clears `MIN_SUPPORTED`.
+ #[test]
+ fn detect_none_finds_real_mkvmerge_meeting_the_version_floor() {
+     if mkvmerge().is_none() {
+-        eprintln!("mkvmerge not found; skipping");
++        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+         return;
+     }
+     let detected = Mkvmerge::detect(None).expect("detect(None) should find PATH mkvmerge");
+     let pair = detected.version_pair().expect("version_pair query");
+     assert!(
+         pair >= MIN_SUPPORTED,
+         "found {pair:?}, expected at least {MIN_SUPPORTED:?}"
+     );
+ }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 3358a85..754da87 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -643,21 +643,21 @@ mod tests {
+         let doc = dry_run_body(&profile_path, None, None, Some(&override_path));
+         assert_eq!(doc["mkvmerge_found"], serde_json::json!(true));
+         assert!(doc["files"].as_array().unwrap().is_empty());
+         assert!(doc["batch_diagnostics"].as_array().unwrap().is_empty());
+         assert!(doc["suggestions"].as_array().unwrap().is_empty());
+     }
+ 
+     #[test]
+     fn dry_run_body_full_success_path_with_real_mkvmerge() {
+         if !real_mkvmerge_available() {
+-            eprintln!("mkvmerge not found; skipping");
++            eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+             return;
+         }
+         let dir = tempfile::tempdir().unwrap();
+         let wav = concat!(
+             env!("CARGO_MANIFEST_DIR"),
+             "/../crates/muxsmith-core/tests/fixtures/seeds/tone.wav"
+         );
+         let media = dir.path().join("sample.mkv");
+         let ok = Command::new("mkvmerge")
+             .args(["-q", "-o"])
+@@ -702,21 +702,21 @@ mod tests {
+         let missing_override = dir.path().join("no-such-binary");
+         let target = dir.path().join("video.mkv");
+ 
+         let err = identify_body(&target, Some(&missing_override)).unwrap_err();
+         assert_eq!(err.code, "mkvmerge-spawn-failed");
+     }
+ 
+     #[test]
+     fn identify_body_full_success_path_with_real_mkvmerge() {
+         if !real_mkvmerge_available() {
+-            eprintln!("mkvmerge not found; skipping");
++            eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+             return;
+         }
+         let dir = tempfile::tempdir().unwrap();
+         let wav = concat!(
+             env!("CARGO_MANIFEST_DIR"),
+             "/../crates/muxsmith-core/tests/fixtures/seeds/tone.wav"
+         );
+         let media = dir.path().join("sample.mkv");
+         let ok = Command::new("mkvmerge")
+             .args(["-q", "-o"])
+@@ -786,21 +786,21 @@ mod tests {
+         assert_eq!(
+             spawn_count(&counter),
+             1,
+             "detect_mkvmerge_body must spawn --version exactly once"
+         );
+     }
+ 
+     #[test]
+     fn detect_mkvmerge_body_finds_the_real_mkvmerge_when_available() {
+         if !real_mkvmerge_available() {
+-            eprintln!("mkvmerge not found; skipping");
++            eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+             return;
+         }
+         detect_mkvmerge_body(None).expect("detect");
+     }
+ 
+     // --- AppState settings I/O ---
+ 
+     #[test]
+     fn get_settings_returns_defaults_on_first_run() {
+         let dir = tempfile::tempdir().unwrap();

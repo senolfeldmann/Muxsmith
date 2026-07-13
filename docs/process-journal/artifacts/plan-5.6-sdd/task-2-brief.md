@@ -1,0 +1,22 @@
+### Task 2: planner.rs + report/mod.rs + ADR D36 (Stream B, first)
+
+**Files:**
+- Modify: `crates/muxsmith-core/src/planner.rs`, `crates/muxsmith-core/src/report/mod.rs`
+- Create: `docs/superpowers/specs/2026-07-13-plan-5.6-decisions.md` (ADR D36)
+
+**Interfaces:** produces `Diagnostic.claimants: Vec<usize>` (serde `#[serde(default, skip_serializing_if = "Vec::is_empty")]` - JSON unchanged for every code except OverlappingRules). T3 runs after this task in-stream (both edit planner.rs; T3 adds its own `#[doc(hidden)] pub` markers on top of T2's state).
+
+- [ ] `planner.rs:526` **dup** - the six placeholder-Assignment literals (lines 526, 563, 583, 603, 646, 675) become an associated constructor `Assignment::unmatched(rule_index, source)`; each site a one-line push.
+- [ ] `planner.rs:714` **idiom** - `matches!(profile.tracks.unmatched, crate::profile::model::KeepDrop::Keep)` becomes `profile.tracks.unmatched == KeepDrop::Keep` (import exists at line 19).
+- [ ] `planner.rs:1312, :1565` **yagni** - delete the two dead `#[allow(clippy::too_many_arguments)]` (6 and 7 params; lint fires at 8+, empirically verified on pinned 1.96). partition_for_rule's allow (9 params) stays.
+- [ ] `planner.rs:1646ff` **idiom** - add PropValue, Track to the `crate::identify` import; use bare BTreeSet/BTreeMap/Track/PropValue at the listed sites (1646, 1825, 1846, 1903, 1952; 1653, 1665-1680, 1717, 1998-2003); wrapped signatures collapse.
+- [ ] `planner.rs:886/:971` **dup** - extract `fn render_ctx(primary: &PrimaryFile) -> Ctx` from render_output/resolve_title's identical Ctx build; the lockstep invariant resolve_title's comment demands is then enforced by construction (drop the comment or point it at the shared fn).
+- [ ] `planner.rs:368` **stdlib rider** (second half of T1's discovery finding) - the single-line pre-lowering pattern becomes eq_ignore_ascii_case, same shape as T1's fix.
+- [ ] `planner.rs:1971` **stdlib** - rule_index_of becomes `config_path.split_once("tracks[")?.1.split_once(']')?.0.parse().ok()`.
+- [ ] `planner.rs:1965` **idiom** - diag_signature's `format!`-joined '|' key becomes a tuple key `BTreeMap<(String, String, String), usize>` on (code.key().to_string(), config_path.clone(), file). NOTE: this closes the routed-out '|'-collision correctness item at the same line for free - state that explicitly in the task report (the routed-items review checks it off).
+- [ ] `planner.rs:1521` **doc (seed T13-m1)** - invariant comment above the `if let Some(cand) = best` skip: `// \`best\` is \`None\` only for a file no candidate resolves even in isolation - unreachable in v1: \`id\` is unique per track, so the id discriminator always resolves a single file (task-13 report, D6). Skipped defensively rather than fabricating a group without a fix; if id-uniqueness ever relaxes, this needs an "unresolvable" group.`
+- [ ] `report/mod.rs` + `planner.rs:691-696, :1881` **idiom (seed whole-branch M2)** - carry OverlappingRules claimants structurally: add `#[serde(default, skip_serializing_if = "Vec::is_empty")] pub claimants: Vec<usize>` to Diagnostic; set it at the OverlappingRules production site from the same `rules` slice that renders the display param (single builder so they cannot diverge); overlap_conflicts reads `d.claimants.clone()` instead of splitting/re-parsing the rendered param. rule_index_of stays for the config_path call sites. Check tests/snapshots that assert OverlappingRules JSON and update them in the same commit if the new field surfaces.
+- [ ] **ADR D36 in the same task** (doctrine §2, wire-format extension): create `docs/superpowers/specs/2026-07-13-plan-5.6-decisions.md` with D36 - decision (structural claimants field), rationale (display-format re-parse killed D33 symmetric suggestions on any format change), rejected alternative (keep re-parsing; a shared const format), wire note (JSON gains `claimants` on OverlappingRules only; absent everywhere else via skip_serializing_if).
+- [ ] `report/mod.rs:165` **doc (seed whole-branch M3)** - UnknownExtension rustdoc: replace "Batch-wide, once per batch; skipped (not raised) when the runtime capability is unavailable." with "Checked once per batch; emitted once per offending list entry at its own config path (no dedup by extension value); skipped (not raised) when the runtime capability is unavailable." (profile/model.rs:74 stays as written.)
+- [ ] Full gate; commits `refactor(planner): ...` / `feat(report): structural claimants on OverlappingRules (D36)`.
+

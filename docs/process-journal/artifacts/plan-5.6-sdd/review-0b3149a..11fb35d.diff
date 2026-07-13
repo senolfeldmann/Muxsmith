@@ -1,0 +1,307 @@
+# Review package: 0b3149a..11fb35d
+
+## Commits
+11fb35d chore(config): idiomatic Node stdlib/native fixes in check-i18n.mjs
+df04428 chore(config): migrate off deprecated tseslint.config to eslint/config's defineConfig
+04f011a chore(config): explicit workspace resolver, drop redundant xtask [lib]
+784a8f6 chore(config): drop unused cargo-deny version field
+a0a0b4c chore(ci): drop no-op action with: blocks, fix rustup toolchain install
+
+## Files changed
+ .github/workflows/ci.yml |  8 +-------
+ Cargo.toml               |  2 +-
+ crates/xtask/Cargo.toml  |  3 ---
+ deny.toml                |  2 --
+ eslint.config.js         |  3 ++-
+ scripts/check-i18n.mjs   | 29 ++++++++---------------------
+ 6 files changed, 12 insertions(+), 35 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 4350538..86063c3 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -17,24 +17,22 @@ jobs:
+     strategy:
+       fail-fast: false
+       # Static 3-OS matrix since going public (2026-07-10): Actions are free
+       # on public-repo standard runners, so every push runs all platforms.
+       # The private-era dynamic Linux-only trim is retired.
+       matrix:
+         os: ["ubuntu-26.04", "windows-2025", "macos-15"]
+     runs-on: ${{ matrix.os }}
+     steps:
+       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+-      # Toolchain comes from rust-toolchain.toml (pinned version incl.
+-      # rustfmt/clippy components); rustup on the runner auto-installs it.
+       - name: Install pinned Rust toolchain
+-        run: rustup show
++        run: rustup toolchain install
+       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+       # mkvtoolnix on every leg (2026-07-11, Plan 5.5 Task 2 / #14): gated
+       # integration tests previously ran live on Linux only and silently
+       # self-skipped on Windows/macOS. Version-pin decision (registries
+       # checked 2026-07-11, Şenol's standing preference is pin per-manager
+       # unless impossible): apt on ubuntu-26.04 "resolute" (the actual
+       # matrix OS, not 24.04) ships mkvtoolnix 97.0-1build1; choco and
+       # brew both currently track 100.0(.0) - majors diverge, so pin
+       # where the manager allows an install-time version. apt and choco
+       # do; both are pinned below. Homebrew's core tap keeps no versioned
+@@ -64,22 +62,20 @@ jobs:
+       # Tauri 2 Linux build headers (spec: current v2.tauri.app prerequisites
+       # page, Task 4). Windows/macOS runners need none of this: WebView2 and
+       # the system webview ship with the OS.
+       - name: Install Tauri Linux build dependencies
+         if: runner.os == 'Linux'
+         run: |
+           sudo apt-get update
+           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+       # One version source for node+pnpm: mise.toml (root, committed).
+       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+-        with:
+-          cache: true
+       - name: Install frontend dependencies
+         run: pnpm install --frozen-lockfile
+       - run: cargo fmt --all --check
+       - run: cargo clippy --workspace --all-targets -- -D warnings
+       - run: cargo test --workspace
+       # Plan 5.5 Task 12 (#18b): rustdoc correctness as the ninth gate part.
+       # #![deny(missing_docs)] already gates presence; it says nothing about
+       # correctness, so a broken intra-doc link (queue.rs:73, linking a
+       # private item) rotted silently since Plan 4 until this task. All
+       # legs, matching the cross-target lint rule (cfg-gated items can
+@@ -127,12 +123,10 @@ jobs:
+         if: runner.os == 'Linux'
+         run: pnpm test:e2e
+ 
+   deny:
+     # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on
+     # Linux always, independent of the test matrix trim.
+     runs-on: ubuntu-26.04
+     steps:
+       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+       - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
+-        with:
+-          command: check
+diff --git a/Cargo.toml b/Cargo.toml
+index 498d48b..cc6ce19 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,9 +1,9 @@
+ [workspace]
+-resolver = "2"
++resolver = "3"
+ members = ["crates/muxsmith-core", "crates/muxsmith-cli", "crates/xtask", "src-tauri"]
+ 
+ [workspace.package]
+ version = "0.1.0"
+ edition = "2024"
+ license = "MIT"
+ repository = "https://github.com/senolfeldmann/Muxsmith"
+diff --git a/crates/xtask/Cargo.toml b/crates/xtask/Cargo.toml
+index 3edcc1d..a104f2f 100644
+--- a/crates/xtask/Cargo.toml
++++ b/crates/xtask/Cargo.toml
+@@ -1,12 +1,9 @@
+ [package]
+ name = "xtask"
+ version.workspace = true
+ edition.workspace = true
+ license.workspace = true
+ publish = false
+ 
+ [dependencies]
+ serde_json = "1"
+-
+-[lib]
+-path = "src/lib.rs"
+diff --git a/deny.toml b/deny.toml
+index f10e630..ab8bc5d 100644
+--- a/deny.toml
++++ b/deny.toml
+@@ -1,16 +1,15 @@
+ # cargo-deny configuration (https://embarkstudios.github.io/cargo-deny/).
+ # Linux-only CI job; see .github/workflows/ci.yml. Advisories, license
+ # policy, and multiple-version detection for the whole workspace.
+ 
+ [advisories]
+-version = 2
+ yanked = "deny"
+ # All entries below are transitive, from Tauri 2's Linux windowing stack
+ # (Task 4 scaffold) - not dependencies we chose directly. Re-run
+ # `cargo deny check` periodically; drop an ID once its crate is gone from
+ # Cargo.lock (upstream fix) instead of leaving it stale.
+ ignore = [
+     # open-i18n/rust-unic (unic-*): unmaintained, no safe upgrade exists.
+     # Pulled via urlpattern -> tauri-utils (Tauri's IPC URL matching).
+     "RUSTSEC-2025-0075", # unic-char-range
+     "RUSTSEC-2025-0080", # unic-common
+@@ -39,21 +38,20 @@ ignore = [
+     # wayland-scanner, a (proc-macro) build-time codegen tool that parses
+     # the static, trusted protocol XML shipped inside wayland-protocols;
+     # not linked into the muxsmith-gui binary and never sees untrusted
+     # input. A second, already-patched quick-xml 0.41.0 (via plist) is the
+     # one actually reachable at runtime.
+     "RUSTSEC-2026-0194", # quick-xml quadratic duplicate-attribute check
+     "RUSTSEC-2026-0195", # quick-xml unbounded namespace allocation
+ ]
+ 
+ [licenses]
+-version = 2
+ # MIT project (spec 12); allow exactly the permissive licenses our dependency
+ # tree actually uses today. Extend deliberately when a new dependency needs
+ # one, never with a blanket allow. MPL-2.0 (cssparser, via Tauri's webview
+ # tooling) is weak/file-level copyleft: safe to consume as an unmodified
+ # dependency, does not affect muxsmith's own MIT license.
+ allow = [
+     "MIT",
+     "Apache-2.0",
+     "Apache-2.0 WITH LLVM-exception",
+     "BSD-3-Clause",
+diff --git a/eslint.config.js b/eslint.config.js
+index 0046458..9d2f9ad 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -1,24 +1,25 @@
++import { defineConfig } from "eslint/config";
+ import pluginVue from "eslint-plugin-vue";
+ import vueI18n from "@intlify/eslint-plugin-vue-i18n";
+ import tseslint from "typescript-eslint";
+ 
+ // D27 (no hardcoded user-facing strings): Muxsmith uses Fluent (.ftl), not
+ // vue-i18n, so we take only `@intlify/eslint-plugin-vue-i18n`'s
+ // `no-raw-text` rule rather than its `recommended`/`base` presets, which
+ // pull in message-catalog rules (`no-unused-keys`, `no-missing-keys`, ...)
+ // that expect vue-i18n's JSON/YAML catalogs via `settings['vue-i18n']
+ // .localeDir`. `no-raw-text` itself only scans Vue template text nodes; it
+ // has no dependency on the vue-i18n runtime or catalog format, so it works
+ // standalone here (verified empirically: a raw template string trips this
+ // rule with no other vue-i18n config present).
+-export default tseslint.config(
++export default defineConfig(
+   {
+     // .worktrees/: SDD worktree checkouts (main checkout only) carry their
+     // own target/ with rustdoc-generated JS that eslint must never see.
+     // e2e/.generated/: the bundled, gitignored mock harness build (Task
+     // 12) -- vendored @tauri-apps/api code via vite.harness.config.ts,
+     // never hand-authored, never linted.
+     ignores: [
+       "dist/**",
+       "src-tauri/**",
+       "node_modules/**",
+diff --git a/scripts/check-i18n.mjs b/scripts/check-i18n.mjs
+index 915f5ec..34f3cc0 100644
+--- a/scripts/check-i18n.mjs
++++ b/scripts/check-i18n.mjs
+@@ -75,24 +75,23 @@
+ //     from checks 1/2, whose exclusion reason ("the frontend never calls
+ //     $t() for it") is unrelated and still holds.
+ //
+ //     With only `locales/en/` present (current tree), the comparison loop
+ //     below has no other locale directory to iterate and passes trivially
+ //     by construction, not by a special case; it activates the moment a
+ //     second `locales/<tag>/` directory (e.g. `locales/de/`, Task 21)
+ //     exists.
+ 
+ import { readFileSync, readdirSync } from "node:fs";
+-import { dirname, join, relative, resolve } from "node:path";
+-import { fileURLToPath } from "node:url";
++import { join, relative, resolve } from "node:path";
+ 
+-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const ROOT = resolve(import.meta.dirname, "..");
+ const LOCALES_ROOT = join(ROOT, "locales");
+ const LOCALES_EN = join(LOCALES_ROOT, "en");
+ const SRC = join(ROOT, "src");
+ 
+ // D31: src-tauri/src/run.rs's `ftl_message()` include_str!s gui-common.ftl
+ // directly for the native close-confirmation dialog; the frontend never
+ // calls $t() for these four.
+ const RUST_ONLY_IDS = new Set([
+   "close-abort-title",
+   "close-abort-message",
+@@ -150,55 +149,43 @@ const knownIds = new Map();
+ const diagnosticsIds = new Set();
+ for (const file of catalogFiles) {
+   for (const id of parseCatalogIds(join(LOCALES_EN, file))) {
+     knownIds.set(id, file);
+     if (file === "diagnostics.ftl") {
+       diagnosticsIds.add(id);
+     }
+   }
+ }
+ 
+-function walkSourceFiles(dir, out) {
+-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+-    const full = join(dir, entry.name);
+-    if (entry.isDirectory()) {
+-      walkSourceFiles(full, out);
+-    } else if (/\.(vue|ts)$/.test(entry.name)) {
+-      out.push(full);
+-    }
+-  }
+-}
+-
+-const sourceFiles = [];
+-walkSourceFiles(SRC, sourceFiles);
++const sourceFiles = readdirSync(SRC, { recursive: true })
++  .filter((f) => /\.(vue|ts)$/.test(f))
++  .map((f) => join(SRC, f));
+ 
+ // Requires a non-identifier character (or start of line) immediately
+ // before the optional `$` -- without this, `t(` also matches the tail of
+ // `emit(`, `writeText(`, `useFluent(`, `attempt(`, `.mount(`, etc., which
+ // this codebase has plenty of (verified empirically against src/ before
+ // settling on this pattern).
+ const CALL_RE = /(?<![\w$])\$?t\(\s*(['"])([^'"]*)\1/g;
+ 
+ const missing = []; // { id, file, line }
+ const literalCallIds = new Set();
+ const literalAnywhereIds = new Set();
+ const fileTexts = new Map();
+ 
+ for (const file of sourceFiles) {
+   const text = readFileSync(file, "utf8");
+   fileTexts.set(file, text);
+ 
+   const lines = text.split("\n");
+   lines.forEach((line, i) => {
+-    CALL_RE.lastIndex = 0;
+-    let m;
+-    while ((m = CALL_RE.exec(line)) !== null) {
++    for (const m of line.matchAll(CALL_RE)) {
+       const id = m[2];
+       literalCallIds.add(id);
+       if (!knownIds.has(id)) {
+         missing.push({ id, file: relative(ROOT, file), line: i + 1 });
+       }
+     }
+   });
+ }
+ 
+ for (const id of knownIds.keys()) {
+@@ -270,22 +257,22 @@ for (const locale of otherLocales) {
+       parityErrors.push(`locales/${locale}/${file}: unexpected catalog file (no locales/en/${file})`);
+     }
+   }
+ 
+   for (const file of referenceCatalogFiles) {
+     if (!localeFiles.has(file)) {
+       continue; // already reported as a missing catalog file above
+     }
+     const refIds = referenceIdsByFile.get(file);
+     const localeIds = new Set(parseCatalogIds(join(dir, file)));
+-    const missingIds = [...refIds].filter((id) => !localeIds.has(id)).sort();
+-    const extraIds = [...localeIds].filter((id) => !refIds.has(id)).sort();
++    const missingIds = [...refIds.difference(localeIds)].sort();
++    const extraIds = [...localeIds.difference(refIds)].sort();
+     for (const id of missingIds) {
+       parityErrors.push(`locales/${locale}/${file}: missing id "${id}" (present in locales/en/${file})`);
+     }
+     for (const id of extraIds) {
+       parityErrors.push(`locales/${locale}/${file}: extra id "${id}" (not present in locales/en/${file})`);
+     }
+   }
+ }
+ 
+ if (parityErrors.length > 0) {

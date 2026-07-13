@@ -1,0 +1,646 @@
+# Review package: 89f346b..cc49337
+
+## Commits
+cc49337 refactor(tests): property-test idiom cleanup (T14 seeds + select/BTreeMap sweeps)
+
+## Files changed
+ crates/muxsmith-core/src/planner.rs         |  13 ++-
+ crates/muxsmith-core/tests/prop_language.rs |  11 +-
+ crates/muxsmith-core/tests/prop_matcher.rs  |  60 ++++-------
+ crates/muxsmith-core/tests/prop_planner.rs  | 149 ++++++++++++----------------
+ 4 files changed, 99 insertions(+), 134 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 4cdee84..4db6fbe 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -1763,21 +1763,26 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
+ }
+ 
+ // Merges a delta into rule `ri`'s match expression, returning an edited
+ // profile. `exact`/`substring` use insert-only-if-absent semantics (bug C):
+ // a candidate whose key already exists on the rule must never overwrite the
+ // existing constraint, since a suggestion may only narrow a match, never
+ // relax it (D6). A key collision then makes the delta a no-op for that key,
+ // which `resolves_without_regression` correctly rejects for not resolving
+ // the ambiguity. `not` entries are always additive (appending a not-clause
+ // always narrows, never relaxes), so plain `extend` stays correct there.
+-fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
++//
++// `#[doc(hidden)] pub` (crate is publish=false): shared verbatim with
++// `prop_planner.rs`'s suggestion-application property so the test exercises
++// the real splice, not a duplicate copy that could silently drift from it.
++#[doc(hidden)]
++pub fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+     let mut p = profile.clone();
+     let expr = &mut p.tracks.rules[ri].match_expr;
+     if let Some(add) = &delta.exact {
+         let map = expr.exact.get_or_insert_with(BTreeMap::new);
+         for (k, v) in add {
+             map.entry(k.clone()).or_insert_with(|| v.clone());
+         }
+     }
+     if let Some(add) = &delta.substring {
+         let map = expr.substring.get_or_insert_with(BTreeMap::new);
+@@ -1938,21 +1943,25 @@ fn diag_signature(batch: &Batch) -> BTreeMap<(String, String, String), usize> {
+             .as_ref()
+             .map(|p| p.display().to_string())
+             .unwrap_or_default();
+         *counts
+             .entry((d.code.key().to_string(), d.config_path.clone(), file))
+             .or_insert(0) += 1;
+     }
+     counts
+ }
+ 
+-fn rule_index_of(config_path: &str) -> Option<usize> {
++// `#[doc(hidden)] pub` (crate is publish=false): shared verbatim with
++// `prop_planner.rs`'s D6 property so the test decodes the same rule index the
++// engine itself uses, not a duplicate copy that could silently drift from it.
++#[doc(hidden)]
++pub fn rule_index_of(config_path: &str) -> Option<usize> {
+     config_path
+         .split_once("tracks[")?
+         .1
+         .split_once(']')?
+         .0
+         .parse()
+         .ok()
+ }
+ 
+ // Rank: typed flags/booleans (0) < language (1) < other exact (2); positive
+diff --git a/crates/muxsmith-core/tests/prop_language.rs b/crates/muxsmith-core/tests/prop_language.rs
+index d27874e..39a71aa 100644
+--- a/crates/muxsmith-core/tests/prop_language.rs
++++ b/crates/muxsmith-core/tests/prop_language.rs
+@@ -118,35 +118,34 @@ fn arb_wellformed_tag() -> impl Strategy<Value = String> {
+ fn arb_lang_token() -> impl Strategy<Value = String> {
+     prop_oneof![
+         select(vec!["en", "eng", "de", "ger", "tr", "tur", "und", "zxx"])
+             .prop_map(|s| s.to_string()),
+         arb_wellformed_tag(),
+         any::<String>(),
+     ]
+ }
+ 
+ fn track_with_language(value: &str) -> Track {
+-    let mut properties = BTreeMap::new();
+-    properties.insert("language".to_string(), PropValue::Str(value.to_string()));
+     Track {
+         id: 0,
+         kind: "subtitles".to_string(),
+         codec: String::new(),
+-        properties,
++        properties: BTreeMap::from([("language".to_string(), PropValue::Str(value.to_string()))]),
+     }
+ }
+ 
+ fn language_expr(value: &str) -> MatchExpr {
+-    let mut map = BTreeMap::new();
+-    map.insert("language".to_string(), Scalar::Str(value.to_string()));
+     MatchExpr {
+-        exact: Some(map),
++        exact: Some(BTreeMap::from([(
++            "language".to_string(),
++            Scalar::Str(value.to_string()),
++        )])),
+         ..Default::default()
+     }
+ }
+ 
+ proptest! {
+     // Normalization is idempotent: a token's canonical key is its own
+     // canonical key. `normalize(normalize(x)) == normalize(x)` in the sense
+     // that the canonical form is a fixed point.
+     #[test]
+     fn normalize_is_idempotent(rows in arb_rows(), extra in any::<String>()) {
+diff --git a/crates/muxsmith-core/tests/prop_matcher.rs b/crates/muxsmith-core/tests/prop_matcher.rs
+index f213edb..a80971a 100644
+--- a/crates/muxsmith-core/tests/prop_matcher.rs
++++ b/crates/muxsmith-core/tests/prop_matcher.rs
+@@ -74,42 +74,36 @@ const STRING_POOL: &[&str] = &[
+ ];
+ // Curated valid regex patterns: every one compiles, so a regex leaf built
+ // from these is a validated leaf (no InvalidRegex possible post-validation).
+ const REGEXES: &[&str] = &[
+     "abc", "a.c", "^S_", "UTF8$", "(?i)eng", "[a-z]+", ".*", "x?y", "a|b", "\\d+", "", ".*SDH.*",
+ ];
+ 
+ // --- MatchExpr constructors (struct-update to dodge field_reassign_with_default) ---
+ 
+ fn exact_one(prop: &str, val: Scalar) -> MatchExpr {
+-    let mut map = BTreeMap::new();
+-    map.insert(prop.to_string(), val);
+     MatchExpr {
+-        exact: Some(map),
++        exact: Some(BTreeMap::from([(prop.to_string(), val)])),
+         ..Default::default()
+     }
+ }
+ 
+ fn substring_one(prop: &str, val: String) -> MatchExpr {
+-    let mut map = BTreeMap::new();
+-    map.insert(prop.to_string(), val);
+     MatchExpr {
+-        substring: Some(map),
++        substring: Some(BTreeMap::from([(prop.to_string(), val)])),
+         ..Default::default()
+     }
+ }
+ 
+ fn regex_one(prop: &str, val: &str) -> MatchExpr {
+-    let mut map = BTreeMap::new();
+-    map.insert(prop.to_string(), val.to_string());
+     MatchExpr {
+-        regex: Some(map),
++        regex: Some(BTreeMap::from([(prop.to_string(), val.to_string())])),
+         ..Default::default()
+     }
+ }
+ 
+ fn any_of(v: Vec<MatchExpr>) -> MatchExpr {
+     MatchExpr {
+         any: Some(v),
+         ..Default::default()
+     }
+ }
+@@ -120,79 +114,67 @@ fn not_of(v: Vec<MatchExpr>) -> MatchExpr {
+         ..Default::default()
+     }
+ }
+ 
+ // --- strategies -----------------------------------------------------------
+ 
+ // Free-text string value: weighted toward the shared pool (for overlap with
+ // track values) but including genuinely arbitrary UTF-8 (for totality).
+ fn free_string() -> impl Strategy<Value = String> {
+     prop_oneof![
+-        3 => select(STRING_POOL.to_vec()).prop_map(|s| s.to_string()),
++        3 => select(STRING_POOL).prop_map(|s| s.to_string()),
+         1 => any::<String>(),
+     ]
+ }
+ 
+ // A validated MatchExpr: every leaf is type-correct, closed-domain-valid
+ // (`type`/`codec_kind`), string-only for substring/regex, codec_kind only
+ // under exact, regex patterns compile, and `any`/`not` lists are non-empty.
+ fn arb_expr() -> impl Strategy<Value = MatchExpr> {
+     let leaf = prop_oneof![
+-        (select(STRING_PROPS.to_vec()), free_string())
+-            .prop_map(|(p, v)| exact_one(p, Scalar::Str(v))),
+-        select(TYPE_VALUES.to_vec()).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
+-        select(CODEC_KIND_NAMES.to_vec())
+-            .prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
+-        (select(BOOL_PROPS.to_vec()), any::<bool>())
+-            .prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
+-        (select(INT_PROPS.to_vec()), 0i64..8).prop_map(|(p, i)| exact_one(p, Scalar::Int(i))),
+-        (select(STRING_PROPS.to_vec()), free_string()).prop_map(|(p, v)| substring_one(p, v)),
+-        (select(STRING_PROPS.to_vec()), select(REGEXES.to_vec()))
+-            .prop_map(|(p, r)| regex_one(p, r)),
++        (select(STRING_PROPS), free_string()).prop_map(|(p, v)| exact_one(p, Scalar::Str(v))),
++        select(TYPE_VALUES).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
++        select(CODEC_KIND_NAMES).prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
++        (select(BOOL_PROPS), any::<bool>()).prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
++        (select(INT_PROPS), 0i64..8).prop_map(|(p, i)| exact_one(p, Scalar::Int(i))),
++        (select(STRING_PROPS), free_string()).prop_map(|(p, v)| substring_one(p, v)),
++        (select(STRING_PROPS), select(REGEXES)).prop_map(|(p, r)| regex_one(p, r)),
+     ];
+     leaf.prop_recursive(3, 32, 3, |inner| {
+         prop_oneof![
+             prop_vec(inner.clone(), 1..4).prop_map(any_of),
+             prop_vec(inner, 1..3).prop_map(not_of),
+         ]
+     })
+ }
+ 
+ fn arb_prop_entry() -> impl Strategy<Value = (String, PropValue)> {
+     prop_oneof![
+-        (select(STRING_PROPS_TRACK.to_vec()), free_string())
++        (select(STRING_PROPS_TRACK), free_string())
+             .prop_map(|(p, v)| (p.to_string(), PropValue::Str(v))),
+-        (select(BOOL_PROPS.to_vec()), any::<bool>())
+-            .prop_map(|(p, b)| (p.to_string(), PropValue::Bool(b))),
+-        (select(INT_PROPS_TRACK.to_vec()), 0i64..8)
+-            .prop_map(|(p, i)| (p.to_string(), PropValue::Int(i))),
++        (select(BOOL_PROPS), any::<bool>()).prop_map(|(p, b)| (p.to_string(), PropValue::Bool(b))),
++        (select(INT_PROPS_TRACK), 0i64..8).prop_map(|(p, i)| (p.to_string(), PropValue::Int(i))),
+     ]
+ }
+ 
+ fn arb_track() -> impl Strategy<Value = Track> {
+     (
+-        select(TYPE_VALUES.to_vec()),
+-        select(CODEC_POOL.to_vec()),
++        select(TYPE_VALUES),
++        select(CODEC_POOL),
+         0u64..6,
+         prop_vec(arb_prop_entry(), 0..6),
+     )
+-        .prop_map(|(kind, codec, id, entries)| {
+-            let mut properties = BTreeMap::new();
+-            for (k, v) in entries {
+-                properties.insert(k, v);
+-            }
+-            Track {
+-                id,
+-                kind: kind.to_string(),
+-                codec: codec.to_string(),
+-                properties,
+-            }
++        .prop_map(|(kind, codec, id, entries)| Track {
++            id,
++            kind: kind.to_string(),
++            codec: codec.to_string(),
++            properties: entries.into_iter().collect(),
+         })
+ }
+ 
+ // A minimal valid profile carrying `expr` as its single track rule's match,
+ // so the config-time validator can be run against the generated expression.
+ fn profile_with_expr(expr: MatchExpr) -> Profile {
+     Profile {
+         profile_version: 1,
+         meta: None,
+         input: Input {
+diff --git a/crates/muxsmith-core/tests/prop_planner.rs b/crates/muxsmith-core/tests/prop_planner.rs
+index 560912f..218c823 100644
+--- a/crates/muxsmith-core/tests/prop_planner.rs
++++ b/crates/muxsmith-core/tests/prop_planner.rs
+@@ -11,54 +11,50 @@
+ use std::collections::{BTreeMap, BTreeSet, HashMap};
+ use std::path::PathBuf;
+ 
+ use proptest::collection::vec as prop_vec;
+ use proptest::prelude::*;
+ use proptest::sample::select;
+ use serde::Deserialize;
+ 
+ use muxsmith_core::capability::TYPE_VALUES;
+ use muxsmith_core::identify::{Identification, PropValue, Track};
+-use muxsmith_core::planner::{Batch, RunInputs, plan_batch};
++use muxsmith_core::planner::{Batch, RunInputs, plan_batch, rule_index_of, with_rule_match};
+ use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
+ use muxsmith_core::profile::model::{
+     AttachmentsCfg, ChaptersCfg, CollisionPolicy, FilenameCfg, Input, KeepDrop, OutputCfg, Profile,
+     SourceCfg, TagsCfg, TemplateBlock, TitleCfg, TrackRule, TracksCfg,
+ };
+ use muxsmith_core::report::DiagCode;
+ 
+ mod support;
+ use support::{FakeIdent, lang};
+ 
+ const FILE_NAMES: &[&str] = &[
+     "Show.S01E01.mkv",
+     "Show.S01E02.mkv",
+     "Show.S01E03.mkv",
+     "Show.S01E04.mkv",
+ ];
+ 
+ // --- builders -------------------------------------------------------------
+ 
+ fn exact_one(prop: &str, val: Scalar) -> MatchExpr {
+-    let mut map = BTreeMap::new();
+-    map.insert(prop.to_string(), val);
+     MatchExpr {
+-        exact: Some(map),
++        exact: Some(BTreeMap::from([(prop.to_string(), val)])),
+         ..Default::default()
+     }
+ }
+ 
+ fn substring_one(prop: &str, val: String) -> MatchExpr {
+-    let mut map = BTreeMap::new();
+-    map.insert(prop.to_string(), val);
+     MatchExpr {
+-        substring: Some(map),
++        substring: Some(BTreeMap::from([(prop.to_string(), val)])),
+         ..Default::default()
+     }
+ }
+ 
+ fn rule_of(expr: MatchExpr, optional: bool) -> TrackRule {
+     TrackRule {
+         source: SourceCfg::primary(),
+         match_expr: expr,
+         optional,
+         changes: None,
+@@ -96,30 +92,28 @@ fn ident(tracks: Vec<Track>) -> Identification {
+         format_version: 20,
+         container_recognized: true,
+         container_supported: true,
+         tracks,
+         attachments: vec![],
+         chapters: 0,
+     }
+ }
+ 
+ fn video_track(id: u64) -> Track {
+-    let mut properties = BTreeMap::new();
+-    properties.insert(
+-        "codec_id".to_string(),
+-        PropValue::Str("V_MPEG4/ISO/AVC".to_string()),
+-    );
+     Track {
+         id,
+         kind: "video".to_string(),
+         codec: String::new(),
+-        properties,
++        properties: BTreeMap::from([(
++            "codec_id".to_string(),
++            PropValue::Str("V_MPEG4/ISO/AVC".to_string()),
++        )]),
+     }
+ }
+ 
+ // Plans `files` (name -> identification) in a throwaway source directory and
+ // returns the batch plus the output directory the plan paths hang under.
+ fn run_plan(profile: &Profile, files: &[(String, Identification)]) -> (Batch, PathBuf) {
+     let dir = tempfile::tempdir().unwrap();
+     let mut by_name = HashMap::new();
+     for (name, id) in files {
+         std::fs::write(dir.path().join(name), b"x").unwrap();
+@@ -134,64 +128,62 @@ fn run_plan(profile: &Profile, files: &[(String, Identification)]) -> (Batch, Pa
+     let mut ident = FakeIdent { by_name };
+     let batch = plan_batch(profile, &run, &mut ident, &lang());
+     (batch, out_dir)
+ }
+ 
+ // --- strategies -----------------------------------------------------------
+ 
+ // A compact realistic match expression over the planner's vocabulary.
+ fn arb_plan_expr() -> impl Strategy<Value = MatchExpr> {
+     prop_oneof![
+-        select(TYPE_VALUES.to_vec()).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
++        select(TYPE_VALUES).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
+         select(vec!["eng", "ger", "tur"])
+             .prop_map(|l| exact_one("language", Scalar::Str(l.to_string()))),
+         (select(vec!["default_track", "forced_track"]), any::<bool>())
+             .prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
+         select(vec!["Forced", "SDH", "Commentary", "Main"])
+             .prop_map(|s| substring_one("track_name", s.to_string())),
+     ]
+ }
+ 
+ fn arb_track(id: u64) -> impl Strategy<Value = Track> {
+     (
+-        select(TYPE_VALUES.to_vec()),
++        select(TYPE_VALUES),
+         select(vec!["eng", "ger", "tur"]),
+         select(vec![
+             "S_TEXT/UTF8",
+             "A_AAC",
+             "V_MPEG4/ISO/AVC",
+             "S_TEXT/ASS",
+         ]),
+         select(vec![
+             "Forced",
+             "SDH",
+             "Commentary",
+             "Main",
+             "English",
+             "German",
+         ]),
+         any::<bool>(),
+         any::<bool>(),
+     )
+-        .prop_map(move |(kind, language, codec_id, name, def, forced)| {
+-            let mut properties = BTreeMap::new();
+-            properties.insert("language".to_string(), PropValue::Str(language.to_string()));
+-            properties.insert("codec_id".to_string(), PropValue::Str(codec_id.to_string()));
+-            properties.insert("track_name".to_string(), PropValue::Str(name.to_string()));
+-            properties.insert("default_track".to_string(), PropValue::Bool(def));
+-            properties.insert("forced_track".to_string(), PropValue::Bool(forced));
+-            Track {
+-                id,
+-                kind: kind.to_string(),
+-                codec: String::new(),
+-                properties,
+-            }
++        .prop_map(move |(kind, language, codec_id, name, def, forced)| Track {
++            id,
++            kind: kind.to_string(),
++            codec: String::new(),
++            properties: BTreeMap::from([
++                ("language".to_string(), PropValue::Str(language.to_string())),
++                ("codec_id".to_string(), PropValue::Str(codec_id.to_string())),
++                ("track_name".to_string(), PropValue::Str(name.to_string())),
++                ("default_track".to_string(), PropValue::Bool(def)),
++                ("forced_track".to_string(), PropValue::Bool(forced)),
++            ]),
+         })
+ }
+ 
+ fn arb_identification() -> impl Strategy<Value = Identification> {
+     (1usize..5)
+         .prop_flat_map(|n| (0..n).map(|i| arb_track(i as u64)).collect::<Vec<_>>())
+         .prop_map(ident)
+ }
+ 
+ fn arb_files() -> impl Strategy<Value = Vec<(String, Identification)>> {
+@@ -234,30 +226,28 @@ fn arb_ident_one_video() -> impl Strategy<Value = Identification> {
+         ident(tracks)
+     })
+ }
+ 
+ fn arb_nonvideo_track() -> impl Strategy<Value = Track> {
+     (
+         select(vec!["audio", "subtitles"]),
+         select(vec!["eng", "ger", "tur"]),
+         select(vec!["S_TEXT/UTF8", "A_AAC"]),
+     )
+-        .prop_map(|(kind, language, codec_id)| {
+-            let mut properties = BTreeMap::new();
+-            properties.insert("language".to_string(), PropValue::Str(language.to_string()));
+-            properties.insert("codec_id".to_string(), PropValue::Str(codec_id.to_string()));
+-            Track {
+-                id: 0,
+-                kind: kind.to_string(),
+-                codec: String::new(),
+-                properties,
+-            }
++        .prop_map(|(kind, language, codec_id)| Track {
++            id: 0,
++            kind: kind.to_string(),
++            codec: String::new(),
++            properties: BTreeMap::from([
++                ("language".to_string(), PropValue::Str(language.to_string())),
++                ("codec_id".to_string(), PropValue::Str(codec_id.to_string())),
++            ]),
+         })
+ }
+ 
+ fn arb_render_files() -> impl Strategy<Value = Vec<(String, Identification)>> {
+     (1usize..=FILE_NAMES.len()).prop_flat_map(|k| {
+         FILE_NAMES[..k]
+             .iter()
+             .map(|name| arb_ident_one_video().prop_map(move |id| (name.to_string(), id)))
+             .collect::<Vec<_>>()
+     })
+@@ -270,77 +260,61 @@ fn arb_ambiguous_ident() -> impl Strategy<Value = Identification> {
+     (
+         0usize..3,
+         1usize..3,
+         select(vec!["Forced", "SDH", "Commentary", "Main"]),
+         select(vec!["Forced", "SDH", "Commentary", "Main"]),
+         any::<bool>(),
+         any::<bool>(),
+     )
+         .prop_map(|(i0, off, n1, n2, f1, f2)| {
+             let langs = ["eng", "ger", "tur"];
+-            let sub = |id: u64, language: &str, name: &str, forced: bool| {
+-                let mut properties = BTreeMap::new();
+-                properties.insert("language".to_string(), PropValue::Str(language.to_string()));
+-                properties.insert(
+-                    "codec_id".to_string(),
+-                    PropValue::Str("S_TEXT/UTF8".to_string()),
+-                );
+-                properties.insert("track_name".to_string(), PropValue::Str(name.to_string()));
+-                properties.insert("forced_track".to_string(), PropValue::Bool(forced));
+-                Track {
+-                    id,
+-                    kind: "subtitles".to_string(),
+-                    codec: String::new(),
+-                    properties,
+-                }
++            let sub = |id: u64, language: &str, name: &str, forced: bool| Track {
++                id,
++                kind: "subtitles".to_string(),
++                codec: String::new(),
++                properties: BTreeMap::from([
++                    ("language".to_string(), PropValue::Str(language.to_string())),
++                    (
++                        "codec_id".to_string(),
++                        PropValue::Str("S_TEXT/UTF8".to_string()),
++                    ),
++                    ("track_name".to_string(), PropValue::Str(name.to_string())),
++                    ("forced_track".to_string(), PropValue::Bool(forced)),
++                ]),
+             };
+             ident(vec![
+                 video_track(0),
+                 sub(1, langs[i0], n1, f1),
+                 sub(2, langs[(i0 + off) % 3], n2, f2),
+             ])
+         })
+ }
+ 
+-// --- suggestion application (mirrors planner::with_rule_match, insert-only) ---
++// --- suggestion application (delegates to planner::with_rule_match) ---
+ 
+ #[derive(Deserialize)]
+ struct MatchFragmentDoc {
+     #[serde(rename = "match")]
+     match_expr: MatchExpr,
+ }
+ 
+ // Applies a suggestion's emitted YAML fragment to rule `ri`, exactly as a GUI
+ // or CLI "apply" would: parse the fragment's `match:` delta and splice it in
+-// with insert-only semantics (a suggestion may only narrow, never relax).
++// via the real engine (`planner::with_rule_match`, `#[doc(hidden)] pub` for
++// this reuse), so the test exercises the actual insert-only splice rather
++// than a parallel copy that could silently drift from it. Splice semantics
++// (never widens an existing constraint) are independently covered by
++// `suggestions.rs::with_rule_match_never_widens_an_existing_substring_constraint`.
+ fn apply_suggestion(profile: &Profile, ri: usize, fragment: &str) -> Profile {
+     let doc: MatchFragmentDoc =
+         yaml_serde::from_str(fragment).expect("emitted yaml_fragment must parse");
+-    let delta = doc.match_expr;
+-    let mut p = profile.clone();
+-    let expr = &mut p.tracks.rules[ri].match_expr;
+-    if let Some(add) = &delta.exact {
+-        let map = expr.exact.get_or_insert_with(BTreeMap::new);
+-        for (k, v) in add {
+-            map.entry(k.clone()).or_insert_with(|| v.clone());
+-        }
+-    }
+-    if let Some(add) = &delta.substring {
+-        let map = expr.substring.get_or_insert_with(BTreeMap::new);
+-        for (k, v) in add {
+-            map.entry(k.clone()).or_insert_with(|| v.clone());
+-        }
+-    }
+-    if let Some(add) = &delta.not {
+-        expr.not.get_or_insert_with(Vec::new).extend(add.clone());
+-    }
+-    p
++    with_rule_match(profile, ri, &doc.match_expr)
+ }
+ 
+ // Basename-scoped diagnostic signature (code|config_path|file basename), so
+ // two plans of the same logical file in different throwaway directories are
+ // comparable. Mirrors planner::diag_signature otherwise.
+ fn diag_sig(batch: &Batch) -> BTreeSet<String> {
+     let mut set = BTreeSet::new();
+     let all = batch
+         .batch_diagnostics
+         .iter()
+@@ -350,26 +324,20 @@ fn diag_sig(batch: &Batch) -> BTreeSet<String> {
+             .file
+             .as_ref()
+             .and_then(|p| p.file_name())
+             .map(|n| n.to_string_lossy().to_string())
+             .unwrap_or_default();
+         set.insert(format!("{}|{}|{}", d.code.key(), d.config_path, file));
+     }
+     set
+ }
+ 
+-fn rule_index_of(path: &str) -> Option<usize> {
+-    let start = path.find("tracks[")? + "tracks[".len();
+-    let end = path[start..].find(']')? + start;
+-    path[start..end].parse().ok()
+-}
+-
+ // --- properties -----------------------------------------------------------
+ 
+ proptest! {
+     // Determinism (spec 5.5): two plan runs over identical inputs (same
+     // directory, fresh identifier caches) serialize byte-for-byte identically.
+     #[test]
+     fn plan_is_byte_identical_across_runs(
+         profile in arb_profile(),
+         files in arb_files(),
+     ) {
+@@ -438,27 +406,34 @@ proptest! {
+     // introduces no diagnostic absent from the pre-edit baseline.
+     #[test]
+     fn accepted_suggestion_survives_replan(scene in arb_ambiguous_ident()) {
+         let profile = mk_profile(
+             vec![rule_of(exact_one("type", Scalar::Str("subtitles".to_string())), false)],
+             FilenameCfg::keep(),
+         );
+         let files = vec![("Show.S01E01.mkv".to_string(), scene)];
+         let (batch, _) = run_plan(&profile, &files);
+ 
+-        // Meaningfulness guard: the scenario must actually be ambiguous and
+-        // actually yield suggestions, or there is nothing to test.
+-        prop_assume!(batch.files.iter().any(|f| f
+-            .diagnostics
+-            .iter()
+-            .any(|d| d.code == DiagCode::AmbiguousRule)));
+-        prop_assume!(!batch.suggestions.is_empty());
++        // By construction (arb_ambiguous_ident): the scenario is ambiguous and a
++        // resolving discriminator exists, so suggestions must be emitted. Assert,
++        // don't assume: a miss here is a generator or engine regression.
++        prop_assert!(
++            batch.files.iter().any(|f| f
++                .diagnostics
++                .iter()
++                .any(|d| d.code == DiagCode::AmbiguousRule)),
++            "generator no longer yields an ambiguous batch"
++        );
++        prop_assert!(
++            !batch.suggestions.is_empty(),
++            "ambiguous batch yielded no suggestions"
++        );
+ 
+         let base = diag_sig(&batch);
+         for s in &batch.suggestions {
+             let ri = rule_index_of(&s.config_path).expect("suggestion names a rule");
+             let edited = apply_suggestion(&profile, ri, &s.yaml_fragment);
+             let (re, _) = run_plan(&edited, &files);
+ 
+             let still_ambiguous = re.files.iter().flat_map(|f| f.diagnostics.iter()).any(|d| {
+                 d.code == DiagCode::AmbiguousRule && rule_index_of(&d.config_path) == Some(ri)
+             });

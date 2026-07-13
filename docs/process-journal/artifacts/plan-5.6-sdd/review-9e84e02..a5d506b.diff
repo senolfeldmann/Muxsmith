@@ -1,0 +1,191 @@
+# Review package: 9e84e02..a5d506b
+
+## Commits
+a5d506b test(report): pin the D36 claimants wire contract + zero-risk close-out riders
+
+## Files changed
+ .github/workflows/ci.yml                     |  1 +
+ crates/muxsmith-cli/src/commands/validate.rs | 13 +++++--------
+ crates/muxsmith-core/src/report/mod.rs       | 21 +++++++++++++++++++++
+ src-tauri/src/run.rs                         |  6 ++----
+ 4 files changed, 29 insertions(+), 12 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7ba60b2..b677102 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -20,20 +20,21 @@ jobs:
+       # on public-repo standard runners, so every push runs all platforms.
+       # The private-era dynamic Linux-only trim is retired.
+       matrix:
+         os: ["ubuntu-26.04", "windows-2025", "macos-15"]
+     runs-on: ${{ matrix.os }}
+     steps:
+       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+       # Bare `rustup toolchain install` does not apply rust-toolchain.toml's
+       # components (rustup #4216), so they are added explicitly.
+       - name: Install pinned Rust toolchain
++        shell: bash
+         run: |
+           rustup toolchain install
+           rustup component add rustfmt clippy
+       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+       # mkvtoolnix on every leg (2026-07-11, Plan 5.5 Task 2 / #14): gated
+       # integration tests previously ran live on Linux only and silently
+       # self-skipped on Windows/macOS. Version-pin decision (registries
+       # checked 2026-07-11, Şenol's standing preference is pin per-manager
+       # unless impossible): apt on ubuntu-26.04 "resolute" (the actual
+       # matrix OS, not 24.04) ships mkvtoolnix 97.0-1build1; choco and
+diff --git a/crates/muxsmith-cli/src/commands/validate.rs b/crates/muxsmith-cli/src/commands/validate.rs
+index bb185e9..dcafe5d 100644
+--- a/crates/muxsmith-cli/src/commands/validate.rs
++++ b/crates/muxsmith-cli/src/commands/validate.rs
+@@ -10,44 +10,41 @@ use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
+ 
+ use crate::commands::{severity_exit, severity_sorted};
+ use crate::i18n::Renderer;
+ 
+ /// Runs `muxsmith validate` (spec 8.1): loads and statically validates the
+ /// profile, prints diagnostics (human-readable, or as structured JSON with
+ /// `--json`), and returns the mkvmerge-style exit code (0 success, 1 worst
+ /// diagnostic is a warning, 2 worst is an error).
+ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
+     // Error-first, stable within a severity; both output modes share it.
+-    let diagnostics: Vec<Diagnostic> = severity_sorted(&collect(profile_path))
+-        .into_iter()
+-        .cloned()
+-        .collect();
++    let diagnostics: Vec<Diagnostic> =
++        severity_sorted(&validate::config_diagnostics_from_file(profile_path))
++            .into_iter()
++            .cloned()
++            .collect();
+     let exit = severity_exit(worst_severity(&diagnostics));
+ 
+     if json {
+         let entries = rendered_diags(&diagnostics, renderer);
+         println!("{}", serde_json::json!({ "diagnostics": entries }));
+     } else if diagnostics.is_empty() {
+         println!("{}", renderer.msg("validate-ok", &[]));
+     } else {
+         for d in &diagnostics {
+             println!("{}", renderer.diagnostic(d));
+         }
+         println!("{}", render_summary(&diagnostics, renderer));
+     }
+     exit
+ }
+ 
+-fn collect(profile_path: &Path) -> Vec<Diagnostic> {
+-    validate::config_diagnostics_from_file(profile_path)
+-}
+-
+ /// The `validate-summary` line: how many of `diagnostics` are each
+ /// severity, each count through its own CLDR plural selector ("1 error" /
+ /// "2 errors", T19 #17 step 1). Split out so it is unit-testable without a
+ /// real profile file.
+ fn render_summary(diagnostics: &[Diagnostic], renderer: &Renderer) -> String {
+     let count = |s: Severity| diagnostics.iter().filter(|d| d.severity == s).count();
+     renderer.msg_with_counts(
+         "validate-summary",
+         &[],
+         &[
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 2fb50b1..4d1b532 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -339,20 +339,41 @@ mod tests {
+     #[test]
+     fn diagnostic_serializes_with_snake_case_severity_and_kebab_code() {
+         let d = Diagnostic::error(DiagCode::UnknownProperty, "tracks[1].match.exact.foo")
+             .with("property", "foo");
+         let json = serde_json::to_value(&d).unwrap();
+         assert_eq!(json["severity"], "error");
+         assert_eq!(json["code"], "unknown-property");
+         assert_eq!(json["params"]["property"], "foo");
+     }
+ 
++    #[test]
++    fn with_claimants_populates_structural_field_and_json_from_one_slice() {
++        // D36 wire contract: `with_claimants` derives both the structural
++        // `claimants` field and the rendered `rules` display param from the
++        // same slice, and JSON carries `claimants` only when non-empty
++        // (`skip_serializing_if`).
++        let d = Diagnostic::error(DiagCode::OverlappingRules, "tracks[0]").with_claimants(&[0, 2]);
++        assert_eq!(d.claimants, vec![0, 2]);
++        assert_eq!(d.params["rules"], "tracks[0], tracks[2]");
++
++        let json = serde_json::to_value(&d).unwrap();
++        assert_eq!(json["claimants"], serde_json::json!([0, 2]));
++
++        let without = Diagnostic::error(DiagCode::InvalidRegex, "input.pattern");
++        let json_without = serde_json::to_value(&without).unwrap();
++        assert!(
++            json_without.as_object().unwrap().get("claimants").is_none(),
++            "claimants must be omitted via skip_serializing_if when empty"
++        );
++    }
++
+     #[test]
+     fn all_keys_match_serde_encoding() {
+         for &code in DiagCode::ALL {
+             assert_eq!(
+                 serde_json::to_value(code).unwrap(),
+                 serde_json::Value::String(code.key().to_string()),
+                 "key()/serde mismatch for {code:?}"
+             );
+         }
+     }
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index 4634981..21aed84 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -45,20 +45,21 @@ use muxsmith_core::executor::joblog::{
+ use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
+ use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
+ use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
+ use muxsmith_core::planner::{RunInputs, plan_batch};
+ use muxsmith_core::profile::{lint, load, validate};
+ use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
+ 
+ use crate::AppState;
+ use crate::ShellRenderer;
+ use crate::error::IpcError;
++use crate::on_blocking;
+ 
+ /// What currently occupies [`AppState`]'s single run slot (the struct
+ /// itself, plus its `quit_after_finished` sibling field, live in `lib.rs`
+ /// -- unified there across this task's run-tracking fields and T7's
+ /// settings field). Both variants count as "a run is active" for the D23
+ /// single-run gate; they differ only in what a cancel can reach (see each
+ /// variant). `pub(crate)`: named from `AppState`'s field type in the
+ /// parent module.
+ pub(crate) enum RunSlot {
+     /// [`start_run`] is mid-planning: the slot is held so a concurrent
+@@ -432,24 +433,21 @@ pub async fn start_run(
+     // BEFORE spawn_blocking -- module doc: a lock held across planning
+     // would freeze the event loop, but this is just the O(1)
+     // check-and-insert, not planning itself. Held across the .await below;
+     // dropping it uncommitted (every soft-outcome/error early return)
+     // releases the slot again.
+     let reservation = Reservation::acquire(&state)?;
+     let settings_path = state.settings_path.clone();
+     let cancel_flag = reservation.cancel_flag();
+ 
+     let outcome =
+-        crate::on_blocking(move || plan_run(settings_path, profile, source, output, cancel_flag))
+-            .await;
+-
+-    let outcome = outcome?;
++        on_blocking(move || plan_run(settings_path, profile, source, output, cancel_flag)).await?;
+ 
+     let ReadyPlan {
+         run_id,
+         specs,
+         ctl,
+         logger,
+         run_dir,
+         base,
+         outputs,
+         mkv_path,
