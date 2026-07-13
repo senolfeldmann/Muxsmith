@@ -163,23 +163,16 @@ struct MkvmergeInfo {
 }
 
 /// `validate_profile`'s command body (testable without a Tauri runtime):
-/// static, mkvmerge-free validation (spec 5.4) of the profile at `path`,
-/// mirroring `muxsmith-cli`'s `validate::collect` (load, then
-/// `validate::validate` + `lint::provable_overlaps`), but rendered through
+/// static, mkvmerge-free validation (spec 5.4) of the profile at `path` via
+/// [`validate::config_diagnostics_from_file`] (the same funnel `muxsmith-cli`'s
+/// `validate` subcommand calls), rendered through
 /// [`report::json::config_only_document`] per this task's brief rather
 /// than the CLI `validate` subcommand's flatter `{diagnostics: [...]}`
 /// shape -- every GUI report command returns the SAME document shape, so
 /// the frontend has one rendering path, not one per command. `mkvmerge_found`
 /// is always absent from the result: this command never touches mkvmerge.
 fn validate_profile_body(path: &Path) -> serde_json::Value {
-    let diags = match load::from_file(path) {
-        Err(d) => vec![d],
-        Ok(profile) => {
-            let mut diags = validate::validate(&profile);
-            diags.extend(lint::provable_overlaps(&profile));
-            diags
-        }
-    };
+    let diags = validate::config_diagnostics_from_file(path);
     report::json::config_only_document(&diags, None, &ShellRenderer)
 }
 

@@ -2,6 +2,7 @@
 //! Task 9 extends this file with input/locator/template validation.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use crate::capability::{self, PropType};
 use crate::report::{DiagCode, Diagnostic};
@@ -11,6 +12,7 @@ use super::match_expr::{MatchExpr, Scalar};
 use super::model::{
     AttachmentRule, ChaptersCfg, FilenameCfg, Locator, Profile, SourceCfg, TitleCfg,
 };
+use super::{lint, load};
 
 /// Config-time semantic validation (spec 5.4): profile version, regex
 /// compilation, template well-formedness, property existence/type checks
@@ -169,6 +171,28 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     }
 
     diags
+}
+
+/// Every config-time diagnostic for an already-loaded `profile`: [`validate`]'s
+/// static checks followed by [`lint::provable_overlaps`]'s cross-rule overlap
+/// check, in that order. The one funnel both config-time consumers (CLI
+/// `validate`, GUI `validate_profile`) call instead of each repeating the
+/// two-call sequence.
+pub fn config_diagnostics(profile: &Profile) -> Vec<Diagnostic> {
+    let mut diags = validate(profile);
+    diags.extend(lint::provable_overlaps(profile));
+    diags
+}
+
+/// [`config_diagnostics`] for a profile not yet loaded from `path`: a load
+/// failure (spec 4 I/O or deserialization error) short-circuits to that
+/// single [`Diagnostic`] since there is no profile to run the funnel on; a
+/// successful load runs [`config_diagnostics`] on it.
+pub fn config_diagnostics_from_file(path: &Path) -> Vec<Diagnostic> {
+    match load::from_file(path) {
+        Err(d) => vec![d],
+        Ok(profile) => config_diagnostics(&profile),
+    }
 }
 
 fn flatten_regex_error(e: &regex::Error) -> String {

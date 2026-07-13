@@ -50,7 +50,8 @@ lines); hoist run_batch into muxsmith_core::executor (the CLI inlines what
 src-tauri already factored); hoist runs-root resolution to core (D26
 debug-only seam duplicated CLI vs src-tauri). Plus the deferred Fluent
 message-attribute reorganization (widget facets as .attribute instead of
-suffixed siblings; touches frontend $ta + check-i18n parity).
+suffixed siblings; touches frontend $ta + check-i18n parity). plan_pipeline
+consumes profile::validate::config_diagnostics (landed Plan 5.6 T11).
 
 ## Triggers
 

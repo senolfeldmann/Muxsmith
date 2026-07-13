@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use muxsmith_core::profile::{lint, load, validate};
+use muxsmith_core::profile::validate;
 use muxsmith_core::report::json::rendered_diags;
 use muxsmith_core::report::{Diagnostic, Severity, worst_severity};
 
@@ -38,14 +38,7 @@ pub fn run(profile_path: &Path, json: bool, renderer: &Renderer) -> i32 {
 }
 
 fn collect(profile_path: &Path) -> Vec<Diagnostic> {
-    match load::from_file(profile_path) {
-        Err(d) => vec![d],
-        Ok(profile) => {
-            let mut diags = validate::validate(&profile);
-            diags.extend(lint::provable_overlaps(&profile));
-            diags
-        }
-    }
+    validate::config_diagnostics_from_file(profile_path)
 }
 
 /// The `validate-summary` line: how many of `diagnostics` are each
