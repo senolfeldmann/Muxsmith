@@ -102,6 +102,7 @@ jobs:
         shell: bash
         run: |
           cargo test --workspace -- --nocapture --test-threads=1 2>&1 | tee gated-test-output.log
+          # This literal must match muxsmith_core::MKVMERGE_SKIP_MARKER (crates/muxsmith-core/src/lib.rs) byte-for-byte.
           count="$(grep -c 'mkvmerge not found; skipping' gated-test-output.log || true)"
           echo "Skip-marker occurrences: $count"
           if [ "$count" -ne 0 ]; then

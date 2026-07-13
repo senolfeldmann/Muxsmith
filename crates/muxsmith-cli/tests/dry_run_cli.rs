@@ -19,7 +19,7 @@ fn have_mkvmerge() -> bool {
 #[test]
 fn dry_run_plans_a_single_file() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -82,7 +82,7 @@ fn dry_run_plans_a_single_file() {
 #[test]
 fn dry_run_surfaces_config_time_invalid_regex() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -125,7 +125,7 @@ fn dry_run_surfaces_config_time_invalid_regex() {
 #[test]
 fn dry_run_json_diagnostics_all_carry_rendered_text() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -212,7 +212,7 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
 #[test]
 fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -334,7 +334,7 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
 #[test]
 fn dry_run_on_collision_flag_overrides_default_error_policy() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     // Separate source and output tempdirs: nesting the output dir inside
@@ -678,7 +678,7 @@ fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() 
 #[test]
 fn dry_run_json_surfaces_empty_plan_batch_report() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();

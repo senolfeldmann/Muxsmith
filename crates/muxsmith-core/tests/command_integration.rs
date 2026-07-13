@@ -199,7 +199,7 @@ tracks:
 #[test]
 fn live_mkvmerge_accepts_planned_command() {
     let Some(m) = mkvmerge() else {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     };
 
@@ -285,7 +285,7 @@ fn track_name(t: &Track) -> String {
 #[test]
 fn live_keep_donor_trails_primary() {
     let Some(m) = mkvmerge() else {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     };
 
@@ -456,7 +456,7 @@ tracks:
 #[test]
 fn live_attachment_and_changes_round_trip() {
     let Some(m) = mkvmerge() else {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     };
 

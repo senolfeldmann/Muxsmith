@@ -16,7 +16,7 @@ fn mkvmerge() -> Option<Mkvmerge> {
 #[test]
 fn live_gui_mode_progress_reaches_100_percent() {
     let Some(m) = mkvmerge() else {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     };
 

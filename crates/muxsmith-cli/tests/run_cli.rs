@@ -129,7 +129,7 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
 #[test]
 fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -281,7 +281,7 @@ fn run_json_on_specs_empty_from_a_bad_regex_still_emits_a_document_with_empty_jo
 #[test]
 fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_summary() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -328,7 +328,7 @@ fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_su
 #[test]
 fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();

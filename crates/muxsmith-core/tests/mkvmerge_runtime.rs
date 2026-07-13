@@ -109,7 +109,7 @@ fn spawn_count(counter: &std::path::Path) -> usize {
 #[test]
 fn version_reports_mkvmerge() {
     let Some(m) = mkvmerge() else {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     };
     let v = m.version().expect("version query");
@@ -203,7 +203,7 @@ fn detect_caches_version_pair_so_version_pair_spawns_nothing() {
 #[test]
 fn detect_none_finds_real_mkvmerge_meeting_the_version_floor() {
     if mkvmerge().is_none() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let detected = Mkvmerge::detect(None).expect("detect(None) should find PATH mkvmerge");

@@ -87,7 +87,7 @@ fn assert_identifies_as_matroska(path: &Path) {
 #[test]
 fn live_run_muxes_two_sources_and_reports_exit_zero() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -170,7 +170,7 @@ fn backdate_mtime(path: &Path) -> SystemTime {
 #[test]
 fn live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched() {
     if !have_mkvmerge() {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     }
     let dir = tempfile::tempdir().unwrap();

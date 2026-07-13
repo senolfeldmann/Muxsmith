@@ -33,7 +33,7 @@ fn make_sample(dir: &Path) -> std::path::PathBuf {
 #[test]
 fn identifies_and_caches_a_real_file() {
     let Some(m) = mkvmerge() else {
-        eprintln!("mkvmerge not found; skipping");
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
         return;
     };
     let dir = tempfile::tempdir().unwrap();

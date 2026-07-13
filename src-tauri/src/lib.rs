@@ -650,7 +650,7 @@ mod tests {
     #[test]
     fn dry_run_body_full_success_path_with_real_mkvmerge() {
         if !real_mkvmerge_available() {
-            eprintln!("mkvmerge not found; skipping");
+            eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
             return;
         }
         let dir = tempfile::tempdir().unwrap();
@@ -709,7 +709,7 @@ mod tests {
     #[test]
     fn identify_body_full_success_path_with_real_mkvmerge() {
         if !real_mkvmerge_available() {
-            eprintln!("mkvmerge not found; skipping");
+            eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
             return;
         }
         let dir = tempfile::tempdir().unwrap();
@@ -793,7 +793,7 @@ mod tests {
     #[test]
     fn detect_mkvmerge_body_finds_the_real_mkvmerge_when_available() {
         if !real_mkvmerge_available() {
-            eprintln!("mkvmerge not found; skipping");
+            eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
             return;
         }
         detect_mkvmerge_body(None).expect("detect");
