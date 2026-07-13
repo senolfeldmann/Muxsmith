@@ -1,8 +1,10 @@
-# German (de) translation of locales/en/cli.ftl. The en catalog is the
-# source of truth; keys, placeables and selector structure mirror it and
-# are parity-enforced by scripts/check-i18n.mjs. Terminology per Task 21
-# (#17): Spur/Datei/Profil/Regel/Vorschlag, mkvtoolnix-de anchors where one
-# exists. Sie-less imperative (du-Imperativ) for direct CLI instructions.
+### German (de) translation of locales/en/cli.ftl. The en catalog is the
+### source of truth; keys mirror it (id parity enforced by
+### scripts/check-i18n.mjs); placeables and selector structure mirror it by
+### convention (reviewed manually, not machine-checked). Terminology per
+### Task 21 (#17): Spur/Datei/Profil/Regel/Vorschlag, mkvtoolnix-de anchors
+### where one exists. Sie-less imperative (du-Imperativ) for direct CLI
+### instructions.
 validate-ok = Das Profil ist gültig.
 validate-summary = { $errors ->
     [one] 1 Fehler

@@ -1,20 +1,20 @@
 app-title = Muxsmith
 
-# D31: native close-confirmation dialog (window close with an active run).
-# Consumed by the Rust shell at build time (include_str lookup in
-# src-tauri/src/run.rs); keep these entries single-line simple messages
-# (no attributes, no multiline continuations) -- the shell's lookup is a
-# line parser, not a Fluent parser, and a unit test pins each key.
-# Wording per D31's mkvtoolnix-gui reference (main_window.cpp,
-# beforeCloseCheckRunningJobs).
+## D31: native close-confirmation dialog (window close with an active run).
+## Consumed by the Rust shell at build time (include_str lookup in
+## src-tauri/src/run.rs); keep these entries single-line simple messages
+## (no attributes, no multiline continuations) -- the shell's lookup is a
+## line parser, not a Fluent parser, and a unit test pins each key.
+## Wording per D31's mkvtoolnix-gui reference (main_window.cpp,
+## beforeCloseCheckRunningJobs).
 close-abort-title = Abort running jobs
 close-abort-message = There is currently a job running. Do you really want to abort all currently running jobs and quit?
 close-abort-confirm = Abort jobs and quit
 close-abort-dismiss = Cancel
 
-# T9: app shell navigation (single window, two views + first-run + settings,
-# spec 8.2). aria-current="page" on the active tab is set in the template,
-# not encoded here.
+## T9: app shell navigation (single window, two views + first-run + settings,
+## spec 8.2). aria-current="page" on the active tab is set in the template,
+## not encoded here.
 nav-label = Main navigation
 nav-batch = Batch
 nav-jobs = Jobs
@@ -23,11 +23,11 @@ settings-open-tooltip = Open application settings (mkvmerge path, default jobs, 
 browse-button = Browse...
 browse-button-tooltip = Choose the file with a file picker.
 
-# T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
-# Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
-# selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
-# raw code when a message exists here, and falls back to the code string
-# itself only when a key is genuinely missing.
+## T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
+## Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
+## selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a
+## raw code when a message exists here, and falls back to the code string
+## itself only when a key is genuinely missing.
 mkvmerge-not-found = mkvmerge was not found.
 mkvmerge-too-old = The mkvmerge found ({ $found }) is older than the required minimum version { $minimum }.
 mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
@@ -46,7 +46,7 @@ settings-io-failed = Application settings could not be read or written: { $detai
 settings-parse-failed = The application settings file is corrupt: { $detail }
 internal-task-failed = An internal error occurred: { $detail }
 
-# T9: first-run mkvmerge detection (D28).
+## T9: first-run mkvmerge detection (D28).
 firstrun-detecting = Looking for mkvmerge...
 firstrun-missing-heading = mkvmerge was not found
 firstrun-too-old-heading = mkvmerge is too old

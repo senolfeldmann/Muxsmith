@@ -1,7 +1,9 @@
 # German (de) translation of locales/en/gui-jobs.ftl. The en catalog is the
-# source of truth; keys, placeables and selector structure mirror it
-# (parity-enforced by scripts/check-i18n.mjs). run -> Lauf, Job(s), Status,
-# Verlauf, Protokoll. The IpcError-code keys mirror their en wording.
+# source of truth; keys mirror it (id parity enforced by
+# scripts/check-i18n.mjs); placeables and selector structure mirror it by
+# convention (reviewed manually, not machine-checked). run -> Lauf, Job(s),
+# Status, Verlauf, Protokoll. The IpcError-code keys mirror their en
+# wording.
 
 ## Batch header + run summary
 

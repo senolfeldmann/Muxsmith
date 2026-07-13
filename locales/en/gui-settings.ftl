@@ -1,5 +1,5 @@
-# T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
-# parallel jobs, UI locale).
+### T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
+### parallel jobs, UI locale).
 settings-title = Settings
 settings-mkvmerge-path-label = mkvmerge path override
 settings-mkvmerge-path-hint = Leave empty to use the automatically detected mkvmerge (PATH or the standard install location for your operating system).

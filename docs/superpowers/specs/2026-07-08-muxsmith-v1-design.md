@@ -283,7 +283,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `SchemaDrift` | info | at least one source file's `identification_format_version` exceeds the build-time pinned schema version; `found_version`/`pinned` params carry both versions; emitted once per batch when planning concludes (9.2) |
 | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
 | `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
-| `WorkerPanicked` | info | a queue worker thread panicked while running a job (a bug in this crate, never an mkvmerge failure); the job is reported `Failed`. Not a batch `Diagnostic`: carried as a `worker-panicked: job N` token in `JobOutcome.errors` (and its `--json` job encoding) instead, rendered through this same catalog entry at presentation time (6) |
+| `WorkerPanicked` | n/a (job-error token, not a rendered diagnostic) | a queue worker thread panicked while running a job (a bug in this crate, never an mkvmerge failure); the job is reported `Failed`. Not a batch `Diagnostic`: carried as a `worker-panicked: job N` token in `JobOutcome.errors` (and its `--json` job encoding) instead, rendered through this same catalog entry at presentation time (6) |
 
 ### 5.3 Suggestion engine
 

@@ -1,10 +1,12 @@
-# German (de) translation of locales/en/gui-common.ftl. The en catalog is
-# the source of truth; keys and placeables mirror it (parity-enforced by
-# scripts/check-i18n.mjs). NOTE: the native close-confirmation dialog reads
-# the EN catalog directly (src-tauri/src/run.rs include_str!s locales/en/
-# gui-common.ftl), so the close-abort-* strings below are not yet shown to
-# a de user; kept single-line and translated for parity and a later shell
-# i18n. The IpcError-code keys mirror their en wording.
+### German (de) translation of locales/en/gui-common.ftl. The en catalog is
+### the source of truth; keys mirror it (id parity enforced by
+### scripts/check-i18n.mjs); placeables and selector structure mirror it by
+### convention (reviewed manually, not machine-checked). NOTE: the native
+### close-confirmation dialog reads the EN catalog directly
+### (src-tauri/src/run.rs include_str!s locales/en/gui-common.ftl), so the
+### close-abort-* strings below are not yet shown to a de user; kept
+### single-line and translated for parity and a later shell i18n. The
+### IpcError-code keys mirror their en wording.
 app-title = Muxsmith
 
 close-abort-title = Laufende Jobs abbrechen

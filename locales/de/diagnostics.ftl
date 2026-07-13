@@ -1,8 +1,10 @@
-# German (de) translation of locales/en/diagnostics.ftl. The en catalog is
-# the source of truth; keys, placeables and selector structure mirror it
-# (parity-enforced by scripts/check-i18n.mjs). Config-field names and
-# keywords (profile_version, codec_kind, codec_id, exact, select/drop/add,
-# any/not, raw:) stay literal. Straight ASCII quotes as in en.
+### German (de) translation of locales/en/diagnostics.ftl. The en catalog is
+### the source of truth; keys mirror it (id parity enforced by
+### scripts/check-i18n.mjs); placeables and selector structure mirror it by
+### convention (reviewed manually, not machine-checked). Config-field names
+### and keywords (profile_version, codec_kind, codec_id, exact,
+### select/drop/add, any/not, raw:) stay literal. Straight ASCII quotes as
+### in en.
 severity-error = Fehler
 severity-warning = Warnung
 severity-info = Info
