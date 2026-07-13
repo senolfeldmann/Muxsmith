@@ -27,7 +27,6 @@ use muxsmith_core::executor::job::{JobProgress, JobSpec, JobState, run_job};
 use muxsmith_core::executor::spawn::LiveSpawner;
 
 #[test]
-#[cfg(unix)]
 fn run_job_survives_a_non_utf8_line_and_a_pipe_filling_tail_without_hanging() {
     use std::os::unix::fs::PermissionsExt;
 
