@@ -45,17 +45,20 @@
  * (`identify-failed`, `mkvmerge-not-found`, `mkvmerge-query-failed`)
  * because the CLI and the frontend never load them into the same bundle
  * at runtime; merging them here would report that legitimate overlap as a
- * false "already defined" `addResource` error. Runs for its throw side
- * effect at import time, same as `buildEnBundle`: any missing/Junk id in
- * any catalog of any locale fails the whole e2e run immediately.
+ * false "already defined" `addResource` error. Exported for `catalogs.spec.ts`'s
+ * dedicated "all Fluent catalogs parse cleanly" test (moved out of a
+ * module-import side effect so a catalog failure attributes to one named
+ * red test instead of an opaque module-load error in every spec that
+ * imports this file); `buildEnBundle` alone still runs for its own throw
+ * side effect at import time, since the `en()` helper below needs its
+ * memoized bundle regardless of which spec runs.
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import type { FluentVariable } from "@fluent/bundle";
 
-const LOCALES_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../locales");
+const LOCALES_ROOT = resolve(import.meta.dirname, "../locales");
 const LOCALES_EN = join(LOCALES_ROOT, "en");
 
 // Mirrors check-i18n.mjs's MESSAGE_ID_RE exactly (column-0 `id =` lines
@@ -112,7 +115,7 @@ function buildEnBundle(): FluentBundle {
   return parseOrThrow("en", files, "locales/en/{gui-*,diagnostics}.ftl");
 }
 
-function assertAllCatalogsParseCleanly(): void {
+export function assertAllCatalogsParseCleanly(): void {
   const locales = readdirSync(LOCALES_ROOT, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
@@ -133,7 +136,6 @@ function assertAllCatalogsParseCleanly(): void {
 }
 
 const bundle = buildEnBundle();
-assertAllCatalogsParseCleanly();
 
 /**
  * Renders one message id through the real en catalog, exactly as the

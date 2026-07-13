@@ -77,7 +77,6 @@ async function assertNoSeriousA11yViolations(page: Page): Promise<void> {
 const MKVMERGE_INFO: MkvmergeInfo = {
   path: "/usr/bin/mkvmerge",
   version: "90.0.0",
-  meets_minimum: true,
 };
 
 test.describe("first-run gate", () => {
