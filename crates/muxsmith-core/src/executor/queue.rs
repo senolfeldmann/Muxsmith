@@ -332,7 +332,7 @@ pub fn run_queue(
 /// enough to exhaust the OS and panic inside the scope (`Scope::spawn`
 /// panics on a thread-creation failure).
 fn worker_count(jobs: usize, spec_count: usize) -> usize {
-    jobs.max(1).min(spec_count.max(1))
+    jobs.clamp(1, spec_count.max(1))
 }
 
 /// Sentinel `current_index` value meaning "this worker is between jobs (or
