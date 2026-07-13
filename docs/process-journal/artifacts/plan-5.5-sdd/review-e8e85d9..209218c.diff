@@ -1,0 +1,22 @@
+# Review package: e8e85d9..HEAD
+
+## Commits
+209218c chore: normalize line endings via .gitattributes (#15)
+
+## Files changed
+ .gitattributes | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+## Diff
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..09c37b2
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,6 @@
++* text=auto eol=lf
++# binary test assets must never be normalized; extend as assets appear
++*.png -text
++*.ico -text
++*.icns -text
++*.wav -text
