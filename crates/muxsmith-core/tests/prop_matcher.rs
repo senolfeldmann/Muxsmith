@@ -133,7 +133,8 @@ fn arb_expr() -> impl Strategy<Value = MatchExpr> {
     let leaf = prop_oneof![
         (select(STRING_PROPS), free_string()).prop_map(|(p, v)| exact_one(p, Scalar::Str(v))),
         select(TYPE_VALUES).prop_map(|t| exact_one("type", Scalar::Str(t.to_string()))),
-        select(CODEC_KIND_NAMES).prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
+        select(CODEC_KIND_NAMES.as_slice())
+            .prop_map(|k| exact_one("codec_kind", Scalar::Str(k.to_string()))),
         (select(BOOL_PROPS), any::<bool>()).prop_map(|(p, b)| exact_one(p, Scalar::Bool(b))),
         (select(INT_PROPS), 0i64..8).prop_map(|(p, i)| exact_one(p, Scalar::Int(i))),
         (select(STRING_PROPS), free_string()).prop_map(|(p, v)| substring_one(p, v)),
