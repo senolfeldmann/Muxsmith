@@ -178,11 +178,12 @@ pub enum CollisionPolicy {
 
 /// Binary keep-or-drop toggle shared by `attachments.unmatched`,
 /// `tags.global` and `tags.track` (spec 4.9).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum KeepDrop {
     /// Copy the corresponding structure from the sources into the output
     /// (mkvmerge's default behavior, left untouched).
+    #[default]
     Keep,
     /// Exclude the corresponding structure from the output (mapped to the
     /// matching `--no-*` mkvmerge option at command generation).
@@ -274,14 +275,14 @@ pub struct Locator {
 }
 
 /// Attachment handling (spec 4.9).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AttachmentsCfg {
     /// Policy for attachments no `rules` entry selects. Defaults to `keep`:
     /// deliberate asymmetry with tracks (unmatched tracks are always
     /// dropped), since dropping fonts silently breaks ASS subtitle
     /// rendering.
-    #[serde(default = "keep")]
+    #[serde(default)]
     pub unmatched: KeepDrop,
     /// Ordered select/drop/add rules (spec 4.9). Unlike track rules, not
     /// uniqueness-constrained: a `select`/`drop` expression may match
@@ -289,10 +290,6 @@ pub struct AttachmentsCfg {
     /// first matching rule wins per attachment.
     #[serde(default)]
     pub rules: Vec<AttachmentRule>,
-}
-
-fn keep() -> KeepDrop {
-    KeepDrop::Keep
 }
 
 /// Track handling: the unmatched-track policy plus the ordered rules
@@ -316,15 +313,6 @@ pub struct TracksCfg {
 
 fn drop_policy() -> KeepDrop {
     KeepDrop::Drop
-}
-
-impl Default for AttachmentsCfg {
-    fn default() -> Self {
-        AttachmentsCfg {
-            unmatched: KeepDrop::Keep,
-            rules: Vec::new(),
-        }
-    }
 }
 
 /// Exactly one of `select` / `drop` / `add` must be set; enforced in
@@ -366,24 +354,15 @@ impl Default for ChaptersCfg {
 
 /// Global and per-track tag handling (spec 4.9), mapped to
 /// `--no-global-tags`/`--no-track-tags`.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TagsCfg {
     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
-    #[serde(default = "keep")]
+    #[serde(default)]
     pub global: KeepDrop,
     /// Per-track tags: keep or drop. Defaults to `keep`.
-    #[serde(default = "keep")]
+    #[serde(default)]
     pub track: KeepDrop,
-}
-
-impl Default for TagsCfg {
-    fn default() -> Self {
-        TagsCfg {
-            global: KeepDrop::Keep,
-            track: KeepDrop::Keep,
-        }
-    }
 }
 
 /// `title` value: keep, clear, or a literal-mode template (spec 4.9).
