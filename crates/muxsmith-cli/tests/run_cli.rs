@@ -355,7 +355,7 @@ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
     );
     let stdout = String::from_utf8(out.stdout).unwrap();
     // The zero-count, searched-root and configured-extensions facts (Task
-    // 8) all live in the one rendered `dry-run-summary` line; a single
+    // 8) all live in the one rendered `batch-summary` line; a single
     // redacted snapshot covers all three instead of three separate
     // substring checks. The searched root is `dir.path()` itself, real and
     // machine-specific, so it is filtered to a stable placeholder.
@@ -487,29 +487,6 @@ fn run_json_emits_a_document_on_profile_load_failure() {
     );
 }
 
-/// Points a child process's PATH at a fake `mkvmerge` script that succeeds
-/// on `--version` (so `Mkvmerge::locate()` succeeds) but fails on every
-/// other invocation, including `--list-languages`: a cheap, deterministic
-/// stand-in for an installed but broken mkvmerge, no real MKVToolNix
-/// needed. Unix-only, mirrors the identical helper in `dry_run_cli.rs`
-/// (kept local per this file's existing per-file-helper convention, e.g.
-/// `have_mkvmerge`).
-#[cfg(unix)]
-fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = tempfile::tempdir().unwrap();
-    let script = dir.path().join("mkvmerge");
-    std::fs::write(
-        &script,
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo 'mkvmerge v99.0.0 (fake, for tests)'\n  exit 0\nfi\nexit 1\n",
-    )
-    .unwrap();
-    let mut perms = std::fs::metadata(&script).unwrap().permissions();
-    perms.set_mode(0o755);
-    std::fs::set_permissions(&script, perms).unwrap();
-    dir
-}
-
 /// Fastfollow bug 2: `mkv.list_languages()` failure (mkvmerge located but
 /// broken) prints nothing to stdout at all under `--json` today. Must emit
 /// the same config-only document shape as the `locate()`-failure branch
@@ -518,7 +495,7 @@ fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
 #[test]
 #[cfg(unix)]
 fn run_json_emits_a_document_when_the_language_query_fails() {
-    let fake_path = fake_mkvmerge_that_fails_queries();
+    let fake_path = support::fake_mkvmerge_that_fails_queries();
     let dir = tempfile::tempdir().unwrap();
     let profile = dir.path().join("p.yaml");
     std::fs::write(
@@ -579,7 +556,7 @@ fn run_json_emits_a_document_when_the_language_query_fails() {
 #[test]
 #[cfg(unix)]
 fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
-    let fake_path = fake_mkvmerge_that_fails_queries();
+    let fake_path = support::fake_mkvmerge_that_fails_queries();
     let dir = tempfile::tempdir().unwrap();
     let profile = dir.path().join("p.yaml");
     // An empty match expression is a config-time warning; it must reach stdout.
