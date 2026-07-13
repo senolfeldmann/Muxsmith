@@ -12,14 +12,14 @@ use serde::Serialize;
 use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
 use crate::capability::runtime::LanguageIndex;
 use crate::discovery::{self, PrimaryFile};
-use crate::identify::{Attachment, Identification, Identify};
+use crate::identify::{Attachment, Identification, Identify, PropValue, Track};
 use crate::matcher;
 use crate::profile::match_expr::{MatchExpr, Scalar};
 use crate::profile::model::{
     ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
 };
 use crate::report::{DiagCode, Diagnostic, Severity};
-use crate::template::Template;
+use crate::template::{Ctx, Template};
 
 /// Run inputs, separable from the profile (spec 3): overrides for source and
 /// output directories and the collision policy. `None` falls back to the
@@ -53,6 +53,23 @@ pub struct Assignment {
     /// Settable changes to apply to the resolved track; empty when the rule has
     /// no `changes` or matched nothing.
     pub changes: Vec<AppliedChange>,
+}
+
+impl Assignment {
+    /// An unmatched placeholder assignment (spec 5.1): a rule that resolved
+    /// no track - an unfound, ambiguous or unsupported external, an
+    /// unidentifiable donor, or a rule matching zero or many tracks.
+    /// `track_id`/`track_kind` are `None` and `changes` empty; `source` is
+    /// the file the rule pointed at (the primary, or the resolved donor).
+    fn unmatched(rule_index: usize, source: PathBuf) -> Self {
+        Assignment {
+            rule_index,
+            source,
+            track_id: None,
+            track_kind: None,
+            changes: Vec::new(),
+        }
+    }
 }
 
 /// A resolved settable change on an assignment (spec 4.4). Format-neutral: the
@@ -365,8 +382,7 @@ fn validate_extension_list(
     diags: &mut Vec<Diagnostic>,
 ) {
     for (i, ext) in extensions.iter().enumerate() {
-        let normalized = ext.to_ascii_lowercase();
-        if !known.contains(&normalized) {
+        if !known.iter().any(|k| k.eq_ignore_ascii_case(ext)) {
             diags.push(
                 Diagnostic::warning(DiagCode::UnknownExtension, format!("{path_prefix}[{i}]"))
                     .with("extension", ext.clone())
@@ -523,13 +539,7 @@ fn resolve_file(
                                 .for_file(&primary.path),
                             );
                         }
-                        assignments.push(Assignment {
-                            rule_index: ri,
-                            source: primary.path.clone(),
-                            track_id: None,
-                            track_kind: None,
-                            changes: vec![],
-                        });
+                        assignments.push(Assignment::unmatched(ri, primary.path.clone()));
                         continue;
                     }
                     1 => {
@@ -560,13 +570,8 @@ fn resolve_file(
                                         .with("kind", "donor")
                                         .with("donor", donor.display().to_string()),
                                     );
-                                    assignments.push(Assignment {
-                                        rule_index: ri,
-                                        source: primary.path.clone(),
-                                        track_id: None,
-                                        track_kind: None,
-                                        changes: vec![],
-                                    });
+                                    assignments
+                                        .push(Assignment::unmatched(ri, primary.path.clone()));
                                     continue;
                                 }
                                 (donor, di)
@@ -580,13 +585,7 @@ fn resolve_file(
                                     .for_file(&primary.path)
                                     .with("detail", format!("{e}")),
                                 );
-                                assignments.push(Assignment {
-                                    rule_index: ri,
-                                    source: primary.path.clone(),
-                                    track_id: None,
-                                    track_kind: None,
-                                    changes: vec![],
-                                });
+                                assignments.push(Assignment::unmatched(ri, primary.path.clone()));
                                 continue;
                             }
                         }
@@ -600,13 +599,7 @@ fn resolve_file(
                             .for_file(&primary.path)
                             .with("count", n.to_string()),
                         );
-                        assignments.push(Assignment {
-                            rule_index: ri,
-                            source: primary.path.clone(),
-                            track_id: None,
-                            track_kind: None,
-                            changes: vec![],
-                        });
+                        assignments.push(Assignment::unmatched(ri, primary.path.clone()));
                         continue;
                     }
                 }
@@ -643,13 +636,7 @@ fn resolve_file(
                             .for_file(&primary.path),
                     );
                 }
-                assignments.push(Assignment {
-                    rule_index: ri,
-                    source: source_path,
-                    track_id: None,
-                    track_kind: None,
-                    changes: vec![],
-                });
+                assignments.push(Assignment::unmatched(ri, source_path));
             }
             1 => {
                 let (tid, tkind) = matched[0].clone();
@@ -672,13 +659,7 @@ fn resolve_file(
                         .for_file(&primary.path)
                         .with("count", n.to_string()),
                 );
-                assignments.push(Assignment {
-                    rule_index: ri,
-                    source: source_path,
-                    track_id: None,
-                    track_kind: None,
-                    changes: vec![],
-                });
+                assignments.push(Assignment::unmatched(ri, source_path));
             }
         }
     }
@@ -688,11 +669,10 @@ fn resolve_file(
     // one track is one diagnostic listing all three.
     for ((_src, tid), rules) in &claims {
         if rules.len() >= 2 {
-            let refs: Vec<String> = rules.iter().map(|r| format!("tracks[{r}]")).collect();
             diagnostics.push(
                 Diagnostic::error(DiagCode::OverlappingRules, format!("tracks[{}]", rules[0]))
                     .for_file(&primary.path)
-                    .with("rules", refs.join(", "))
+                    .with_claimants(rules)
                     .with("track", tid.to_string()),
             );
         }
@@ -711,10 +691,7 @@ fn resolve_file(
         &mut diagnostics,
     );
 
-    let keep_unmatched = matches!(
-        profile.tracks.unmatched,
-        crate::profile::model::KeepDrop::Keep
-    );
+    let keep_unmatched = profile.tracks.unmatched == KeepDrop::Keep;
 
     // Captured before `assignments`, `attachments` and `chapters` move into
     // `Plan` below: every source this file resolved is known at this point
@@ -864,6 +841,20 @@ fn scalar_display(value: &Scalar) -> String {
     }
 }
 
+// The template Ctx shared by output-filename and title rendering (spec 4.9):
+// the primary's identifier fields plus `source_stem`. `output.filename.template`
+// and `title.template` MUST see identical fields - validate.rs allows
+// `source_stem` in both identically - so building both from this one
+// constructor makes that lockstep an invariant by construction rather than a
+// comment to keep in sync.
+fn render_ctx(primary: &PrimaryFile) -> Ctx {
+    let mut ctx = primary.identifier.to_ctx();
+    if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
+        ctx.set("source_stem", stem);
+    }
+    ctx
+}
+
 // Renders the output path, enforcing the D4 rendered-name invariants. Returns
 // None (and pushes a diagnostic) if the rendered name is invalid.
 fn render_output(
@@ -884,10 +875,7 @@ fn render_output(
             .unwrap_or("")
             .to_string(),
         FilenameCfg::Template(block) => {
-            let mut ctx = primary.identifier.to_ctx();
-            if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
-                ctx.set("source_stem", stem);
-            }
+            let ctx = render_ctx(primary);
             Template::parse(&block.template)
                 .map(|t| t.render_literal(&ctx))
                 .unwrap_or_default()
@@ -956,22 +944,18 @@ fn strip_mkv_suffix(name: &str) -> &str {
 // Resolves `profile.title` to a `TitleAction` (spec 4.9). Unlike
 // `render_output`'s filename, a title has no path-separator or empty-name
 // invariant: an empty rendered title is a legitimate `Set("")`, so a
-// template's render always passes through unchecked. The Ctx mirrors
-// `render_output`'s exactly, including `source_stem`: validate.rs allows
-// `source_stem` in `title.template` identically to `output.filename.template`
-// (see `validate::validate`), so the two templates' available fields must
-// stay in lockstep. A parse failure or an unexpected keyword cannot occur
-// post-validate (validate.rs rejects both at config time); the fallback to
-// `Keep` is defensive only, never a panic.
+// template's render always passes through unchecked. The Ctx comes from the
+// shared `render_ctx`, so `title.template` and `output.filename.template` see
+// identical fields (including `source_stem`) by construction. A parse failure
+// or an unexpected keyword cannot occur post-validate (validate.rs rejects
+// both at config time); the fallback to `Keep` is defensive only, never a
+// panic.
 fn resolve_title(profile: &Profile, primary: &PrimaryFile) -> TitleAction {
     match &profile.title {
         TitleCfg::Keyword(k) if k == "clear" => TitleAction::Clear,
         TitleCfg::Keyword(_) => TitleAction::Keep,
         TitleCfg::Template(block) => {
-            let mut ctx = primary.identifier.to_ctx();
-            if let Some(stem) = primary.path.file_stem().and_then(|s| s.to_str()) {
-                ctx.set("source_stem", stem);
-            }
+            let ctx = render_ctx(primary);
             match Template::parse(&block.template) {
                 Ok(t) => TitleAction::Set(t.render_literal(&ctx)),
                 Err(_) => TitleAction::Keep,
@@ -1309,7 +1293,6 @@ impl SeedMode {
 /// partition ([`partition_for_rule`] / [`partition_for_overlap`]) is reported;
 /// an unresolvable overlap emits no partition and lets the standing
 /// `OverlappingRules` diagnostic (naming every claimant) stand as the report.
-#[allow(clippy::too_many_arguments)]
 fn suggest(
     profile: &Profile,
     run: &RunInputs,
@@ -1488,7 +1471,7 @@ fn partition_for_rule(
     ri: usize,
     candidates: &[Candidate],
     baseline: &Batch,
-    base_sig: &BTreeMap<String, usize>,
+    base_sig: &BTreeMap<(String, String, String), usize>,
 ) -> Vec<Diagnostic> {
     // Files whose baseline report carries an AmbiguousRule for this rule.
     let affected: Vec<&PrimaryFile> = primaries
@@ -1518,6 +1501,11 @@ fn partition_for_rule(
                 best = Some(cand);
             }
         }
+        // `best` is `None` only for a file no candidate resolves even in
+        // isolation - unreachable in v1: `id` is unique per track, so the id
+        // discriminator always resolves a single file (task-13 report, D6).
+        // Skipped defensively rather than fabricating a group without a fix;
+        // if id-uniqueness ever relaxes, this needs an "unresolvable" group.
         if let Some(cand) = best {
             groups
                 .entry(yaml_fragment(ri, &cand.apply))
@@ -1562,7 +1550,6 @@ fn partition_for_rule(
 // `OverlappingRules` diagnostic, which already names every claimant (T9's
 // `$rules`), is the no-fix report. That keeps the "unresolvable overlap"
 // branch inside the existing catalog voice with no new Fluent message.
-#[allow(clippy::too_many_arguments)]
 fn partition_for_overlap(
     profile: &Profile,
     run: &RunInputs,
@@ -1643,14 +1630,13 @@ fn candidates_for_rule(
 ) -> Vec<Candidate> {
     let rule = &profile.tracks.rules[ri];
     let mut raw: Vec<Candidate> = Vec::new();
-    let mut seen: std::collections::BTreeSet<(String, String, u8)> =
-        std::collections::BTreeSet::new();
+    let mut seen: BTreeSet<(String, String, u8)> = BTreeSet::new();
 
     for primary in primaries {
         let Some(ident) = rule_source_ident(rule, primary, id) else {
             continue;
         };
-        let matched: Vec<&crate::identify::Track> = ident
+        let matched: Vec<&Track> = ident
             .tracks
             .iter()
             .filter(|t| matcher::matches(&rule.match_expr, t, lang))
@@ -1662,23 +1648,14 @@ fn candidates_for_rule(
             // Own the property list, including the top-level `type`/`codec`/
             // `id` pseudo-props (spec 4.4 flattens these over `properties`;
             // R1 iv makes `codec` and `id` discriminator dimensions too).
-            let mut props: Vec<(String, crate::identify::PropValue)> = t
+            let mut props: Vec<(String, PropValue)> = t
                 .properties
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            props.push((
-                "type".to_string(),
-                crate::identify::PropValue::Str(t.kind.clone()),
-            ));
-            props.push((
-                "codec".to_string(),
-                crate::identify::PropValue::Str(t.codec.clone()),
-            ));
-            props.push((
-                "id".to_string(),
-                crate::identify::PropValue::Int(t.id as i64),
-            ));
+            props.push(("type".to_string(), PropValue::Str(t.kind.clone())));
+            props.push(("codec".to_string(), PropValue::Str(t.codec.clone())));
+            props.push(("id".to_string(), PropValue::Int(t.id as i64)));
             for (prop, val) in &props {
                 if crate::capability::matchable_type(prop).is_none() {
                     continue;
@@ -1714,7 +1691,7 @@ fn candidates_for_rule(
                     }
                 }
             }
-            if let Some(crate::identify::PropValue::Str(name)) = t.get("track_name") {
+            if let Some(PropValue::Str(name)) = t.get("track_name") {
                 for tok in name.split_whitespace() {
                     for (polarity, edit) in [
                         (
@@ -1793,7 +1770,12 @@ fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
 // which `resolves_without_regression` correctly rejects for not resolving
 // the ambiguity. `not` entries are always additive (appending a not-clause
 // always narrows, never relaxes), so plain `extend` stays correct there.
-fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
+//
+// `#[doc(hidden)] pub` (crate is publish=false): shared verbatim with
+// `prop_planner.rs`'s suggestion-application property so the test exercises
+// the real splice, not a duplicate copy that could silently drift from it.
+#[doc(hidden)]
+pub fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
     let mut p = profile.clone();
     let expr = &mut p.tracks.rules[ri].match_expr;
     if let Some(add) = &delta.exact {
@@ -1822,7 +1804,7 @@ fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profile {
 fn resolves_without_regression(
     sim: &Batch,
     ri: usize,
-    base_sig: &std::collections::BTreeMap<String, usize>,
+    base_sig: &BTreeMap<(String, String, String), usize>,
 ) -> bool {
     let still_ambiguous = sim
         .files
@@ -1843,7 +1825,7 @@ fn resolves_without_regression(
 // even when that signature already existed once. Code-agnostic: it needs no
 // per-code special case, which is exactly why generalizing the "target
 // conflict gone" half to overlaps needed no change here.
-fn no_regression(sim: &Batch, base_sig: &std::collections::BTreeMap<String, usize>) -> bool {
+fn no_regression(sim: &Batch, base_sig: &BTreeMap<(String, String, String), usize>) -> bool {
     diag_signature(sim)
         .iter()
         .all(|(sig, count)| base_sig.get(sig).is_some_and(|base| count <= base))
@@ -1863,9 +1845,10 @@ struct OverlapConflict {
 }
 
 // Collects the overlap conflicts from a baseline, one per `OverlappingRules`
-// diagnostic. Claimants are parsed back from the rendered `$rules` list
-// ("tracks[0], tracks[1], ..."), so every claimant - not just the first pair -
-// gets candidates generated for it (symmetric generation, D33).
+// diagnostic. Claimants are read from the diagnostic's structural `claimants`
+// field (D36), so every claimant - not just the first pair - gets candidates
+// generated for it (symmetric generation, D33), with no dependence on the
+// rendered `$rules` display format.
 fn overlap_conflicts(baseline: &Batch) -> Vec<OverlapConflict> {
     baseline
         .files
@@ -1875,11 +1858,7 @@ fn overlap_conflicts(baseline: &Batch) -> Vec<OverlapConflict> {
         .filter_map(|d| {
             let file = d.file.clone()?;
             let track = d.params.get("track")?.clone();
-            let claimants: Vec<usize> = d
-                .params
-                .get("rules")
-                .map(|r| r.split(',').filter_map(rule_index_of).collect())
-                .unwrap_or_default();
+            let claimants: Vec<usize> = d.claimants.clone();
             Some(OverlapConflict {
                 file,
                 track,
@@ -1900,7 +1879,7 @@ fn overlap_conflicts(baseline: &Batch) -> Vec<OverlapConflict> {
 fn resolves_overlap_without_regression(
     sim: &Batch,
     conflict: &OverlapConflict,
-    base_sig: &std::collections::BTreeMap<String, usize>,
+    base_sig: &BTreeMap<(String, String, String), usize>,
 ) -> bool {
     let still_overlapping = sim
         .files
@@ -1945,12 +1924,15 @@ fn rule_breadth(
         .sum()
 }
 
-// A comparable signature multiset of all diagnostics: (code + config_path +
-// file) -> occurrence count. A multiset, not a set, so two diagnostics that
-// share a signature but describe different tracks (e.g. two OverlappingRules
-// on one rule) stay counted separately (R1 v, D6 acceptance criterion b).
-fn diag_signature(batch: &Batch) -> std::collections::BTreeMap<String, usize> {
-    let mut counts = std::collections::BTreeMap::new();
+// A comparable signature multiset of all diagnostics: `(code, config_path,
+// file)` -> occurrence count. A structural tuple key, not a delimiter-joined
+// string, so a `config_path` or file that itself contains the former `|`
+// separator can no longer collide two distinct diagnostics into one signature.
+// A multiset, not a set, so two diagnostics that share a signature but describe
+// different tracks (e.g. two OverlappingRules on one rule) stay counted
+// separately (R1 v, D6 acceptance criterion b).
+fn diag_signature(batch: &Batch) -> BTreeMap<(String, String, String), usize> {
+    let mut counts = BTreeMap::new();
     let all = batch
         .batch_diagnostics
         .iter()
@@ -1962,16 +1944,24 @@ fn diag_signature(batch: &Batch) -> std::collections::BTreeMap<String, usize> {
             .map(|p| p.display().to_string())
             .unwrap_or_default();
         *counts
-            .entry(format!("{}|{}|{}", d.code.key(), d.config_path, file))
+            .entry((d.code.key().to_string(), d.config_path.clone(), file))
             .or_insert(0) += 1;
     }
     counts
 }
 
-fn rule_index_of(config_path: &str) -> Option<usize> {
-    let start = config_path.find("tracks[")? + "tracks[".len();
-    let end = config_path[start..].find(']')? + start;
-    config_path[start..end].parse().ok()
+// `#[doc(hidden)] pub` (crate is publish=false): shared verbatim with
+// `prop_planner.rs`'s D6 property so the test decodes the same rule index the
+// engine itself uses, not a duplicate copy that could silently drift from it.
+#[doc(hidden)]
+pub fn rule_index_of(config_path: &str) -> Option<usize> {
+    config_path
+        .split_once("tracks[")?
+        .1
+        .split_once(']')?
+        .0
+        .parse()
+        .ok()
 }
 
 // Rank: typed flags/booleans (0) < language (1) < other exact (2); positive
@@ -1995,12 +1985,12 @@ fn rank_substring(polarity: u8) -> u8 {
     6 + polarity
 }
 
-fn prop_value_as(v: &crate::identify::PropValue) -> Option<(String, Scalar)> {
+fn prop_value_as(v: &PropValue) -> Option<(String, Scalar)> {
     match v {
-        crate::identify::PropValue::Bool(b) => Some((b.to_string(), Scalar::Bool(*b))),
-        crate::identify::PropValue::Int(i) => Some((i.to_string(), Scalar::Int(*i))),
-        crate::identify::PropValue::Str(s) => Some((s.clone(), Scalar::Str(s.clone()))),
-        crate::identify::PropValue::Float(_) => None,
+        PropValue::Bool(b) => Some((b.to_string(), Scalar::Bool(*b))),
+        PropValue::Int(i) => Some((i.to_string(), Scalar::Int(*i))),
+        PropValue::Str(s) => Some((s.clone(), Scalar::Str(s.clone()))),
+        PropValue::Float(_) => None,
     }
 }
 
