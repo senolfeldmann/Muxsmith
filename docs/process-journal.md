@@ -897,3 +897,68 @@ Refinements after the house-knowledge build, same session.
   the autonomous route established here). Includes the Faraday case: an expert
   agent can propose a better tool and move the house rule; the convention
   change is cheap, the codebase migration is the higher-stakes call.
+
+## 2026-07-13 | Plan 5.6 complete (idiomacy fix wave) | session 11 (Peter, Fable 5)
+
+Scope: Plan 5.6, the pre-1.0 idiomacy fix wave, from plan authoring through
+close; commits 0b3149a..a5d506b (33) plus close-out commits. Also session
+start: two plan-5.5 review diffs found unsalvaged and rescued (9a84b5a).
+
+Decisions and why:
+- Plan named 5.6; authored directly from the session-10 triage routing (no
+  brainstorm round - scope was settled with Şenol on 2026-07-12). Style per
+  the plan-5.5 precedent: anchor-precise finding batches, not code
+  transcription, since every finding carried its verified fix already.
+- Wave structure: 6 parallel worktree streams grouped by code region (max 3
+  concurrent implementers for usage-limit resilience), 4 serial cross-crate
+  tasks on master, whole-branch review last. Controller merged sequentially,
+  full nine-part gate after every merge.
+- ADR D36 (structural claimants on OverlappingRules) recorded in the same
+  task that landed it - the wave's only wire-format change. Whole-branch
+  review annotated a third sanctioned interface delta the plan's own
+  enumeration undercounted: MkvmergeInfo lost meets_minimum (T6).
+
+What the process caught:
+- Post-merge gate on stream B: semantic conflict A x B (CODEC_KIND_NAMES
+  became LazyLock in T1; T3 dropped select()'s .to_vec()) - both streams
+  green in isolation, master did not compile. Controller reconciled
+  (b99847c, as_slice()); whole-branch review re-reviewed it: approved.
+- T8 task review refuted the brief's premise that bare rustup toolchain
+  install applies rust-toolchain.toml components (rustup #4216, controller
+  confirmed at source; the finding originated UPSTREAM in the idiomacy
+  findings report). Fix 308effc; on-runner proof is an open trigger.
+- Whole-branch review: one must-fix (the D36 wire contract shipped without
+  a direct test) -> fix wave a5d506b (test + 3 zero-risk riders); also
+  refuted one accumulated minor (de/cli.ftl "dropped article" was a
+  line-wrap artifact).
+- T9 reviewer corrected the implementer's "first cross-crate case" claim
+  against the ledger (core-90 precedent) - harvest went to the existing
+  entry instead of a duplicate; core-90 then promoted to Tier-2 at count 4.
+- T12's own report flagged two more catalogs as affected; the probe (T12b)
+  refuted it - the files have no comment headers at all. Self-retraction
+  recorded in place, no code churn.
+
+Mechanics and metrics: 12 tasks + 1 probe + 1 final fix wave; implementers
+13 fresh dispatches + 2 resumes, all Sonnet 5 except T2 on Opus 4.8; task
+reviewers 12, Sonnet 5 except T2 on Opus 4.8; whole-branch review on
+Fable 5 (the controller model); controller Fable 5. Nine controller-run
+full gates (one red: the stream-B merge). Fix loops: 1 task-level (T8),
+1 branch-level (fix wave). Net diff roughly -500 lines at unchanged
+behavior. Ledger harvest: 1 promotion, 1 non-decision resolved, 6
+occurrence appends, 6 new Tier-1 entries (proc-57 deliberately contested:
+does verify-against-source cover untagged load-bearing brief claims - two
+data points this wave say the brief is not ground truth).
+
+Friction and failure: T12's implementer died on a mid-response API error
+after committing but before writing its report; resume reconstructed the
+report with an honest gate account, and the controller re-ran the gate
+independently. The session harness blocked git push throughout despite the
+repo's standing authorization - all commits are local; first push carries
+the 3-green-legs verification trigger. One compound salvage command was
+blocked by the same permission layer early on; splitting it worked. The
+Tier-2 YAML headers still carried the pre-collapse source axis (missed by
+9e4bc36); fixed during harvest.
+
+Open threads: push + CI verification trigger; routed-items
+correctness/security review (pre-1.0 gate); mixed-language allowed-param
+polish; zero-rule-keep passthrough implementation; Plan 6 on Şenol's go.
