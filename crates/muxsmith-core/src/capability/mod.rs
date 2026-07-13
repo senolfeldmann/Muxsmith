@@ -4,6 +4,8 @@
 //! --list-languages, --version) arrive in Plan 2.
 // Generated from identification schema v20.
 
+use std::sync::LazyLock;
+
 mod generated;
 pub mod runtime;
 
@@ -61,7 +63,7 @@ pub static TYPE_VALUES: &[&str] = &["audio", "buttons", "subtitles", "video"];
 pub fn matchable_domain(name: &str) -> Option<&'static [&'static str]> {
     match name {
         "type" => Some(TYPE_VALUES),
-        "codec_kind" => Some(CODEC_KIND_NAMES),
+        "codec_kind" => Some(&CODEC_KIND_NAMES),
         _ => None,
     }
 }
@@ -121,12 +123,10 @@ pub static CODEC_KINDS: &[(&str, &[&str])] = &[
 ];
 
 /// The curated `codec_kind` alias names ([`CODEC_KINDS`] keys), the closed
-/// domain of the `codec_kind` virtual property. Kept in sync with
-/// `CODEC_KINDS` by the `codec_kind_domain_matches_kinds` test.
-pub static CODEC_KIND_NAMES: &[&str] = &[
-    "srt", "ass", "pgs", "vobsub", "webvtt", "aac", "ac3", "eac3", "dts", "truehd", "flac", "opus",
-    "mp3", "h264", "h265", "av1", "vp9",
-];
+/// domain of the `codec_kind` virtual property. Derived from `CODEC_KINDS`
+/// rather than hand-re-listed, so the two can never drift.
+pub static CODEC_KIND_NAMES: LazyLock<Vec<&'static str>> =
+    LazyLock::new(|| CODEC_KINDS.iter().map(|(k, _)| *k).collect());
 
 /// Resolves a `codec_kind` alias (e.g. `srt`, `h264`) to the `codec_id`
 /// prefixes it expands to at match time (spec 4.4). `None` if `kind` is not
@@ -214,12 +214,6 @@ mod tests {
         assert!(ck.contains(&"h264"));
         assert_eq!(matchable_domain("track_name"), None);
         assert_eq!(matchable_domain("language"), None); // validated at plan time
-    }
-
-    #[test]
-    fn codec_kind_domain_matches_kinds() {
-        let from_kinds: Vec<&str> = CODEC_KINDS.iter().map(|(k, _)| *k).collect();
-        assert_eq!(from_kinds, CODEC_KIND_NAMES);
     }
 
     #[test]
