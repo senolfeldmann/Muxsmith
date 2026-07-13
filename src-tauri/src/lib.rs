@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
-use muxsmith_core::capability::runtime::{MIN_SUPPORTED, Mkvmerge};
+use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier};
 use muxsmith_core::planner::{RunInputs, plan_batch};
 use muxsmith_core::profile::{lint, load, validate};
@@ -57,6 +57,24 @@ impl report::json::DiagnosticRenderer for ShellRenderer {
     fn diagnostic(&self, diagnostic: &report::Diagnostic) -> String {
         diagnostic.code.key().to_string()
     }
+}
+
+/// Runs `f` on a Tauri blocking task and folds a task panic into an
+/// [`IpcError`] (dedup: every `#[tauri::command]` async body in this crate
+/// -- `validate_profile`/`dry_run`/`identify`/`detect_mkvmerge`/
+/// `run::start_run` -- used to repeat this same `spawn_blocking` +
+/// `.await` + `map_err("internal-task-failed")` wrapper around its own
+/// closure; this is the one surviving copy, called from each site with
+/// `f`'s body as the sole difference between them). The `Err` case here is
+/// the blocking task itself panicking (a bug, not an expected outcome,
+/// exactly as before this dedup); every expected failure is `f`'s own
+/// `Result::Err` and passes through unchanged.
+pub(crate) async fn on_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, IpcError> + Send + 'static,
+) -> Result<T, IpcError> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
 }
 
 /// Tauri-managed application state (D23), unified across both tasks that
@@ -127,15 +145,14 @@ impl AppState {
     }
 }
 
-/// Detected mkvmerge info for the frontend (D28): the resolved path, the
-/// version found (`"{major}.{minor}"`), and whether it clears
-/// [`MIN_SUPPORTED`]. `Ok` is the command's only success shape; a missing
-/// or too-old mkvmerge is an [`IpcError`] (via the `RuntimeError` mapping
-/// in `crate::error`, distinguishing `mkvmerge-not-found` from
-/// `mkvmerge-too-old`), never an `Ok` with `meets_minimum: false` --
-/// `Mkvmerge::detect` already refuses a too-old candidate outright (D28),
-/// so `meets_minimum` here is a defensive re-check of that same fact, not
-/// the primary signal the frontend branches on.
+/// Detected mkvmerge info for the frontend (D28): the resolved path and
+/// the version found (`"{major}.{minor}"`). `Ok` is the command's only
+/// success shape; a missing or too-old mkvmerge is an [`IpcError`] (via
+/// the `RuntimeError` mapping in `crate::error`, distinguishing
+/// `mkvmerge-not-found` from `mkvmerge-too-old`) -- `Mkvmerge::detect`
+/// already refuses a too-old candidate outright (D28), so every `Ok` here
+/// carries a version that clears the minimum by construction; there is no
+/// separate flag to double-report that same fact.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct MkvmergeInfo {
     /// The resolved executable path (override, PATH, or a platform
@@ -143,8 +160,6 @@ struct MkvmergeInfo {
     path: String,
     /// The found version, formatted `"{major}.{minor}"`.
     version: String,
-    /// Whether the found version clears [`MIN_SUPPORTED`] (D28).
-    meets_minimum: bool,
 }
 
 /// `validate_profile`'s command body (testable without a Tauri runtime):
@@ -272,16 +287,14 @@ fn identify_body(
 
 /// `detect_mkvmerge`'s command body (testable without a Tauri runtime,
 /// D28): resolves mkvmerge via the override/PATH/platform-candidate ladder
-/// and reports its path, version, and floor status. A too-old or
-/// unreachable mkvmerge is an [`IpcError`] (see [`MkvmergeInfo`]'s doc),
-/// not a partial `Ok`.
+/// and reports its path and version. A too-old or unreachable mkvmerge is
+/// an [`IpcError`] (see [`MkvmergeInfo`]'s doc), not a partial `Ok`.
 fn detect_mkvmerge_body(mkvmerge_override: Option<&Path>) -> Result<MkvmergeInfo, IpcError> {
     let mkv = Mkvmerge::detect(mkvmerge_override)?;
     let pair = mkv.version_pair()?;
     Ok(MkvmergeInfo {
         path: mkv.path().display().to_string(),
         version: format!("{}.{}", pair.0, pair.1),
-        meets_minimum: pair >= MIN_SUPPORTED,
     })
 }
 
@@ -295,9 +308,7 @@ fn detect_mkvmerge_body(mkvmerge_override: Option<&Path>) -> Result<MkvmergeInfo
 /// [`validate_profile_body`] instead.
 #[tauri::command]
 async fn validate_profile(path: String) -> Result<serde_json::Value, IpcError> {
-    tauri::async_runtime::spawn_blocking(move || validate_profile_body(Path::new(&path)))
-        .await
-        .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))
+    on_blocking(move || Ok(validate_profile_body(Path::new(&path)))).await
 }
 
 /// `dry_run` IPC command (D23, D28): on a blocking task (never on the
@@ -317,7 +328,7 @@ async fn dry_run(
     output: Option<String>,
 ) -> Result<serde_json::Value, IpcError> {
     let settings_path = state.settings_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    on_blocking(move || {
         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
         Ok(dry_run_body(
             Path::new(&profile),
@@ -327,7 +338,6 @@ async fn dry_run(
         ))
     })
     .await
-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
 }
 
 /// `identify` IPC command (D23, D28): on a blocking task (spawns mkvmerge;
@@ -337,7 +347,7 @@ async fn dry_run(
 #[tauri::command]
 async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json::Value, IpcError> {
     let settings_path = state.settings_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    on_blocking(move || {
         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
         identify_body(
             Path::new(&file),
@@ -345,7 +355,6 @@ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json
         )
     })
     .await
-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
 }
 
 /// `detect_mkvmerge` IPC command (D28). Declared `async` and run on a
@@ -367,12 +376,11 @@ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json
 #[tauri::command]
 async fn detect_mkvmerge(state: State<'_, AppState>) -> Result<MkvmergeInfo, IpcError> {
     let settings_path = state.settings_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    on_blocking(move || {
         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
         detect_mkvmerge_body(mkvmerge_override.as_deref().map(Path::new))
     })
     .await
-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
 }
 
 /// `get_settings` IPC command (D27). Plain local JSON file I/O, no
@@ -752,12 +760,11 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn detect_mkvmerge_body_success_reports_version_and_meets_minimum() {
+    fn detect_mkvmerge_body_success_reports_version_and_path() {
         let dir = tempfile::tempdir().unwrap();
         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('New') 64-bit");
         let info = detect_mkvmerge_body(Some(&override_path)).expect("detect");
         assert_eq!(info.version, "123.4");
-        assert!(info.meets_minimum);
         assert_eq!(info.path, override_path.display().to_string());
     }
 
@@ -776,7 +783,6 @@ mod tests {
 
         let info = detect_mkvmerge_body(Some(&script)).expect("detect");
         assert_eq!(info.version, "123.4");
-        assert!(info.meets_minimum);
         assert_eq!(
             spawn_count(&counter),
             1,
@@ -790,8 +796,7 @@ mod tests {
             eprintln!("mkvmerge not found; skipping");
             return;
         }
-        let info = detect_mkvmerge_body(None).expect("detect");
-        assert!(info.meets_minimum, "info: {info:?}");
+        detect_mkvmerge_body(None).expect("detect");
     }
 
     // --- AppState settings I/O ---

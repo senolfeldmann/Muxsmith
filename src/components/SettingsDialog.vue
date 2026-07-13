@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, ref, useTemplateRef } from "vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { getSettings, setSettings } from "../ipc";
+import { defaultAppSettings, getSettings, setSettings } from "../ipc";
 import type { AppSettings, IpcError } from "../ipc";
 
 // D27 settings dialog: native <dialog>, opened imperatively via
@@ -10,7 +10,7 @@ import type { AppSettings, IpcError } from "../ipc";
 // on the <form>: saving needs an async IPC round trip to complete (and the
 // dialog to stay open on failure), which a plain `method="dialog"` submit
 // cannot express -- it closes synchronously regardless of outcome.
-const dialogEl = ref<HTMLDialogElement | null>(null);
+const dialogEl = useTemplateRef("dialogEl");
 const busy = ref(false);
 const errorCode = ref<string | null>(null);
 const errorParams = ref<Record<string, string>>({});
@@ -20,16 +20,6 @@ const form = reactive({
   defaultJobs: 1,
   locale: "en",
 });
-
-function defaultAppSettings(): AppSettings {
-  return {
-    mkvmerge_path: null,
-    default_jobs: 1,
-    locale: null,
-    recent_profiles: [],
-    dir_memory: {},
-  };
-}
 
 let baseline: AppSettings = defaultAppSettings();
 

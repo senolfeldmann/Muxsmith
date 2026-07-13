@@ -69,34 +69,28 @@ pub(crate) enum RunSlot {
     /// queue is born already-cancelled and every job finishes `Cancelled`
     /// without spawning (D16 semantics, before the first dequeue).
     Reserved(Arc<AtomicBool>),
-    /// The queue is running; the [`ActiveRun`]'s control reaches it.
-    Running(ActiveRun),
-}
-
-/// The running queue occupying [`AppState::active`]'s slot: the
-/// [`QueueControl`] that reaches it for `cancel_run`/`cancel_job`/
-/// window-close teardown. The run's id is returned to the caller directly
-/// by [`start_run`] (as [`StartedRun::run_id`]) and is not otherwise
-/// consumed while the run is in flight, so it is not duplicated here.
-/// `pub(crate)`, matching [`RunSlot`]: it is reachable through
-/// `RunSlot::Running`'s field, which is itself `pub(crate)`-visible from
-/// `AppState` in the parent module.
-pub(crate) struct ActiveRun {
-    ctl: Arc<QueueControl>,
+    /// The queue is running; this [`QueueControl`] reaches it for
+    /// `cancel_run`/`cancel_job`/window-close teardown. The run's id is
+    /// returned to the caller directly by [`start_run`] (as
+    /// [`StartedRun::run_id`]) and is not otherwise consumed while the run
+    /// is in flight, so it is not duplicated here.
+    Running(Arc<QueueControl>),
 }
 
 /// Locks [`AppState::active`], recovering from poisoning instead of
 /// propagating a second panic (hardening, mirrors
 /// `muxsmith_core::executor::queue`'s identical treatment of its own
-/// `killers`/`outcomes` mutexes). Recovery is sound because every write
-/// this lock guards is a single, non-panicking assignment (`*slot =
-/// Some(...)`/`*slot = None`) -- whatever it held right before some
-/// earlier caller panicked while holding it is still a valid
-/// `Option<RunSlot>`, not a half-applied one. The alternative is strictly
-/// worse: an unrecovered poison here would make every future `start_run`,
-/// `cancel_run`, `cancel_job`, and the close-confirmation dialog panic
-/// forever too, wedging the whole app over one earlier bug instead of
-/// just failing the run that triggered it.
+/// `killers`/`outcomes` mutexes). Recovery is sound because the slot value
+/// is only ever replaced wholesale by a single, non-panicking assignment
+/// (`*slot = Some(...)`/`*slot = None`); the remaining critical sections
+/// (the cancel/abort/close arms) only read the slot and call into its
+/// contents, never mutating it in place -- so even a panic while the guard
+/// is held (e.g. inside `cancel_all`) cannot leave a half-applied
+/// `Option<RunSlot>`. The alternative is strictly worse: an unrecovered
+/// poison here would make every future `start_run`, `cancel_run`,
+/// `cancel_job`, and the close-confirmation dialog panic forever too,
+/// wedging the whole app over one earlier bug instead of just failing the
+/// run that triggered it.
 fn lock_active(state: &AppState) -> std::sync::MutexGuard<'_, Option<RunSlot>> {
     state
         .active
@@ -154,7 +148,7 @@ impl<'a> Reservation<'a> {
     /// the queue thread spawns, so the thread's own end-of-run clear
     /// ([`finish_teardown`]) can never race ahead of the install.
     fn commit(mut self, ctl: Arc<QueueControl>) {
-        *lock_active(self.state) = Some(RunSlot::Running(ActiveRun { ctl }));
+        *lock_active(self.state) = Some(RunSlot::Running(ctl));
         self.committed = true;
     }
 }
@@ -444,19 +438,11 @@ pub async fn start_run(
     let settings_path = state.settings_path.clone();
     let cancel_flag = reservation.cancel_flag();
 
-    let outcome = tauri::async_runtime::spawn_blocking(move || {
-        plan_run(settings_path, profile, source, output, cancel_flag)
-    })
-    .await
-    .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?;
+    let outcome =
+        crate::on_blocking(move || plan_run(settings_path, profile, source, output, cancel_flag))
+            .await;
 
-    let outcome = match outcome {
-        Ok(outcome) => outcome,
-        Err(e) => {
-            drop(reservation);
-            return Err(e);
-        }
-    };
+    let outcome = outcome?;
 
     let ReadyPlan {
         run_id,
@@ -540,24 +526,14 @@ pub fn cancel_job(state: State<AppState>, index: usize) -> Result<(), IpcError> 
 /// the whole listing; an unresolvable or not-yet-existing runs root
 /// yields an empty list, never an error (spec 6: a caller never dies over
 /// the log directory).
-///
-/// `state` is currently unused (nothing here reads `AppState` yet) but is
-/// part of the given interface for parity with the other run-lifecycle
-/// commands and any future runs-root override.
 #[tauri::command]
-pub fn list_runs(_state: State<AppState>) -> Result<Vec<RunMeta>, IpcError> {
+pub fn list_runs() -> Result<Vec<RunMeta>, IpcError> {
     Ok(list_runs_in(resolve_runs_root().as_deref()))
 }
 
 /// Reads one job's persisted log record (`job-<index>.json`, D26).
-///
-/// `state` is currently unused; see [`list_runs`]'s doc.
 #[tauri::command]
-pub fn get_job_log(
-    _state: State<AppState>,
-    run_id: String,
-    index: usize,
-) -> Result<serde_json::Value, IpcError> {
+pub fn get_job_log(run_id: String, index: usize) -> Result<serde_json::Value, IpcError> {
     get_job_log_in(resolve_runs_root().as_deref(), &run_id, index)
 }
 
@@ -667,8 +643,8 @@ fn abort_and_quit(state: &AppState, exit: impl FnOnce(i32)) {
             cancel.store(true, Ordering::SeqCst);
             false
         }
-        Some(RunSlot::Running(run)) => {
-            run.ctl.cancel_all();
+        Some(RunSlot::Running(ctl)) => {
+            ctl.cancel_all();
             false
         }
         None => true,
@@ -875,8 +851,8 @@ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
             cancel.store(true, Ordering::SeqCst);
             Ok(())
         }
-        Some(RunSlot::Running(run)) => {
-            run.ctl.cancel_all();
+        Some(RunSlot::Running(ctl)) => {
+            ctl.cancel_all();
             Ok(())
         }
         None => Err(IpcError::new("no-active-run")),
@@ -893,8 +869,8 @@ fn do_cancel_run(state: &AppState) -> Result<(), IpcError> {
 fn do_cancel_job(state: &AppState, index: usize) -> Result<(), IpcError> {
     match lock_active(state).as_ref() {
         Some(RunSlot::Reserved(_)) => Ok(()),
-        Some(RunSlot::Running(run)) => {
-            run.ctl.cancel_job(index);
+        Some(RunSlot::Running(ctl)) => {
+            ctl.cancel_job(index);
             Ok(())
         }
         None => Err(IpcError::new("no-active-run")),
@@ -1004,9 +980,7 @@ mod tests {
     }
 
     fn running(control: &Arc<QueueControl>) -> RunSlot {
-        RunSlot::Running(ActiveRun {
-            ctl: Arc::clone(control),
-        })
+        RunSlot::Running(Arc::clone(control))
     }
 
     // Consumed only by the #[cfg(unix)] fake-script test below; an ungated

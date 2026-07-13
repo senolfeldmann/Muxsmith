@@ -18,14 +18,10 @@
  * nothing about event delivery is reimplemented, only scripted responses
  * for plain commands are.
  */
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 
-const HARNESS_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  ".generated/tauri-mock-harness.js",
-);
+const HARNESS_PATH = resolve(import.meta.dirname, ".generated/tauri-mock-harness.js");
 
 export type MockResult =
   | { kind: "resolve"; value: unknown }
@@ -98,7 +94,7 @@ export function installMockIPC(scenario: MockScenario): void {
 
   window.__muxsmithE2E__.mockIPC(
     (cmd, args) => {
-      window.__muxsmithRecordInvoke__?.(cmd, JSON.stringify(args ?? null));
+      window.__muxsmithRecordInvoke__?.(cmd, args ?? null);
 
       const result = nextResult(cmd);
       if (result) {
@@ -145,8 +141,8 @@ export async function installTauriMocks(
   scenario: MockScenario,
 ): Promise<RecordedInvoke[]> {
   const recorded: RecordedInvoke[] = [];
-  await page.exposeFunction("__muxsmithRecordInvoke__", (cmd: string, argsJson: string) => {
-    recorded.push({ cmd, args: JSON.parse(argsJson) as unknown });
+  await page.exposeFunction("__muxsmithRecordInvoke__", (cmd: string, args: unknown) => {
+    recorded.push({ cmd, args });
   });
   await page.addInitScript({ path: HARNESS_PATH });
   await page.addInitScript(installMockIPC, scenario);

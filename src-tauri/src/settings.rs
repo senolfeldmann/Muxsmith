@@ -316,12 +316,10 @@ mod tests {
     #[test]
     fn settings_path_lives_under_a_muxsmith_subdirectory() {
         if let Some(path) = settings_path() {
-            assert!(
-                path.ends_with("muxsmith/settings.json") || {
-                    // Windows path separator.
-                    path.to_string_lossy().ends_with("muxsmith\\settings.json")
-                }
-            );
+            // `Path::ends_with` matches whole components, and `std::path`
+            // recognizes '/' as a separator on Windows too, so one
+            // forward-slash literal covers every platform.
+            assert!(path.ends_with("muxsmith/settings.json"));
         }
     }
 }

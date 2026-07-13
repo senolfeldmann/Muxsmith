@@ -33,11 +33,24 @@ export interface AppSettings {
   dir_memory: Record<string, DirMemory>;
 }
 
+/** The client-side default `AppSettings`, used as the pre-load/error-recovery
+ * baseline in both SettingsDialog and BatchView. Mirrors the Rust side's own
+ * `Default` impl field-for-field (a TS-vs-Rust default mirror is boundary-
+ * necessary; this is the single TS-side copy). */
+export function defaultAppSettings(): AppSettings {
+  return {
+    mkvmerge_path: null,
+    default_jobs: 1,
+    locale: null,
+    recent_profiles: [],
+    dir_memory: {},
+  };
+}
+
 /** Mirrors `src-tauri/src/lib.rs::MkvmergeInfo` (D28). */
 export interface MkvmergeInfo {
   path: string;
   version: string;
-  meets_minimum: boolean;
 }
 
 /**

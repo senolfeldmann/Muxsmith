@@ -5,6 +5,14 @@
 // these instead).
 export {};
 
+// Type-only: erased at compile time, so importing the real pinned
+// signatures here does not pull `@tauri-apps/api` into the
+// `page.addInitScript`-serialized function bodies below. Pins the
+// `__muxsmithE2E__` shape to the actual exports lockstep by construction,
+// rather than a hand-mirrored signature that can silently drift from them.
+import type { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import type { emit } from "@tauri-apps/api/event";
+
 declare global {
   interface Window {
     /** Set by `tauri-mock-entry.ts` (bundled by `vite.harness.config.ts`):
@@ -13,13 +21,10 @@ declare global {
      * `page.addInitScript`/`page.evaluate` call can reach them without a
      * bare-specifier import (browsers cannot resolve those natively). */
     __muxsmithE2E__: {
-      mockIPC: (
-        cb: (cmd: string, args?: unknown) => unknown,
-        options?: { shouldMockEvents?: boolean },
-      ) => void;
-      mockWindows: (current: string, ...rest: string[]) => void;
-      clearMocks: () => void;
-      emit: (event: string, payload?: unknown) => Promise<void>;
+      mockIPC: typeof mockIPC;
+      mockWindows: typeof mockWindows;
+      clearMocks: typeof clearMocks;
+      emit: typeof emit;
     };
     /** `@tauri-apps/plugin-os`'s `platform()` reads this global directly
      * (verified: node_modules/@tauri-apps/plugin-os/dist-js/index.js has
@@ -29,6 +34,6 @@ declare global {
     /** Bound via `page.exposeFunction` in `mocks.ts`: every mocked
      * `invoke()` call is forwarded here so tests can assert on real
      * invocation evidence instead of a UI echo. */
-    __muxsmithRecordInvoke__?: (cmd: string, argsJson: string) => void;
+    __muxsmithRecordInvoke__?: (cmd: string, args: unknown) => void;
   }
 }

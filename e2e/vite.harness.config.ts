@@ -1,5 +1,4 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 // Pre-test build step, chained into the `test:e2e` script (NOT part of the
@@ -12,7 +11,7 @@ import { defineConfig } from "vite";
 // can never leak into the shipped Tauri bundle). Output is gitignored and
 // rebuilt on every `test:e2e` run, so it can never drift from the pinned
 // `@tauri-apps/api` version `src/` itself uses.
-const here = dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 
 export default defineConfig({
   build: {

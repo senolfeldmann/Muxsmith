@@ -7,9 +7,10 @@
 // non-null value, invokes `start_run` then emits `consumed` so App clears
 // its ref. `PendingRun` is declared here regardless of whether App.vue
 // already passes it -- the two sides reconcile trivially since this file
-// owns its whole contents. Also emits `update:runActive` (fix, D23: "the
-// UI additionally disables Run while active") whenever this view's own
-// `runActive` ref changes, so App can forward it to BatchView's Run gate.
+// owns its whole contents. `runActive` (fix, D23: "the UI additionally
+// disables Run while active") is a `defineModel` so App's own
+// `v-model:run-active` binding stays in lockstep automatically -- see that
+// declaration below for the full rationale.
 //
 // Event-ordering contract (`run.rs::start_run`'s own doc, binding): both
 // `muxsmith://job-event` and `muxsmith://run-finished` listeners MUST be
@@ -19,25 +20,16 @@
 // `muxsmith://run-finished` synchronously inside the Rust command, before
 // its own promise resolves; `ensureListeners()` is awaited first on every
 // dispatch to close that race.
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import JobRow from "../components/JobRow.vue";
 import LiveLog from "../components/LiveLog.vue";
 import RunHistory from "../components/RunHistory.vue";
 import { cancelJob, cancelRun, startRun, JOB_EVENT_CHANNEL, RUN_FINISHED_CHANNEL } from "../ipc";
-import type { IpcError, JobEvent, RunFinishedEvent } from "../ipc";
+import type { IpcError, JobEvent, RunFinishedEvent, RunRequest } from "../ipc";
 import { emptyRow } from "../jobRowState";
 import type { JobRowData } from "../jobRowState";
-
-/** Mirrors the Wave-5 contract's `RunRequest` shape (App.vue/BatchView.vue,
- * T10): the parameters a Batch-view "Run" click hands over. */
-interface RunRequest {
-  profile: string;
-  source: string | null;
-  output: string | null;
-  jobs: number | null;
-}
 
 // Optional (`pendingRun?:`), not a bare required prop: App.vue is the
 // PARALLEL task's file (T10) and does not pass `pending-run` yet on this
@@ -47,7 +39,15 @@ interface RunRequest {
 // missing prop exactly like an explicit `null` (`if (!req) return;`), so
 // T10's eventual `:pending-run` binding needs no further change here.
 const props = defineProps<{ pendingRun?: RunRequest | null }>();
-const emit = defineEmits<{ consumed: []; "update:runActive": [active: boolean] }>();
+const emit = defineEmits<{ consumed: [] }>();
+
+// Fix (D23): surfaces run-active state upward so BatchView can disable Run
+// while a run is active ("the UI additionally disables Run while active",
+// D23's own sentence) -- App.vue binds a real `ref(false)` via
+// `v-model:run-active`, so this view's every `runActive.value` assignment
+// (below, and in `onRunFinished`) forwards to App automatically, with no
+// separate watcher/emit to keep in sync.
+const runActive = defineModel<boolean>("runActive", { default: false });
 
 // The DOM cap applies to the combined live-output feed LiveLog.vue filters
 // locally (Step 2: "DOM-capped at 5000 lines - the full log is in the
@@ -55,13 +55,12 @@ const emit = defineEmits<{ consumed: []; "update:runActive": [active: boolean] }
 const LOG_LINE_CAP = 5000;
 
 const jobs = ref<JobRowData[]>([]);
-const runActive = ref(false);
 const startError = ref<IpcError | null>(null);
 const actionError = ref<IpcError | null>(null);
 const finishedSummary = ref<RunFinishedEvent | null>(null);
 const logLines = ref<{ index: number; line: string }[]>([]);
 
-const runHistoryRef = ref<InstanceType<typeof RunHistory> | null>(null);
+const runHistoryRef = useTemplateRef("runHistoryRef");
 
 function ensureJobsLength(n: number) {
   while (jobs.value.length < n) {
@@ -201,13 +200,6 @@ watch(
   },
   { immediate: true },
 );
-
-// Fix (D23): surface run-active state upward so BatchView can disable Run
-// while a run is active ("the UI additionally disables Run while active",
-// D23's own sentence) -- a watcher rather than an emit at each `runActive`
-// assignment site, so every mutation (the watcher above, onRunFinished)
-// is covered without having to remember to emit at each one.
-watch(runActive, (value) => emit("update:runActive", value), { immediate: true });
 
 async function onCancelBatch() {
   actionError.value = null;
