@@ -355,7 +355,7 @@ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
     );
     let stdout = String::from_utf8(out.stdout).unwrap();
     // The zero-count, searched-root and configured-extensions facts (Task
-    // 8) all live in the one rendered `dry-run-summary` line; a single
+    // 8) all live in the one rendered `batch-summary` line; a single
     // redacted snapshot covers all three instead of three separate
     // substring checks. The searched root is `dir.path()` itself, real and
     // machine-specific, so it is filtered to a stable placeholder.

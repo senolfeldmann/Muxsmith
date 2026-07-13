@@ -20,7 +20,7 @@ dry-run-file = { $file } (identifier: { $id })
 dry-run-assignment =   rule { $rule } -> track { $track }
 dry-run-output =   output: { $path }
 dry-run-suggestion = Suggestion for { $config_path }:
-dry-run-summary = { $count ->
+batch-summary = { $count ->
     [one] 1 file matched
    *[other] { $count } files matched
 } (searched { $root }, extensions { $extensions })

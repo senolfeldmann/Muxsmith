@@ -25,7 +25,7 @@ dry-run-file = { $file } (Kennung: { $id })
 dry-run-assignment =   Regel { $rule } -> Spur { $track }
 dry-run-output =   Ausgabe: { $path }
 dry-run-suggestion = Vorschlag für { $config_path }:
-dry-run-summary = { $count ->
+batch-summary = { $count ->
     [one] 1 passende Datei
    *[other] { $count } passende Dateien
 } (durchsucht { $root }, Erweiterungen { $extensions })

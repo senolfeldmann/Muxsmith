@@ -183,7 +183,7 @@ const ALLOWLISTED_CLI_KEYS: &[&str] = &[
     "dry-run-assignment",
     "dry-run-output",
     "dry-run-suggestion",
-    "dry-run-summary",
+    "batch-summary",
     "run-job-start",
     "run-job-progress",
     "run-job-notice",
@@ -233,7 +233,7 @@ fn allowlisted_cli_key_args(key: &str) -> Vec<(&'static str, &'static str)> {
         "dry-run-assignment" => vec![("rule", "0"), ("track", "1")],
         "dry-run-output" => vec![("path", "/out/movie.mkv")],
         "dry-run-suggestion" => vec![("config_path", "tracks[0].match")],
-        "dry-run-summary" => vec![("count", "3"), ("root", "/in"), ("extensions", "mkv, mp4")],
+        "batch-summary" => vec![("count", "3"), ("root", "/in"), ("extensions", "mkv, mp4")],
         "run-job-start" | "run-job-cancelled" => {
             vec![("index", "1"), ("total", "3"), ("output", "/out/movie.mkv")]
         }

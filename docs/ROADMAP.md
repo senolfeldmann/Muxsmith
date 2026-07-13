@@ -201,8 +201,7 @@ polish entry.
   hunt want different mindsets); route such finds to a normal review. NAMED INPUTS from the Plan 5.5 roll-up funnel
   (2026-07-12, whole-branch triage; details in the salvaged
   whole-branch-verdict): skip-marker shared const (T2-m1);
-  dry-run-summary -> batch-summary rename (T8-m2); known_extensions
-  required-method idiom (T5-m2); prop_assume->prop_assert in D6 property
+  known_extensions required-method idiom (T5-m2); prop_assume->prop_assert in D6 property
   (T14-m1); test-side logic mirrors (T14-m3); partition best=None
   invariant comment (T13-m1); lock_active doc precision (T4-m1);
   attachments/chapters-only EmptyPlan test (T6-m1); redundant fn-level

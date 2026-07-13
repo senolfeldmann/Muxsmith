@@ -126,7 +126,7 @@ fn batch_human_report(
         line(s.yaml_fragment.clone());
     }
     line(renderer.msg_with_counts(
-        "dry-run-summary",
+        "batch-summary",
         &[
             ("root", &root.display().to_string()),
             ("extensions", &extensions.join(", ")),
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_summary_renders_the_singular_form_for_one_matched_file() {
+    fn batch_summary_renders_the_singular_form_for_one_matched_file() {
         let batch = Batch {
             files: vec![file_report("/in/a.mkv")],
             batch_diagnostics: vec![],
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_summary_renders_the_plural_form_for_two_or_more_matched_files() {
+    fn batch_summary_renders_the_plural_form_for_two_or_more_matched_files() {
         let batch = Batch {
             files: vec![file_report("/in/a.mkv"), file_report("/in/b.mkv")],
             batch_diagnostics: vec![],
