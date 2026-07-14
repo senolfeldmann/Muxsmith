@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -142,6 +142,13 @@ pub fn load(path: &Path) -> Result<AppSettings, SettingsError> {
 /// publishes it onto `path` -- same-filesystem rename is atomic on Linux,
 /// macOS, and Windows, so any reader of `path` always sees either the
 /// previous complete file or the new complete one, never a partial write.
+/// The temp file is flushed to disk ([`fs::File::sync_all`]) before the
+/// rename: rename atomicity alone only covers process death, while under
+/// delayed allocation (e.g. ext4, btrfs) the rename can reach the journal
+/// before the temp file's data blocks reach the disk, turning a power loss
+/// into exactly the torn/empty file this path exists to prevent. With the
+/// fsync, a power cut yields the previous complete file (rename lost) or
+/// the new complete one -- never a torn one.
 /// `fs::rename` is the ONLY thing that ever touches the final name. On a
 /// failed rename the temp file is removed rather than left behind (its
 /// error is deliberately swallowed: the publish failure is what gets
@@ -166,7 +173,17 @@ pub fn save(path: &Path, settings: &AppSettings) -> Result<(), SettingsError> {
         .unwrap_or_else(|| "settings".to_string());
     let tmp_path = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
 
-    fs::write(&tmp_path, &bytes).map_err(|e| SettingsError::Io(e.to_string()))?;
+    let mut tmp_file = fs::File::create(&tmp_path).map_err(|e| SettingsError::Io(e.to_string()))?;
+    tmp_file
+        .write_all(&bytes)
+        .map_err(|e| SettingsError::Io(e.to_string()))?;
+    tmp_file
+        .sync_all()
+        .map_err(|e| SettingsError::Io(e.to_string()))?;
+    // Drop closes the temp file before the publish rename, matching the
+    // open-write-close behavior of the fs::write this replaced instead of
+    // leaning on platform-specific rename-while-open semantics.
+    drop(tmp_file);
     fs::rename(&tmp_path, path).map_err(|e| {
         let _ = fs::remove_file(&tmp_path);
         SettingsError::Io(e.to_string())
