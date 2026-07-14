@@ -53,7 +53,7 @@ empty-rendered-name = Der erzeugte Ausgabedateiname ist leer oder ungültig ("{ 
 non-utf8-path = { $role ->
     [output] Der Ausgabepfad
     [chapters] Die externe Kapiteldatei
-    [attachment] Die angehängte Datei
+    [attachment] Die anzuhängende Datei
     [donor] Die externe Spender-Datei
    *[primary] Die Quelldatei
 } { $path } ist kein gültiges UTF-8 und kann nicht unverfälscht an mkvmerge übergeben werden.

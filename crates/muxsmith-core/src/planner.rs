@@ -1218,7 +1218,8 @@ fn detect_non_utf8_paths(files: &mut [FileReport]) {
 
 // Two plans rendering to the same output path collide, as does an existing
 // on-disk file (spec 4.8, decision #3). Only surviving plans (post the
-// SourceOverwrite finalize pass) are considered.
+// finalize pass that drops SourceOverwrite and NonUtf8Path errors) are
+// considered.
 fn detect_output_collisions(files: &mut [FileReport], policy: CollisionPolicy) {
     let mut counts: BTreeMap<PathBuf, usize> = BTreeMap::new();
     for f in files.iter() {
