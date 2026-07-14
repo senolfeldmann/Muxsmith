@@ -24,8 +24,8 @@ identify-failed = { $file } konnte nicht identifiziert werden.
 identify-not-media = { $file } ist keine erkannte Mediendatei.
 identify-track-line = Spur { $id }: { $type } [{ $codec }] { $language }
 dry-run-file = { $file } (Kennung: { $id })
-dry-run-assignment =   Regel { $rule } -> Spur { $track }
-dry-run-output =   Ausgabe: { $path }
+dry-run-assignment = {"  "}Regel { $rule } -> Spur { $track }
+dry-run-output = {"  "}Ausgabe: { $path }
 dry-run-suggestion = Vorschlag für { $config_path }:
 batch-summary = { $count ->
     [one] 1 passende Datei
@@ -45,3 +45,4 @@ run-summary = { $ok } ok, { $warning } Warnung, { $failed } fehlgeschlagen, { $c
 run-joblog-unavailable = Die Job-Protokolle für diesen Lauf konnten nicht geschrieben werden; es wird ohne gespeicherte Protokolle fortgefahren.
 run-joblog-written = Die Job-Protokolle wurden nach { $dir } geschrieben.
 run-joblog-incomplete = Die Job-Protokolle unter { $dir } sind unvollständig; einige Protokolldateien konnten nicht geschrieben werden.
+run-signal-handler-unavailable = Der Strg-C-Handler konnte nicht registriert werden; ein kontrollierter Abbruch (Beenden laufender Jobs, Löschen unvollständiger Ausgaben, Exit-Code 130) ist für diesen Lauf nicht verfügbar; es wird fortgefahren.

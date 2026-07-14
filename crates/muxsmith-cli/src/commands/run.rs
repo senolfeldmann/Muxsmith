@@ -215,13 +215,23 @@ pub fn run(
 
     // Single-level SIGINT (D16): first Ctrl-C requests graceful cancel
     // (queue kills in-flight, partials deleted, summary printed, exit 130);
-    // a second Ctrl-C during cleanup force-exits immediately.
+    // a second Ctrl-C during cleanup force-exits immediately. Registration
+    // fails only on an OS-level signal-registration error (this is the one
+    // registration in the process, so ctrlc's double-registration error is
+    // unreachable here); like `create_logger` below, that degrades to a
+    // stderr warning instead of aborting: the batch still muxes, it only
+    // loses the graceful-abort semantics above (a terminal Ctrl-C then
+    // SIGINTs the whole process group without cleanup).
     let handler_cancel = Arc::clone(&cancel);
-    let _ = ctrlc::set_handler(move || {
+    if ctrlc::set_handler(move || {
         if handler_cancel.swap(true, Ordering::SeqCst) {
             std::process::exit(130);
         }
-    });
+    })
+    .is_err()
+    {
+        eprintln!("{}", renderer.msg("run-signal-handler-unavailable", &[]));
+    }
 
     // D26: persisted job logs. Created before the queue runs so `on_event`
     // can tee every event as it arrives (see the drain loop below); a

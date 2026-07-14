@@ -195,6 +195,7 @@ const ALLOWLISTED_CLI_KEYS: &[&str] = &[
     "run-joblog-unavailable",
     "run-joblog-written",
     "run-joblog-incomplete",
+    "run-signal-handler-unavailable",
 ];
 
 /// Fixture params for each [`ALLOWLISTED_CLI_KEYS`] entry, sourced from its
@@ -209,7 +210,8 @@ fn allowlisted_cli_key_args(key: &str) -> Vec<(&'static str, &'static str)> {
         "validate-ok"
         | "mkvmerge-not-found"
         | "mkvmerge-query-failed"
-        | "run-joblog-unavailable" => vec![],
+        | "run-joblog-unavailable"
+        | "run-signal-handler-unavailable" => vec![],
         "validate-summary" => vec![("errors", "1"), ("warnings", "2"), ("infos", "0")],
         "diagnostic-line" => vec![
             ("severity", "error"),
