@@ -3200,3 +3200,88 @@ entries:
   occurrences:
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict (anchor arithmetic)"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1 + controller confirmation (rustup #4216); fix 308effc"}
+- id: cli-degradation-warning-catalog-key
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: cli
+  statement: "User-facing degradation warnings (a feature disabled, a handler unavailable - run continues) render via a dedicated Fluent key through renderer.msg, never bare eprintln prose; established shape: run-joblog-unavailable, mirrored by run-signal-handler-unavailable."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: decided, ref: "run.rs run-joblog-unavailable site + doc (Plan 5.5 era, cited by routed-items verdict item 5)"}
+    - {date: "2026-07-14", kind: reinforced, ref: "plan-5.7 T3 verdict (exact shape clone verified line by line)"}
+- id: cli-fluent-leading-whitespace-placeable
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: cli
+  statement: "Leading whitespace in rendered Fluent messages must be a string-literal placeable ({\"  \"}); plain spaces after = are stripped by the Fluent grammar (blank_inline), verified against fluent.ebnf and empirically through the real renderer with isolation marks off."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.7 T3 report (renderer probe) + T3 verdict (end-to-end binary re-verification)"}
+- id: core-consumer-anchored-enumeration
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "A completeness inventory (e.g. argv-bound path roles for the NonUtf8Path guard) is derived from the CONSUMER's sites (command.rs display() sites / input_groups equivalence), not from producer-side enumeration; guard set proven equal to consumer set."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.7 T4 verdict (independent inventory re-derivation, counterexample hunt empty)"}
+- id: i18n-select-arm-value-set-coupling
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "A Fluent selector's arms must cover the emitted value set exactly; a missing arm falls silently to the *[default] arm - acceptable only where the default-arm precedent is documented (unsupported-source pattern), otherwise a defect."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.7 T4 verdict wire-format check (all 5 role arms empirically rendered, both languages)"}
+- id: proc-subagent-commit-trailer-set
+  kind: non-decision
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Which trailer set subagent worktree commits carry is unsettled: Co-Authored-By present on all plan-5.7 stream commits, Claude-Session inconsistent (controller commits carry it, subagent commits vary)."
+  steelman: null
+  blocked_on: "owner/controller convention call on the next commit-policy touch"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: deferred, ref: "plan-5.7 whole-branch verdict I1"}
+- id: ci-provenance-carrying-comments
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: ci
+  statement: "ci.yml decision comments carry provenance inline (date + verification source), dominant across the pin, toolchain and permissions comments."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.7 T1 verdict harvest"}

@@ -196,12 +196,13 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-09", kind: violated-corrected, ref: "journal 2026-07-09 Plan 2 'What the process caught' + commit 72c59d2"}
     - {date: "2026-07-09", kind: reinforced, ref: "plan Global Constraints + progress.md (Plan 3)"}
     - {date: "2026-07-10", kind: reinforced, ref: "plan Global Constraints + progress ledger (Plan 4)"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 T1: gate run on full diff + final HEAD instead of per-commit; disclosed by implementer, flagged by task-1 verdict, controller retro-verified fmt+check+clippy green on all 7 intermediates (progress ledger + task-1-report/verdict)"}
+    - {date: "2026-07-14", kind: deferred, ref: "plan-5.7 Task 1 Verify clause + T1-verdict deviation (a): plan-sanctioned narrowed verification for a ci.yml-only diff the gate cannot observe"}
 - id: ci-08-gated-tests-run
   kind: pattern
   tier: 2

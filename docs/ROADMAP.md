@@ -78,6 +78,17 @@ action:
 - A second fixture needs a _comment-style source-of-truth note ->
   promote the T11 ad-hoc pattern to a written convention (BUILDING.md
   test section).
+- Any change moving a live-test gate from Mkvmerge::locate() to detect()
+  -> fix the bare-PATH fixture spawn in identify_live.rs make_sample
+  (routed-items item 4; becomes a real panic-instead-of-skip bug at that
+  moment and must land in the same diff).
+- Any change to diagnostic wire params or NUMERIC_DIAGNOSTIC_PARAMS ->
+  fix the diagnosticFluentParams.ts strictness comment (or implement
+  /^\d+$/) (routed-items item 7).
+- The v1.x mise-out-of-CI structural work starts -> run the one-off
+  single-parallel-run verification (falsify the ci.yml interleaving
+  rationale empirically) and drop one of the two test runs per leg
+  (routed-items item 11, re-deferred past plan 5.7's 2-line ci.yml touch).
 
 ## Pre-1.0 release gates
 
@@ -268,6 +279,18 @@ polish entry.
   but never fsyncs before the atomic rename. Full list (incl. non-UTF-8
   argv lossiness, swallowed ctrlc registration, editorial nits) in the
   non-repo findings report. Decided 2026-07-12.
+  **DONE 2026-07-14**: bug-hunt adjudication against current master (1
+  already fixed by Plan 5.6, 4 should-fix, 6 can-wait, 0 refuted, 0
+  release blockers; ci.yml token premise downgraded by live API check -
+  repo default is read) + **Plan 5.7 executed and closed** (owner triage
+  2026-07-14: four fixes + ctrlc warning bundled because its own deferral
+  trigger fired inside the plan; dry-run indent ruled YES). Landed: ci.yml
+  least-privilege permissions, settings fsync-before-rename, dry-run
+  indent via placeables + run-signal-handler-unavailable (bilingual),
+  DiagCode::NonUtf8Path per ADR D37. All four task reviews APPROVED,
+  whole-branch READY, nine-part gate green after every merge. Archive:
+  docs/process-journal/artifacts/plan-5.7-sdd/ (incl. the routed-items
+  adjudication verdict). Four re-deferrals below (v1.x + Triggers).
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
 ## Near-1.0
@@ -332,7 +355,10 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   `multi: true` wildcard rules, mkvpropedit metadata-only fast path.
   Mirrored 2026-07-11 (sweep walkthrough #19) so the forward tracker
   knows they exist.
-- **Cosmetic cleanup, one pass (sweep group K)**: dead `at` param
+- **Cosmetic cleanup, one pass (sweep group K)**: duplicate section-header
+  comment suggestions.rs:325 vs :291 (routed-items item 3, 2026-07-14);
+  spec 5.2 NonUtf8Path row wording "per file" vs implemented "per path"
+  precision (plan-5.7 whole-branch I3); dead `at` param
   (load.rs:56,64); invalid-template `*[empty-field]` default-variant
   mislabel trap; TracksCfg placement splitting the AttachmentsCfg group
   (model.rs); stale "Two tests:" module doc (command_integration.rs:4);
@@ -394,3 +420,15 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   TS/Rust with comment-only guard (B11). Discarded with reason: dead
   !any.is_empty() matcher guard (B3), i18n .attr scanner gap - fails
   loud (B13), C-list cleanup remnants. (Walkthrough #21, group D.)
+
+- **UnknownExtension warning misfires on attachment `add` locators**:
+  pre-existing, surfaced by the plan-5.7 whole-branch E2E (a recursive
+  attachment locator under a non-media directory draws the warning meant
+  for track-input extension lists). Trigger: next parity-audit round or
+  diagnostics-surface work. (whole-branch verdict harvest, 2026-07-14)
+- **Gate part that Fluent-parses ALL catalogs**: today no gate
+  Fluent-parses the de CLI/diagnostics catalogs (check:i18n covers the
+  frontend; catalog_completeness checks keys, not grammar) - the plan-5.7
+  T4 reviewer had to build an empirical render to verify selector arms.
+  Add a parse-all-catalogs gate part. Trigger: next CI/gate structural
+  work. (T4 verdict harvest H1, 2026-07-14)
