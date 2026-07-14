@@ -24,7 +24,7 @@ const NUMERIC_DIAGNOSTIC_PARAMS: Record<string, readonly string[]> = {
  * selector's `*[other]`/`*[group]` branch instead of leaking `{$name}`.
  * Close to the Rust side's `parse::<usize>()` strictness: rejects negative
  * numbers, floats and empty strings, but unlike Rust it accepts spellings
- * Number() normalizes to a non-negative integer (e.g. "1e3" -> 1000) -
+ * Number() normalizes to a non-negative integer (e.g. "1e3" -> 1000) --
  * acceptable because the wire values are Rust usize serializations and
  * arrive as plain digit strings.
  */
