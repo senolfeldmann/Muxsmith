@@ -151,6 +151,126 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
     insta::assert_snapshot!(summary_line);
 }
 
+/// D38 acceptance: a zero-rule `unmatched: keep` profile is a legal pure
+/// passthrough - dry-run reports `passthrough-profile` (info) and no
+/// `no-track-rules`, and `run` produces an identifiable Matroska output
+/// carrying both source tracks unchanged.
+#[test]
+fn zero_rule_keep_profile_is_a_pure_passthrough() {
+    if !have_mkvmerge() {
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let wav = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+    );
+    let srt = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+    );
+    let media = dir.path().join("Show.S01E01.mkv");
+    assert!(
+        Command::new("mkvmerge")
+            .args(["-q", "-o"])
+            .arg(&media)
+            .arg(wav)
+            .arg(srt)
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let profile = dir.path().join("p.yaml");
+    fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<s>\\d{2})E(?<e>\\d{2})', extensions: [mkv] }\ntracks:\n  unmatched: keep\n  rules: []\n",
+    )
+    .unwrap();
+    let output_dir = dir.path().join("out");
+
+    // Dry run: exit 0, passthrough announced, no NoTrackRules.
+    let dry = muxsmith()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .args(["--output"])
+        .arg(&output_dir)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        dry.status.success(),
+        "dry-run must accept the passthrough profile, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&dry.stdout),
+        String::from_utf8_lossy(&dry.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&dry.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report: {e}, stderr: {}",
+            String::from_utf8_lossy(&dry.stderr)
+        )
+    });
+    // PassthroughProfile/NoTrackRules are config-time (validate) diagnostics,
+    // reported under `config_diagnostics`, not per-file `diagnostics`
+    // (dry_run_cli.rs's `dry_run_surfaces_config_time_invalid_regex` and
+    // siblings pin the same top-level field for the same reason).
+    let codes: Vec<&str> = report["config_diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["code"].as_str().unwrap())
+        .collect();
+    assert!(
+        codes.contains(&"passthrough-profile"),
+        "expected passthrough-profile in config_diagnostics, got: {report}"
+    );
+    assert!(
+        !codes.contains(&"no-track-rules"),
+        "no-track-rules must not fire for a keep passthrough, got: {report}"
+    );
+
+    // Run: output exists and identifies with both tracks intact.
+    let run = muxsmith()
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .args(["--output"])
+        .arg(&output_dir)
+        // Task 6 (D26): a real mux reaches the queue and would otherwise
+        // persist job logs into the real platform data dir; point it at a
+        // tempdir instead (same idiom as the two live-run tests above).
+        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "run must succeed on the passthrough profile, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    // `output.filename` defaults to `keep` (spec 4.8): file_stem + ".mkv",
+    // same mapping the two live-run tests above pin.
+    let out_file = output_dir.join("Show.S01E01.mkv");
+    assert!(out_file.exists(), "missing {out_file:?}");
+    let ident = Command::new("mkvmerge")
+        .arg("-J")
+        .arg(&out_file)
+        .output()
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&ident.stdout).unwrap();
+    assert_eq!(j["container"]["recognized"], true);
+    assert_eq!(
+        j["tracks"].as_array().unwrap().len(),
+        2,
+        "both tracks pass through"
+    );
+}
+
 /// Backdates `path`'s mtime by an hour and returns the value actually
 /// stored (re-read from the filesystem rather than trusted from memory, so
 /// any precision loss the filesystem applies is already baked into the

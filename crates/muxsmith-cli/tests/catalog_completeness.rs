@@ -53,6 +53,7 @@ fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
             ("at", "tracks[0].match"),
         ],
         DiagCode::NoTrackRules => vec![],
+        DiagCode::PassthroughProfile => vec![],
         DiagCode::EmptyMatchExpression => vec![],
         DiagCode::EmptyExtensions => vec![],
         DiagCode::InvalidRegex => vec![("detail", "unclosed group")],

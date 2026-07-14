@@ -10,7 +10,7 @@ use crate::template::{Template, TemplateError};
 
 use super::match_expr::{MatchExpr, Scalar};
 use super::model::{
-    AttachmentRule, ChaptersCfg, FilenameCfg, Locator, Profile, SourceCfg, TitleCfg,
+    AttachmentRule, ChaptersCfg, FilenameCfg, KeepDrop, Locator, Profile, SourceCfg, TitleCfg,
 };
 use super::{lint, load};
 
@@ -59,7 +59,19 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     }
 
     if profile.tracks.rules.is_empty() {
-        diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks.rules"));
+        match profile.tracks.unmatched {
+            // Discarding everything with no rule selecting anything is a
+            // profile that can never produce output.
+            KeepDrop::Drop => {
+                diags.push(Diagnostic::error(DiagCode::NoTrackRules, "tracks.rules"));
+            }
+            // Legal pure passthrough (D38): announce it so an accidental
+            // delete-all-rules edit stays visible.
+            KeepDrop::Keep => diags.push(Diagnostic::info(
+                DiagCode::PassthroughProfile,
+                "tracks.rules",
+            )),
+        }
     }
 
     for (i, rule) in profile.tracks.rules.iter().enumerate() {
