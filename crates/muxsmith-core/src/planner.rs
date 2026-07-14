@@ -93,7 +93,10 @@ pub enum ChapterSource {
     /// `--no-chapters` on every input group.
     Drop,
     /// `--chapters <path>` globally, `--no-chapters` on every input group.
-    External(PathBuf),
+    External {
+        /// The resolved chapters file.
+        path: PathBuf,
+    },
 }
 
 /// Output tag handling (spec 4.9).
@@ -114,7 +117,10 @@ pub enum TitleAction {
     /// `--title ""` (force empty).
     Clear,
     /// `--title <s>` (rendered template).
-    Set(String),
+    Set {
+        /// The rendered title.
+        title: String,
+    },
 }
 
 /// How the primary file's existing attachments are treated (spec 4.9). Donor
@@ -126,7 +132,10 @@ pub enum PrimaryAttachments {
     /// Keep all (no attachment filter on the primary group).
     KeepAll,
     /// Keep exactly these attachment ids (`--attachments id,id`); non-empty.
-    Subset(Vec<u64>),
+    Subset {
+        /// The kept attachment ids, ascending.
+        ids: Vec<u64>,
+    },
     /// Keep none (`--no-attachments`).
     DropAll,
 }
@@ -712,7 +721,7 @@ fn resolve_file(
         .map(|a| a.source.clone())
         .chain(attachments.add_files.iter().cloned())
         .chain(match &chapters {
-            ChapterSource::External(path) => Some(path.clone()),
+            ChapterSource::External { path } => Some(path.clone()),
             ChapterSource::Keep | ChapterSource::Drop => None,
         })
         .collect();
@@ -959,7 +968,9 @@ fn resolve_title(profile: &Profile, primary: &PrimaryFile) -> TitleAction {
         TitleCfg::Template(block) => {
             let ctx = render_ctx(primary);
             match Template::parse(&block.template) {
-                Ok(t) => TitleAction::Set(t.render_literal(&ctx)),
+                Ok(t) => TitleAction::Set {
+                    title: t.render_literal(&ctx),
+                },
                 Err(_) => TitleAction::Keep,
             }
         }
@@ -999,7 +1010,9 @@ fn resolve_chapters(
             let hits =
                 discovery::resolve_locator(&block.external, primary_dir, &primary.identifier);
             match hits.len() {
-                1 => ChapterSource::External(hits.into_iter().next().unwrap()),
+                1 => ChapterSource::External {
+                    path: hits.into_iter().next().unwrap(),
+                },
                 0 => {
                     diags.push(
                         Diagnostic::error(DiagCode::MissingExternal, "chapters.external")
@@ -1078,7 +1091,7 @@ fn resolve_attachments(
         PrimaryAttachments::DropAll
     } else {
         kept.sort_unstable();
-        PrimaryAttachments::Subset(kept)
+        PrimaryAttachments::Subset { ids: kept }
     };
 
     let mut add_files: Vec<PathBuf> = Vec::new();
@@ -1186,8 +1199,8 @@ fn detect_non_utf8_paths(files: &mut [FileReport]) {
         let Some(plan) = &f.plan else { continue };
 
         let mut bound: Vec<(&Path, &str, &str)> = vec![(plan.output.as_path(), "output", "output")];
-        if let ChapterSource::External(p) = &plan.chapters {
-            bound.push((p.as_path(), "chapters", "chapters"));
+        if let ChapterSource::External { path } = &plan.chapters {
+            bound.push((path.as_path(), "chapters", "chapters"));
         }
         for add in &plan.attachments.add_files {
             bound.push((add.as_path(), "attachment", "attachments"));
@@ -2122,6 +2135,70 @@ mod tests {
         assert!(
             !resolves_without_regression(&sim, 0, &base_sig),
             "a newly duplicated diagnostic must count as a regression"
+        );
+    }
+
+    // D40 (report/json.rs:44 panic fix, whole-branch-verdict.md Finding 1):
+    // `TitleAction`/`ChapterSource`/`PrimaryAttachments` are all
+    // `#[serde(tag = "kind")]`; serde's internally-tagged representation
+    // requires a map-shaped payload per variant, so `Set`/`External`/
+    // `Subset` (each a newtype over a non-map value) panic the first time a
+    // value is actually built and serialized -- not a compile error, since
+    // the enum type-checks fine either way. These three tests pin the exact
+    // wire shape of EVERY variant (not only the ones that used to be
+    // broken), the `all_keys_match_serde_encoding` idiom (report/mod.rs)
+    // extended to `Plan`'s own tagged enums, which had no equivalent.
+    #[test]
+    fn title_action_variants_serialize_to_the_expected_kind_tagged_shape() {
+        assert_eq!(
+            serde_json::to_value(TitleAction::Keep).unwrap(),
+            serde_json::json!({"kind": "keep"})
+        );
+        assert_eq!(
+            serde_json::to_value(TitleAction::Clear).unwrap(),
+            serde_json::json!({"kind": "clear"})
+        );
+        assert_eq!(
+            serde_json::to_value(TitleAction::Set {
+                title: "S01E01".to_string()
+            })
+            .unwrap(),
+            serde_json::json!({"kind": "set", "title": "S01E01"})
+        );
+    }
+
+    #[test]
+    fn chapter_source_variants_serialize_to_the_expected_kind_tagged_shape() {
+        assert_eq!(
+            serde_json::to_value(ChapterSource::Keep).unwrap(),
+            serde_json::json!({"kind": "keep"})
+        );
+        assert_eq!(
+            serde_json::to_value(ChapterSource::Drop).unwrap(),
+            serde_json::json!({"kind": "drop"})
+        );
+        assert_eq!(
+            serde_json::to_value(ChapterSource::External {
+                path: PathBuf::from("/m/e.xml")
+            })
+            .unwrap(),
+            serde_json::json!({"kind": "external", "path": "/m/e.xml"})
+        );
+    }
+
+    #[test]
+    fn primary_attachments_variants_serialize_to_the_expected_kind_tagged_shape() {
+        assert_eq!(
+            serde_json::to_value(PrimaryAttachments::KeepAll).unwrap(),
+            serde_json::json!({"kind": "keep_all"})
+        );
+        assert_eq!(
+            serde_json::to_value(PrimaryAttachments::DropAll).unwrap(),
+            serde_json::json!({"kind": "drop_all"})
+        );
+        assert_eq!(
+            serde_json::to_value(PrimaryAttachments::Subset { ids: vec![1, 2] }).unwrap(),
+            serde_json::json!({"kind": "subset", "ids": [1, 2]})
         );
     }
 }
