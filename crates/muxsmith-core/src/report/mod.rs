@@ -85,7 +85,7 @@ diag_codes! {
     RawOnKnownProperty => "raw-on-known-property",
     /// `codec_kind` was used under a `substring`/`regex` condition; it is a curated alias and matchable only under `exact` (spec 4.4). Pattern-match `codec_id` instead. `condition` param names the misused condition.
     CodecKindExactOnly => "codec-kind-exact-only",
-    /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender, `allowed` a hint sample.
+    /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender; closed-domain emitters also pass `allowed` (a hint sample), language emissions do not - the catalog's language arm renders registry wording (D39).
     InvalidPropertyValue => "invalid-property-value",
     /// An `any` or `not` list is present but has zero sub-expressions (spec 4.3); such a list is either always-false (`any`) or always-true (`not`) and is almost certainly a mistake.
     EmptyMatchList => "empty-match-list",

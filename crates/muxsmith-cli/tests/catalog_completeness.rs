@@ -40,9 +40,11 @@ fn every_diag_code_has_a_catalog_message() {
 /// over emitter sites per variant. It renders one fixture per code, which
 /// proves the fixture matches the template; a single emitter site that omits
 /// a param its siblings set will leak `{$param}` in production while this
-/// guard stays green. The one known instance -- `resolve_changes` emitting
-/// `InvalidPropertyValue` without `allowed` while its `walk_exact_languages`
-/// sibling set it -- is fixed and pinned by
+/// guard stays green. `InvalidPropertyValue` now selects on `$property` in
+/// the catalog (D39): this fixture exercises the `*[other]` list arm (a
+/// closed-domain property with a real `allowed` list), while the
+/// `[language]` arm -- whose emitters carry no `allowed` param -- is pinned
+/// separately by
 /// [`invalid_changes_language_diagnostic_renders_without_placeholder_leak`],
 /// which renders the real emitter-site diagnostic rather than a fixture.
 fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
@@ -61,9 +63,9 @@ fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
         DiagCode::RawOnKnownProperty => vec![("property", "language")],
         DiagCode::CodecKindExactOnly => vec![("condition", "substring")],
         DiagCode::InvalidPropertyValue => vec![
-            ("property", "language"),
-            ("value", "xx-not-a-code"),
-            ("allowed", "a valid ISO 639/BCP-47 language code"),
+            ("property", "type"),
+            ("value", "text"),
+            ("allowed", "video, audio, subtitles"),
         ],
         DiagCode::EmptyMatchList => vec![],
         DiagCode::NotStringProperty => vec![
@@ -389,10 +391,13 @@ impl Identify for OneIdent {
 /// single emitter that omits a param its siblings set stays green there). This
 /// drives the REAL `resolve_changes` emitter -- the plan-time invalid
 /// `changes.language` path -- through `plan_batch`, then renders the diagnostic
-/// it actually produced. Before the fix that added `.with("allowed", ...)` to
-/// match its `walk_exact_languages` sibling, the `{ $allowed }` placeholder in
-/// `invalid-property-value` reached the user verbatim; this asserts it no
-/// longer does, from the emitter's own params rather than a fixture's.
+/// it actually produced. Since D39, both `resolve_changes` and its
+/// `walk_exact_languages` sibling deliberately carry no `allowed` param for
+/// property=language emissions; the catalog's `invalid-property-value`
+/// selects on `$property` and its `[language]` arm renders complete
+/// registry-membership wording without one. This test pins that arm from
+/// the emitter's own params rather than a fixture: no `{ $allowed }`
+/// placeholder leak, and the ISO 639/BCP-47 wording rendered in full.
 #[test]
 fn invalid_changes_language_diagnostic_renders_without_placeholder_leak() {
     let dir = tempfile::tempdir().unwrap();
@@ -446,5 +451,13 @@ fn invalid_changes_language_diagnostic_renders_without_placeholder_leak() {
     assert!(
         !rendered.contains("{$"),
         "the changes.language InvalidPropertyValue leaked a placeholder: {rendered}"
+    );
+    assert!(
+        rendered.contains("must be a valid ISO 639 or BCP-47 language code"),
+        "the changes.language InvalidPropertyValue did not render the [language] arm's registry wording: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Allowed values include"),
+        "the changes.language InvalidPropertyValue rendered the *[other] arm's allowed-list wording instead of the [language] arm: {rendered}"
     );
 }

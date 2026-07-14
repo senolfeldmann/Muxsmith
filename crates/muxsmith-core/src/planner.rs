@@ -443,8 +443,7 @@ fn walk_exact_languages(
                 format!("{path}.exact.language"),
             )
             .with("property", "language")
-            .with("value", v.clone())
-            .with("allowed", "a valid ISO 639/BCP-47 language code"),
+            .with("value", v.clone()),
         );
     }
     if let Some(any) = &expr.any {
@@ -808,6 +807,10 @@ fn resolve_changes(
             if property == "language" {
                 let valid = matches!(value, Scalar::Str(s) if lang.is_valid_value(s));
                 if !valid {
+                    // `invalid-property-value` selects on `$property` in
+                    // the catalog: the [language] arm renders registry
+                    // wording and takes no `allowed` param (D39). Only
+                    // the closed-domain emitters (validate.rs) pass one.
                     diags.push(
                         Diagnostic::error(
                             DiagCode::InvalidPropertyValue,
@@ -815,11 +818,7 @@ fn resolve_changes(
                         )
                         .for_file(primary_path)
                         .with("property", "language")
-                        .with("value", scalar_display(value))
-                        // `invalid-property-value` requires `allowed`; the
-                        // sibling emitter in `walk_exact_languages` sets it, so
-                        // this site must too or `{$allowed}` leaks to the user.
-                        .with("allowed", "a valid ISO 639/BCP-47 language code"),
+                        .with("value", scalar_display(value)),
                     );
                 }
             }

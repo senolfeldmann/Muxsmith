@@ -22,8 +22,11 @@ const NUMERIC_DIAGNOSTIC_PARAMS: Record<string, readonly string[]> = {
  * to a real number. A listed value that does not parse as a non-negative
  * integer is left as a string rather than dropped, so it degrades to the
  * selector's `*[other]`/`*[group]` branch instead of leaking `{$name}`.
- * Mirrors the Rust side's `parse::<usize>()` strictness: rejects negative
- * numbers, floats, empty strings, and scientific notation.
+ * Close to the Rust side's `parse::<usize>()` strictness: rejects negative
+ * numbers, floats and empty strings, but unlike Rust it accepts spellings
+ * Number() normalizes to a non-negative integer (e.g. "1e3" -> 1000) -
+ * acceptable because the wire values are Rust usize serializations and
+ * arrive as plain digit strings.
  */
 export function diagnosticFluentParams(
   code: string,
