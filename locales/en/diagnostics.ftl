@@ -41,7 +41,10 @@ unknown-property-skew = Property "{ $property }" was matched untyped through a r
 schema-drift = This build pins mkvmerge identification schema version { $pinned }; at least one identified file in this batch reports schema version { $found_version }. Any property the newer schema adds sits outside the capability model; use a raw: prefix to match it untyped.
 unknown-extension = Extension "{ $extension }" is not among the extensions mkvmerge supports ({ $known }). If this is a typo, matching files are silently never found; if intentional, mkvmerge will not be able to process them.
 codec-kind-exact-only = Property "codec_kind" can only be used with exact, not { $condition }. Match codec_id with { $condition } instead.
-invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+invalid-property-value = { $property ->
+    [language] Value "{ $value }" is not valid for property "language"; it must be a valid ISO 639 or BCP-47 language code.
+   *[other] Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
+}
 path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
 empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
 non-utf8-path = { $role ->

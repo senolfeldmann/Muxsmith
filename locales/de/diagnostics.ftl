@@ -48,7 +48,10 @@ unknown-property-skew = Die Eigenschaft "{ $property }" wurde über ein raw:-Opt
 schema-drift = Dieser Build fixiert die mkvmerge-Identifikationsschema-Version { $pinned }; mindestens eine identifizierte Datei in diesem Stapel meldet Schema-Version { $found_version }. Jede von der neueren Version hinzugefügte Eigenschaft liegt außerhalb des Fähigkeitsmodells; nutze ein raw:-Präfix, um sie untypisiert abzugleichen.
 unknown-extension = Die Erweiterung "{ $extension }" ist keine der von mkvmerge unterstützten Erweiterungen ({ $known }). Ist dies ein Tippfehler, werden passende Dateien stillschweigend nie gefunden; ist es beabsichtigt, kann mkvmerge sie nicht verarbeiten.
 codec-kind-exact-only = Die Eigenschaft "codec_kind" kann nur mit exact verwendet werden, nicht mit { $condition }. Gleiche stattdessen codec_id mit { $condition } ab.
-invalid-property-value = Der Wert "{ $value }" ist für die Eigenschaft "{ $property }" nicht gültig. Zulässige Werte sind unter anderem: { $allowed }.
+invalid-property-value = { $property ->
+    [language] Der Wert "{ $value }" ist für die Eigenschaft "language" nicht gültig; er muss ein gültiger Sprachcode nach ISO 639 oder BCP-47 sein.
+   *[other] Der Wert "{ $value }" ist für die Eigenschaft "{ $property }" nicht gültig. Zulässige Werte sind unter anderem: { $allowed }.
+}
 path-separator-in-rendered-name = Der erzeugte Ausgabedateiname "{ $name }" enthält ein Pfadtrennzeichen; Muxsmith legt niemals Unterverzeichnisse an.
 empty-rendered-name = Der erzeugte Ausgabedateiname ist leer oder ungültig ("{ $name }").
 non-utf8-path = { $role ->
