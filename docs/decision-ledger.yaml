@@ -3285,3 +3285,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.7 T1 verdict harvest"}
+- id: comment-coupling-sweep-on-param-changes
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Comments narrating cross-site param coupling (an emitter-site comment, test doc comments retelling the same param story) form a set that goes stale as a group when the wire param changes; a wire-param change sweeps every comment naming that param, not just the emitter-site one - the comment-layer analog of the spec self-contradiction sweep."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-review verdict finding 2 + harvest (planner.rs:819-821, catalog_completeness.rs:43-47/:392-395)"}
+- id: tracker-entries-anchor-on-symbols
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Forward-tracker entries (ROADMAP, backlog lines) anchor code references on symbols (fn names, DiagCodes, message ids), not raw line numbers, which rot on every refactor; specs and ADRs are point-in-time documents where line cites are fine."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-review verdict harvest (ROADMAP.md mixed-language entry cites planner.rs:428/:841, current tree :440-448/:811-824)"}

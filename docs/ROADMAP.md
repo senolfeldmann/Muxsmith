@@ -430,5 +430,11 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   Fluent-parses the de CLI/diagnostics catalogs (check:i18n covers the
   frontend; catalog_completeness checks keys, not grammar) - the plan-5.7
   T4 reviewer had to build an empirical render to verify selector arms.
-  Add a parse-all-catalogs gate part. Trigger: next CI/gate structural
-  work. (T4 verdict harvest H1, 2026-07-14)
+  Add a parse-all-catalogs gate part. Sharper variant from the plan-5.8
+  design review (2026-07-14): extend scripts/check-i18n.mjs to assert
+  placeable-set and selector-structure parity per message id across
+  locales (the de catalog header currently declares that parity
+  manually reviewed, not machine-checked); would have auto-guarded the
+  D39 selector change. Trigger: next CI/gate structural work. (T4
+  verdict harvest H1, 2026-07-14; plan-5.8 design-review harvest,
+  2026-07-14)
