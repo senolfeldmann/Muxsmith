@@ -82,9 +82,6 @@ action:
   -> fix the bare-PATH fixture spawn in identify_live.rs make_sample
   (routed-items item 4; becomes a real panic-instead-of-skip bug at that
   moment and must land in the same diff).
-- Any change to diagnostic wire params or NUMERIC_DIAGNOSTIC_PARAMS ->
-  fix the diagnosticFluentParams.ts strictness comment (or implement
-  /^\d+$/) (routed-items item 7).
 - The v1.x mise-out-of-CI structural work starts -> run the one-off
   single-parallel-run verification (falsify the ci.yml interleaving
   rationale empirically) and drop one of the two test runs per leg
@@ -183,6 +180,11 @@ polish entry.
   `unmatched: keep` is non-obvious (README + a validate-time hint, and the
   GUIDE at 1.0). Recorded in product-boundaries.yaml (core-83). Timing:
   Şenol's scope call (small).
+  **DONE 2026-07-15** (Plan 5.8 T1+T2 per ADR D38: conditional validate,
+  `PassthroughProfile` info diagnostic, bilingual catalogs, no-track-rules
+  hint, spec 4.5/5.2 amendments, D20 supersession note, README recipe,
+  gated e2e; archive docs/process-journal/artifacts/plan-5.8-sdd/).
+  GUIDE mention stays an at-1.0 item with the GUIDE itself.
 - **Mixed-language `allowed` param (pre-1.0 polish, whole-branch I2)**:
   core emits English prose via the `allowed` param at planner.rs:428/:841
   ("a valid ISO 639/BCP-47 language code") - in de mode
@@ -190,6 +192,14 @@ polish entry.
   §8.4 exception list. Fix catalog-side (kind selector or dedicated
   language-domain message), bilingual. Small task before the tag
   (bilingual launch makes it user-visible).
+  **DONE 2026-07-15** (Plan 5.8 T3 per ADR D39: Fluent select on the
+  existing $property param, prose `allowed` param off the wire for
+  language emissions, coupled-comment sweep, diagnosticFluentParams.ts
+  strictness comment fixed = routed-items item-7 trigger consumed;
+  archive docs/process-journal/artifacts/plan-5.8-sdd/). Rider ADR D40
+  (same plan, whole-branch finding): plan-JSON serialization panic fixed
+  (struct variants TitleAction/ChapterSource/PrimaryAttachments,
+  report/json.rs hardening, README-recipe regression e2e).
 - **Whole-codebase idiomacy review**: EXECUTED 2026-07-12 (session 10; the
   journal carries the run + the usage-limit incident; triage routing in
   the STATUS entry right after this one). Original dispatch spec: one
@@ -355,6 +365,10 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   `multi: true` wildcard rules, mkvpropedit metadata-only fast path.
   Mirrored 2026-07-11 (sweep walkthrough #19) so the forward tracker
   knows they exist.
+- **Spec 8.4 / Renderer rustdoc still claim "v1 ships English content only"**:
+  stale since the de locale shipped (Plan 5.5); one-line sweep of spec 8.4,
+  non-goal 11 and the Renderer rustdoc on the next spec-touching plan.
+  (plan-5.8 whole-branch verdict, out-of-range observation, 2026-07-14)
 - **Cosmetic cleanup, one pass (sweep group K)**: duplicate section-header
   comment suggestions.rs:325 vs :291 (routed-items item 3, 2026-07-14);
   spec 5.2 NonUtf8Path row wording "per file" vs implemented "per path"

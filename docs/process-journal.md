@@ -1080,3 +1080,36 @@ allowed-param polish, Plan 6 on the owner's go.
   all three legs, tree clean, plan-5.7 worktrees pruned. Pre-1.0 queue:
   zero-rule-keep passthrough (owner scope call), mixed-language
   allowed-param polish; Plan 6 on the owner's go. Resume via HANDOFF.
+
+## 2026-07-15 | Plan 5.8 complete (passthrough + allowed-param + serialization fix) | session 14 (Peter, Fable 5)
+
+**Scope.** Plan 5.8 from brainstorming to close, one session (started 2026-07-14, closed past midnight): ADRs D38-D40, commits ed727af..abfb7ab (design doc fe16ccc, plan ed727af, 3 planned tasks + 1 in-flight task, 3 stream merges). Archive: docs/process-journal/artifacts/plan-5.8-sdd/.
+
+**Decisions and why.**
+- Owner experiment: the DESIGN DOCUMENT itself went through the independent-review loop (fresh implementer authored the D38+D39 ADRs from a controller brief, a different fresh agent graded them, fix loop, then owner review). First use of that mechanism on a design artifact here. It paid: the implementer refuted two brief premises against the tree (the spec never contained the "at least one rule" prose the brief assumed; the 5.2 InvalidPropertyValue row names no params), killing two phantom amendment tasks before planning.
+- D39 chose selecting on the existing $property param over a new wire param or a new DiagCode; the prose `allowed` param left the wire (root cause of the mixed-language render was core emitting English prose, spec-5.2-violating). Owner approved wording verbatim in the ADR.
+- Whole-branch Important finding routed as in-flight Task 4 by owner decision (fix now + unwrap hardening; alternatives: minimal fix, or defer + defuse the README recipe - rejected because the fix is release-blocking anyway and the recipe is core-83-mandated documentation).
+- Task 4 implementer exercised the brief's latitude clause and overrode the brief's preferred Result-propagation with an infallible-signature null-fallback + dev-build debug_assert; the task reviewer adjudicated the deviation on the merits and ruled it stands (on the completed-mux-never-reported-failed invariant it beats the brief preference). ADR D40 records both options honestly.
+
+**What the process caught.**
+- Whole-branch review (the only stage structurally able to): the new README passthrough recipe, driven end-to-end, crashed `muxsmith run` with exit 101 AFTER a successful mux - pre-existing serde defect (internally-tagged enums with non-map newtype payloads: TitleAction::Set, ChapterSource::External, PrimaryAttachments::Subset; panic at report/json.rs:44; run document never persisted). Task 2 had verified the recipe with validate only - correct per its scope; the crash lived one level deeper. Upstream defect, surfaced by this plan's documentation.
+- Design review: 2 Minor (broken path span; D39 comment sweep missed two coupled test narrations - the ADR now sweeps all three).
+- Task reviews: T1 zero findings (three e2e harness adaptations judged correct); T2 1 Minor (README paragraph wrapping vs the file's one-line convention); T3 2 Minor (hyphen-style asides vs the crate's dominant "--"); T4 1 Minor (silent fallback got a messaged debug_assert tripwire). All 7 findings fixed and re-reviewed; none discarded.
+- Controller verification caught its own tooling slip (a ledger edit verified by a grep that printed nothing; re-checked and the count field corrected).
+
+**Process mechanics and metrics.** 4 tasks (3 planned, 1 review-routed), 2->3 parallel worktree streams, 3 mechanical auto-merges, nine-part gate run 4 times (pre-design-push + after each merge), all green; full CI on the design push verified separately. Dispatches: design implementer + design reviewer on the controller model (Fable 5); task implementers T1-T4 on Sonnet; task reviewers T1-T3 on Sonnet, T4 deliberately on Opus (wire-format + error-semantics adjudication); whole-branch review on Fable 5. Fix rounds: 4 (design, T2, T3, T4 - each 1 round); every fix by the resumed original implementer, every re-review by the resumed original reviewer. Ledger harvest this session: 11 new Tier-1 entries, 3 reinforcement occurrences (brief-prose-follows-target-file-style and doc-recipes-verified-through-full-flow and tagged-serde-enums now at count 2 each).
+
+**Friction and failure.**
+- The repo push in the `cd repo && git push` shape was denied by the permission classifier while `git -C <repo> push` passed; owner confirmed the asymmetry is deliberate. Recorded agent-side; costs one retry when forgotten.
+- Task briefs live in the git-ignored scratch dir, which worktrees do not share; the T2 implementer had to read the brief from the main checkout and correctly flagged it. Future dispatches should name the main-checkout path explicitly (they did, from T2 on).
+- Plan line numbers drifted (briefs cited pre-Task-1 anchors); T2's brief said so and the implementer re-anchored by quoted text - no damage, but anchor-by-text should be the default for sequential tasks.
+- The plan's e2e draft used a nonexistent JSON field (diagnostics vs config_diagnostics); the implementer caught it against the neighboring tests, per the now-ledgered brief-drafts-verified-against-tree pattern.
+
+**Moments.**
+- The whole-branch reviewer muxed a real file with the README recipe and watched the binary lie about it (mux on disk correct, exit 101, no run log) - the finding that added Task 4 (de9ec50).
+- The design-doc implementer, told to verify every brief premise, came back with "spec 5.4 contains no such sentence anywhere" - and was right.
+- The T4/Opus reviewer empirically reproduced the claimed rustfmt comment-mangling in an isolated scratch file before accepting the implementer's comment relocation (task-3 verdict, adjudication 1).
+
+**Deltas.** Plan grew one task in-flight via review routing (the established 5.5/5.7 pattern). Everything else executed as written.
+
+**Open threads.** Spec 8.4 / Renderer rustdoc still claim "English only" (stale since de shipped; ROADMAP v1.x line, next spec-touching plan). Zero-rule-keep and mixed-language pre-1.0 gates now DONE; remaining pre-1.0: README at-tag placeholders, guide/blogs at 1.0, Plan 6 on owner go. brief-prose-follows-target-file-style at count 2 - promotes to Tier 2 on a third occurrence.

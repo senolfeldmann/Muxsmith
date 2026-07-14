@@ -3313,3 +3313,133 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-review verdict harvest (ROADMAP.md mixed-language entry cites planner.rs:428/:841, current tree :440-448/:811-824)"}
+- id: brief-drafts-verified-against-tree
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "An SDD brief's literal draft (code, premises, cited line spans) is verified against the current tree and the neighboring-test/local idiom before use; divergences are adapted and SURFACED in the report, never transcribed or silently resolved. Generalizes earlier single-event entries (resolve_title brief-wording bug, packaging macOS-glob correction)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
+    - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
+- id: rustfmt-forbids-mid-chain-comments
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Comments inside builder/method chains get mangled by rustfmt into trailing comments; the viable anchor is a standalone comment above the enclosing statement. Verified empirically (mangling reproduced in isolation)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 task-3 report concern 1 + review verdict adjudication (resolve_changes comment move)"}
+- id: brief-prose-follows-target-file-style
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Prose a brief dictates into a target file (rustdoc, comments, doc/README text) follows that file's local formatting conventions (aside/dash style, paragraph wrapping); local convention governs over the brief's own presentation (e.g. double-hyphen asides over a spaced hyphen, one-line paragraphs over the brief's pre-wrapped text); operationally: grep a few neighboring paragraphs of the target file for the convention before pasting."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-14", kind: violated-corrected, ref: "plan-5.8 task-3 review findings 1+2 (report/mod.rs:88, diagnosticFluentParams.ts:26 hyphen style)"}
+    - {date: "2026-07-14", kind: violated-corrected, ref: "plan-5.8 task-2 review Minor (README passthrough subsection hard-wrapped vs the file's one-line-per-paragraph convention)"}
+- id: select-on-existing-param-before-new-wire-element
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "When a diagnostic message needs per-kind wording, select on an existing discriminating param in the Fluent catalog before adding a wire element (new param or DiagCode); the wire grows only when no existing param discriminates. Technique proven by ADR D39's $property selector."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "ADR D39 (2026-07-14-plan-5.8-decisions.md) + task-3 review verdict harvest"}
+- id: doc-recipes-verified-through-full-flow
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A paste-runnable documentation recipe is verified by running EVERY command the surrounding prose tells the user to run (validate AND dry-run AND run, human and --json), not the cheapest one; a recipe verified with validate-only shipped promising a flow whose run path panicked."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 whole-branch verdict finding 1 + harvest (README passthrough recipe, TitleAction::Set panic at report/json.rs:44)"}
+    - {date: "2026-07-15", kind: reinforced, ref: "plan-5.8 task-4 regression e2e (README recipe byte-identical through dry-run --json AND run) + task-4 review verdict harvest"}
+- id: tagged-serde-enums-struct-variants-or-roundtrip
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "An internally-tagged serde enum (#[serde(tag = ...)]) on a wire surface uses struct variants exclusively, or gets a serialization round-trip test per variant: a non-map newtype payload (Set(String), External(PathBuf), Subset(Vec<u64>)) compiles clean and panics at runtime the first time the variant is serialized."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 whole-branch verdict finding 1 root cause (planner.rs TitleAction/ChapterSource/PrimaryAttachments, report/json.rs:44)"}
+    - {date: "2026-07-15", kind: reinforced, ref: "ADR D40 + task-4 review verdict (three enums fixed, 9-variant round-trip tests; StructuredEdit/JobEvent confirmed already compliant)"}
+- id: catalog-changes-rendered-through-every-consumer
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A plan touching locales/ renders every new/changed message through EVERY real consumer pipeline (fluent-rs embedded CLI path AND @fluent/bundle built as src/i18n/index.ts does), both locales, at whole-branch review; CI's catalog_completeness guards en/fluent-rs only and the de header declares selector parity manually reviewed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 whole-branch verdict harvest (de selector render via @fluent/bundle node script closed the gap)"}
+- id: verbatim-strings-verified-by-program-diff
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Owner-approved verbatim wording (catalog PROPOSAL strings, quoted contracts) is verified by an exact programmatic diff against the source document, not by eyeballing; a script comparison catches whitespace/wrapping drift a visual scan misses."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 task-1 review verdict harvest (reviewer-side method for the D38 catalog strings)"}
+- id: dev-tripwire-with-prod-degrade
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "When core substitutes a best-effort fallback on a cannot-happen serialization/encoding path, the release-build degrade is paired with a dev-build tripwire (messaged debug_assert!) so a future regression fails in CI instead of silently emitting the fallback into a persisted artifact; complements the structured error channel used where a renderer is in reach."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-15", kind: decided, ref: "plan-5.8 task-4 fix round 1 + review verdict (plan_value debug_assert, D40 rejected-alternatives addendum)"}
