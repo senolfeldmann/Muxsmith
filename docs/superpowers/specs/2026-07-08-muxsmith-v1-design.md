@@ -268,6 +268,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `PathSeparatorInRenderedName` | error | rendered output filename contains `/` or `\` (checked on all platforms) |
 | `EmptyRenderedName` | error | rendered output stem is empty or is `.`/`..` |
 | `SourceOverwrite` | error (hard) | output path equals any input path |
+| `NonUtf8Path` | error | an argv-bound path (rendered output, external chapters file, attachment `add` file, primary or donor source) is not valid UTF-8, so command generation (6) could render it into the mkvmerge argv only with lossy U+FFFD substitution; checked at plan finalize over exactly the paths `command` renders, once per offending file; `path` (lossy rendering) and `role` (`output`/`chapters`/`attachment`/`primary`/`donor`) params carry the offender; the file's plan is dropped, so no job is ever built from a lossily-converted path (D37) |
 | `DuplicateIdentifier` | warning | two primaries yield the same identifier match (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, templates may collide |
 | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
 | `IgnoredFile` | info | extension matches but `input.pattern` does not |
