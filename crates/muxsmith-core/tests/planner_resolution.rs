@@ -1585,7 +1585,12 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.title, TitleAction::Set("Show S03".into()));
+    assert_eq!(
+        plan.title,
+        TitleAction::Set {
+            title: "Show S03".into()
+        }
+    );
 }
 
 // Task 6: title has no path-separator/empty-name invariants (unlike
@@ -1605,7 +1610,12 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.title, TitleAction::Set(String::new()));
+    assert_eq!(
+        plan.title,
+        TitleAction::Set {
+            title: String::new()
+        }
+    );
 }
 
 // Task 6: `source_stem` is available to a title template, exactly as it is
@@ -1625,7 +1635,12 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.title, TitleAction::Set("Show.S01E01".into()));
+    assert_eq!(
+        plan.title,
+        TitleAction::Set {
+            title: "Show.S01E01".into()
+        }
+    );
 }
 
 // Task 6: `tags: { global: drop, track: keep }` resolves to the matching
@@ -2089,7 +2104,7 @@ tracks:
     let fr = &batch.files[0];
     assert!(fr.plan.is_some(), "diags: {:?}", fr.diagnostics);
     let plan = fr.plan.as_ref().unwrap();
-    assert_eq!(plan.chapters, ChapterSource::External(expected));
+    assert_eq!(plan.chapters, ChapterSource::External { path: expected });
 }
 
 // Task 7: zero matches for an external chapters locator is a hard error
@@ -2196,7 +2211,7 @@ attachments:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments.primary,
-        PrimaryAttachments::Subset(vec![1])
+        PrimaryAttachments::Subset { ids: vec![1] }
     );
 }
 
@@ -2263,7 +2278,7 @@ attachments:
     let plan = fr.plan.as_ref().unwrap();
     assert_eq!(
         plan.attachments.primary,
-        PrimaryAttachments::Subset(vec![1, 2])
+        PrimaryAttachments::Subset { ids: vec![1, 2] }
     );
 }
 

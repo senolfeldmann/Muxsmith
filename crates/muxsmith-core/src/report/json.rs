@@ -11,7 +11,7 @@
 //! injected [`DiagnosticRenderer`], never synthesized here.
 
 use crate::executor::job::{JobOutcome, JobState};
-use crate::planner::Batch;
+use crate::planner::{Batch, Plan};
 use crate::report::Diagnostic;
 
 /// Renders one [`Diagnostic`] to a single human-readable line, for the
@@ -44,7 +44,7 @@ pub fn batch_document(
             serde_json::json!({
                 "source": f.source,
                 "identifier": f.identifier,
-                "plan": f.plan,
+                "plan": plan_value(&f.plan),
                 "diagnostics": rendered_diags(&f.diagnostics, renderer),
             })
         })
@@ -134,6 +134,41 @@ pub fn run_document(
         "cancelled": count(JobState::Cancelled),
     });
     base
+}
+
+/// Serializes `plan` for [`batch_document`]'s per-file `"plan"` field
+/// without ever panicking (D40, report/json.rs:44's fix): every `Plan`
+/// enum on the wire (`TitleAction`/`ChapterSource`/`PrimaryAttachments`) is
+/// now a struct variant under `#[serde(tag = "kind")]`, so `to_value`
+/// cannot fail for any `Plan` this crate can construct today (pinned by
+/// the per-variant shape tests next to the enums in `planner.rs`). The
+/// `unwrap_or` fallback exists purely so a FUTURE non-map newtype variant
+/// (the exact defect class this ADR fixes) degrades this one file's `plan`
+/// to `null` instead of crashing the whole batch document -- `null` is
+/// already `f.plan`'s wire value for an error-severity file with no plan
+/// at all (`Option<Plan>`'s ordinary `None` encoding), so this introduces
+/// no new field or shape, only an additional (today unreachable) producer
+/// of an existing value. Deliberately not a `Result`-returning
+/// `batch_document` propagated to callers: that would make a report-
+/// building regression exit non-zero after a mux that already completed
+/// successfully -- precisely Finding 1's own failure mode, reintroduced by
+/// the very code meant to fix it. The `debug_assert!` makes the fallback
+/// loud in dev/CI builds (where the whole test suite runs), so such a
+/// regression cannot ship null plans unnoticed, while release builds keep
+/// exactly the degradation described above.
+fn plan_value(plan: &Option<Plan>) -> serde_json::Value {
+    match plan {
+        None => serde_json::Value::Null,
+        Some(p) => serde_json::to_value(p).unwrap_or_else(|e| {
+            debug_assert!(
+                false,
+                "Plan serialization failed ({e}): a Plan-adjacent enum has reintroduced a \
+                 non-map newtype variant under #[serde(tag = \"kind\")] (D40); degrading this \
+                 file's plan to null in release"
+            );
+            serde_json::Value::Null
+        }),
+    }
 }
 
 /// Maps each diagnostic to its JSON value with a `"rendered"` field

@@ -271,6 +271,151 @@ fn zero_rule_keep_profile_is_a_pure_passthrough() {
     );
 }
 
+/// D40 regression (report/json.rs:44, whole-branch-verdict.md Finding 1):
+/// the README's passthrough recipe (README.md:71-78) inlined verbatim --
+/// deliberately NOT read from the file at test time, so a change to either
+/// side (recipe or test) is a visible diff, not a silent divergence; if the
+/// README recipe's YAML ever changes, this literal must be updated to
+/// match it byte-for-byte. The recipe's `title: { template: 'S{season}E{episode}' }`
+/// resolves to `TitleAction::Set`, one of the three plan enums whose old
+/// `#[serde(tag = "kind")]` + newtype-payload shape (`Set(String)`) cannot
+/// serialize under serde's internally-tagged representation: pre-fix, the
+/// mux succeeds and then `run`/`dry-run --json` panic building the
+/// `--json`/persisted report ("cannot serialize tagged newtype variant
+/// TitleAction::Set containing a string"), exit 101 after a successful mux.
+/// Pins two things: the D40 fix itself, and the recipe's own
+/// paste-runnability (a doc recipe is only proven by driving every command
+/// its prose tells the reader to run next, not the cheapest one).
+#[test]
+fn readme_passthrough_recipe_with_title_template_survives_dry_run_and_run() {
+    if !have_mkvmerge() {
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let wav = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/tone.wav"
+    );
+    let srt = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../muxsmith-core/tests/fixtures/seeds/sub.srt"
+    );
+    let media = dir.path().join("Show.S01E01.mkv");
+    assert!(
+        Command::new("mkvmerge")
+            .args(["-q", "-o"])
+            .arg(&media)
+            .arg(wav)
+            .arg(srt)
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // README.md:71-78, verbatim.
+    let profile = dir.path().join("p.yaml");
+    fs::write(
+        &profile,
+        "profile_version: 1\ninput: { pattern: 'S(?<season>\\d{2})E(?<episode>\\d{2})', extensions: [mkv] }\ntracks:\n  unmatched: keep\n  rules: []\ntitle: { template: 'S{season}E{episode}' }\n",
+    )
+    .unwrap();
+    let output_dir = dir.path().join("out");
+    let runs_root = dir.path().join("runs");
+
+    // `dry-run --json`: exit 0, exactly one valid JSON document on stdout
+    // (pre-fix: panics at report/json.rs:44 building the `Set` plan value,
+    // per README.md:91 "every command takes --json").
+    let dry = muxsmith()
+        .args(["dry-run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .args(["--output"])
+        .arg(&output_dir)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        dry.status.success(),
+        "dry-run --json must exit 0, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&dry.stdout),
+        String::from_utf8_lossy(&dry.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&dry.stdout).unwrap_or_else(|e| {
+        panic!(
+            "dry-run --json must print one valid JSON document: {e}, stderr: {}",
+            String::from_utf8_lossy(&dry.stderr)
+        )
+    });
+    let files = report["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1, "report: {report}");
+    assert_eq!(
+        files[0]["plan"]["title"],
+        serde_json::json!({"kind": "set", "title": "S01E01"}),
+        "expected the templated Set title in the plan, got: {report}"
+    );
+
+    // `run`: exit 0 (pre-fix: exit 101 -- the mux itself already succeeded,
+    // but `run.rs`'s unconditional run-document build then panicked on the
+    // same `Set` value, run.rs:274-275).
+    let run = muxsmith()
+        .args(["run"])
+        .arg(&profile)
+        .args(["--source"])
+        .arg(dir.path())
+        .args(["--output"])
+        .arg(&output_dir)
+        .env("MUXSMITH_RUNS_ROOT", &runs_root)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "run must exit 0 (pre-fix: panicked after a successful mux), stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let out_file = output_dir.join("Show.S01E01.mkv");
+    assert!(out_file.exists(), "missing {out_file:?}");
+    let ident = Command::new("mkvmerge")
+        .arg("-J")
+        .arg(&out_file)
+        .output()
+        .unwrap();
+    let j: serde_json::Value = serde_json::from_slice(&ident.stdout).unwrap();
+    assert_eq!(j["container"]["recognized"], true, "ident: {j}");
+    assert_eq!(
+        j["container"]["properties"]["title"], "S01E01",
+        "the templated title must land in the muxed output, ident: {j}"
+    );
+
+    // Run document/log persisted (D26), same summary.json shape
+    // `muxsmith_core::executor::joblog`'s own tests pin: exactly one run
+    // directory under the runs root, carrying a `summary.json` that parses
+    // and whose plan title matches what dry-run reported.
+    let run_dirs: Vec<_> = fs::read_dir(&runs_root)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(
+        run_dirs.len(),
+        1,
+        "expected exactly one persisted run directory, got: {run_dirs:?}"
+    );
+    let summary_path = run_dirs[0].join("summary.json");
+    let summary: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&summary_path)
+            .unwrap_or_else(|e| panic!("summary.json must be readable at {summary_path:?}: {e}")),
+    )
+    .unwrap_or_else(|e| panic!("summary.json must parse as JSON: {e}"));
+    assert_eq!(
+        summary["files"][0]["plan"]["title"],
+        serde_json::json!({"kind": "set", "title": "S01E01"}),
+        "persisted summary.json: {summary}"
+    );
+}
+
 /// Backdates `path`'s mtime by an hour and returns the value actually
 /// stored (re-read from the filesystem rather than trusted from memory, so
 /// any precision loss the filesystem applies is already baked into the

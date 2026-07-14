@@ -105,13 +105,13 @@ fn push_global(argv: &mut Vec<String>, plan: &Plan) {
             argv.push("--title".to_string());
             argv.push(String::new());
         }
-        TitleAction::Set(s) => {
+        TitleAction::Set { title } => {
             argv.push("--title".to_string());
-            argv.push(s.clone());
+            argv.push(title.clone());
         }
     }
 
-    if let ChapterSource::External(path) = &plan.chapters {
+    if let ChapterSource::External { path } = &plan.chapters {
         argv.push("--chapters".to_string());
         argv.push(path.display().to_string());
     }
@@ -142,7 +142,7 @@ fn push_group(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
 fn push_group_chapters(argv: &mut Vec<String>, plan: &Plan) {
     match &plan.chapters {
         ChapterSource::Keep => {}
-        ChapterSource::Drop | ChapterSource::External(_) => {
+        ChapterSource::Drop | ChapterSource::External { .. } => {
             argv.push("--no-chapters".to_string());
         }
     }
@@ -171,7 +171,7 @@ fn push_group_attachments(argv: &mut Vec<String>, plan: &Plan, source: &Path) {
 
     match &plan.attachments.primary {
         PrimaryAttachments::KeepAll => {}
-        PrimaryAttachments::Subset(ids) => {
+        PrimaryAttachments::Subset { ids } => {
             argv.push("--attachments".to_string());
             argv.push(ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","));
         }

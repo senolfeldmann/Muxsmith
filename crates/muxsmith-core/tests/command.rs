@@ -543,7 +543,7 @@ fn multi_group_plan(attachments: AttachmentPlan, chapters: ChapterSource, tags: 
 fn attachments_subset_on_primary_no_attachments_on_donor() {
     let plan = multi_group_plan(
         AttachmentPlan {
-            primary: PrimaryAttachments::Subset(vec![0, 2]),
+            primary: PrimaryAttachments::Subset { ids: vec![0, 2] },
             add_files: vec![],
         },
         ChapterSource::Keep,
@@ -715,7 +715,9 @@ fn chapters_external_emits_global_chapters_and_no_chapters_on_every_group() {
             primary: PrimaryAttachments::KeepAll,
             add_files: vec![],
         },
-        ChapterSource::External(p("/m/e.xml")),
+        ChapterSource::External {
+            path: p("/m/e.xml"),
+        },
         TagFlags {
             global_keep: true,
             track_keep: true,
