@@ -69,8 +69,10 @@ diag_codes! {
     UnsupportedProfileVersion => "unsupported-profile-version",
     /// The profile file could not be read or deserialized; `detail` carries the underlying I/O or serde message, `config_path`/`at` the failing field when known.
     ParseError => "parse-error",
-    /// `tracks` is empty: a profile must select at least one track to produce any output.
+    /// `tracks.rules` is empty while `tracks.unmatched: drop` would discard every track; a pure passthrough remux instead wants `unmatched: keep` (D38).
     NoTrackRules => "no-track-rules",
+    /// Zero track rules with `tracks.unmatched: keep`: a legal pure-passthrough remux (D38) - every primary track is copied unchanged (config-time info, emitted so an accidental delete-all-rules edit stays visible).
+    PassthroughProfile => "passthrough-profile",
     /// A rule's match expression imposes no condition at all, so it would match every track of its source (warning).
     EmptyMatchExpression => "empty-match-expression",
     /// An `extensions` list (input or locator) is empty, so no file could ever qualify as a candidate.

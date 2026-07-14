@@ -4,7 +4,8 @@ severity-info = info
 
 unsupported-profile-version = Unsupported profile_version { $found } (supported: { $supported }).
 parse-error = The profile could not be parsed: { $detail }
-no-track-rules = The profile defines no track rules; at least one is required.
+no-track-rules = The profile defines no track rules; add at least one rule, or set tracks.unmatched: keep for a pure passthrough remux.
+passthrough-profile = This profile defines no track rules and tracks.unmatched is keep: a pure passthrough remux; every primary track is copied unchanged. If this is not intended, add track rules.
 empty-match-expression = This match expression is empty and would match every track.
 empty-extensions = The extensions list must not be empty.
 invalid-regex = Invalid regular expression: { $detail }

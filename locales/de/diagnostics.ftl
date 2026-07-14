@@ -11,7 +11,8 @@ severity-info = Info
 
 unsupported-profile-version = Nicht unterstützte profile_version { $found } (unterstützt: { $supported }).
 parse-error = Das Profil konnte nicht geparst werden: { $detail }
-no-track-rules = Das Profil definiert keine Spurregeln; mindestens eine ist erforderlich.
+no-track-rules = Das Profil definiert keine Spurregeln; füge mindestens eine hinzu oder setze tracks.unmatched: keep für einen reinen Passthrough-Remux.
+passthrough-profile = Dieses Profil definiert keine Spurregeln und tracks.unmatched ist keep: ein reiner Passthrough-Remux; alle Spuren der Primärquelle werden unverändert übernommen. Falls das nicht beabsichtigt ist, füge Spurregeln hinzu.
 empty-match-expression = Dieser Match-Ausdruck ist leer und würde auf jede Spur passen.
 empty-extensions = Die Erweiterungsliste darf nicht leer sein.
 invalid-regex = Ungültiger regulärer Ausdruck: { $detail }

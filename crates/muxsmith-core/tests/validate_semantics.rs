@@ -55,6 +55,43 @@ tracks:
 }
 
 #[test]
+fn zero_rules_with_unmatched_keep_is_a_passthrough_info() {
+    let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  unmatched: keep
+  rules: []
+"#;
+    let p = from_str(y, Format::Yaml).unwrap();
+    let diags = validate(&p);
+    assert!(
+        !diags.iter().any(|d| d.code == DiagCode::NoTrackRules),
+        "keep + zero rules is a legal passthrough (D38), not NoTrackRules"
+    );
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::PassthroughProfile)
+        .expect("passthrough must be announced");
+    assert_eq!(d.severity, Severity::Info);
+    assert_eq!(d.config_path, "tracks.rules");
+}
+
+#[test]
+fn zero_rules_with_unmatched_drop_stays_an_error() {
+    let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  unmatched: drop
+  rules: []
+"#;
+    let p = from_str(y, Format::Yaml).unwrap();
+    assert!(codes(&p).contains(&DiagCode::NoTrackRules));
+    assert!(!codes(&p).contains(&DiagCode::PassthroughProfile));
+}
+
+#[test]
 fn unknown_match_property_is_flagged_with_path() {
     let p = profile("  - match: { exact: { colour_depth: 10 } }");
     let diags = validate(&p);
