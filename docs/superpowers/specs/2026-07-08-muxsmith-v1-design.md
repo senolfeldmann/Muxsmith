@@ -177,7 +177,7 @@ Conveniences:
 
 ### 4.5 Track rules
 
-`tracks` is a `{ unmatched, rules }` block, not a bare rule list: `unmatched` (`keep | drop`, default `drop`) is the policy for PRIMARY-file tracks no rule matches; `rules` carries the ordered list below.
+`tracks` is a `{ unmatched, rules }` block, not a bare rule list: `unmatched` (`keep | drop`, default `drop`) is the policy for PRIMARY-file tracks no rule matches; `rules` carries the ordered list below. `rules` may be empty when `unmatched: keep`: that is a legal pure-passthrough remux (change only title / attachments / chapters, or normalize the container) and validate announces it with the info-severity `PassthroughProfile` notice (D38). Empty rules under `drop` remain a `NoTrackRules` error.
 
 ```
 rule := {
@@ -264,6 +264,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `UnidentifiableSource` | error | a discovered primary or resolved donor exists but mkvmerge could not identify it (`detail` carries the underlying error) |
 | `UnsupportedSource` | error | mkvmerge identified the file but its container is not a supported muxing source (D21 gate: `!container_recognized || !container_supported`); fires on the primary (`kind=primary`) or, since Plan 5.5, on an external donor (`kind=donor`, `donor` names the file); the affected file's plan is dropped |
 | `EmptyPlan` | warning | a file's plan survived every finalize pass (no error-severity diagnostic, local or cross-file) but resolved zero track assignments; a `tracks.unmatched: keep` plan whose primary carries at least one track does not fire this (D20: passthrough counts as matched); per-file, reported in the batch like any other diagnostic |
+| `PassthroughProfile` | info | `tracks.rules` is empty and `tracks.unmatched` is `keep`: the profile is a legal pure-passthrough remux, every primary track copied unchanged (D38); emitted at validate time so an accidental delete-all-rules edit stays visible |
 | `OutputCollision` | error (two planned) / per policy (on-disk) | two plans render to one path (always error), or the rendered path pre-exists on disk (severity per `on_collision`: error/warning-skip/info-overwrite; 4.8) |
 | `PathSeparatorInRenderedName` | error | rendered output filename contains `/` or `\` (checked on all platforms) |
 | `EmptyRenderedName` | error | rendered output stem is empty or is `.`/`..` |
