@@ -281,11 +281,14 @@ pub fn plan_core(
 
     // SourceOverwrite is batch-wide (spec 4.8, 5.2): it needs every file's
     // resolved donors, not just the current one's, so it runs as its own
-    // pass before anything drops a plan. Then drop plans with resolution
-    // errors, so collision detection only considers files that will actually
-    // produce output; then re-drop any plan that a collision error just
-    // invalidated.
+    // pass before anything drops a plan. NonUtf8Path (D37) also runs before
+    // the first drop, so a plan whose paths cannot enter the argv never
+    // counts toward two-planned-outputs collisions. Then drop plans with
+    // resolution errors, so collision detection only considers files that
+    // will actually produce output; then re-drop any plan that a collision
+    // error just invalidated.
     detect_source_overwrites(&mut files, &primary_paths, &resolved_sources);
+    detect_non_utf8_paths(&mut files);
     finalize_plans(&mut files);
     detect_output_collisions(&mut files, policy);
     finalize_plans(&mut files);
@@ -1151,6 +1154,65 @@ fn detect_source_overwrites(
                     .with("path", path),
             );
         }
+    }
+}
+
+// Every argv-bound path of a plan must be valid UTF-8 (spec 5.2, D37):
+// `command` renders paths via `Path::display().to_string()`, which
+// substitutes invalid bytes with U+FFFD, so a non-UTF-8 path would silently
+// corrupt the mkvmerge command line instead of erroring. The identify side
+// already rejects non-UTF-8 at ingest (`Mkvmerge::identify_json`); this
+// gives the command-building side the same contract, and `command` stays
+// infallible because non-UTF-8 can no longer reach it.
+//
+// The enumeration mirrors `command`'s argv sites exactly, in argv order:
+// the output (`push_global` `--output`), an external chapters file
+// (`--chapters`), each attachment add file (`--attach-file`), then the
+// input-group sources (`push_group`): the primary (always group 0) and
+// each assignment source carrying a resolved track. A source whose
+// assignments all have `track_id: None` contributes no input group (see
+// `command::input_groups`), so it is not argv-bound and must not doom the
+// plan; if `input_groups`' membership condition ever changes, this filter
+// changes with it. Track donors are additionally covered upstream (a
+// non-UTF-8 donor fails real identification), but the invariant is guarded
+// here regardless of that induction over current callers (core-31's
+// pattern); chapters and attachment donors are never identified, so for
+// them this pass is the only guard.
+//
+// One error per offending file (deduped by path within a plan, first role
+// in argv order wins), params carrying the lossy rendering plus the role;
+// the subsequent `finalize_plans` drops the plan.
+fn detect_non_utf8_paths(files: &mut [FileReport]) {
+    for f in files.iter_mut() {
+        let Some(plan) = &f.plan else { continue };
+
+        let mut bound: Vec<(&Path, &str, &str)> = vec![(plan.output.as_path(), "output", "output")];
+        if let ChapterSource::External(p) = &plan.chapters {
+            bound.push((p.as_path(), "chapters", "chapters"));
+        }
+        for add in &plan.attachments.add_files {
+            bound.push((add.as_path(), "attachment", "attachments"));
+        }
+        bound.push((plan.source.as_path(), "primary", "input"));
+        for a in &plan.assignments {
+            if a.track_id.is_some() && a.source != plan.source {
+                bound.push((a.source.as_path(), "donor", "tracks"));
+            }
+        }
+
+        let mut seen: BTreeSet<&Path> = BTreeSet::new();
+        let mut diags = Vec::new();
+        for (path, role, config_path) in bound {
+            if path.to_str().is_none() && seen.insert(path) {
+                diags.push(
+                    Diagnostic::error(DiagCode::NonUtf8Path, config_path)
+                        .for_file(&f.source)
+                        .with("path", path.display().to_string())
+                        .with("role", role),
+                );
+            }
+        }
+        f.diagnostics.extend(diags);
     }
 }
 
