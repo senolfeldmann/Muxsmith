@@ -17,8 +17,8 @@ identify-failed = Could not identify { $file }.
 identify-not-media = { $file } is not a recognized media file.
 identify-track-line = Track { $id }: { $type } [{ $codec }] { $language }
 dry-run-file = { $file } (identifier: { $id })
-dry-run-assignment =   rule { $rule } -> track { $track }
-dry-run-output =   output: { $path }
+dry-run-assignment = {"  "}rule { $rule } -> track { $track }
+dry-run-output = {"  "}output: { $path }
 dry-run-suggestion = Suggestion for { $config_path }:
 batch-summary = { $count ->
     [one] 1 file matched
@@ -38,3 +38,4 @@ run-summary = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled
 run-joblog-unavailable = Job logs could not be written for this run; continuing without persisted logs.
 run-joblog-written = Job logs written to { $dir }
 run-joblog-incomplete = Job logs under { $dir } are incomplete; some log files could not be written.
+run-signal-handler-unavailable = The Ctrl-C cleanup handler could not be registered; graceful abort (cancelling in-flight jobs, deleting partial outputs, exit code 130) is unavailable for this run; continuing.
