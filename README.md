@@ -66,10 +66,7 @@ Happy with the plan? Same command, `run` instead of `dry-run`, `--jobs 8` if you
 
 ### Pure passthrough: a profile with zero rules
 
-A profile whose `tracks` block is `{ unmatched: keep, rules: [] }` is a
-legal pure-passthrough remux: every track of each source file is copied
-unchanged. Use it to change only the title, attachments, or chapters, or
-to normalize containers in bulk, without writing a single track rule:
+A profile whose `tracks` block is `{ unmatched: keep, rules: [] }` is a legal pure-passthrough remux: every track of each source file is copied unchanged. Use it to change only the title, attachments, or chapters, or to normalize containers in bulk, without writing a single track rule:
 
 ```yaml
 profile_version: 1
@@ -80,11 +77,7 @@ tracks:
 title: { template: 'S{season}E{episode}' }
 ```
 
-Validation announces the passthrough with an info notice
-(`passthrough-profile`), so an accidentally emptied rule list never fails
-silently. With `unmatched: drop` (the default), an empty rule list stays
-an error - a profile that drops everything and selects nothing cannot
-produce output.
+Validation announces the passthrough with an info notice (`passthrough-profile`), so an accidentally emptied rule list never fails silently. With `unmatched: drop` (the default), an empty rule list stays an error - a profile that drops everything and selects nothing cannot produce output.
 
 ## ✨ What you get
 
