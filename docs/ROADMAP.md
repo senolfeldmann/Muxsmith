@@ -78,10 +78,6 @@ action:
 - A second fixture needs a _comment-style source-of-truth note ->
   promote the T11 ad-hoc pattern to a written convention (BUILDING.md
   test section).
-- Next push to origin -> verify all three CI legs green (Plan 5.6 T8
-  rewrote the toolchain install step: rustup toolchain install +
-  explicit component add per rustup #4216; on-runner proof deferred
-  because pushes were blocked in the executing session).
 
 ## Pre-1.0 release gates
 
