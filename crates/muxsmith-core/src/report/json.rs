@@ -152,11 +152,23 @@ pub fn run_document(
 /// `batch_document` propagated to callers: that would make a report-
 /// building regression exit non-zero after a mux that already completed
 /// successfully -- precisely Finding 1's own failure mode, reintroduced by
-/// the very code meant to fix it.
+/// the very code meant to fix it. The `debug_assert!` makes the fallback
+/// loud in dev/CI builds (where the whole test suite runs), so such a
+/// regression cannot ship null plans unnoticed, while release builds keep
+/// exactly the degradation described above.
 fn plan_value(plan: &Option<Plan>) -> serde_json::Value {
-    plan.as_ref()
-        .map(|p| serde_json::to_value(p).unwrap_or(serde_json::Value::Null))
-        .unwrap_or(serde_json::Value::Null)
+    match plan {
+        None => serde_json::Value::Null,
+        Some(p) => serde_json::to_value(p).unwrap_or_else(|e| {
+            debug_assert!(
+                false,
+                "Plan serialization failed ({e}): a Plan-adjacent enum has reintroduced a \
+                 non-map newtype variant under #[serde(tag = \"kind\")] (D40); degrading this \
+                 file's plan to null in release"
+            );
+            serde_json::Value::Null
+        }),
+    }
 }
 
 /// Maps each diagnostic to its JSON value with a `"rendered"` field
