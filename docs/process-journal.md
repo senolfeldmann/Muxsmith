@@ -1005,3 +1005,65 @@ controller on Fable 5.
 Open threads: unchanged pre-1.0 queue - routed-items correctness/security
 review, zero-rule-keep passthrough (owner scope call), mixed-language
 allowed-param polish, Plan 6 on the owner's go.
+
+## 2026-07-14 | Plan 5.7 complete (routed-items pre-1.0 fixes) | session 13 (Peter, Fable 5)
+
+- The pre-1.0 gate "review the idiomacy pass's 11 routed-out items" ran as
+  a bug-hunt adjudication against current master: 1 already fixed by Plan
+  5.6 (the '|'-signature-key collision), 10 still open, 0 refuted, 0
+  release blockers. Empirical defusal along the way: the ci.yml token
+  premise (write-all) was downgraded by a live API check - the repo
+  default is read; the explicit permissions block stayed recommended.
+- Owner triage: four-item fix plan approved; the ctrlc warning bundled in
+  because its own deferral trigger ("next cli.ftl touch") fired inside
+  the very plan that would defer it; the CI double-test-run item was NOT
+  bundled (needs an empirical investigation, not a rider) and re-deferred
+  with a new observable trigger (the v1.x mise-out-of-CI work). Dry-run
+  indent ruled YES by the owner after a written pro/con comparison.
+- Plan 5.7, four parallel worktree streams, five items: T1 ci.yml
+  least-privilege permissions; T2 settings fsync-before-rename (the
+  durability rustdoc is now true - previously a power cut could leave a
+  torn settings.json that locks the GUI settings surface into a
+  persistent parse-error state); T3 dry-run indent via {"  "} Fluent
+  placeables plus the bilingual run-signal-handler-unavailable
+  degradation warning (an empirical renderer probe settled that plain
+  post-= spaces are grammar-stripped); T4 DiagCode::NonUtf8Path at plan
+  finalize per ADR D37 (argv-bound paths that fail to_str() now emit an
+  error and drop the plan instead of silently corrupting the mkvmerge
+  command via U+FFFD; Unix-only from_bytes test).
+- Mid-plan pause: the session hit its usage ceiling at 97 percent with
+  three implementers running. All stopped; a PAUSE-STATE file recorded
+  per-stream state (T1/T2 committed, T3/T4 pre-edit) and the resume
+  procedure; on the owner's go all three original agents resumed from
+  their transcripts, zero work lost. T3's mid-kill finding (the
+  isolation-mark rendering question) was carried in the pause note and
+  settled empirically after resume.
+- Reviews: all four task reviews APPROVED (T1 one comment-wrap minor,
+  amended; T2 zero findings plus a report-count nit; T3 zero findings -
+  the reviewer re-verified the indent end-to-end against the real
+  binary; T4 two minors, fixed in a fixup by the resumed implementer;
+  the T4 reviewer independently re-derived the path-role inventory and
+  proved the guard set equal to the command.rs consumer set). Whole-
+  branch verdict READY, zero findings: the one textual auto-merge (the
+  catalog completeness test took additions from both T3 and T4) verified
+  clean, and a cross-stream E2E rendered the new indent and a
+  NonUtf8Path error coexisting in one dry-run.
+- Merges sequential, full nine-part gate green after each of B, C, D.
+- Roll-up funnel (9 residue items, n-in/n-out): 3 fixed (T1 comment
+  re-wrap, T4 M1+M2), 3 recorded (T2 report-count nit documented in the
+  verdict; subagent-commit trailer set -> new ledger non-decision; the
+  8a8aabb authorship question clarified - the fixup was authored by the
+  resumed T4 implementer, not the controller), 3 promoted (spec
+  per-file/per-path wording -> cosmetic sweep K; UnknownExtension
+  misfire on attachment add locators -> v1.x line; no gate Fluent-parses
+  the de catalogs -> v1.x line).
+- Ledger harvest: six new Tier-1 entries (degradation-warning catalog
+  pattern now count 2; leading-whitespace placeable idiom;
+  consumer-anchored enumeration; selector-arm/value-set coupling;
+  subagent-trailer non-decision; provenance-carrying CI comments) plus a
+  sanctioned-exemption occurrence on ci-06 (a ci.yml-only diff is
+  unobservable by the gate; plan-scoped narrowing, reviewer-adjudicated).
+- Pushed b96f27b..af00947; CI run 29362572411 SUCCESS on all legs - the
+  permissions block's on-runner proof. Pre-1.0 queue now: zero-rule-keep
+  passthrough (owner scope call), mixed-language allowed-param polish,
+  then Plan 6 on the owner's go.
