@@ -109,6 +109,13 @@ fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
         DiagCode::PathSeparatorInRenderedName => vec![("name", "sub/dir")],
         DiagCode::EmptyRenderedName => vec![("name", "")],
         DiagCode::SourceOverwrite => vec![("path", "/in/movie.mkv")],
+        // `non-utf8-path`'s message selects on `role` (planner.rs
+        // `detect_non_utf8_paths`; values: output/chapters/attachment/
+        // primary/donor, all sharing the one `{ $path }` tail). `path`
+        // carries the lossy `display()` rendering, hence the U+FFFD. The
+        // non-default `donor` branch is exercised here (same
+        // single-fixture-per-code limitation as `UnsupportedSource`).
+        DiagCode::NonUtf8Path => vec![("role", "donor"), ("path", "/in/b\u{FFFD}d/movie.srt")],
         DiagCode::DuplicateIdentifier => vec![
             ("identifier", "movie"),
             ("file_a", "/in/movie.1080p.mkv"),

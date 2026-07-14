@@ -43,6 +43,13 @@ codec-kind-exact-only = Property "codec_kind" can only be used with exact, not {
 invalid-property-value = Value "{ $value }" is not valid for property "{ $property }". Allowed values include: { $allowed }.
 path-separator-in-rendered-name = The rendered output filename "{ $name }" contains a path separator; Muxsmith never creates subdirectories.
 empty-rendered-name = The rendered output filename is empty or invalid ("{ $name }").
+non-utf8-path = { $role ->
+    [output] The output path
+    [chapters] The external chapters file
+    [attachment] The attached file
+    [donor] The external donor file
+   *[primary] The source file
+} { $path } is not valid UTF-8 and cannot be passed to mkvmerge without corruption.
 empty-match-list = An "any" or "not" list must not be empty; remove it or add at least one sub-expression.
 unidentifiable-source = A source file exists but could not be identified: { $detail }.
 unsupported-source = { $kind ->

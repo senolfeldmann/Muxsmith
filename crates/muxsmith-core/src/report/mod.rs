@@ -150,6 +150,17 @@ diag_codes! {
     EmptyRenderedName => "empty-rendered-name",
     /// An output path equals an input path: a hard error regardless of collision policy, since sources are never modified (spec 4.8).
     SourceOverwrite => "source-overwrite",
+    /// An argv-bound path (rendered output, external chapters file,
+    /// attachment `add` file, primary or donor source) is not valid UTF-8;
+    /// command generation renders paths as strings, so it could only enter
+    /// the mkvmerge argv with lossy U+FFFD substitution. Checked at plan
+    /// finalize over exactly the paths `command` would render, once per
+    /// offending file; the plan is dropped, so no job is ever built from a
+    /// lossily-converted path (spec 5.2, D37; identify-side counterpart:
+    /// `Mkvmerge::identify_json` rejects non-UTF-8 at ingest). `path`
+    /// (lossy rendering) and `role` (`output`/`chapters`/`attachment`/
+    /// `primary`/`donor`) params carry the offender.
+    NonUtf8Path => "non-utf8-path",
     /// Two primaries yield the same identifier (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, and templates may collide (warning).
     DuplicateIdentifier => "duplicate-identifier",
     /// An external donor file is itself a primary: it will be muxed as its own output and donate tracks (warning, spec 5.2).
