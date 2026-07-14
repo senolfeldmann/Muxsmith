@@ -962,3 +962,46 @@ Tier-2 YAML headers still carried the pre-collapse source axis (missed by
 Open threads: push + CI verification trigger; routed-items
 correctness/security review (pre-1.0 gate); mixed-language allowed-param
 polish; zero-rule-keep passthrough implementation; Plan 6 on Şenol's go.
+
+## 2026-07-14 | post-5.6 operations: push, CI trigger consumed, Windows lint fix | session 12 (Peter, Fable 5)
+
+Scope: the operational tail of Plan 5.6 - pushing the local backlog,
+consuming the CI verification trigger, one Windows-only defect. Commits
+6f03ca9..2c6d13e on master.
+
+Decisions and why:
+- Push root cause found: session 11's "blocked" pushes were a
+  command-shape problem, not a policy one. The permission allow-rules
+  match only pure cd-plus-git command shapes; chaining bookkeeping
+  (an echo to gh-log) into the same command voided the match and dropped
+  the compound to a permission classifier that only knows the global
+  never-push rule. SI-4 amended with the shape rule: keep git commands
+  pure, bookkeeping separate; a denial of a compound is a denial of the
+  shape, not the action.
+- Agent-side the process doctrine was tightened the same day (recorded
+  here generically): the controller no longer edits product artifacts at
+  all - no hotfixes, no merge-conflict hunks; such changes are dispatched
+  to implementer subagents with independent review. Today's lint fix was
+  the last controller-inline edit of its kind.
+
+What the process caught:
+- The push-fired ROADMAP trigger did exactly its job: run 29320166456
+  proved the rewritten toolchain step works on all three OS legs, and
+  still failed windows-2025 on a REAL Windows-only defect - clippy
+  result_large_err on Result<Profile, Diagnostic>, because D36's
+  claimants field pushed Diagnostic to the 128-byte lint borderline and
+  file: Option<PathBuf> is 8 bytes larger on Windows (WTF-8 bookkeeping).
+  Invisible by construction to nine local gates and both unix CI legs.
+- Fix a783a63: commented allow at the two profile-load entry points;
+  boxing rejected because Diagnostic is the crate's uniform by-value
+  error currency and two boxed outliers would be the house-pattern
+  deviation. Run 29320623887 green on ALL legs; trigger line removed
+  from the ROADMAP (2c6d13e). Nothing blocks tagging from the CI side.
+
+Mechanics and metrics: 4 pushes (40-commit backlog + SI-4 snapshot + fix +
+trigger consumption), 2 CI runs (1 red, 1 green), 1 one-line code fix,
+controller on Fable 5.
+
+Open threads: unchanged pre-1.0 queue - routed-items correctness/security
+review, zero-rule-keep passthrough (owner scope call), mixed-language
+allowed-param polish, Plan 6 on the owner's go.
