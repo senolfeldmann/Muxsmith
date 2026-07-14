@@ -1067,3 +1067,16 @@ allowed-param polish, Plan 6 on the owner's go.
   permissions block's on-runner proof. Pre-1.0 queue now: zero-rule-keep
   passthrough (owner scope call), mixed-language allowed-param polish,
   then Plan 6 on the owner's go.
+
+## 2026-07-14 | Session 13 close | session 13 (Peter, Fable 5)
+
+- Muxsmith work this session: the routed-items adjudication and Plan 5.7,
+  both recorded in the entry above. Nothing Muxsmith-side happened after
+  the plan close; this entry marks the session boundary.
+- The session also carried framework-side documentation work, tracked
+  agent-side outside this repo (named generically per the publication
+  rule).
+- State at close: master f7a6a01 pushed, CI run 29362572411 SUCCESS on
+  all three legs, tree clean, plan-5.7 worktrees pruned. Pre-1.0 queue:
+  zero-rule-keep passthrough (owner scope call), mixed-language
+  allowed-param polish; Plan 6 on the owner's go. Resume via HANDOFF.
