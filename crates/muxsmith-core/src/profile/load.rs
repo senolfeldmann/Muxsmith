@@ -27,6 +27,13 @@ pub enum Format {
 /// underlying serde message in the `detail` param; unknown keys are
 /// rejected because every profile struct derives `deny_unknown_fields`
 /// (spec 4: "unknown keys are errors, not warnings").
+// Diagnostic is the crate's uniform by-value error currency; boxing it at
+// exactly these two entry points would be the lone deviation. The lint fires
+// on Windows only: `file: Option<PathBuf>` is 8 bytes larger there (WTF-8
+// OsString bookkeeping), and the structural `claimants` field (D36) moved the
+// struct into clippy's 128-byte borderline. Cold config-load path; revisit if
+// Diagnostic grows again.
+#[allow(clippy::result_large_err)]
 pub fn from_str(text: &str, format: Format) -> Result<Profile, Diagnostic> {
     match format {
         Format::Yaml => {
@@ -44,6 +51,8 @@ pub fn from_str(text: &str, format: Format) -> Result<Profile, Diagnostic> {
 /// extension. Both an I/O failure and a parse failure surface as a
 /// `ParseError` diagnostic; either way `file` is set to `path` via
 /// [`Diagnostic::for_file`].
+// Same Windows-layout borderline as `from_str` above; same deliberate call.
+#[allow(clippy::result_large_err)]
 pub fn from_file(path: &Path) -> Result<Profile, Diagnostic> {
     let format = match path.extension().and_then(|e| e.to_str()) {
         Some("json") => Format::Json,
