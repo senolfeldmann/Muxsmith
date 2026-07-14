@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege (verdict item 9): repo default verified read on
+# 2026-07-14; this explicit block guards against out-of-band default
+# changes and satisfies OSSF Scorecard.
+permissions:
+  contents: read
+
 # Pinning policy (2026-07-10): actions pinned to release commit SHAs
 # (movable tags are a supply-chain surface), runner images pinned to
 # explicit versions (no surprise -latest bumps). Renovate/Dependabot
