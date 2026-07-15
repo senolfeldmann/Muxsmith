@@ -71,6 +71,17 @@ editor's controls get their help-ids in this pass instead of a retrofit.
 
 - Help-mode sidebar, spec 8.3 full mechanics: help-ids, per-topic markdown
   per locale, hover-to-explain, click-to-pin. (D22)
+- **The profile editor's own tooltips, spec 8.3 baseline** (owner ruling
+  2026-07-16): the editor ships in Plan 6 WITHOUT tooltips, and its 42
+  controls get their tooltip keys here, in the same pass as their help-ids,
+  rather than as a retrofit - which is the re-cut's own stated reason for
+  sequencing Plan 7 after Plan 6. So `gui-editor.ftl` carries 43 keys in
+  Plan 6 (42 labels + 1 save-surface note) and grows by the tooltip set
+  here. Raised by the plan-6 plan review (F8): spec 8.3 requires "every
+  non-obvious control carries a tooltip" and D22 calls the tooltip baseline
+  "NOT deferred", which collided with the 43-key budget; the editor is
+  between Plan 6 and Plan 7 without tooltips, which is consequenceless on an
+  untagged pre-1.0 tool with no users. (2026-07-16, plan-6 plan review)
 - The spec-10 help-id completeness guard (CI fail on help-ids without a
   topic file - S17). (2026-07-11, docs-tree sweep)
 - Live in-session locale switch (T21.5-m1, bootstrap-once today; ledger
