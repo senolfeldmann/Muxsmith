@@ -579,6 +579,23 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   attachment locator under a non-media directory draws the warning meant
   for track-input extension lists). Trigger: next parity-audit round or
   diagnostics-surface work. (whole-branch verdict harvest, 2026-07-14)
+- **Nothing gates `IpcError` codes against `gui-common.ftl`**: `DiagCode` is
+  gated exhaustively (`catalog_completeness.rs` matches the enum, so a new
+  code cannot compile without its catalog message), but the shell's
+  `IpcError` codes are plain strings with no such guard, and
+  `check-i18n.mjs` downgrades them to a warning by design. So an `IpcError`
+  code can ship with no message, or with a message nothing renders. The
+  visible cost, found by the D49 review: its proposed
+  `apply-rule-index-out-of-range` line renders "the profile has 1 rules" in
+  the singular case its own test constructs, and a Fluent plural selector
+  **cannot** fix it - `IpcError.params` is `Record<string,string>` at every
+  call site (`FirstRun.vue:94`, `RunHistory.vue:155`, `JobsView.vue:246/252`)
+  and only `DiagnosticsPanel.vue:34` promotes numbers, keyed by *diagnostic*
+  code, so `[one]` would always fall to `*[other]`. The house pluralizes
+  everywhere else (`i18n-05-plural-selectors`). Two separable pieces: a
+  presence gate for IpcError codes, and number promotion for IpcError params.
+  Trigger: next CI/gate structural work, or the first IpcError message that
+  needs a plural. (2026-07-16, D49 review harvest item 5)
 - **Gate part that Fluent-parses ALL catalogs**: today no gate
   Fluent-parses the de CLI/diagnostics catalogs (check:i18n covers the
   frontend; catalog_completeness checks keys, not grammar) - the plan-5.7
