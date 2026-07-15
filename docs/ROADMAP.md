@@ -12,34 +12,56 @@ analysis live in IDEAS.md.
 Şenol's call at the Plan-6 brainstorming start: the single Plan-6 anchor
 had accumulated **20 named inputs spanning four independent subsystems**,
 so it is decomposed into Plans 6-9, each with its own spec and
-brainstorming. All 20 inputs are distributed below (6 / 5 / 1 / 8); nothing
-was dropped in the re-cut.
+brainstorming. All 20 are distributed below and every one is its own bullet
+under its plan, so the split (6 / 5 / 1 / 8) is recountable rather than
+asserted. Nothing was dropped in the re-cut.
 
-D22's editor+apply pairing is KEPT with its rationale intact (one-click
-apply IS comment-preserving YAML mutation, which the editor owns anyway);
-D22's help-mode-in-the-same-plan half is superseded by this cut. The
-ledger entries that pointed at "Plan 6" were re-pointed in the same turn
-(exec-36, exec-37, cli-08, core-121 -> Plan 9; gui-26 -> Plan 7).
+D22's editor+apply pairing is KEPT, but **not on D22's stated reason**: that
+reason was "one-click apply IS comment-preserving YAML mutation, which the
+editor owns anyway", and the 2026-07-15 save-fidelity ruling (canonical
+save, comments not preserved) killed the premise. The pairing survives on a
+different argument - both mutate the same in-memory model and must share its
+ownership - recorded in the Plan-6 design ADRs. D22's
+help-mode-in-the-same-plan half is superseded by this cut. The ledger
+entries that pointed at "Plan 6" were re-pointed in the same turn (exec-36,
+exec-37, cli-08, core-121 -> Plan 9; gui-26 -> Plan 7).
 
 ## Plan 6 (next initiative): profile editor + apply-suggestion
 
-Scope: profile editor (comment-preserving YAML round-trip is the hard
-design question and the reason apply-suggestion waited), one-click
-apply-suggestion. Starts with brainstorming.
+Scope: profile editor, one-click apply-suggestion, and the schema
+keyword-domain fix (owner call 2026-07-15, moved in with the
+schema-as-user-artifact decision). Save is canonical; comments are not
+preserved (owner ruling 2026-07-15, rationale in the design ADRs: YAML
+1.2.2 §6.6 defines no comment-to-node association, and drag-to-reorder
+would silently make surviving comments describe the wrong rule).
 
-Named design inputs:
+Named design inputs (6):
 
-- Decide schema-driven vs UI-model editor, and whether the JSON schema
-  ships as a user artifact (e.g. yaml-language-server autocomplete); if
-  either lands schema-side, add `schemars(schema_with)` overrides for the
-  keep/drop/clear keyword domains - FilenameCfg/ChaptersCfg/TitleCfg
-  schematize as `anyOf [object, string]`, the keywords live only in
-  validate.rs (Plan-1 final review minor #7, trigger "a GUI generating an
-  editor from the schema" fires with this plan). (2026-07-11, sweep
-  walkthrough #23)
-- Re-check the final fix wave's self-flagged deviation from D23's frontend
-  contract (reset gated on runActive instead of "reset after resolve Ok" -
-  "worth a second look", never taken) (S12). (2026-07-11, docs-tree sweep)
+1. Decide schema-driven vs UI-model editor. (2026-07-11, sweep walkthrough
+   #23) **RESOLVED 2026-07-15:** UI-model, hand-built components, with
+   ts-rs-generated types and a `Record<keyof T, FieldSpec>` registry as the
+   forcing function.
+2. Decide whether the JSON schema ships as a user artifact (e.g.
+   yaml-language-server autocomplete). (2026-07-11, sweep walkthrough #23)
+   **RESOLVED 2026-07-15 (owner): yes**, it becomes a supported user
+   feature.
+3. If either of the above lands schema-side, add `schemars(schema_with)`
+   overrides for the keep/drop/clear keyword domains -
+   FilenameCfg/ChaptersCfg/TitleCfg schematize as `anyOf [object, string]`,
+   the keywords live only in validate.rs (Plan-1 final review minor #7).
+   (2026-07-11, sweep walkthrough #23) **RESOLVED 2026-07-15:** in scope -
+   but NOT via the recorded trigger ("a GUI generating an editor from the
+   schema"), which input 1's resolution means would never have fired. The
+   real reason is input 2: `muxsmith schema` ships the artifact today.
+4. The profile editor itself. (D22)
+5. One-click apply-suggestion. (D22)
+6. Re-check the final fix wave's self-flagged deviation from D23's frontend
+   contract (reset gated on runActive instead of "reset after resolve Ok" -
+   "worth a second look", never taken) (S12). (2026-07-11, docs-tree sweep)
+   **Mis-filed:** the design review found it is run-path only
+   (JobsView.vue:150-200), i.e. it touches nothing Plan 6 builds. It stays
+   listed here until it is re-pointed by an owner call, rather than being
+   moved silently.
 
 ## Plan 7: help mode + i18n cluster
 
