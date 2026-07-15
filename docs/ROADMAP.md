@@ -423,6 +423,14 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   stale since the de locale shipped (Plan 5.5); one-line sweep of spec 8.4,
   non-goal 11 and the Renderer rustdoc on the next spec-touching plan.
   (plan-5.8 whole-branch verdict, out-of-range observation, 2026-07-14)
+  Rider for the same sweep: **spec 10 names a lint rule that does not
+  exist** - it credits "eslint (no-literal-string rule)" with keeping
+  hardcoded strings out of the frontend, but eslint.config.js runs
+  `@intlify/vue-i18n/no-raw-text` (deliberately, per D27, taking that one
+  rule rather than the vue-i18n presets). Correct the rule name and, while
+  there, the claimed scope: no-raw-text scans Vue template text nodes plus
+  the configured static attributes, so it cannot see a runtime-generated
+  label. (2026-07-15, Plan-6 brainstorming)
 - **Cosmetic cleanup, one pass (sweep group K)**: duplicate section-header
   comment suggestions.rs:325 vs :291 (routed-items item 3, 2026-07-14);
   spec 5.2 NonUtf8Path row wording "per file" vs implemented "per path"
