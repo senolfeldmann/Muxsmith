@@ -3443,3 +3443,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "plan-5.8 task-4 fix round 1 + review verdict (plan_value debug_assert, D40 rejected-alternatives addendum)"}
+- id: proc-latitude-clause-boundary
+  kind: non-decision
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Whether and when a task brief may carry a design-latitude clause ('if you find a materially simpler equally-safe alternative, implement and record it in the ADR') is unsettled. Owner ruling 2026-07-15: NOT adopted as a standing pattern (scope-drift risk), but deliberately kept open. Open questions: why such a clause becomes necessary at all (controller under-tracing at brief time vs genuinely contact-dependent decisions), the boundary conditions under which it may be written (single named decision point; named invariant instead of 'equally safe'; documentation duty; mandatory reviewer adjudication), and whether stop-and-ask (NEEDS_CONTEXT with a decision memo, cheap via resumption) is the better default with latitude reserved for low-stakes internal points."
+  steelman: "For latitude: some design costs (ripple breadth, hidden consumers) only materialize on contact with the code; without a sanctioned channel the implementer either ships a design known to be worse or deviates silently. Against: a standing clause on every brief licenses per-task deviation and erodes the brief's bindingness - the plan-2 lesson one level down."
+  blocked_on: "owner ruling on the boundary after the latitude-vs-stop-and-ask question matures (next occurrence of an exercised or wanted latitude)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + owner review of the session-14 process observations (adoption declined, kept open)"}
