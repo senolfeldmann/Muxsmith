@@ -1067,7 +1067,7 @@ entries:
   domain: executor
   statement: "The single eprintln! in core (queue.rs) is the first direct stderr I/O in core; the idiomatic fix is a log/tracing facade the binaries route, deferred."
   steelman: null
-  blocked_on: "Plan 6 (internal)"
+  blocked_on: "Plan 9 (internal: core/orchestration hoists; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
   status: blocked
   promoted_at: null
   count: 1
@@ -1079,7 +1079,7 @@ entries:
   domain: executor
   statement: "The rich worker-panicked message renders on no live surface (only JSON carries the token); routing JobOutcome.errors codes through the diagnostics catalog was deferred."
   steelman: null
-  blocked_on: "Plan 6 (internal)"
+  blocked_on: "Plan 9 (internal: core/orchestration hoists; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
   status: blocked
   promoted_at: null
   count: 1
@@ -1947,12 +1947,13 @@ entries:
   domain: i18n
   statement: "Core emits English prose through the allowed param at two sites, rendering a mixed-language diagnostic in de mode on the marquee language property - a residual breach of prose-free core (i18n-02); the catalog-side fix (a kind selector) was too large for the branch close and deferred to pre-1.0 polish."
   steelman: null
-  blocked_on: "pre-1.0 polish / Plan 6 (internal)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "whole-branch-verdict.md I2"}
+    - {date: "2026-07-14", kind: decided, ref: "ADR D39 (2026-07-14-plan-5.8-decisions.md) + plan-5.8 task-3 verdict: catalog-side $property selector shipped, prose allowed param off the wire (entry closure missed at the plan-5.8 close, caught at the session-15 start gate)"}
 - id: gui-01
   kind: pattern
   tier: 1
@@ -2239,7 +2240,7 @@ entries:
   domain: gui
   statement: "No live in-session locale switch (bootstrap-once architecture; a restart notice was added); a live switch was deferred as a Plan 6 candidate."
   steelman: null
-  blocked_on: "Plan 6 (internal)"
+  blocked_on: "Plan 7 (internal: help mode + i18n cluster; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
   status: blocked
   promoted_at: null
   count: 1
@@ -2783,7 +2784,7 @@ entries:
   domain: cli
   statement: "The flat config_diags JSON is unsorted, inconsistent with validate's sorted JSON; sorting for parity was deferred because consumers key on the severity field and ordering is cosmetic. Same theme as cli-01 but a distinct, deliberately-deferred decision on a specific surface."
   steelman: null
-  blocked_on: "internal: Plan 6 / idiomacy sweep"
+  blocked_on: "Plan 9 (internal: core/orchestration hoists; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
   status: blocked
   promoted_at: null
   count: 1
@@ -3095,13 +3096,14 @@ entries:
   domain: core
   statement: "The four-copy planning pipeline (~100 lines across cli dry_run.rs/run.rs and src-tauri lib.rs/run.rs) and the never-decided injectable-planner-seam interface (S4/S5/S6) are one question: a shared core plan_pipeline() IS the seam. Left undecided whether to do the hoist as an idiomacy-fix wave now or fold it into the Plan 6 profile-editor design."
   steelman: null
-  blocked_on: "Şenol's call (idiomacy-fix wave vs Plan 6 profile-editor design); reactivate when Plan 6 brainstorming starts"
+  blocked_on: "Plan 9 (internal): the vehicle half is settled (own plan, NOT folded into the editor design); the seam INTERFACE stays open as Plan 9's design question"
   status: blocked
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "ROADMAP L37"}
     - {date: "2026-07-12", kind: deferred, ref: "idiomacy-review-findings (four-copy hoist)"}
+    - {date: "2026-07-15", kind: decided, ref: "Plan-6 scope re-cut (Şenol 2026-07-15, session-15 brainstorming start): reactivation condition fired and consumed; the hoist gets its own vehicle (ROADMAP Plan-9 anchor) rather than riding the editor design"}
 - id: exec-40-persist-perjob-logs
   kind: pattern
   tier: 1

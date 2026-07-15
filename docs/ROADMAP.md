@@ -7,51 +7,100 @@ already carries a settled decision reference. History lives in the process
 journal; decisions live in the specs/memos; unbuilt product ideas with full
 analysis live in IDEAS.md.
 
-## Plan 6 (next initiative)
+## Plan-6 scope re-cut (2026-07-15)
 
-Scope fixed by D22 (plan-5 memo): profile editor (comment-preserving YAML
-round-trip is the hard design question and the reason apply-suggestion
-waited), help-mode sidebar (spec 8.3 full mechanics), one-click
-apply-suggestion, packaging/release pipeline. Starts with brainstorming.
+Şenol's call at the Plan-6 brainstorming start: the single Plan-6 anchor
+had accumulated **20 named inputs spanning four independent subsystems**,
+so it is decomposed into Plans 6-9, each with its own spec and
+brainstorming. All 20 inputs are distributed below (6 / 5 / 1 / 8); nothing
+was dropped in the re-cut.
 
-Named design input for that brainstorming (2026-07-11, sweep walkthrough
-#23): decide schema-driven vs UI-model editor, and whether the JSON
-schema ships as a user artifact (e.g. yaml-language-server autocomplete);
-if either lands schema-side, add `schemars(schema_with)` overrides for
-the keep/drop/clear keyword domains - FilenameCfg/ChaptersCfg/TitleCfg
-schematize as `anyOf [object, string]`, the keywords live only in
-validate.rs (Plan-1 final review minor #7, trigger "a GUI generating an
-editor from the schema" now fires with Plan 6).
+D22's editor+apply pairing is KEPT with its rationale intact (one-click
+apply IS comment-preserving YAML mutation, which the editor owns anyway);
+D22's help-mode-in-the-same-plan half is superseded by this cut. The
+ledger entries that pointed at "Plan 6" were re-pointed in the same turn
+(exec-36, exec-37, cli-08, core-121 -> Plan 9; gui-26 -> Plan 7).
 
-Further named inputs (2026-07-12, Plan 5.5 roll-up funnel): route
-JobOutcome.errors codes through the diagnostics catalog so
-worker-panicked renders on live surfaces (T4-i2); core logging facade
-replacing the single eprintln in queue.rs (T4-i1); reject bare `raw:`
-with empty property name at validate (T16-m1); live in-session locale
-switch (T21.5-m1, bootstrap-once today); sort JSON config_diagnostics
-errors-first for validate parity (T9-m-iv).
+## Plan 6 (next initiative): profile editor + apply-suggestion
 
-Further named inputs (2026-07-11, docs-tree sweep): the GUI test-harness
-question as ONE block - no Vitest component harness, no tauri::test
-integration harness, start_run's orchestration body untested including
-the never-decided injectable-planner-seam interface question ("to raise
-at merge time"; the merge gate passed without it) (S4/S5/S6). Re-check
-the final fix wave's self-flagged deviation from D23's frontend contract
-(reset gated on runActive instead of "reset after resolve Ok" - "worth a
-second look", never taken) (S12). resolvedTrackLabel punctuation outside
-Fluent (locale-formatting revisit, S16). The help-mode sidebar includes
-the spec-10 help-id completeness guard (CI fail on help-ids without a
-topic file - S17, previously unnamed in this anchor).
+Scope: profile editor (comment-preserving YAML round-trip is the hard
+design question and the reason apply-suggestion waited), one-click
+apply-suggestion. Starts with brainstorming.
 
-Further named inputs (2026-07-12, idiomacy review triage): hoist the
-four-copy planning pipeline into a shared plan_pipeline() core fn - this IS
-the injectable-planner-seam (S4/S5/S6), spec 5.5/7 parity-critical (~100
-lines); hoist run_batch into muxsmith_core::executor (the CLI inlines what
-src-tauri already factored); hoist runs-root resolution to core (D26
-debug-only seam duplicated CLI vs src-tauri). Plus the deferred Fluent
-message-attribute reorganization (widget facets as .attribute instead of
-suffixed siblings; touches frontend $ta + check-i18n parity). plan_pipeline
-consumes profile::validate::config_diagnostics (landed Plan 5.6 T11).
+Named design inputs:
+
+- Decide schema-driven vs UI-model editor, and whether the JSON schema
+  ships as a user artifact (e.g. yaml-language-server autocomplete); if
+  either lands schema-side, add `schemars(schema_with)` overrides for the
+  keep/drop/clear keyword domains - FilenameCfg/ChaptersCfg/TitleCfg
+  schematize as `anyOf [object, string]`, the keywords live only in
+  validate.rs (Plan-1 final review minor #7, trigger "a GUI generating an
+  editor from the schema" fires with this plan). (2026-07-11, sweep
+  walkthrough #23)
+- Re-check the final fix wave's self-flagged deviation from D23's frontend
+  contract (reset gated on runActive instead of "reset after resolve Ok" -
+  "worth a second look", never taken) (S12). (2026-07-11, docs-tree sweep)
+
+## Plan 7: help mode + i18n cluster
+
+Grouped because all five inputs land in the localization layer (Fluent
+catalogs, check-i18n, per-locale content). Sequenced after Plan 6 so the
+editor's controls get their help-ids in this pass instead of a retrofit.
+
+- Help-mode sidebar, spec 8.3 full mechanics: help-ids, per-topic markdown
+  per locale, hover-to-explain, click-to-pin. (D22)
+- The spec-10 help-id completeness guard (CI fail on help-ids without a
+  topic file - S17). (2026-07-11, docs-tree sweep)
+- Live in-session locale switch (T21.5-m1, bootstrap-once today; ledger
+  gui-26). (2026-07-12, Plan 5.5 roll-up funnel)
+- The deferred Fluent message-attribute reorganization (widget facets as
+  .attribute instead of suffixed siblings; touches frontend $ta +
+  check-i18n parity). (2026-07-12, idiomacy review triage)
+- resolvedTrackLabel punctuation outside Fluent (locale-formatting
+  revisit, S16). (2026-07-11, docs-tree sweep)
+
+## Plan 8: packaging / release pipeline
+
+Carries its own constraint set (code signing, notarization) that no other
+plan shares; orthogonal to all GUI work.
+
+- msi/dmg/deb/rpm/AppImage on release tags (spec 10; deliberately deferred
+  out of Plan 5's CI work). (D22) State established at the re-cut: the
+  ci.yml `v*` tag trigger exists but drives only the test matrix; no
+  workflow calls `tauri build`; tauri.conf.json declares
+  `bundle.targets: "all"` with all five icons present but no per-OS blocks,
+  no publisher/category, no signing or updater config; the version is
+  declared independently in Cargo.toml, tauri.conf.json and package.json
+  with no sync mechanism.
+
+## Plan 9: core/orchestration hoists + planner seam
+
+Orthogonal to every GUI plan; can run as a parallel worktree stream rather
+than in sequence.
+
+- Hoist the four-copy planning pipeline into a shared plan_pipeline() core
+  fn - this IS the injectable-planner-seam (S4/S5/S6), spec 5.5/7
+  parity-critical (~100 lines); plan_pipeline consumes
+  profile::validate::config_diagnostics (landed Plan 5.6 T11). The seam
+  INTERFACE is this plan's design question (ledger
+  core-121-planner-seam-and-hoist). (2026-07-12, idiomacy review triage)
+- The GUI test-harness question as ONE block - no Vitest component
+  harness, no tauri::test integration harness, start_run's orchestration
+  body untested ("to raise at merge time"; the merge gate passed without
+  it) (S4/S5/S6). (2026-07-11, docs-tree sweep)
+- Hoist run_batch into muxsmith_core::executor (the CLI inlines what
+  src-tauri already factored). (2026-07-12, idiomacy review triage)
+- Hoist runs-root resolution to core (D26 debug-only seam duplicated CLI
+  vs src-tauri). (2026-07-12, idiomacy review triage)
+- Core logging facade replacing the single eprintln in queue.rs (T4-i1;
+  ledger exec-36). (2026-07-12, Plan 5.5 roll-up funnel)
+- Route JobOutcome.errors codes through the diagnostics catalog so
+  worker-panicked renders on live surfaces (T4-i2; ledger exec-37).
+  (2026-07-12, Plan 5.5 roll-up funnel)
+- Reject bare `raw:` with empty property name at validate (T16-m1).
+  (2026-07-12, Plan 5.5 roll-up funnel)
+- Sort JSON config_diagnostics errors-first for validate parity (T9-m-iv;
+  ledger cli-08). (2026-07-12, Plan 5.5 roll-up funnel)
 
 ## Triggers
 
@@ -71,7 +120,10 @@ action:
   rustdoc gate (Plan 5.5 T12).
 - Fake-mkvmerge test helpers grow beyond three copies -> shared
   test-support crate (v1.x entry).
-- Plan 6 starts -> consume the named design inputs in the Plan-6 anchor.
+- Plan 7, 8 or 9 starts -> consume the named design inputs in that plan's
+  anchor. (Plan 6's instance of this trigger fired 2026-07-15 and was
+  consumed at its brainstorming: the anchor was re-cut into Plans 6-9 and
+  the inputs distributed.)
 - First real-world report of unwanted empty outputs, or a request to
   fail batches on empty plans -> IDEAS #5.
 - Next parity-audit round or output-plausibility work -> IDEAS #6.
@@ -159,7 +211,8 @@ polish entry.
 - **Test-hardening rider (sweep group T)**: DONE 2026-07-12 (Plan 5.5 T11; attachment ids empirically verified 1-based).
 - **rustdoc gate step + dead intra-doc link**: DONE 2026-07-12 (Plan 5.5 T12; gate is nine parts, four dead links fixed).
 - **Packaging pipeline**: msi/dmg/deb/rpm/AppImage on release tags (spec 10;
-  deliberately deferred out of Plan 5's CI work). Lands via Plan 6.
+  deliberately deferred out of Plan 5's CI work). Lands via Plan 8
+  (re-pointed from Plan 6 by the 2026-07-15 scope re-cut).
 - **Spec-§10 test mandates: proptest + insta**: DONE 2026-07-12 (Plan 5.5 T14 proptest =1.11.0, 18 properties + T22 insta =1.48.0, 11 redacted snapshots, CI strict).
 - **`--list-types` extension validation (spec §4.2)**: DONE 2026-07-12 (Plan 5.5 T5 input + T5.9 locators; UnknownExtension warning, model docs true).
 - **UnknownPropertySkew forward-compat path (spec §9.2)**: DONE 2026-07-12 (Plan 5.5 T15/T16 per D32 raw: opt-in + T16.5 once-per-batch SchemaDrift notice; B-8 single-field ratified; spec §9.2 amended).
@@ -248,7 +301,7 @@ polish entry.
   commits 0b3149a..a5d506b: 12 tasks + final fix wave, 64 findings + 13
   seeds applied, whole-branch verdict READY, zero behavior change except
   three sanctioned interface deltas recorded in ADR D36 + the plan-5.6
-  journal entry; the Plan-6-folded and deferred items below stay open):
+  journal entry; the plan-folded and deferred items below stay open):
   74 raw -> 73 deduped findings; 70 confirmed, 1 refuted, 2
   already-tracked, 11 routed out (correctness/security/perf), 13/13 funnel
   seeds confirmed still-open; net -483 lines, -0 deps (dep sweep clean -
@@ -264,17 +317,18 @@ polish entry.
     version key) ship after a quick doc re-check (drop-in either way).
     Funnel seeds folded in by nature; two also appear under tracked -
     dedupe when planning.
-  - FOLDED INTO PLAN 6 (share the run/plan-orchestration territory of the
-    planner seam): the four-copy planning pipeline (~100 lines, spec 5.5/7
+  - FOLDED INTO PLAN 9 (re-pointed from Plan 6 by the 2026-07-15 scope
+    re-cut; they share the run/plan-orchestration territory of the planner
+    seam): the four-copy planning pipeline (~100 lines, spec 5.5/7
     parity-critical - a shared plan_pipeline() IS the never-decided
     injectable-planner-seam S4/S5/S6); run_batch hoist to
     muxsmith_core::executor; runs-root resolution hoist to core.
-  - DEFERRED (tracked v1.x/Plan-6): the Fluent message-attribute
+  - DEFERRED (tracked Plan-7; re-pointed 2026-07-15): the Fluent message-attribute
     reorganization (widget facets as .attribute vs suffixed siblings) -
     changes message IDs, needs coordinated frontend $ta + check-i18n parity
     work; distinct from the comment-level fix that ships now.
-  - KEPT as deliberate scaffold: the ci.yml `v*` tag trigger (Plan 6
-    packaging will consume it).
+  - KEPT as deliberate scaffold: the ci.yml `v*` tag trigger (Plan 8
+    packaging will consume it; re-pointed 2026-07-15).
   - Refutation accepted: BatchView's withDefaults is not deprecated in Vue
     3.5, and reactive-props-destructure would make it the lone outlier vs
     five sibling components (house convention).
