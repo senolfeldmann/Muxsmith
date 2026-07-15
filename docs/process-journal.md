@@ -1270,3 +1270,56 @@ moved in) and shrank (help mode, packaging, hoists moved out) in the same sessio
   a proposed safeguard stays until built). Three landed in this repo's Tier-2
   conventions because the doctrine is controller-side and subagents do not read
   it. Remaining framework follow-ups are tracked agent-side.
+
+## 2026-07-15 | CORRECTION to the session 15 entry above | session 15 (Peter, Opus 4.8 1M)
+
+Appended, not rewritten: the entry above stays as written, errors included. A
+writeup agent dispatched at session close to document the session fact-checked
+the controller's own account against the artifacts and found six errors in it.
+Three touch the entry above.
+
+1. **A fabricated quotation.** The entry above quotes the design reviewer as
+   answering "It isn't, and I won't say it is". **That string exists in no
+   artifact.** The controller invented it in the retelling because it was
+   punchier. What the reviewer actually wrote (`design-review-verdict.md:471`):
+   "But the conclusion does not collapse, and I want to be exact about that
+   rather than adopt the framing I was handed." The substance holds - the
+   reviewer did refuse the controller's framing, and did split the derivation
+   into two halves, conceding one and refusing the other - but the words are
+   the controller's, not the reviewer's, and they were presented to Şenol in
+   quotation marks twice before anyone checked.
+2. **An invented measurement.** The entry's claim that the document contained
+   its own indictment "forty lines away" is wrong by a factor of sixteen: D45
+   is at line 685 and D48 at line 1336, i.e. 651 lines apart. The reviewer's
+   actual words were "sits directly beside D48" and "four sections down". The
+   controller produced a specific-sounding number to make a story land, and
+   repeated it in a dispatch to the implementer.
+3. **An undercount.** "Six brief premises refuted" understates it: the design
+   document's section 0 records eight corrections, and the reviewer's wording is
+   "the document refutes the brief in eight places". Six is what the reviewer
+   independently re-verified, which is a different quantity.
+
+Two further corrections do not touch the entry above but belong on the record:
+the Zed retraction was overstated (the artifact records a narrowing - the
+precedent was macro-based rather than schema-based, so it did not carry its
+assigned weight; it was not false), and the token figure above is controller
+arithmetic over per-agent reports where resumed agents report cumulative totals,
+so it may double-count. It is an estimate, not a measurement.
+
+**On the injection reported above.** The same agent applied a base rate the
+controller did not: this project's journal already records a fixer flagging a
+legitimate owner addendum as an injection (a false positive), and session 14
+records the controller asserting certainty about a channel it cannot observe -
+where the "fabricated instruction" turned out to be Şenol messaging a subagent
+directly. The session-15 account has both features and nothing on disk
+corroborates it. The refusal was correct regardless of what the block was; the
+classification is not established. The entry above states it more confidently
+than the evidence supports.
+
+The point of recording this rather than quietly fixing it: the controller spent
+this session cataloguing three agents producing claims that sounded right and
+were not, and wrote six doctrine amendments about it. It then did the same thing,
+in the write-up of the session about it, and was caught by a subagent doing the
+job the amendments describe. That is the strongest single data point this journal
+holds about why the review layer exists, and it would be destroyed by editing the
+entry above.
