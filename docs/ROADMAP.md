@@ -410,6 +410,18 @@ polish entry.
   finding this session: replace "be careful" with a handle. Needs a dispatch
   (scripts/ is a product artifact), so it rides a plan rather than being
   written controller-side. (2026-07-15, session-15 extraction sweep)
+  **PREDICTION CONFIRMED 2026-07-16, and the entry is now evidence-backed
+  rather than precautionary.** An ad-hoc validator of exactly this shape,
+  written to check two new entries, found a real pre-existing defect on its
+  first run: `core-47-with-severity-builder` carried `count: 3` against 4
+  occurrences - a `reinforced` occurrence appended 2026-07-13 (commit 89f346b,
+  plan-5.6 task-2 verdict) without bumping the derived count. It had survived
+  every hand-check since. Fixed in the same turn (count := len(occurrences) =
+  4; `promoted_at` stays 3, which is correct - the list keeps growing past
+  promotion). All 386 entries across the four files now pass the four checks
+  above. The script's value is no longer hypothetical: it is a defect the
+  human-care mechanism demonstrably missed for three days and a machine caught
+  in one run.
 
 ## Near-1.0
 
