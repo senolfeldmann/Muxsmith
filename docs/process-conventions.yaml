@@ -312,3 +312,18 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-10", kind: deferred, ref: "memo D29"}
+- id: proc-latitude-clause-boundary
+  kind: restraint
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "A task brief never carries an unresolved design question and never a design-latitude clause ('if you find a simpler equally-safe alternative, implement it' is banned). Every decision a task requires is settled in spec/ADR/brief before dispatch, or the dispatch waits. A fork discovered mid-task returns as NEEDS_CONTEXT with a decision memo (options, costs against the named invariants, recommendation); routing by fork nature: product-scope or user-visible behavior -> the governing human, always; internal technical/process forks -> the controller decides and records it (ADR when interface/wire-format relevant)."
+  steelman: "For latitude: some design costs (ripple breadth, hidden consumers) only materialize on code contact, and a sanctioned+documented+adjudicated deviation beats a silent one - the plan-5.8 T4 case produced a correct result this way. Rejected because: a sanctioned fork licenses per-task scope drift and erodes the brief's bindingness; a real developer would not decide such a question alone either; stop-and-ask via cheap resumption achieves the same surfacing with decision authority kept central."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
+    - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
