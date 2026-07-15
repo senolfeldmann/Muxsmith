@@ -3430,3 +3430,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "plan-5.8 task-4 fix round 1 + review verdict (plan_value debug_assert, D40 rejected-alternatives addendum)"}
+- id: core-derive-dont-restate
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Where the same knowledge must exist twice, derive the second copy from the first so the two can never drift; where the tooling cannot derive it, the fallback is a guard test that fails the build when the copies disagree, NEVER an accepted gap. Candidate parent of the single-source-of-truth instances already recorded piecemeal; harvested from the plan-6 design review, which observed it at three sites and named the keyword-array case as its negative instance."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "capability/mod.rs:125-129 - CODEC_KIND_NAMES derived from CODEC_KINDS, the rationale in its own doc comment: 'Derived from CODEC_KINDS rather than hand-re-listed, so the two can never drift'"}
