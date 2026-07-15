@@ -357,6 +357,26 @@ polish entry.
   adjudication verdict). Four re-deferrals below (v1.x + Triggers).
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
+## Ledger hygiene (owner disposition pending)
+
+- **12 blocked ledger entries are stale; the owner disposes per entry.**
+  The 2026-07-15 blocked-pool audit (report:
+  `docs/process-journal/artifacts/2026-07-15-ledger-blocked-pool-audit.md`,
+  commit ac5db2b) checked all 27 `status: blocked` entries against the real
+  tree: 12 ALREADY-DONE (condition cleared AND the work is visibly in the
+  tree), 12 STILL-BLOCKED, 3 UNCLEAR, 0 FIRED. The 12 need a per-entry
+  ruling before they are closed; the controller is the ledger's single
+  writer and does not self-dispose them. The 3 UNCLEAR entries name no
+  observable event at all, so no repo state can ever clear them - decide
+  whether they are re-triggered or dropped (all three are tracked for real
+  in v1.x below, so the ledger condition is decoration).
+  Structural question the audit raised, open: zero entries landed in FIRED,
+  i.e. there is no "condition cleared, work outstanding" state, because the
+  conditions do not drive the work - plans do, and they sweep up blocked
+  items incidentally while the ledger finds out afterwards or never. Whether
+  the plan-close gate gains a sweep step, or the mechanism itself is
+  misdesigned, is an owner call.
+
 ## Near-1.0
 
 - **Requirements-catalog derivation (product-baseline-desktop)**: at 1.0,
