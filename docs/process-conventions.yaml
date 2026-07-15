@@ -330,3 +330,20 @@ entries:
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14, round 3): contested/tough defined by observable criteria replacing the controller-flag trigger; doctrine §7 amended"}
+- id: proc-57-briefs-not-ground-truth
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "A claim a brief or plan uses as a LOAD-BEARING PREMISE of a decision is verified at the source before it is acted on, whether or not the controller tagged it VERIFY-FIRST; incidental facts are not. The tag survives as a pointer - it says where the controller already doubts - but is no longer the gate: nobody tags the premise they are sure of, so a tag-gated duty catches only known unknowns, and the misses cluster in the untagged set by construction. Refuting a premise is a valid completion (keep + record), never a failed task. Complements proc-07 rather than replacing it: proc-07 cuts on SUBJECT (tooling and dependency behavior, wherever it appears), this cuts on ROLE (premise of a decision, whatever its subject); neither subsumes the other."
+  steelman: "A brief carries dozens of claims; a duty to re-verify all of them turns every task into an audit and doubles its cost, and an unenforceable rule gets ignored - a narrow rule that holds beats a broad one nobody follows. The VERIFY-FIRST tag exists precisely so the controller can point at what matters, and the controller is usually right about what matters. Rejected because the evidence runs the other way: every recorded miss to date was untagged, which is not bad luck but the mechanism - a controller cannot tag a doubt it does not have. Scoping to load-bearing-premise-of-a-decision, rather than to every claim, keeps the cost bounded without keeping the blind spot."
+  blocked_on: null
+  status: settled
+  promoted_at: 4
+  count: 4
+  occurrences:
+    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict: the brief's anchor list summed 19, stated 20, real 21 - untagged arithmetic over the tree"}
+    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1: the brief asserted rust-toolchain.toml components apply on a bare rustup toolchain install (false, rustup #4216); untagged, only the reviewer caught it; fix 308effc"}
+    - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief premise 'the apply logic exists as a test helper, hoist it' refuted by the design implementer: tests/suggestions.rs:95 is a fixture generator that takes no Profile and mutates nothing; untagged"}
+    - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15): the duty binds on ROLE - a load-bearing premise of a decision, tagged or not - and not on every incidental fact; contested scoping question closed"}

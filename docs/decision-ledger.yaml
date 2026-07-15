@@ -3187,21 +3187,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-13", kind: decided, ref: "commit c740bf4 (Plan 5.6 T7); task-7 verdict harvest"}
-- id: proc-57-briefs-not-ground-truth
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "A brief's or plan's load-bearing claims (line counts, external-tool behavior) are re-verified at implementation/review time; proc-07 scoping question raised: verify-against-source applies to UNTAGGED load-bearing claims too, not only items tagged VERIFY-FIRST. Two Plan-5.6 data points: T4's anchor list summed 19 vs stated 20 vs real 21; T8's brief asserted rust-toolchain.toml components apply on bare rustup toolchain install (false, rustup #4216) and only the reviewer caught it."
-  steelman: null
-  blocked_on: null
-  status: contested
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict (anchor arithmetic)"}
-    - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1 + controller confirmation (rustup #4216); fix 308effc"}
 - id: cli-degradation-warning-catalog-key
   kind: pattern
   tier: 1
