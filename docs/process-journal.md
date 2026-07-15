@@ -1148,3 +1148,125 @@ sharpening, d293016 matrix headers), all pushed, no CI-relevant diff.
 
 **Open threads.** Plan 6 on the owner's go (unchanged); at-1.0
 deliverables unchanged.
+
+## 2026-07-15 | Plan 6 design (spec) complete, not yet planned | session 15 (Peter, Opus 4.8 1M)
+
+**Scope.** Plan-6 anchor re-cut, the Plan-6 design document written and approved
+through four review rounds, no code. Commits e107bd8..7dac970. The design is
+`docs/superpowers/specs/2026-07-15-plan-6-design.md` (D41-D48, 1951 lines).
+Execution planning deliberately deferred to a fresh session.
+
+**Decisions and their why.**
+- Plan-6 anchor re-cut into Plans 6-9 (Şenol). The anchor had accumulated 20
+  named inputs across four independent subsystems; one spec could not answer
+  YAML round-trip, help mechanics, code signing and the planner seam at once.
+  Plan 6 keeps editor + apply-suggestion (D22's pairing) and gained the schema
+  keyword-domain fix; help mode + i18n -> 7, packaging -> 8, core hoists -> 9.
+- Save is canonical, comments not preserved (Şenol). Chosen on cost, then
+  re-grounded on a better reason after research: YAML 1.2.2 section 6.6 defines
+  no comment-to-node association, so drag-to-reorder would silently leave
+  comments describing the wrong rule. Dropping them is honest; carrying them
+  through a structural rewrite lies. Rejected alternative recorded with its
+  steelman (a splice pair that preserves comments byte-exactly on additive
+  edits) plus the landmine found in it: it silently follows YAML aliases and
+  would rewrite a shared anchor.
+- Editor: ts-rs-generated types, hand-built components, a `Record<keyof T,
+  FieldSpec>` registry as the forcing function (Şenol set the requirement:
+  the Rust model is the single source of truth). Schema-driven form generation
+  rejected: no `anyOf` renderer exists, generated labels would put English core
+  prose into a bilingual UI, and the spec-8.2 surface is not generator-shaped.
+- The schema becomes a supported user artifact (Şenol): users point
+  yaml-language-server at `muxsmith schema` and author profiles with
+  completion. That, not the GUI, is why the keyword-domain fix landed here.
+- Canonical save omits default-valued fields (Şenol, escalated correctly by the
+  design implementer rather than decided). Measured: reference.yaml 80 -> 141
+  lines emitting, 112 omitting. The remaining +32 is formatting normalization,
+  which nothing removes.
+
+**What the process caught.** Twelve findings across four rounds, none contested.
+- The brief claimed apply logic existed as a test helper to hoist. It does not:
+  `tests/suggestions.rs:95` takes no Profile and emits a hardcoded document.
+  Refuted by the design implementer at the source. Originated in the brief.
+- The brief claimed the rejected YAML splice pair sat on the `yaml_serde`
+  already in the tree. `yamlpath` depends on tree-sitter-yaml; the controller
+  had verified one half of a pair and spoken for both. Originated in the brief.
+- A naive "omit defaults" destroys the ruled-legal pure-passthrough profile:
+  `KeepDrop::default()` is Keep while `tracks.unmatched` defaults to Drop, so
+  `unmatched: keep` would be omitted and reload as `drop`. Demonstrated by the
+  implementer, reproduced by the reviewer. Originated in the design.
+- `skip_serializing_if` strips the `default` keyword from the published schema:
+  all 17 annotations gone from the artifact D47 promotes, in the plan that
+  improves it. Caught by the implementer, measured by the reviewer (pristine 17,
+  patched 0).
+- An ellipsis in a variant list was hiding a real defect: closing
+  `export_to = "..."` exposed a shape that would emit 20 binding files, not one.
+  Round-1 reviewer raised the ellipsis; the implementer found the bug closing it.
+- "D48 cannot derive" was false. `schemars(extend)` takes arbitrary expressions;
+  the reviewer refuted it by compiling it, and the resulting fix surfaced a
+  three-of-seventeen divergence neither had predicted.
+- All six of the document's ROADMAP citations misresolved: the controller had
+  corrected the ROADMAP ten minutes before the document's last write.
+- Session-start gate found a ledger entry at `blocked` that an ADR had resolved
+  the previous day. The follow-up audit (`docs/process-journal/artifacts/
+  2026-07-15-ledger-blocked-pool-audit.md`) found 12 of 27 blocked entries stale.
+
+**Process mechanics and metrics.** Roughly 1.6M subagent tokens for one spec,
+excluding a writeup still running. Nine distinct subagents; the design
+implementer and the design reviewer were resumed across four rounds each rather
+than re-dispatched. All dispatches ran without a model override, i.e. on the
+controller model, Opus 4.8 (1M). Findings per round: 2 Major + 6 Minor, 1 Major +
+3 Minor, 1 Major + 1 Minor, APPROVED with none. One NEEDS_CONTEXT escalation,
+correctly routed. Six brief premises refuted by the implementer, two controller
+artifacts (ROADMAP, published analysis) corrected as a result.
+
+**Friction and failure.**
+- Every controller error this session was a borrowed or assumed claim that
+  favored its own position: an invented editor/foreign-profile distinction with
+  no basis in the model (Şenol: "profil ist profil"), a hand-build
+  recommendation whose premise was never checked until Şenol asked what the
+  idiomatic approach was, and a third-party claim relayed as fact until Şenol
+  asked whether it held (it did not).
+- The controller edited the ROADMAP under an implementer that was citing it.
+- The controller relayed a reviewer's harvested pattern to Şenol as a success
+  and wrote it nowhere. Şenol found the gap by trying to look the rule up.
+- Controller reports degraded into bare identifiers and jargon until Şenol
+  objected that he had no context and does not read subagent conversations.
+- An instruction arrived through a tool-output channel claiming to be a
+  meta-instruction and telling the reviewer to wrap up and summarize. The
+  reviewer refused it, ran three more checks, and one of those exposed the
+  fixture-generator finding. Repo, framework and hooks were ruled out by grep as
+  its source; the origin is a layer the session could not see.
+- Two documents shipped with denylisted quote glyphs because the doc build did
+  not run its own audit. Fixed at the build.
+
+**Moments.**
+- The reviewer refused the controller's framing verbatim: the controller wrote
+  that a weak premise would make the whole enumeration arbitrary; the reviewer
+  answered "It isn't, and I won't say it is" and showed only one of two halves
+  leaned on it. The controller's false binary would have destroyed correct work.
+- The reviewer reversed itself after testing: "The overshoot is a better fix. I
+  was wrong" - it had harvested a pattern in round 1 and then recommended the
+  weaker instrument against its own pattern.
+- Three false claims in one round shared one shape: a rationale concluding the
+  work is unnecessary, reached without running anything. The third appeared in
+  the same document that had just conceded the pattern in writing.
+
+**Deltas.** The design phase ran four review rounds for a document, which the
+process had not budgeted for; each round found real defects, and the last one
+found a regression the fix itself introduced. The plan-6 scope grew (schema fix
+moved in) and shrank (help mode, packaging, hoists moved out) in the same session.
+
+**Open threads.**
+- Plan 6 execution planning: not started, next session.
+- 12 stale ledger entries and 3 whose conditions name no observable event need a
+  per-entry owner disposition (ROADMAP "Ledger hygiene").
+- The audit's structural question: zero entries landed in "condition fired, work
+  outstanding", because conditions do not drive the work - plans do, and sweep
+  up blocked items incidentally. Whether the mechanism itself is misdesigned is
+  open.
+- Framework-side: the process doctrine gained six amendments this session
+  (latitude by omission, ADR steelman requirement, escalation legibility, a
+  verdict-arrival harvest gate, a no-work-needed reviewer check, and a rule that
+  a proposed safeguard stays until built). Three landed in this repo's Tier-2
+  conventions because the doctrine is controller-side and subagents do not read
+  it. Remaining framework follow-ups are tracked agent-side.
