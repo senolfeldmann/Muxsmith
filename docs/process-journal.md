@@ -1113,3 +1113,38 @@ allowed-param polish, Plan 6 on the owner's go.
 **Deltas.** Plan grew one task in-flight via review routing (the established 5.5/5.7 pattern). Everything else executed as written.
 
 **Open threads.** Spec 8.4 / Renderer rustdoc still claim "English only" (stale since de shipped; ROADMAP v1.x line, next spec-touching plan). Zero-rule-keep and mixed-language pre-1.0 gates now DONE; remaining pre-1.0: README at-tag placeholders, guide/blogs at 1.0, Plan 6 on owner go. brief-prose-follows-target-file-style at count 2 - promotes to Tier 2 on a third occurrence.
+
+## 2026-07-15 | session 14 close (post-plan-5.8 tail) | session 14 (Peter, Fable 5)
+
+**Scope.** The session tail after the Plan 5.8 close entry: the owner
+process review and its residue in this repo, commits fda1e7b..d293016.
+
+**Decisions and their why.** The owner reviewed the session's process
+observations and ruled on the open latitude question: a task brief never
+carries an unresolved design question and never a design-latitude clause
+("implement a simpler alternative if you find one" is banned); a fork
+discovered mid-task returns as NEEDS_CONTEXT with a decision memo
+(options, costs against named invariants, recommendation), routed by
+nature (product-visible -> the owner, internal -> controller, recorded).
+Reasoning: a sanctioned fork is scope drift by license, and no
+functioning software house leaves such a ticket; stop-and-ask via cheap
+agent resumption achieves the same surfacing with decision authority
+kept central. The ledger non-decision (proc-latitude-clause-boundary)
+was resolved and promoted to Tier 2 per the human-decides-at-count-1
+matrix rule, steelman preserved. A second ruling extended the promotion
+matrix: agent-emergent NEW STANDING STRUCTURES (a new tracker/file
+class, e.g. a new deferral-vehicle type) escalate like product
+boundaries instead of auto-promoting at recurrence - structures are
+binary-existent, recurrence of the controller's own use is
+self-confirmation; both Tier-2 header comments carry the new row. The
+owner's recorded reservation: the matrix accrues exception rows;
+acceptable now, a cleaner unified ruleset deferred. The general process
+doctrine gained the corresponding rules plus a deferral
+vehicle-selection cascade; those amendments live agent-side.
+
+**Process mechanics.** No code changes; three conventions commits
+(fda1e7b ledger non-decision, 7ba46a2 promotion, fe1a1f1 criteria
+sharpening, d293016 matrix headers), all pushed, no CI-relevant diff.
+
+**Open threads.** Plan 6 on the owner's go (unchanged); at-1.0
+deliverables unchanged.
