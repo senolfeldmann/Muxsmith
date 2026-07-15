@@ -234,7 +234,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-09", kind: violated-corrected, ref: "fix plan F6"}
     - {date: "2026-07-09", kind: violated-corrected, ref: "independent review Reviewer 2 #10"}
@@ -419,6 +419,20 @@ entries:
     - {date: "2026-07-11", kind: deferred, ref: "task-16 verdict (per-file warner dropped, open question)"}
     - {date: "2026-07-12", kind: decided, ref: "memo D32 addendum RESOLVED / plan T16.5"}
     - {date: "2026-07-12", kind: reinforced, ref: "task-16.5 verdict (shipped)"}
+- id: core-124-error-currency-split
+  kind: pattern
+  tier: 2
+  source: human
+  nature: technical-code
+  domain: core
+  statement: "core's two error currencies split by NATURE, not by layer. A Diagnostic (DiagCode + params, rendered from diagnostics.ftl) describes a problem with the profile or the plan - the artifact's content is wrong. An OPERATIONAL failure of a core routine (IO, serialization) is not a profile problem and never becomes a Diagnostic: it gets its own error enum (SettingsError/SaveError/ApplyError shape) that the shell maps to an IpcError code in gui-common.ftl, per src-tauri/src/error.rs:8-15 ('an IpcError describes an IPC-protocol-level failure the caller cannot proceed past ... an unreadable path'). Corollary: never reuse ParseError for a non-parse failure - its catalog prose asserts a parse ('The profile could not be parsed: { $detail }') and would render a false statement for a full disk. A new DiagCode is never the cheap way out: catalog_completeness.rs matches DiagCode exhaustively, so every added code forces new bilingual user-facing prose."
+  steelman: "For a Diagnostic: profile::load::from_file returns Result<Profile, Diagnostic>, and a writer that mirrors the loader should mirror its error currency - symmetry was D41's own stated reason for the writer's shape. The CLI, which D41 says gets save 'for free if it ever needs it', consumes Diagnostics natively and would need its own mapping for a SaveError. Rejected because the loader's Diagnostic is right for a reason that does not transfer: a parse failure IS a profile problem (the file's content is wrong), whereas a write failure leaves a valid model and a full disk."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "Şenol ruling (session 16, plan-6 fork 1): the plan-6 design fixed D41's writer at Result<_, Diagnostic> (design :132-133) while its own catalog table budgeted only save-failure IpcError codes in gui-common.ftl (:1737) and no diagnostics.ftl row; no write DiagCode existed. Ruled: SaveError{Io,Serialize} -> IpcError profile-save-io-failed/profile-save-failed. Design amended by plan-6 task 1"}
 - id: exec-19-delete-partial-errsurface
   kind: pattern
   tier: 2

@@ -325,12 +325,13 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14, round 3): contested/tough defined by observable criteria replacing the controller-flag trigger; doctrine §7 amended"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "Şenol ruling (session 15): the ban widened to every artifact an implementer reads and to LATITUDE BY OMISSION. Evidence: the plan-6 design document mandated 'one registry per edited struct' and never listed the structs, and the reviewer's keyword scan passed it clean; three controller fix-round dispatches carried 'push back rather than complying', which the implementer read as licence to decide-then-report. doctrine §3 amended"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "Second omission instance in the SAME approved design document, found at plan-authoring after four review rounds: D41 fixed the save writer at Result<_, Diagnostic> (:132-133) but never named the DiagCode, and none exists in report/mod.rs's diag_codes! for a write/IO failure. The implementer would have had to invent a user-facing diagnostic code AND its en+de prose (catalog_completeness.rs matches DiagCode exhaustively). The document's own 'Every fork in this document is closed' (:11) and section 8's 'What the implementer must not decide' both passed it. Escalated per this entry's routing rule (user-visible -> the governing human); Şenol ruled SaveError -> IpcError (core-124-error-currency-split)"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2
@@ -376,3 +377,19 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15), applied retroactively to the already-approved plan-6 design document: its own proposed schema-annotation guard had been dropped as 'a tautology' (reviewer proposed, implementer complied, neither able to check it) in the same round where that rationale shape had already produced three false claims. Guard restored; the tautology analysis re-aimed onto a falsifiable trigger. doctrine §3 amended"}
+- id: proc-normative-count-recomputed
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A COUNT stated in a normative document ('20 named inputs', '11 variants', 'two new Fluent keys', 'the split is 6/5/1/8') is a claim about an enumeration that sits elsewhere in the same document, and it is recomputed from that enumeration - by the author when writing it and by the reviewer when grading it. Never asserted from the drafting intent. The trigger is readable, which is what makes this a check and not an exhortation: you are typing a number that summarizes a list. Two failure shapes, both recorded: the count contradicts its own list (recount and fix), or the list does not exist yet (that is latitude by omission - proc-latitude-clause-boundary - and the count is unauthorable until the enumeration is written, which is the stronger reason to write it)."
+  steelman: "Counts are decoration: the enumeration is what binds, a reader who needs the number can count the rows, and a wrong count has never by itself produced a defect - so a rule policing them spends review attention on cosmetics. Rejected on the recorded evidence: the plan-6 design's own D45 recount ('the label said 11 while the union defined 10') sat forty lines from where that same document raised the identical defect against the ROADMAP, which is not a cosmetic failure but a reliable signal that the enumeration behind the number was never walked. Where the count was checked, the walk found real defects (the ROADMAP recount exposed 4 unlisted design inputs; closing D45's ellipsis exposed a 20-file defect it had been hiding)."
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-15", kind: violated-corrected, ref: "ROADMAP Plan-6 re-cut asserted '(6 / 5 / 1 / 8)' over '20 named inputs'; recounted to 16 because Plan 6 listed 2 inputs, not 6. Found by the plan-6 design implementer, fixed in fdcdcba; the ROADMAP now numbers every input so the split recounts (design §7 item 9)"}
+    - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design D45 labelled its FieldWidget union '11 variants' while the union it sat above defined 10; self-caught during the review rounds and recounted mechanically (design :798-800), which the document itself notes happened 'forty lines from where it raised' the same defect against the ROADMAP"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 design D41 :278 said the save-surface note is 'Two new Fluent keys' while section 2's table (:1736) and its arithmetic (:1749, 'gui-editor.ftl carries 43: the 42 registry labels plus the save-surface note') both said one; the cross-reference beside it ('D47's catalog table') was dangling - D47 has no catalog table. Found at plan-authoring after four review rounds; Şenol ruled one key (session 16, plan-6 fork 2). Design amended by plan-6 task 1"}
