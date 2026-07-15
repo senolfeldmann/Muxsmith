@@ -399,6 +399,18 @@ polish entry.
   the plan-close gate gains a sweep step, or the mechanism itself is
   misdesigned, is an owner call.
 
+- **`ledger-lint` script (v1.x, or a rider on the next plan that touches
+  `scripts/`)**: the ledger's anti-fabrication rule -
+  `count == len(occurrences)`, every `ref` citing a real artifact - is enforced
+  by nothing but controller care. It was hand-checked three times in session 15
+  and held each time, which is exactly the state that ends badly once. A
+  ~30-line script over the three YAML files makes it mechanical: count
+  integrity, no empty refs, no `status: blocked` without a `blocked_on`, no
+  Tier-2 entry with `promoted_at: null`. Same formal move as every other
+  finding this session: replace "be careful" with a handle. Needs a dispatch
+  (scripts/ is a product artifact), so it rides a plan rather than being
+  written controller-side. (2026-07-15, session-15 extraction sweep)
+
 ## Near-1.0
 
 - **Requirements-catalog derivation (product-baseline-desktop)**: at 1.0,
