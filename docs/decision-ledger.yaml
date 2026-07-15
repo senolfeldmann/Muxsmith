@@ -3441,6 +3441,36 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-13", kind: decided, ref: "capability/mod.rs:125-129 - CODEC_KIND_NAMES derived from CODEC_KINDS, the rationale in its own doc comment: 'Derived from CODEC_KINDS rather than hand-re-listed, so the two can never drift'"}
+    - {date: "2026-07-15", kind: decided, ref: "plan-6 design (approved): D45 rules the four keyword arrays GENERATED into keywords.ts over a guard test ('a guard detects drift; derivation makes it unrepresentable'), and D48 applies the same rule to its schemars extend annotation after an earlier draft's excuse ('extend needs a literal in an attribute position') was measured false. ONE decision round applying the principle at two sites, counted as one event, not two"}
+- id: proc-reuse-mandate-names-the-signature
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A REUSE MANDATE in a brief or plan ('reuse X, do not write a new one') names X's EXACT signature and shows every argument coming from the task's own inputs. A mandate that names only the function is an assertion that a seam exists, and the assertion is what keeps being wrong: the target's signature does not accept what the task actually holds, and the gap is invisible because the mandate reads as settled reuse rather than as an open question. Latitude concentrates in the SEAM BETWEEN two correctly-enumerated sets, not inside either - enumerate-don't-describe does not reach the interface between enumerations, so the connection is a third thing to enumerate. Trigger is readable: you are typing the name of an existing function into a normative instruction. Handle: paste its signature next to it and trace each parameter to the task's inputs; a parameter you cannot source is a fork, not a detail."
+  steelman: "A brief that carries every reuse target's full signature is a brief that duplicates the codebase into prose, goes stale on the first refactor, and costs the implementer nothing it could not get from one grep. The implementer reads the function before calling it anyway - that is the job, and proc-57 already binds them to verify load-bearing premises at the source. Rejected on the evidence: in both recorded cases the mandate's confidence is exactly what suppressed the grep. A named reuse target reads as a settled fact rather than a claim, so it is not treated as a premise to check, and the failure surfaces at the keyboard where the doctrine forbids resolving it."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief mandated 'the logic exists as a test helper apply_edit_to_first_rule (tests/suggestions.rs:95). Reuse before writing: hoist it into the library.' Refuted by the design implementer: it takes no Profile, mutates nothing, and hardcodes the fixture's own conditions as string literals - a fixture generator, not apply logic. Recorded as the design's correction #1"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan task 6 mandated 'reuse rule_index_of and with_rule_match; do not write a new applier'. Plan-review F1 (Critical): with_rule_match (planner.rs:1853) takes a MatchExpr, not a StructuredEdit; the bridge delta_for (:1809) is private AND needs a Scalar that batch identification supplies, which apply_suggestion does not have and D43 forbids re-planning to get. The seam the mandate asserted does not exist. Same failure as the occurrence above, one level down"}
+- id: proc-verification-step-must-be-falsifiable
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A verification step whose passing expectation is an ABSENCE - 'expected: no output', 'expected: exit 0', 'expected: no hits' - is itself verified by making it produce output once. An absence-expectation passes identically when the check works, when the check is malformed, and when the thing it greps for cannot syntactically exist; the three are indistinguishable from the green result, so an unfalsified absence-check is decoration that reads as coverage. Trigger is readable: you are writing an expected result that is empty. Handle: break the thing deliberately, watch the step go red, restore it. The same move the plan already mandates for its guards, applied to its own verification steps."
+  steelman: "Absence-checks are the cheapest verification there is and most of them are trivially correct; demanding a red-run proof for every grep doubles the step count of a plan to catch a class of defect that costs one wasted grep when it fires. Rejected because the cost is not a wasted grep: a vacuous check is worse than no check, because the plan and its reviewer both then believe the property is guarded. The red-run proof is seconds, and it is exactly the discipline TDD already imposes on tests - a test you never saw fail is not evidence, and neither is a grep you never saw match."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
