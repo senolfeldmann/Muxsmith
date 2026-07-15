@@ -320,16 +320,17 @@ entries:
   source: human
   nature: process
   domain: process
-  statement: "A task brief never carries an unresolved design question and never a design-latitude clause ('if you find a simpler equally-safe alternative, implement it' is banned). Every decision a task requires is settled in spec/ADR/brief before dispatch, or the dispatch waits. A fork discovered mid-task returns as NEEDS_CONTEXT with a decision memo (options, costs against the named invariants, recommendation); routing by fork nature: product-scope or user-visible behavior -> the governing human, always; internal technical/process forks -> the controller decides and records it (ADR when interface/wire-format relevant; solo only when none of the doctrine's observable contested criteria holds - recorded-statement collision, post-memo judgment divergence, invariant trade without recorded ranking, ledger recurrence while contested - guru/panel otherwise)."
+  statement: "NO artifact an implementer reads carries an unresolved design question or a design-latitude clause - not the brief, not a design document, not a spec, not a review verdict, not a fix-round dispatch ('if you find a simpler equally-safe alternative, implement it' is banned). OMISSION is the commoner form and a keyword scan cannot see it: a set mandated but never enumerated, a list ending in '...', a placeholder, a 'one per X' with no X list. The test is not 'does a permission appear?' but 'must the implementer invent something it is not allowed to invent?' - any unenumerated set in a normative position is latitude, and the question is asked of every normative sentence rather than of the vocabulary. Reviewers check the document they grade for both forms. Every decision a task requires is settled in spec/ADR/brief before dispatch, or the dispatch waits. A fork discovered mid-task returns as NEEDS_CONTEXT with a decision memo (options, costs against the named invariants, recommendation) and is routed BEFORE it is resolved; routing by fork nature: product-scope or user-visible behavior -> the governing human, always; internal technical/process forks -> the controller decides and records it (ADR when interface/wire-format relevant; solo only when none of the doctrine's observable contested criteria holds - recorded-statement collision, post-memo judgment divergence, invariant trade without recorded ranking, ledger recurrence while contested - guru/panel otherwise)."
   steelman: "For latitude: some design costs (ripple breadth, hidden consumers) only materialize on code contact, and a sanctioned+documented+adjudicated deviation beats a silent one - the plan-5.8 T4 case produced a correct result this way. Rejected because: a sanctioned fork licenses per-task scope drift and erodes the brief's bindingness; a real developer would not decide such a question alone either; stop-and-ask via cheap resumption achieves the same surfacing with decision authority kept central."
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14, round 3): contested/tough defined by observable criteria replacing the controller-flag trigger; doctrine §7 amended"}
+    - {date: "2026-07-15", kind: violated-corrected, ref: "Şenol ruling (session 15): the ban widened to every artifact an implementer reads and to LATITUDE BY OMISSION. Evidence: the plan-6 design document mandated 'one registry per edited struct' and never listed the structs, and the reviewer's keyword scan passed it clean; three controller fix-round dispatches carried 'push back rather than complying', which the implementer read as licence to decide-then-report. doctrine §3 amended"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2
@@ -347,3 +348,31 @@ entries:
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1: the brief asserted rust-toolchain.toml components apply on a bare rustup toolchain install (false, rustup #4216); untagged, only the reviewer caught it; fix 308effc"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief premise 'the apply logic exists as a test helper, hoist it' refuted by the design implementer: tests/suggestions.rs:95 is a fixture generator that takes no Profile and mutates nothing; untagged"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15): the duty binds on ROLE - a load-bearing premise of a decision, tagged or not - and not on every incidental fact; contested scoping question closed"}
+- id: proc-no-work-needed-check
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "Where a passage concludes that a guard, an enumeration or a check is UNNECESSARY, the reviewer verifies the claim that makes it unnecessary. Run it; do not weigh it. The trigger is readable in the text ('so we need no X', 'X cannot be done here', 'the work already exists'), which is what makes this a check rather than an exhortation: 'notice when you are reaching for a reason to stop' is not executable, 'the paragraph ends in therefore-unnecessary, so go run the premise' is."
+  steelman: "Trusting a competent author's reasoning is cheaper than re-running every premise, and a reviewer who re-derives everything is a second implementer rather than a reviewer. Rejected because this specific shape is empirically unreliable and, decisively, is not fixable by care: it survived the author's own written diagnosis of it. Awareness does not prevent it; an external check does."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15). Evidence from the plan-6 design round: the shape produced three false claims - an unenumerated set (which was hiding a real 20-files defect), an unguarded second copy, and a flat 'D48 cannot derive' that ninety seconds of compiling refuted. The third appeared in the same document that had just conceded the pattern in writing. doctrine §7 brief-wiring amended"}
+- id: proc-proposed-safeguard-stays
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "A guard, test, enumeration or check that a design document or plan has PROPOSED is not argued out again during the design or planning phase. It is removed only after it is built and MEASURED redundant. Rationale: the argument for dropping one always has the no-work-needed shape (proc-no-work-needed-check), and in the design phase that shape is uniquely UNFALSIFIABLE - a test that does not exist cannot be run to show it tests nothing, so agreement stands in for a measurement, and two agreeing agents are not one. Asymmetry: a redundant safeguard costs one redundant test; a wrongly-dropped one costs a silent hole in an unbuilt plan that nobody re-derives, because the document says the matter is settled. Keep the vacuity analysis and re-aim it: it becomes the recorded reason the safeguard is a candidate for removal at implementation time, under a trigger that names the experiment."
+  steelman: "A design document that knowingly ships a test which cannot fail is shipping noise, and noise that reads as coverage is worse than an admitted gap - the honest move is to drop it and say so. Rejected because it assumes the vacuity claim is true, which is precisely what the design phase cannot establish; the claim is verifiable one phase later at trivial cost, and until then a redundant test is the cheaper error."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15), applied retroactively to the already-approved plan-6 design document: its own proposed schema-annotation guard had been dropped as 'a tautology' (reviewer proposed, implementer complied, neither able to check it) in the same round where that rationale shape had already produced three false claims. Guard restored; the tautology analysis re-aimed onto a falsifiable trigger. doctrine §3 amended"}

@@ -1636,31 +1636,75 @@ this section exists to eliminate - three hand-maintained objects restating three
 Uniformity is worth more: **every one of the seventeen follows one rule with no
 exceptions**, which is a rule an implementer can apply without judgement.
 
-### The guard, because the failure mode is silent data loss
+### Guards, because the failure mode is silent data loss
 
-**One test, mechanical, mandatory: round-trip fidelity on an all-non-default
-fixture.** A new fixture setting every one of the 17 fields to a **non-default**
-value must round-trip to an equal model. This is what catches a predicate that
-skips a value which is not the default - the `core-83` passthrough class of bug -
-and it catches it for all 17 at once. The existing `reference.yaml` round-trip
-(verified passing today) is the complementary half and stays.
+Two tests, both mechanical, both mandatory.
 
-**A second guard was specified and is deliberately dropped.** An earlier draft
-added a 17-row table test asserting the schema's `default` equals
-`to_value(<the field's serde default>)`, to police the `extend` annotation. Once
-the annotation is *derived from that same function*, the test asserts
-`to_value(F()) == to_value(F())`. It is a tautology: it can never fail, and a test
-that cannot fail is worse than no test - it reads as coverage. Deriving the
-annotation deleted the thing the guard existed to watch, so the guard goes with
-it. This is the general shape and it is worth stating once: **a guard is what you
-build when derivation is unavailable.** Reach for derivation first; if you still
-want the guard afterwards, you probably did not derive.
+**Guard 1: round-trip fidelity on an all-non-default fixture.** A new fixture
+setting every one of the 17 fields to a **non-default** value must round-trip to
+an equal model. This is what catches a predicate that skips a value which is not
+the default - the `core-83` passthrough class of bug - and it catches it for all
+17 at once. The existing `reference.yaml` round-trip (verified passing today) is
+the complementary half and stays.
 
-**Rejected: a proptest `Arbitrary` round-trip instead of the round-trip guard.** Steelman:
+**Guard 2: schema-default honesty.** A table test asserting, for each of the 17
+fields, that the schema's `default` equals `serde_json::to_value` of that field's
+serde default. It follows the house's existing table-test shape
+(`capability/mod.rs`'s `settable_maps_to_mkvmerge_options` asserts a `const
+EXPECTED` table against the real thing, length first, then row by row) rather
+than inventing a pattern.
+
+**Guard 2 is retained under the standing rule that a safeguard a plan proposed
+stays until it is built** (owner ruling, 2026-07-15: a guard, test, enumeration
+or check a design document has proposed is not argued out again during design or
+planning; it is removed only after it is built and *measured* redundant). It is
+retained **despite** the analysis below, not in ignorance of it - and the
+analysis is kept, re-aimed, because it is the reason guard 2 is a candidate for
+removal later rather than a permanent fixture.
+
+**The analysis, and why it does not license removal now.** An earlier draft
+dropped guard 2 on this reasoning: once the annotation is *derived from the same
+function the test compares against*, the test asserts `to_value(F()) ==
+to_value(F())` - a tautology that can never fail, and a test that cannot fail is
+worse than none because it reads as coverage. That reasoning may well be right.
+It is not actionable yet, for a reason specific to this claim:
+
+**"This test cannot fail" is the one assertion in this design that the design
+phase cannot check.** Every other suspect claim in this document was settled by
+running something - `extend` turned out to take an expression, the drift gate
+turned out to miss an untracked file, the test helper turned out to take no
+`Profile`, deriving turned out to emit `{}` for three fields. Each time, the
+instrument was available. Here it is not, by construction: **you cannot run a
+test that does not exist to prove that it tests nothing.** What stood in for the
+measurement was agreement between the author and the reviewer - and this same
+review had already produced one confident agreement between those two that a
+single measurement later overturned (guard-versus-derive). Two agreeing agents
+are not a measurement.
+
+The asymmetry settles it. Keeping a redundant guard costs one redundant test.
+Dropping a load-bearing one on an unfalsifiable argument costs a silent hole in a
+plan that is not built yet, and the hole would be unusually durable: nobody
+re-derives a question the design document records as settled.
+
+**Trigger (mirrored to the ROADMAP, section 7 item 2): once D48's derivation
+exists in the tree, guard 2 is re-examined against the built code.** The test can
+be run then, and the question becomes answerable: mutate one field's `extend`
+expression away from its `default` function and see whether guard 2 goes red. If
+it cannot be made to fail, it is measured redundant and removed **then**, as its
+own decision with evidence behind it. That removal is legitimate; this one was
+not.
+
+The general shape is still worth stating, because it is what made derivation the
+right call in the first place: **a guard is what you build when derivation is
+unavailable.** Reach for derivation first. But "I derived it, so the guard is
+now pointless" is a claim about a test's behaviour, and claims about behaviour
+get run, not reasoned.
+
+**Rejected: a proptest `Arbitrary` round-trip instead of guard 1.** Steelman:
 spec 10 names proptest for "matcher + planning semantics; this is the
 correctness core", proptest is already a dev-dependency (`=1.11.0`), and a
 generated-input property would cover field combinations a hand-written fixture
-never reaches - which is the honest weakness of the fixture. Rejected because it
+never reaches - which is the honest weakness of guard 1. Rejected because it
 needs an `Arbitrary` impl across a 20-type recursive tree (`MatchExpr` nests
 itself) to catch a defect class that one fixture closes completely: the failure
 is per-field and does not depend on combinations, so a fixture touching every
@@ -1856,43 +1900,51 @@ Named here; the controller writes the tracker.
    17-row table with all three attributes, and **all three name the same
    function**: `#[serde(default = "F")]`, `skip_serializing_if = "is_F"`, and
    `extend("default" = to_value(F()))`. Omit the `extend` and the field silently
-   drops its `default` annotation out of the published schema (nothing fails -
-   this is the one that needs eyes). Get the predicate wrong and D48's
-   round-trip guard fails. Recorded because this is the one place in the plan
-   where getting it wrong loses user data silently.
-2. **`tauri-specta` publishes a stable non-RC Tauri-2 release** -> re-evaluate
+   drops its `default` annotation out of the published schema; guard 2 catches
+   that. Get the predicate wrong and guard 1 catches it. Recorded because this
+   is the one place in the plan where getting it wrong loses user data silently.
+2. **D48's derivation exists in the tree** -> re-examine **guard 2**, which is
+   retained by the safeguard-stays-until-built rule rather than by a belief that
+   it can fail. The test is only answerable once it exists: mutate one field's
+   `extend` expression away from its `default` function and see whether guard 2
+   goes red. If it cannot be made to fail, it is measured redundant and removed
+   then, with the measurement recorded. If it can, the design phase was wrong to
+   think it a tautology and the guard stays for good. Either way the question
+   gets settled by running it, which is exactly what the design phase could not
+   do.
+3. **`tauri-specta` publishes a stable non-RC Tauri-2 release** -> re-evaluate
    D44's rejection; it would type the command signatures, which ts-rs does not.
-3. **A second Muxsmith artifact needs TypeScript types** (e.g. the report
+4. **A second Muxsmith artifact needs TypeScript types** (e.g. the report
    documents, today hand-mirrored in `src/ipc.ts`) -> extend the `ts` feature's
    export set rather than hand-mirroring again; the D44 machinery is already
    paid for.
-4. **1.0 is tagged, or a user asks for zero-config schema autocompletion** ->
+5. **1.0 is tagged, or a user asks for zero-config schema autocompletion** ->
    re-evaluate SchemaStore publication (D47), which needs a stable public URL
    and version-skew handling.
-5. **A profile-model field is added or removed** -> the D44 CI drift check and
+6. **A profile-model field is added or removed** -> the D44 CI drift check and
    the D45 registry both fail by construction, naming the site. No tracker
    entry needed; recorded so the mechanism is understood as the tracker.
-6. **A second generated artifact gains a CI drift check** -> the
+7. **A second generated artifact gains a CI drift check** -> the
    committed-generated-plus-drift-check pattern reaches count 2 toward
    Tier-2 promotion (`core-06` is the committed half; the drift half is new
    with D44).
 
 **Controller corrections this document raised: two landed, one open.**
 
-7. **RESOLVED in `fdcdcba`, verified at HEAD - do not re-issue.** This document
+8. **RESOLVED in `fdcdcba`, verified at HEAD - do not re-issue.** This document
    asked for two ROADMAP passages asserting D22's dead comment-preserving
    premise to be corrected. Both are gone: `grep "rationale intact"` and
    `grep "hard design question"` return nothing, and `ROADMAP.md:19-27` now
    reads "D22's editor+apply pairing is KEPT, but **not on D22's stated
    reason**", crediting the shared-model-ownership argument D41 supplies.
-8. **RESOLVED in `fdcdcba`, verified at HEAD - do not re-issue.** This document
+9. **RESOLVED in `fdcdcba`, verified at HEAD - do not re-issue.** This document
    reported that the re-cut's "(6 / 5 / 1 / 8)" split recounted to 16 because
    Plan 6 listed 2 inputs, not 6, so "nothing was dropped" was unverifiable.
    Plan 6 now lists **6** numbered inputs (`ROADMAP.md:38-64`) against 5/1/8 for
    Plans 7/8/9; the split recounts to 20 and `:15-17` now says so in those terms
    ("every one is its own bullet under its plan, so the split ... is recountable
    rather than asserted").
-9. **OPEN - needs a controller action item, which it does not yet have.**
+10. **OPEN - needs a controller action item, which it does not yet have.**
    `gui-22` and `exec-44-runlog-14day-autoprune` are a **recorded-statement
    collision** in `product-boundaries.yaml`: `gui-22` (`:243-252`) states v1
    keeps all run logs with pruning deferred to v1.x, while `exec-44` (`:15-23`)
@@ -1946,6 +1998,8 @@ otherwise improvise:
   without it the published schema loses its `default` annotations. The three
   struct-valued fields derive to `"default": {}` and that is accepted, not
   patched with a literal (D48).
-- D48's round-trip guard ships with the serializer, not after it. There is no
-  second guard: the schema-default table test was dropped as a tautology once
-  the annotation became derived.
+- **Both** D48 guards ship with the serializer, not after it. Guard 2 is not
+  optional and is not to be argued out at the keyboard on the grounds that the
+  derivation makes it vacuous - that argument is already recorded in D48, and
+  the safeguard-stays-until-built rule holds the guard in until it exists and
+  can be measured (trigger 2).
