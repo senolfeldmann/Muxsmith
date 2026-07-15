@@ -11,8 +11,10 @@
 #   occurrences: [{date, kind (decided|reinforced|violated-corrected|deferred), ref}]
 # Promotion (Tier 1 -> Tier 2) by the source x nature matrix: human (decided/ratified
 # by a human) promotes at count 1 (authority); agent-emergent promotes at
-# count 3 (recurrence), except agent-emergent x product-scope which escalates
-# to the owner. count is always len(occurrences); an occurrence is a distinct
+# count 3 (recurrence), except agent-emergent x product-scope AND
+# agent-emergent x new-standing-structure (a new tracker/file class with its
+# own lifecycle), which both escalate to the owner (doctrine section 7,
+# Şenol ruling 2026-07-15). count is always len(occurrences); an occurrence is a distinct
 # decision EVENT, not a distinct document of one event.
 
 entries:
