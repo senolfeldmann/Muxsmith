@@ -1,5 +1,7 @@
-## T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
-## are show-and-copy only, never applied). `browse-button` (gui-common.ftl,
+## T10: BatchView.vue and its components (spec 8.2 view 2). Suggestions were
+## show-and-copy only through Plan 5 (D22); Task 14 (D43, D49) added
+## one-click apply, its two keys beside the copy-button ones below.
+## `browse-button` (gui-common.ftl,
 ## the generic "Browse..." label) is reused for the source/output directory
 ## pickers, but their tooltip is `batch-browse-dir-tooltip` below, not
 ## gui-common.ftl's `browse-button-tooltip` (fix: that one says "Choose the
@@ -54,6 +56,8 @@ batch-suggestion-header = Suggestion for { $config_path }:
 batch-suggestion-copy = Copy
 batch-suggestion-copy-tooltip = Copy this YAML fragment to the clipboard.
 batch-suggestion-copied = Copied to clipboard.
+batch-suggestion-apply = Apply
+batch-suggestion-apply-tooltip = Apply this fix to the profile and save it.
 
 batch-run = Run
 batch-run-tooltip = Start this batch: mux every resolved file with mkvmerge.

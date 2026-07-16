@@ -48,7 +48,7 @@ import {
   trackRuleFields,
 } from "../src/editor/registries";
 import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
-import type { Profile } from "../src/bindings/profile";
+import type { Profile, StructuredEdit } from "../src/bindings/profile";
 
 /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
  * default role-name matching is a case-insensitive SUBSTRING match, which
@@ -335,6 +335,142 @@ test.describe("batch view: dry run", () => {
     );
 
     await assertNoSeriousA11yViolations(page);
+  });
+
+  // Task 14 (D43, D49, apply-wiring routing): one-click apply. Two
+  // DISTINCT fixture values on purpose: `PROFILE_PATH` is the picked
+  // profile FILE (what `load_profile`/`save_profile` take), and
+  // `SUGGESTION_CONFIG_PATH` is a config-field LOCATOR (`tracks[<N>].
+  // match`, parsed core-side by `rule_index_of`) -- what the suggestion
+  // carries and what `apply_suggestion` takes. Equal values would let a
+  // locator-as-path swap pass silently (exactly the bug an earlier draft
+  // of this task had, caught by controller review, not by this echo
+  // mock, because that draft's fixture set them equal); distinct values
+  // make a swap in either direction fail an assertion below. `APPLY_EDIT`
+  // is a real `StructuredEdit` (unlike the copy-only fixture above, whose
+  // `edit: null` was never read pre-Task-14 and stays that way -- it is
+  // not this test's concern) so the echo assertion is meaningful.
+  // `core-109-two-required-no-fix`'s no-fix/partition diagnostic
+  // (`suggestion-partition`) sits in the SAME report to pair the apply
+  // button's presence with its absence on the identical
+  // `getByRole("button", name("batch-suggestion-apply"))` selector, so a
+  // typo'd selector cannot make the negative pass vacuously (house
+  // paired-control template, falsifiability occurrence 5).
+  const SUGGESTION_CONFIG_PATH = "tracks[0].match";
+  const APPLY_EDIT: StructuredEdit = { kind: "add_exact", property: "codec_kind", value: "srt" };
+
+  const loadedProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+
+  const appliedProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [{ source: "primary", match: { exact: { codec_kind: "srt" } }, changes: {} }] },
+  };
+
+  const loadedForApply: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: loadedProfile,
+  };
+
+  const applyReport: ReportDocument = {
+    config_diagnostics: [
+      {
+        code: "suggestion-partition",
+        severity: "warning",
+        config_path: "tracks[1].match",
+        params: { kind: "overflow", dropped: "1" },
+        rendered: "suggestion-partition",
+      },
+    ],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [
+      {
+        resolves: "unknown-property",
+        config_path: SUGGESTION_CONFIG_PATH,
+        edit: APPLY_EDIT,
+        yaml_fragment: SUGGESTION_YAML,
+      },
+    ],
+    mkvmerge_found: true,
+  };
+
+  test("a suggestion card's apply button drives load_profile -> apply_suggestion -> save_profile, config_path/edit unmodified and never confused with the profile path; a no-fix diagnostic renders no apply button", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        validate_profile: [resolveWith(emptyReport)],
+        dry_run: [resolveWith(applyReport)],
+        load_profile: [resolveWith(loadedForApply)],
+        apply_suggestion: [resolveWith(appliedProfile)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    await page.goto("/");
+
+    const batch = page.getByTestId("view-batch");
+    await batch.getByRole("button", name("batch-profile-pick")).click();
+    await batch.getByRole("button", name("batch-dry-run")).click();
+
+    const suggestion = batch.getByRole("article");
+    const applyButton = suggestion.getByRole("button", name("batch-suggestion-apply"));
+    await expect(applyButton).toBeVisible();
+
+    // Paired negative: the no-fix/partition diagnostic (rendered by
+    // DiagnosticsPanel, unchanged by Task 14) carries no `Suggestion` and
+    // so gets no apply control, on the identical selector the positive
+    // assertion above just proved resolves.
+    const diagnosticsSection = batch.getByRole("region", name("batch-diagnostics-heading"));
+    await expect(diagnosticsSection).toContainText("further resolution group");
+    await expect(
+      diagnosticsSection.getByRole("button", name("batch-suggestion-apply")),
+    ).toHaveCount(0);
+
+    await assertNoSeriousA11yViolations(page);
+
+    await applyButton.click();
+    // The round trip (load, apply, save) completed once `applying` drops
+    // aria-busy -- a robust wait for three chained mocked IPC calls
+    // instead of racing the recorded-call assertions below against them.
+    await expect(applyButton).not.toHaveAttribute("aria-busy", "true");
+
+    const loadCalls = recorded.filter((r) => r.cmd === "load_profile");
+    expect(loadCalls).toHaveLength(1);
+    expect((loadCalls[0].args as { path: string }).path).toBe(PROFILE_PATH);
+
+    const applyCalls = recorded.filter((r) => r.cmd === "apply_suggestion");
+    expect(applyCalls).toHaveLength(1);
+    const applyArgs = applyCalls[0].args as {
+      profile: Profile;
+      configPath: string;
+      edit: StructuredEdit;
+    };
+    // The locator, not the file path -- the assertion this task's earlier
+    // draft got backwards.
+    expect(applyArgs.configPath).toBe(SUGGESTION_CONFIG_PATH);
+    expect(applyArgs.configPath).not.toBe(PROFILE_PATH);
+    expect(applyArgs.edit).toEqual(APPLY_EDIT);
+    expect(applyArgs.profile).toEqual(loadedProfile);
+
+    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+    expect(saveCalls).toHaveLength(1);
+    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+    // The file path, not the locator.
+    expect(saveArgs.path).toBe(PROFILE_PATH);
+    expect(saveArgs.path).not.toBe(SUGGESTION_CONFIG_PATH);
+    expect(saveArgs.profile).toEqual(appliedProfile);
   });
 });
 

@@ -5,7 +5,16 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
 import ResolutionTable from "../components/ResolutionTable.vue";
 import SuggestionCard from "../components/SuggestionCard.vue";
-import { defaultAppSettings, dryRun, getSettings, setSettings, validateProfile } from "../ipc";
+import {
+  applySuggestion,
+  defaultAppSettings,
+  dryRun,
+  getSettings,
+  loadProfile,
+  saveProfile,
+  setSettings,
+  validateProfile,
+} from "../ipc";
 import type {
   AppSettings,
   Diagnostic,
@@ -14,12 +23,16 @@ import type {
   ReportDocument,
   RunRequest,
 } from "../ipc";
+import type { StructuredEdit } from "../bindings/profile";
 
 // Task 10 (spec 8.2 view 2, D22): profile pick + recents, source/output
 // directory memory, dry-run report rendering, suggestions as show+copy
 // cards, and the `start-run` handoff to App/JobsView (Plan 5 wave-5
-// contract). No profile mutation anywhere in this view (D22; that is
-// Plan 6's profile editor).
+// contract). Through Plan 5, no profile mutation anywhere in this view.
+// Task 14 (D43, D49) adds exactly one: `onApplySuggestion` below, the
+// narrow load/apply/save round trip behind a `SuggestionCard`'s `apply`
+// emit -- everything else in this view (pick, dirs, dry-run, run handoff)
+// stays read-only. Full profile editing remains Plan 6's editor.
 
 const fluent = useFluent();
 
@@ -32,8 +45,14 @@ const validating = ref(false);
 const dryRunning = ref(false);
 const ipcErrorCode = ref<string | null>(null);
 const ipcErrorParams = ref<Record<string, string>>({});
+// Task 14 (D43, D49, apply-wiring routing): which `report.suggestions`
+// index is mid-round-trip, or `null` when none is -- drives the clicked
+// card's own `aria-busy` (not a single shared boolean) and, folded into
+// `busy` below, gates every other action while an apply is in flight the
+// same way `validating`/`dryRunning` already do.
+const applyingIndex = ref<number | null>(null);
 
-const busy = computed(() => validating.value || dryRunning.value);
+const busy = computed(() => validating.value || dryRunning.value || applyingIndex.value !== null);
 
 // Fix (D23): "the UI additionally disables Run while active" -- App
 // forwards JobsView's own runActive state here (this view has no other
@@ -191,6 +210,59 @@ async function runDryRun(): Promise<void> {
     ipcErrorParams.value = err.params;
   } finally {
     dryRunning.value = false;
+  }
+}
+
+/** Task 14 (D43, D49, apply-wiring routing): handles a `SuggestionCard`'s
+ * `apply` emit. `payload.config_path` is a config-field LOCATOR
+ * (`tracks[<N>].match`, parsed core-side by `rule_index_of`), never a
+ * file path -- it and `payload.edit` are forwarded to `apply_suggestion`
+ * exactly as received, never parsed or interpreted here. The load/save
+ * path is always `selectedProfile`, the profile FILE this view already
+ * has open; apply does not validate or re-plan (D43: no compound
+ * apply-and-validate command), and this view does not auto-refresh the
+ * report afterwards (design D43's post-apply validation is the editor's
+ * `validate_profile_model` round trip, which this view does not have;
+ * `core-03`'s guarantee is that the applied edit survives the *next*
+ * dry run, not that apply triggers one -- auto-refresh is a deferred,
+ * controller-routed ROADMAP candidate, not built here). */
+async function onApplySuggestion(
+  payload: { config_path: string; edit: unknown },
+  index: number,
+): Promise<void> {
+  if (!selectedProfile.value || busy.value) {
+    return;
+  }
+  applyingIndex.value = index;
+  ipcErrorCode.value = null;
+  try {
+    const doc = await loadProfile(selectedProfile.value);
+    if (!doc.profile) {
+      // A `ParseError` since the suggestion was computed: `load_profile`
+      // folds it into a single explanatory diagnostic rather than
+      // throwing (D42's own doc on `load_profile`'s envelope), so that
+      // diagnostic's own code/params are the correct thing to surface
+      // through this view's existing shared alert line -- reusing it
+      // needs no bespoke fallback code.
+      const parseDiagnostic = doc.config_diagnostics[0];
+      if (parseDiagnostic) {
+        ipcErrorCode.value = parseDiagnostic.code;
+        ipcErrorParams.value = parseDiagnostic.params;
+      }
+      return;
+    }
+    const updated = await applySuggestion(
+      doc.profile,
+      payload.config_path,
+      payload.edit as StructuredEdit,
+    );
+    await saveProfile(selectedProfile.value, updated);
+  } catch (e) {
+    const err = e as IpcError;
+    ipcErrorCode.value = err.code;
+    ipcErrorParams.value = err.params;
+  } finally {
+    applyingIndex.value = null;
   }
 }
 
@@ -431,6 +503,8 @@ function emitStartRun(): void {
           :key="i"
           :data-index="i"
           :suggestion="s"
+          :applying="applyingIndex === i"
+          @apply="onApplySuggestion($event, i)"
         />
       </section>
     </template>
