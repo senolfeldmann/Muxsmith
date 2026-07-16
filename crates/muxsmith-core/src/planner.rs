@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
 use crate::capability::runtime::LanguageIndex;
@@ -197,23 +197,30 @@ pub struct FileReport {
 }
 
 /// The closed grammar of suggestion edits (spec 5.3, D6); only ever narrows a
-/// rule. Populated by the engine (see `suggest`).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// rule. Populated by the engine (see `suggest`) and accepted back from the
+/// shell to apply (D43, D49).
+///
+/// `AddExact`/`AddNotExact` carry a typed [`Scalar`], not a display string:
+/// `exact` compares each property in its own domain (`core-72`), so the
+/// variant is a core semantic. The engine holds the typed value when it builds
+/// the edit; carrying it is what makes the applied delta identical to the
+/// simulated one (`core-03`, D49).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StructuredEdit {
     /// Add `property: value` to the rule's `exact` map.
     AddExact {
         /// The matchable property to constrain.
         property: String,
-        /// The value to require.
-        value: String,
+        /// The value to require, in the type the engine identified.
+        value: Scalar,
     },
     /// Add `{ exact: { property: value } }` to the rule's `not` list.
     AddNotExact {
         /// The matchable property to exclude on.
         property: String,
-        /// The value to exclude.
-        value: String,
+        /// The value to exclude, in the type the engine identified.
+        value: Scalar,
     },
     /// Add `track_name: value` to the rule's `substring` map.
     AddSubstring {
@@ -1743,14 +1750,14 @@ fn candidates_for_rule(
                         0u8,
                         StructuredEdit::AddExact {
                             property: prop.clone(),
-                            value: display.clone(),
+                            value: scalar.clone(),
                         },
                     ),
                     (
                         1u8,
                         StructuredEdit::AddNotExact {
                             property: prop.clone(),
-                            value: display.clone(),
+                            value: scalar.clone(),
                         },
                     ),
                 ] {
@@ -1759,7 +1766,7 @@ fn candidates_for_rule(
                     }
                     if seen.insert((prop.clone(), display.clone(), polarity)) {
                         raw.push(Candidate {
-                            apply: delta_for(&edit, &scalar),
+                            apply: delta_for(&edit),
                             rank: (rank_of(prop, polarity), prop.clone(), display.clone()),
                             edit,
                         });
@@ -1788,7 +1795,7 @@ fn candidates_for_rule(
                         let key = ("track_name~".to_string(), tok.to_string(), polarity);
                         if seen.insert(key) {
                             raw.push(Candidate {
-                                apply: delta_for(&edit, &Scalar::Str(tok.to_string())),
+                                apply: delta_for(&edit),
                                 rank: (
                                     rank_substring(polarity),
                                     "track_name".into(),
@@ -1805,19 +1812,20 @@ fn candidates_for_rule(
     raw
 }
 
-// Builds the MatchExpr delta a candidate edit represents.
-fn delta_for(edit: &StructuredEdit, scalar: &Scalar) -> MatchExpr {
+// Builds the MatchExpr delta a candidate edit represents. Total: the edit
+// carries its own typed value (D49), so there is nothing to reconstruct.
+fn delta_for(edit: &StructuredEdit) -> MatchExpr {
     let mut m = MatchExpr::default();
     match edit {
-        StructuredEdit::AddExact { property, .. } => {
+        StructuredEdit::AddExact { property, value } => {
             let mut map = BTreeMap::new();
-            map.insert(property.clone(), scalar.clone());
+            map.insert(property.clone(), value.clone());
             m.exact = Some(map);
         }
-        StructuredEdit::AddNotExact { property, .. } => {
+        StructuredEdit::AddNotExact { property, value } => {
             let mut inner = MatchExpr::default();
             let mut map = BTreeMap::new();
-            map.insert(property.clone(), scalar.clone());
+            map.insert(property.clone(), value.clone());
             inner.exact = Some(map);
             m.not = Some(vec![inner]);
         }
@@ -1869,6 +1877,80 @@ pub fn with_rule_match(profile: &Profile, ri: usize, delta: &MatchExpr) -> Profi
         expr.not.get_or_insert_with(Vec::new).extend(add.clone());
     }
     p
+}
+
+/// Applies a structured suggestion edit to the rule named by `config_path`,
+/// returning a new profile. Narrow-only (`core-33`): splices through the
+/// engine's own `delta_for` + `with_rule_match`, so the applied delta is
+/// identical to the one the engine simulated (`core-03`) and the no-clobber
+/// semantics of `core-44` apply unchanged. The caller validates the result
+/// through the normal `validate_profile_model` path (D43); this function does
+/// not validate and does not re-plan.
+pub fn apply_suggestion(
+    profile: &Profile,
+    config_path: &str,
+    edit: &StructuredEdit,
+) -> Result<Profile, ApplyError> {
+    let index = rule_index_of(config_path)
+        .ok_or_else(|| ApplyError::UnparsableConfigPath(config_path.to_string()))?;
+    let rules = profile.tracks.rules.len();
+    if index >= rules {
+        return Err(ApplyError::RuleIndexOutOfRange { index, rules });
+    }
+    let applied = with_rule_match(profile, index, &delta_for(edit));
+    // core-44's or_insert merge silently drops a delta whose key the rule
+    // already constrains. Noticing that nothing happened is not a re-plan and
+    // not a validation (D43): it is one comparison of the model against itself.
+    if applied == *profile {
+        return Err(ApplyError::EditChangedNothing {
+            index,
+            property: edit_key(edit).to_string(),
+        });
+    }
+    Ok(applied)
+}
+
+// The match key an edit targets: the named property for the two exact variants,
+// the fixed `track_name` key for the two substring ones (delta_for,
+// planner.rs:1824, :1829).
+fn edit_key(edit: &StructuredEdit) -> &str {
+    match edit {
+        StructuredEdit::AddExact { property, .. }
+        | StructuredEdit::AddNotExact { property, .. } => property,
+        StructuredEdit::AddSubstring { .. } | StructuredEdit::AddNotSubstring { .. } => {
+            "track_name"
+        }
+    }
+}
+
+/// An operational failure of [`apply_suggestion`] (`core-124`): the edit did not
+/// reach the profile. Never a `Diagnostic` - the profile's content is not the
+/// problem. The shell maps each variant to an `IpcError`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ApplyError {
+    /// `config_path` is not of the `tracks[<N>].match` form `rule_index_of`
+    /// parses; carries the offending path verbatim.
+    UnparsableConfigPath(String),
+    /// The parsed index is past the end of `tracks.rules`.
+    RuleIndexOutOfRange {
+        /// The index parsed out of `config_path`.
+        index: usize,
+        /// The number of rules the profile actually has.
+        rules: usize,
+    },
+    /// The edit changed nothing: `with_rule_match`'s `or_insert` merge
+    /// (`core-44`, never clobber) dropped the delta because rule `index`
+    /// already constrains `property`. The engine's acceptance simulation
+    /// rejects such a candidate before it is ever shown; apply has no
+    /// simulation, so a suggestion computed against a since-edited model
+    /// arrives here instead, and `Ok(unchanged)` would report success for a
+    /// no-op.
+    EditChangedNothing {
+        /// The rule the edit targeted.
+        index: usize,
+        /// The match key that was already constrained.
+        property: String,
+    },
 }
 
 // Accept iff rule `ri` has no AmbiguousRule anywhere in the simulation and no
