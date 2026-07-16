@@ -3585,9 +3585,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 whole-branch verdict (duality-gap analysis + agenda-a triage): fix-wave item 1 populates the served fixture, selects a row, and runs the axe scan on the composed state"}
+    - {date: "2026-07-16", kind: reinforced, ref: "fix-wave report (fix-wave-report.md): the rule's FIRST application caught a real shipped defect - PropertyMapWidget's key/value inputs unlabeled since T10/T12, critical axe finding, invisible until the composed state first rendered in a scanned path; the fixer stopped NEEDS_CONTEXT rather than scope-creep or a vacuous dodge. Disposition recorded at the fix's own landing (see the fix-wave commit and its re-review)"}
 - id: echo-mock-distinct-fixture-values
   kind: pattern
   tier: 1
