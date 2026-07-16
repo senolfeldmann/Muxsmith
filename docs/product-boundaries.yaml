@@ -401,3 +401,32 @@ entries:
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "memo D20 (Open mechanics, plan-time)"}
     - {date: "2026-07-13", kind: decided, ref: "Şenol ruling (escalation resolution, session 10): zero-rule keep = legal passthrough"}
+- id: editor-generic-action-keys
+  kind: pattern
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: gui
+  statement: "gui-editor.ftl carries two GENERIC action keys - editor-action-add (en 'Add', de 'Hinzufügen') and editor-action-remove (en 'Remove', de 'Entfernen') - and every generic list/map control in the editor renders THEM; the domain-scoped editor-attachment-rule-add/-drop keys caption only the AttachmentRule fields they name. The editor catalog budget is deliberately REVISED 43 -> 45 (42 labels + 1 save note + 2 action keys) by the same ruling; the budget stays a hard boundary against prose growth (tooltips remain Plan 7). The T12 amendment carries the catalog and widget changes; the two de strings ride the plan-close de pass."
+  steelman: "Reusing the AttachmentRule keys adds zero entries against the closed budget and cross-view key reuse is an established house pattern (browse-button); rejected because the coupling is latent (an AttachmentRule-specific rewording would silently change every list/map button) and de 'Verwerfen' misreads as discard-my-changes where 'Entfernen' is the conventional remove."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-16", kind: deferred, ref: "plan-6 T10 review verdict Q2: reuse judged acceptable-on-merits, routing to the governing human required (user-visible wording, proc-latitude routing rule)"}
+    - {date: "2026-07-16", kind: decided, ref: "Şenol ruling (plan-6 owner escalation, option 1b of the enumerated options): generic keys over reuse; budget revision 43 -> 45 is part of the ruling"}
+- id: gui-closed-domain-dropdowns
+  kind: pattern
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: gui
+  statement: "Wherever a GUI-editable value has a clearly defined CLOSED value set, the GUI renders a selection control (dropdown/select), never free text - anything else is wrong by decree ('alles andere wäre komisch'). Standing instances: the editor's KEEP_DROP/COLLISION_POLICIES/keyword-domain selects (Plan 6); the two curated matchable domains type (4 values) and codec_kind (17 aliases) get their dropdowns in Plan 7 with the editor comfort layer. Open-valued and runtime-domain values (language via --list-languages) stay free-entry with validation."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "Şenol decree (plan-6 matchable-cell ruling): dropdowns wherever a clearly defined selection set exists; type/codec_kind dropdowns explicitly assigned to Plan 7"}

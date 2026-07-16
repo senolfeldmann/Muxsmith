@@ -977,3 +977,19 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-08", kind: deferred, ref: "spec §11"}
+- id: gui-table-caption
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "Every <table> carries a <caption> with a Fluent-keyed accessible name for what the table lists, rendered visible (no house precedent hides it). Without one, the table has no accessible name for direct screen-reader table navigation. House record now exceptionless: ResolutionTable, JobsView, RunHistory, EditorView."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-10", kind: decided, ref: "1b76fd6 (plan-5 batch view): ResolutionTable.vue ships the first captioned table"}
+    - {date: "2026-07-10", kind: reinforced, ref: "6e763a7 (plan-5 jobs view): JobsView.vue and RunHistory.vue tables captioned in one landing (one event, two artifacts)"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T11 review Important: EditorView.vue's rule grid shipped caption-less, the codebase's only exception; fixed 35d844d reusing editor-tracks-rules; the pattern had recurred without ever being written down - the unrecorded recurrence is what let the miss happen (T11 verdict harvest)"}
