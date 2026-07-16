@@ -1,0 +1,582 @@
+# Review package: 7134bb6..443ce80
+
+## Commits
+443ce80 core: a canonical save omits default-valued fields, with both guards (D48)
+
+## Files changed
+ crates/muxsmith-core/src/profile/model.rs          | 103 +++++++++++++++---
+ .../tests/fixtures/all-non-default.yaml            |  40 +++++++
+ crates/muxsmith-core/tests/profile_save.rs         | 115 +++++++++++++++++++++
+ 3 files changed, 241 insertions(+), 17 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index cf7a2c6..566e42f 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -15,56 +15,74 @@ use super::match_expr::{MatchExpr, Scalar};
+ /// `Keyword` arm `schema_with` overrides below; the doc comment on the
+ /// variant itself still merges in as the branch's `description`, so this
+ /// helper does not set one.
+ fn keyword_domain_schema(domain: &'static [&'static str]) -> Schema {
+     json_schema!({
+         "type": "string",
+         "enum": domain,
+     })
+ }
+ 
++/// D48: a canonical save omits a field sitting on its default. Generic
++/// predicate for 13 of the 17 defaulted fields, the ones whose serde
++/// default *is* `Default::default()`. Not usable for `FilenameCfg` or
++/// `SourceCfg` (neither implements `Default`, so instantiation is
++/// `E0277`), and wrong for `TracksCfg.unmatched` and `Input.recursive`
++/// (both compile against this generic bound but silently omit a
++/// non-default value, since their serde default is a named function, not
++/// `Default::default()`); those four use the bespoke predicates below
++/// instead, one per named default function.
++fn is_default<T: Default + PartialEq>(v: &T) -> bool {
++    *v == T::default()
++}
++
+ /// The top-level profile document (spec 4): input matching, output naming,
+ /// track rules (in output order), and attachments/chapters/tags/title
+ /// configuration. Deserializes with `deny_unknown_fields` throughout: an
+ /// unrecognized key is a config error, not a silently ignored typo (spec 4:
+ /// "Unknown keys are errors, not warnings").
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct Profile {
+     /// Format version; must equal `1` in v1 (`UnsupportedProfileVersion` if
+     /// not). Incremented only on breaking format changes (spec 4).
+     pub profile_version: u32,
+     /// Optional descriptive metadata; purely informational, never
+     /// interpreted by matching or planning.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub meta: Option<Meta>,
+     /// Primary-file matching rule and directory-walk options (spec 4.2).
+     pub input: Input,
+     /// Output naming and collision policy (spec 4.8).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(OutputCfg::default()).unwrap()))]
+     pub output: OutputCfg,
+     /// Track selection/change rules plus the unmatched-track policy
+     /// (spec 4.5). Restructured into a block so the policy lives with its
+     /// rules, matching `attachments` and `output`/`tags`.
+     pub tracks: TracksCfg,
+     /// Attachment keep/drop/add rules (spec 4.9).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(AttachmentsCfg::default()).unwrap()))]
+     pub attachments: AttachmentsCfg,
+     /// Chapters handling: keep, drop, or an external locator (spec 4.9).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(ChaptersCfg::default()).unwrap()))]
+     pub chapters: ChaptersCfg,
+     /// Global and per-track tag handling (spec 4.9).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(TagsCfg::default()).unwrap()))]
+     pub tags: TagsCfg,
+     /// Output title handling: keep, clear, or a literal-mode template
+     /// (spec 4.9).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(TitleCfg::default()).unwrap()))]
+     pub title: TitleCfg,
+ }
+ 
+ /// Informational profile metadata; not used by matching or planning.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct Meta {
+     /// Human-readable profile name (e.g. shown in the GUI's recent-profiles list).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub name: Option<String>,
+@@ -85,44 +103,58 @@ pub struct Input {
+     pub pattern: String,
+     /// Candidate file extensions, matched case-insensitively; not restricted
+     /// to MKV. Checked once per batch against the local `mkvmerge
+     /// --list-types` (spec 4.2): an entry absent from that list is still
+     /// used for matching (so a typo silently excludes candidates) but
+     /// raises `UnknownExtension`. Skipped, not raised, when the runtime
+     /// capability is unavailable.
+     pub extensions: Vec<String>,
+     /// Whether the source directory walk descends into subdirectories.
+     /// Defaults to `true`.
+-    #[serde(default = "default_true")]
++    #[serde(default = "default_true", skip_serializing_if = "is_default_true")]
++    #[schemars(extend("default" = serde_json::to_value(default_true()).unwrap()))]
+     pub recursive: bool,
+ }
+ 
+ fn default_true() -> bool {
+     true
+ }
+ 
++/// D48: `Input.recursive`'s serde default is `true`, not `bool::default()`
++/// (`false`), so the generic `is_default` would omit an explicit
++/// `recursive: false` and reload it inverted. Named after, and calling,
++/// the same `default_true` its own `#[serde(default = ...)]` names.
++fn is_default_true(b: &bool) -> bool {
++    *b == default_true()
++}
++
+ /// Output naming and collision handling (spec 4.8).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct OutputCfg {
+     /// Output directory; profile default, usually overridden per run via
+     /// CLI/GUI run inputs (spec 3, 4.8).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub directory: Option<PathBuf>,
+     /// `keep` (source basename, `.mkv` extension enforced) or a literal-mode
+     /// template (spec 4.7); defaults to `keep`.
+-    #[serde(default = "FilenameCfg::keep")]
++    #[serde(
++        default = "FilenameCfg::keep",
++        skip_serializing_if = "is_keep_filename"
++    )]
++    #[schemars(extend("default" = serde_json::to_value(FilenameCfg::keep()).unwrap()))]
+     pub filename: FilenameCfg,
+     /// Policy when the rendered output path already exists or two planned
+     /// outputs collide. An output path equal to any input path is always a
+     /// hard `SourceOverwrite` error regardless of this policy (spec 4.8, 5.2).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(CollisionPolicy::default()).unwrap()))]
+     pub on_collision: CollisionPolicy,
+ }
+ 
+ impl Default for OutputCfg {
+     fn default() -> Self {
+         OutputCfg {
+             directory: None,
+             filename: FilenameCfg::keep(),
+             on_collision: CollisionPolicy::default(),
+         }
+@@ -171,20 +203,28 @@ impl FilenameCfg {
+     /// hint, and this enum's schema projection (D46).
+     pub const KEYWORDS: &'static [&'static str] = &["keep"];
+ 
+     /// The `keep` keyword variant: reuse the source basename (`.mkv`
+     /// extension enforced). Also the serde default for `output.filename`.
+     pub fn keep() -> Self {
+         FilenameCfg::Keyword("keep".into())
+     }
+ }
+ 
++/// D48: `FilenameCfg` has no `Default` impl (only [`FilenameCfg::keep`]),
++/// so the generic `is_default` cannot be instantiated for it (`E0277`).
++/// Named after, and calling, the same `FilenameCfg::keep` its own
++/// `#[serde(default = ...)]` names.
++fn is_keep_filename(f: &FilenameCfg) -> bool {
++    *f == FilenameCfg::keep()
++}
++
+ /// Narrows `FilenameCfg::Keyword`'s schema to [`FilenameCfg::KEYWORDS`] (D46).
+ fn filename_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+     keyword_domain_schema(FilenameCfg::KEYWORDS)
+ }
+ 
+ /// `output.on_collision` policy (spec 4.8): applies to an existing rendered
+ /// output path and to two planned outputs rendering to the same path. Does
+ /// not override `SourceOverwrite` (output path equal to an input path),
+ /// which is always a hard error regardless of this policy (spec 5.2).
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+@@ -215,31 +255,33 @@ pub enum KeepDrop {
+ }
+ 
+ /// One track rule (spec 4.5): selects exactly one track (subject to
+ /// strict independent uniqueness, spec 2) and optionally applies property
+ /// changes to it.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct TrackRule {
+     /// Where the rule resolves against: the primary file (default) or an
+     /// external donor located via a [`Locator`] (spec 4.5, 4.6).
+-    #[serde(default = "SourceCfg::primary")]
++    #[serde(default = "SourceCfg::primary", skip_serializing_if = "is_primary")]
++    #[schemars(extend("default" = serde_json::to_value(SourceCfg::primary()).unwrap()))]
+     pub source: SourceCfg,
+     /// The match expression a track of `source` must satisfy; serialized
+     /// under the profile key `match` (renamed here because `match` is a
+     /// Rust keyword).
+     #[serde(rename = "match")]
+     pub match_expr: MatchExpr,
+     /// Tolerates zero matching tracks (spec 5.1). Two candidates on an
+     /// optional rule remain an `AmbiguousRule` error; `optional` covers
+     /// only the zero-candidate case, never widening uniqueness.
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
+     pub optional: bool,
+     /// Settable-property changes to apply to the resolved track (spec 4.4
+     /// table); `None` leaves the track's properties untouched.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub changes: Option<BTreeMap<String, Scalar>>,
+ }
+ 
+ /// `track.source` value: the primary file, or an external donor (spec 4.5).
+ /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`].
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+@@ -260,20 +302,28 @@ impl SourceCfg {
+     /// hint, and this enum's schema projection (D46).
+     pub const KEYWORDS: &'static [&'static str] = &["primary"];
+ 
+     /// The `primary` keyword variant: resolve against the rule's own
+     /// primary file. Also the serde default for `track.source`.
+     pub fn primary() -> Self {
+         SourceCfg::Keyword("primary".into())
+     }
+ }
+ 
++/// D48: `SourceCfg` has no `Default` impl (only [`SourceCfg::primary`]),
++/// so the generic `is_default` cannot be instantiated for it (`E0277`).
++/// Named after, and calling, the same `SourceCfg::primary` its own
++/// `#[serde(default = ...)]` names.
++fn is_primary(s: &SourceCfg) -> bool {
++    *s == SourceCfg::primary()
++}
++
+ /// Narrows `SourceCfg::Keyword`'s schema to [`SourceCfg::KEYWORDS`] (D46).
+ fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+     keyword_domain_schema(SourceCfg::KEYWORDS)
+ }
+ 
+ /// External file locator (spec 4.6): finds candidate donor files; the
+ /// owning rule's `match` then selects exactly one track inside the located
+ /// file. Uniqueness applies at both stages: two or more matching files is
+ /// `AmbiguousExternal`, two or more matching tracks inside the file is
+ /// `AmbiguousRule`.
+@@ -281,82 +331,99 @@ fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+ #[serde(deny_unknown_fields)]
+ pub struct Locator {
+     /// Directory to search, relative to the primary file's directory, or
+     /// absolute. A filesystem path; serialized as a plain string, so the
+     /// profile format is unchanged. Use forward slashes in profiles for
+     /// portability (Windows accepts them).
+     pub path: PathBuf,
+     /// Whether the search descends into subdirectories of `path`. Defaults
+     /// to `false`, deliberately asymmetric with `input.recursive`
+     /// (default `true`).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
+     pub recursive: bool,
+     /// Candidate extensions, validated against `mkvmerge --list-types`
+     /// like `input.extensions`.
+     pub extensions: Vec<String>,
+     /// Sugar for `match_pattern: '{match}'`: the candidate's basename must
+     /// match the primary's identifier. Mutually exclusive with
+     /// `match_pattern` (`LocatorConflict` if both are set); the only valid
+     /// value is `true`.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub match_to_source: Option<bool>,
+     /// Regex-mode template (spec 4.7) the candidate's basename must match;
+     /// mutually exclusive with `match_to_source`.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub match_pattern: Option<String>,
+     /// Whether `match_pattern` matching is case-sensitive. Defaults to
+     /// `false` (the rendered pattern is prefixed `(?i)`, spec 4.7).
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
+     pub case_sensitive: bool,
+ }
+ 
+ /// Attachment handling (spec 4.9).
+ #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct AttachmentsCfg {
+     /// Policy for attachments no `rules` entry selects. Defaults to `keep`:
+     /// deliberate asymmetry with tracks (unmatched tracks are always
+     /// dropped), since dropping fonts silently breaks ASS subtitle
+     /// rendering.
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
+     pub unmatched: KeepDrop,
+     /// Ordered select/drop/add rules (spec 4.9). Unlike track rules, not
+     /// uniqueness-constrained: a `select`/`drop` expression may match
+     /// several attachments (fonts come in sets); rules apply in list order,
+     /// first matching rule wins per attachment.
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(<Vec<AttachmentRule>>::default()).unwrap()))]
+     pub rules: Vec<AttachmentRule>,
+ }
+ 
+ /// Track handling: the unmatched-track policy plus the ordered rules
+ /// (spec 4.5). Parallel in shape to [`AttachmentsCfg`], but `unmatched`
+ /// defaults to `drop`: only rule-matched tracks survive unless the profile
+ /// opts into `keep` (spec 4.9 asymmetry note).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct TracksCfg {
+     /// Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
+     /// `drop` (the declarative default). `keep` passes them through
+     /// untouched; consumed by `command` (Task 2). Donor tracks are
+     /// unaffected: a donor contributes only its rule-selected track.
+-    #[serde(default = "drop_policy")]
++    #[serde(default = "drop_policy", skip_serializing_if = "is_drop_policy")]
++    #[schemars(extend("default" = serde_json::to_value(drop_policy()).unwrap()))]
+     pub unmatched: KeepDrop,
+     /// Ordered track rules; list order defines the output `--track-order`
+     /// (spec 4.5). Uniqueness-constrained (spec 2): each rule resolves to
+     /// exactly one track.
+     pub rules: Vec<TrackRule>,
+ }
+ 
+ fn drop_policy() -> KeepDrop {
+     KeepDrop::Drop
+ }
+ 
++/// D48: `tracks.unmatched`'s serde default is `drop` (`drop_policy`), the
++/// opposite of `KeepDrop::default()` (`keep`, spec 4.9's deliberate
++/// asymmetry with `attachments.unmatched`). The generic `is_default` would
++/// compile against this field (both sides are `KeepDrop`) but compare
++/// against the wrong default, silently omitting an explicit `unmatched:
++/// keep` and reloading it as `drop` - the owner-ruled-legal `core-83`
++/// pure-passthrough profile, destroyed. Named after, and calling, the same
++/// `drop_policy` its own `#[serde(default = ...)]` names.
++fn is_drop_policy(k: &KeepDrop) -> bool {
++    *k == drop_policy()
++}
++
+ /// Exactly one of `select` / `drop` / `add` must be set; enforced in
+ /// validate.rs (AttachmentRuleShape) so the parse error stays readable.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct AttachmentRule {
+     /// Select (keep) attachments matching this expression over
+     /// `file_name`/`content_type`/`description` (spec 4.9).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub select: Option<MatchExpr>,
+     /// Drop attachments matching this expression; same property set as
+@@ -399,24 +466,26 @@ impl Default for ChaptersCfg {
+ fn chapters_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+     keyword_domain_schema(ChaptersCfg::KEYWORDS)
+ }
+ 
+ /// Global and per-track tag handling (spec 4.9), mapped to
+ /// `--no-global-tags`/`--no-track-tags`.
+ #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct TagsCfg {
+     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
+     pub global: KeepDrop,
+     /// Per-track tags: keep or drop. Defaults to `keep`.
+-    #[serde(default)]
++    #[serde(default, skip_serializing_if = "is_default")]
++    #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
+     pub track: KeepDrop,
+ }
+ 
+ /// `title` value: keep, clear, or a literal-mode template (spec 4.9).
+ /// `#[serde(untagged)]`, same variant-resolution rule as the other
+ /// keyword-or-block enums above.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum TitleCfg {
+     /// Literal-mode template rendering the output title (spec 4.7).
+diff --git a/crates/muxsmith-core/tests/fixtures/all-non-default.yaml b/crates/muxsmith-core/tests/fixtures/all-non-default.yaml
+new file mode 100644
+index 0000000..7872f6c
+--- /dev/null
++++ b/crates/muxsmith-core/tests/fixtures/all-non-default.yaml
+@@ -0,0 +1,40 @@
++# D48 guard 1 fixture: every one of the 17 defaulted fields (design
++# :1517-1535) set to a value that is NOT its default. A predicate that
++# skips a non-default value silently destroys it on save; this fixture
++# exercises all 17 at once so no row can hide behind another.
++profile_version: 1
++
++input:
++  pattern: 'S(?<season>\d{2})E(?<episode>\d{2})'
++  extensions: [mkv]
++  recursive: false                     # default true
++
++output:
++  filename: { template: "{match}.mkv" }  # default keep
++  on_collision: skip                     # default error
++
++tracks:
++  unmatched: keep                      # default drop (the core-83 hazard)
++  rules:
++    - source:
++        external:                      # default primary
++          path: donors
++          recursive: true              # default false
++          extensions: [mkv]
++          match_pattern: '.*'
++          case_sensitive: true         # default false
++      match: { exact: { type: audio } }
++      optional: true                   # default false
++
++attachments:
++  unmatched: drop                      # default keep
++  rules:                               # default []
++    - drop: { substring: { file_name: tmp } }
++
++chapters: drop                         # default keep
++
++tags:
++  global: drop                         # default keep
++  track: drop                          # default keep
++
++title: clear                           # default keep
+diff --git a/crates/muxsmith-core/tests/profile_save.rs b/crates/muxsmith-core/tests/profile_save.rs
+index f570006..811e0bf 100644
+--- a/crates/muxsmith-core/tests/profile_save.rs
++++ b/crates/muxsmith-core/tests/profile_save.rs
+@@ -1,19 +1,21 @@
+ //! Spec 8.2 / D41: saving writes canonical YAML from the model. These tests
+ //! pin the correctness floor (a saved profile reloads equal) and the
+ //! format-from-extension contract; the default-omission behaviour is D48's
+ //! and is tested in its own guards.
+ 
+ use muxsmith_core::profile::load::{Format, from_file, from_str};
+ use muxsmith_core::profile::save::{SaveError, to_file, to_string};
++use serde_json::{Value, json};
+ 
+ const REFERENCE: &str = include_str!("fixtures/reference.yaml");
++const ALL_NON_DEFAULT: &str = include_str!("fixtures/all-non-default.yaml");
+ 
+ #[test]
+ fn canonical_yaml_round_trips_to_an_equal_model() {
+     let p = from_str(REFERENCE, Format::Yaml).expect("fixture parses");
+     let text = to_string(&p, Format::Yaml).expect("model serializes");
+     let p2 = from_str(&text, Format::Yaml).expect("canonical output re-parses");
+     assert_eq!(p, p2, "a saved profile must reload to an equal model (D41)");
+ }
+ 
+ #[test]
+@@ -51,10 +53,123 @@ fn to_file_picks_json_from_the_extension_and_never_changes_format() {
+ #[test]
+ fn an_unwritable_path_is_an_io_error_not_a_panic() {
+     let p = from_str(REFERENCE, Format::Yaml).expect("fixture parses");
+     let dir = tempfile::tempdir().unwrap();
+     let nope = dir.path().join("no-such-dir").join("profile.yaml");
+     match to_file(&p, &nope) {
+         Err(SaveError::Io(detail)) => assert!(!detail.is_empty(), "detail carries the io message"),
+         other => panic!("expected SaveError::Io, got {other:?}"),
+     }
+ }
++
++/// D48 guard 1: every one of the 17 defaulted fields set to a NON-default
++/// value must survive a save/load round trip. A predicate that skips a value
++/// which is not the default silently destroys it - the core-83 passthrough
++/// class of bug (`unmatched: keep` reloading as `drop`).
++#[test]
++fn all_non_default_fields_survive_the_round_trip() {
++    let p = from_str(ALL_NON_DEFAULT, Format::Yaml).expect("fixture parses");
++    let text = to_string(&p, Format::Yaml).expect("serializes");
++    let p2 = from_str(&text, Format::Yaml).expect("re-parses");
++    assert_eq!(
++        p, p2,
++        "a non-default value must never be omitted (D48 guard 1)"
++    );
++}
++
++/// The sharpest instance, called out because it is an owner-ruled-legal
++/// profile (`core-83`) that a naive `is_default` turns into a NoTrackRules
++/// error: zero rules plus `unmatched: keep` is a pure-passthrough remux.
++#[test]
++fn the_core83_passthrough_profile_survives_a_save() {
++    let y = "profile_version: 1\ninput: { pattern: 'E(\\d+)', extensions: [mkv] }\ntracks:\n  unmatched: keep\n  rules: []\n";
++    let p = from_str(y, Format::Yaml).expect("parses");
++    let text = to_string(&p, Format::Yaml).expect("serializes");
++    assert!(
++        text.contains("unmatched: keep"),
++        "tracks.unmatched defaults to DROP, so `keep` is not a default and must be written: {text}"
++    );
++    assert_eq!(from_str(&text, Format::Yaml).unwrap(), p);
++}
++
++/// D48 guard 2: schema-default honesty. Asserts, for each of the 17
++/// defaulted fields (design `:1517-1535`), that the published JSON
++/// Schema's `default` annotation equals the value below. The expected
++/// values are hand-written literals, not calls into the model's own
++/// default-producing functions: comparing the schema against a value
++/// derived from the same function the `#[schemars(extend(...))]`
++/// annotation calls would make the assertion `to_value(F()) ==
++/// to_value(F())` - a tautology that can never fail (D48's guard-2
++/// analysis; the guard stays despite that analysis, per
++/// `proc-proposed-safeguard-stays`, until it is measured redundant
++/// against the built code). Follows the house table-test shape
++/// (`capability/mod.rs`'s `settable_maps_to_mkvmerge_options`): a literal
++/// table asserted against the real thing, length first, then row by row.
++#[test]
++fn schema_defaults_match_the_serde_defaults() {
++    let schema = serde_json::to_value(schemars::schema_for!(muxsmith_core::profile::Profile))
++        .expect("schema serializes to a Value");
++
++    // (schema location, field, expected `default`). `None` = the field
++    // sits directly on `Profile`'s own `properties`; `Some(ty)` = it sits
++    // on `$defs/<ty>/properties`.
++    let expected: [(Option<&str>, &str, Value); 17] = [
++        (None, "output", json!({})),
++        (None, "attachments", json!({})),
++        (None, "chapters", json!("keep")),
++        (None, "tags", json!({})),
++        (None, "title", json!("keep")),
++        (Some("Input"), "recursive", json!(true)),
++        (Some("OutputCfg"), "filename", json!("keep")),
++        (Some("OutputCfg"), "on_collision", json!("error")),
++        (Some("TrackRule"), "source", json!("primary")),
++        (Some("TrackRule"), "optional", json!(false)),
++        (Some("Locator"), "recursive", json!(false)),
++        (Some("Locator"), "case_sensitive", json!(false)),
++        (Some("AttachmentsCfg"), "unmatched", json!("keep")),
++        (Some("AttachmentsCfg"), "rules", json!([])),
++        (Some("TracksCfg"), "unmatched", json!("drop")),
++        (Some("TagsCfg"), "global", json!("keep")),
++        (Some("TagsCfg"), "track", json!("keep")),
++    ];
++
++    // Every `properties.*.default` anywhere in the schema (Profile's own
++    // plus every `$defs` type) must be exactly this set: not a subset (a
++    // field missing its `extend` annotation leaves a silent hole) and not
++    // a superset (a row here that no longer matches anything in the
++    // schema is stale).
++    let schema_default_count = count_defaults(&schema["properties"])
++        + schema["$defs"]
++            .as_object()
++            .into_iter()
++            .flat_map(|defs| defs.values())
++            .map(|ty| count_defaults(&ty["properties"]))
++            .sum::<usize>();
++    assert_eq!(
++        schema_default_count,
++        expected.len(),
++        "schema's total defaulted-field count must match D48's 17-row table"
++    );
++
++    for row in &expected {
++        let (in_type, field, want) = (row.0, row.1, &row.2);
++        let pointer = match in_type {
++            None => format!("/properties/{field}/default"),
++            Some(ty) => format!("/$defs/{ty}/properties/{field}/default"),
++        };
++        let got = schema
++            .pointer(&pointer)
++            .unwrap_or_else(|| panic!("no default at {pointer} for {in_type:?}.{field}"));
++        assert_eq!(got, want, "schema default mismatch for {in_type:?}.{field}");
++    }
++}
++
++/// Counts how many entries of a schema `properties` object carry a
++/// `default` key; the cross-check half of D48 guard 2.
++fn count_defaults(properties: &Value) -> usize {
++    properties
++        .as_object()
++        .into_iter()
++        .flat_map(|m| m.values())
++        .filter(|v| v.get("default").is_some())
++        .count()
++}

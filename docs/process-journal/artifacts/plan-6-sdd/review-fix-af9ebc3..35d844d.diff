@@ -1,0 +1,34 @@
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 613348e..1d9f201 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -814,9 +814,11 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
+     await expect(rows.nth(0)).toContainText("audio");
+     await expect(rows.nth(1)).toContainText("video");
+ 
+-    const model = (await readModel(page)) as Profile;
+-    expect(
+-      model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type),
+-    ).toEqual(["audio", "video"]);
++    await expect
++      .poll(async () => {
++        const model = (await readModel(page)) as Profile;
++        return model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type);
++      })
++      .toEqual(["audio", "video"]);
+   });
+ });
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index 08e3244..6ffd721 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -92,6 +92,9 @@ function onDrop(index: number) {
+   <section data-testid="view-editor">
+     <h2>{{ $t("editor-tracks-rules") }}</h2>
+     <table>
++      <caption>
++        {{ $t("editor-tracks-rules") }}
++      </caption>
+       <thead>
+         <tr>
+           <th scope="col">

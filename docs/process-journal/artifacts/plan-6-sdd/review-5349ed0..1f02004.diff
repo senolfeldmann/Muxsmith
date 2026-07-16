@@ -1,0 +1,1143 @@
+# Review package: 5349ed0..1f02004
+
+## Commits
+1f02004 core: ts-rs generates the wire types (model + StructuredEdit) behind a ts feature, committed + CI drift-checked (D44, D49)
+
+## Files changed
+ .cargo/config.toml                             |   3 +
+ .github/workflows/ci.yml                       |  18 ++
+ Cargo.lock                                     |  32 ++
+ crates/muxsmith-core/Cargo.toml                |   8 +
+ crates/muxsmith-core/src/planner.rs            |   3 +
+ crates/muxsmith-core/src/profile/match_expr.rs |   4 +
+ crates/muxsmith-core/src/profile/model.rs      |  20 ++
+ crates/muxsmith-core/tests/ts_export.rs        |  36 +++
+ src/bindings/keywords.ts                       |   5 +
+ src/bindings/profile.ts                        | 405 +++++++++++++++++++++++++
+ 10 files changed, 534 insertions(+)
+
+## Diff
+diff --git a/.cargo/config.toml b/.cargo/config.toml
+new file mode 100644
+index 0000000..e2535ac
+--- /dev/null
++++ b/.cargo/config.toml
+@@ -0,0 +1,3 @@
++[env]
++TS_RS_EXPORT_DIR = { value = "src/bindings", relative = true }
++TS_RS_LARGE_INT = "number"
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 1767b3c..7a95704 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -111,20 +111,38 @@ jobs:
+           cargo test --workspace -- --nocapture --test-threads=1 2>&1 | tee gated-test-output.log
+           # This literal must match muxsmith_core::MKVMERGE_SKIP_MARKER (crates/muxsmith-core/src/lib.rs) byte-for-byte.
+           count="$(grep -c 'mkvmerge not found; skipping' gated-test-output.log || true)"
+           echo "Skip-marker occurrences: $count"
+           if [ "$count" -ne 0 ]; then
+             echo "::error::$count gated integration test(s) silently skipped (mkvmerge not found on PATH) - expected 0 now that mkvtoolnix is installed on every leg."
+             exit 1
+           fi
+       - run: pnpm lint
+       - run: pnpm build
++      # D44: the committed ts-rs bindings (src/bindings/) must not drift from
++      # the Rust model that generates them. Linux-only, same guard as the
++      # mkvtoolnix/webkit2gtk steps above -- the bindings themselves are
++      # platform-independent, this just avoids running the same check three
++      # times. `git diff --exit-code` gates every tracked file under the
++      # directory (profile.ts and keywords.ts alike), so a stale
++      # already-committed artifact fails the leg from the first commit
++      # onward. Its one known hole: it does not see a NEW untracked file
++      # (measured, D44), so it cannot catch a never-committed
++      # first-generation artifact. That hole closes only in wave 3, when
++      # Task 9's src/editor/registries.ts imports keywords.ts and a missing
++      # file fails `pnpm build` above; between this merge and Task 9 nothing
++      # imports the bindings, so no gate closes it for two waves.
++      - name: TS bindings are not stale
++        if: runner.os == 'Linux'
++        run: |
++          cargo test -p muxsmith-core --features ts
++          git diff --exit-code src/bindings/
+       # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
+       # same guard as the mkvtoolnix/webkit2gtk steps above (win/mac legs
+       # still build+lint+test; they skip the browser install and the
+       # smoke, which is platform-independent DOM testing). The smoke drives
+       # a plain Chromium against `dist/` via `vite preview` with
+       # `@tauri-apps/api/mocks` standing in for Tauri IPC (spec 10, no
+       # tauri-driver) -- `pnpm build` above already produced `dist/`.
+       - name: i18n completeness gate
+         if: runner.os == 'Linux'
+         run: pnpm check:i18n
+diff --git a/Cargo.lock b/Cargo.lock
+index ef3e7ee..02a8015 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2158,20 +2158,21 @@ dependencies = [
+  "dirs",
+  "language-tags",
+  "proptest",
+  "regex",
+  "schemars 1.2.1",
+  "serde",
+  "serde_json",
+  "serde_path_to_error",
+  "tempfile",
+  "time",
++ "ts-rs",
+  "yaml_serde",
+ ]
+ 
+ [[package]]
+ name = "muxsmith-gui"
+ version = "0.1.0"
+ dependencies = [
+  "dirs",
+  "muxsmith-core",
+  "serde",
+@@ -3985,20 +3986,29 @@ dependencies = [
+ 
+ [[package]]
+ name = "tendril"
+ version = "0.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "5fed54709c5b3a53d09bb1c113ea4f5ceafd1e772ddcb0030a82e1d56c087b08"
+ dependencies = [
+  "new_debug_unreachable",
+ ]
+ 
++[[package]]
++name = "termcolor"
++version = "1.4.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
++dependencies = [
++ "winapi-util",
++]
++
+ [[package]]
+ name = "termtree"
+ version = "0.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
+ 
+ [[package]]
+ name = "thiserror"
+ version = "1.0.69"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -4351,20 +4361,42 @@ dependencies = [
+  "nom",
+  "petgraph",
+ ]
+ 
+ [[package]]
+ name = "try-lock"
+ version = "0.2.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+ 
++[[package]]
++name = "ts-rs"
++version = "12.0.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "756050066659291d47a554a9f558125db17428b073c5ffce1daf5dcb0f7231d8"
++dependencies = [
++ "thiserror 2.0.18",
++ "ts-rs-macros",
++]
++
++[[package]]
++name = "ts-rs-macros"
++version = "12.0.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "38d90eea51bc7988ef9e674bf80a85ba6804739e535e9cab48e4bb34a8b652aa"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 2.0.118",
++ "termcolor",
++]
++
+ [[package]]
+ name = "type-map"
+ version = "0.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
+ dependencies = [
+  "rustc-hash",
+ ]
+ 
+ [[package]]
+diff --git a/crates/muxsmith-core/Cargo.toml b/crates/muxsmith-core/Cargo.toml
+index 6d82c6a..c2b123c 100644
+--- a/crates/muxsmith-core/Cargo.toml
++++ b/crates/muxsmith-core/Cargo.toml
+@@ -7,17 +7,25 @@ publish = false
+ 
+ [dependencies]
+ dirs = "6.0.0"
+ language-tags = "0.3.2"
+ regex = "1.12.4"
+ schemars = "1.2.1"
+ serde = { version = "1.0.228", features = ["derive"] }
+ serde_json = "1.0.150"
+ serde_path_to_error = "0.1.20"
+ time = { version = "0.3.53", features = ["formatting", "parsing"] }
++ts-rs = { version = "12.0.1", optional = true }
+ yaml_serde = "0.10.4"
+ 
++[features]
++# D44: TypeScript bindings for the IPC wire, feature-gated so ts-rs never
++# reaches a default build (or any other workspace member's build - see D44's
++# xtask-rejection rationale). Generation: `cargo test -p muxsmith-core
++# --features ts`.
++ts = ["dep:ts-rs"]
++
+ [dev-dependencies]
+ # Exact-pin per toolchain doctrine; registry-verified current stable
+ # (crates.io API, 2026-07-11): proptest 1.11.0 is max_stable_version.
+ proptest = "=1.11.0"
+ tempfile = "3.27.0"
+diff --git a/crates/muxsmith-core/src/planner.rs b/crates/muxsmith-core/src/planner.rs
+index 3f39cf7..90d58c3 100644
+--- a/crates/muxsmith-core/src/planner.rs
++++ b/crates/muxsmith-core/src/planner.rs
+@@ -1,20 +1,22 @@
+ //! Batch planning (spec 5): resolve every track rule against each primary
+ //! file's tracks (and located donors) under strict independent uniqueness,
+ //! render output paths, and collect diagnostics into a batch report. No
+ //! filesystem mutation and no mux invocations (dry-run, spec 5.5); the only
+ //! external work is identification, driven through the injected [`Identify`].
+ 
+ use std::collections::{BTreeMap, BTreeSet};
+ use std::path::{Path, PathBuf};
+ 
+ use serde::{Deserialize, Serialize};
++#[cfg(feature = "ts")]
++use ts_rs::TS;
+ 
+ use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
+ use crate::capability::runtime::LanguageIndex;
+ use crate::discovery::{self, PrimaryFile};
+ use crate::identify::{Attachment, Identification, Identify, PropValue, Track};
+ use crate::matcher;
+ use crate::profile::match_expr::{MatchExpr, Scalar};
+ use crate::profile::model::{
+     ChaptersCfg, CollisionPolicy, FilenameCfg, KeepDrop, Profile, SourceCfg, TitleCfg, TrackRule,
+ };
+@@ -199,20 +201,21 @@ pub struct FileReport {
+ /// The closed grammar of suggestion edits (spec 5.3, D6); only ever narrows a
+ /// rule. Populated by the engine (see `suggest`) and accepted back from the
+ /// shell to apply (D43, D49).
+ ///
+ /// `AddExact`/`AddNotExact` carry a typed [`Scalar`], not a display string:
+ /// `exact` compares each property in its own domain (`core-72`), so the
+ /// variant is a core semantic. The engine holds the typed value when it builds
+ /// the edit; carrying it is what makes the applied delta identical to the
+ /// simulated one (`core-03`, D49).
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(tag = "kind", rename_all = "snake_case")]
+ pub enum StructuredEdit {
+     /// Add `property: value` to the rule's `exact` map.
+     AddExact {
+         /// The matchable property to constrain.
+         property: String,
+         /// The value to require, in the type the engine identified.
+         value: Scalar,
+     },
+     /// Add `{ exact: { property: value } }` to the rule's `not` list.
+diff --git a/crates/muxsmith-core/src/profile/match_expr.rs b/crates/muxsmith-core/src/profile/match_expr.rs
+index 93f5604..49914c0 100644
+--- a/crates/muxsmith-core/src/profile/match_expr.rs
++++ b/crates/muxsmith-core/src/profile/match_expr.rs
+@@ -1,27 +1,30 @@
+ //! Match algebra (spec 4.3): conjunction of exact/substring/regex maps
+ //! plus recursive `any` (at least one holds) and `not` (none hold).
+ 
+ use std::collections::BTreeMap;
+ 
+ use schemars::JsonSchema;
+ use serde::{Deserialize, Serialize};
++#[cfg(feature = "ts")]
++use ts_rs::TS;
+ 
+ /// A scalar value inside `exact`/`changes` maps (spec 4.3/4.4).
+ /// `#[serde(untagged)]`: deserialization tries each variant in the order
+ /// declared below, so ordering is semantically load-bearing for numbers:
+ /// a plain numeric literal (`3`) matches `Int` before it ever reaches
+ /// `Float`, so only literals with a decimal point become `Float`. The
+ /// `Bool`-before-`Str` order is not load-bearing for typed YAML/JSON input
+ /// (a boolean node never deserializes as a string) but is kept explicit
+ /// for clarity.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(untagged)]
+ pub enum Scalar {
+     /// A boolean value, e.g. `forced_track: true`.
+     Bool(bool),
+     /// A whole-number value, e.g. a track `id`.
+     Int(i64),
+     /// A floating-point value, e.g. `min_luminance`.
+     Float(f64),
+     /// A string value, e.g. `language: en` or a `track_name`.
+     Str(String),
+@@ -40,20 +43,21 @@ impl Scalar {
+             Scalar::Str(_) => "string",
+         }
+     }
+ }
+ 
+ /// One match expression: a conjunction of up to five parts, all present
+ /// parts must hold (spec 4.3). Evaluated against every track/attachment of
+ /// a resolved source; `any`/`not` recurse to arbitrary depth (typical
+ /// profiles stay flat).
+ #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct MatchExpr {
+     /// Property -> value equality after normalization; case-sensitive for
+     /// strings (language values are normalized separately, spec 4.4).
+     /// Multiple entries in the map are AND'd.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub exact: Option<BTreeMap<String, Scalar>>,
+     /// Property -> substring, case-insensitive containment; string
+     /// properties only ([`crate::capability::PropType::String`] required),
+     /// otherwise a config-time type error.
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index 566e42f..1fee01a 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -1,18 +1,20 @@
+ //! Profile data model (spec 4). Serde-only: semantic validation lives in
+ //! validate.rs, so this file stays a faithful mirror of the file format.
+ 
+ use std::collections::BTreeMap;
+ use std::path::PathBuf;
+ 
+ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+ use serde::{Deserialize, Serialize};
++#[cfg(feature = "ts")]
++use ts_rs::TS;
+ 
+ use super::match_expr::{MatchExpr, Scalar};
+ 
+ /// Shared schema shape for a keyword-domain projection (D46): a closed
+ /// `enum` of the domain's values, not `oneOf` + per-value `const` (rejected;
+ /// there is no per-value prose to attach, see D46). Used by the four
+ /// `Keyword` arm `schema_with` overrides below; the doc comment on the
+ /// variant itself still merges in as the branch's `description`, so this
+ /// helper does not set one.
+ fn keyword_domain_schema(domain: &'static [&'static str]) -> Schema {
+@@ -34,20 +36,21 @@ fn keyword_domain_schema(domain: &'static [&'static str]) -> Schema {
+ fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+     *v == T::default()
+ }
+ 
+ /// The top-level profile document (spec 4): input matching, output naming,
+ /// track rules (in output order), and attachments/chapters/tags/title
+ /// configuration. Deserializes with `deny_unknown_fields` throughout: an
+ /// unrecognized key is a config error, not a silently ignored typo (spec 4:
+ /// "Unknown keys are errors, not warnings").
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct Profile {
+     /// Format version; must equal `1` in v1 (`UnsupportedProfileVersion` if
+     /// not). Incremented only on breaking format changes (spec 4).
+     pub profile_version: u32,
+     /// Optional descriptive metadata; purely informational, never
+     /// interpreted by matching or planning.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub meta: Option<Meta>,
+     /// Primary-file matching rule and directory-walk options (spec 4.2).
+@@ -74,33 +77,35 @@ pub struct Profile {
+     pub tags: TagsCfg,
+     /// Output title handling: keep, clear, or a literal-mode template
+     /// (spec 4.9).
+     #[serde(default, skip_serializing_if = "is_default")]
+     #[schemars(extend("default" = serde_json::to_value(TitleCfg::default()).unwrap()))]
+     pub title: TitleCfg,
+ }
+ 
+ /// Informational profile metadata; not used by matching or planning.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct Meta {
+     /// Human-readable profile name (e.g. shown in the GUI's recent-profiles list).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub name: Option<String>,
+     /// Prose note for humans reading the profile file; carried through
+     /// serialization but never interpreted or rendered by the tool.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub description: Option<String>,
+ }
+ 
+ /// Primary-file selection and directory-walk options (spec 4.2).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct Input {
+     /// Regex searched (not anchored) against each candidate file's
+     /// basename; the first match's span and capture groups become the
+     /// identifier (spec 3) and populate template fields (`{match}`,
+     /// `{g1}`, named groups).
+     pub pattern: String,
+     /// Candidate file extensions, matched case-insensitively; not restricted
+     /// to MKV. Checked once per batch against the local `mkvmerge
+     /// --list-types` (spec 4.2): an entry absent from that list is still
+@@ -122,20 +127,21 @@ fn default_true() -> bool {
+ /// D48: `Input.recursive`'s serde default is `true`, not `bool::default()`
+ /// (`false`), so the generic `is_default` would omit an explicit
+ /// `recursive: false` and reload it inverted. Named after, and calling,
+ /// the same `default_true` its own `#[serde(default = ...)]` names.
+ fn is_default_true(b: &bool) -> bool {
+     *b == default_true()
+ }
+ 
+ /// Output naming and collision handling (spec 4.8).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct OutputCfg {
+     /// Output directory; profile default, usually overridden per run via
+     /// CLI/GUI run inputs (spec 3, 4.8).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub directory: Option<PathBuf>,
+     /// `keep` (source basename, `.mkv` extension enforced) or a literal-mode
+     /// template (spec 4.7); defaults to `keep`.
+     #[serde(
+         default = "FilenameCfg::keep",
+@@ -158,41 +164,44 @@ impl Default for OutputCfg {
+             filename: FilenameCfg::keep(),
+             on_collision: CollisionPolicy::default(),
+         }
+     }
+ }
+ 
+ /// Shared `{ template: ... }` block; a standalone struct (not an inline
+ /// enum variant) because serde ignores `deny_unknown_fields` on struct
+ /// variants of untagged enums.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct TemplateBlock {
+     /// The template source text (spec 4.7); rendered in literal or regex
+     /// mode depending on where the block appears.
+     pub template: String,
+ }
+ 
+ /// Shared `{ external: ... }` block; standalone for the same
+ /// `deny_unknown_fields` reason as [`TemplateBlock`].
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct ExternalBlock {
+     /// The external locator (spec 4.6) resolved to find the donor file(s).
+     pub external: Locator,
+ }
+ 
+ /// `output.filename` value: either a literal-mode template or the `keep`
+ /// keyword (spec 4.8). `#[serde(untagged)]`: matches whichever variant
+ /// deserializes first, so a bare string becomes `Keyword` and a
+ /// `{ template: ... }` map becomes `Template`.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(untagged)]
+ pub enum FilenameCfg {
+     /// Literal-mode template (spec 4.7); `.mkv` appended if missing, path
+     /// separators in the rendered name are errors (spec 4.8).
+     Template(TemplateBlock),
+     /// Keyword form; the only accepted value is `"keep"` (`validate.rs`
+     /// rejects anything else as `InvalidKeyword`).
+     #[schemars(schema_with = "filename_keyword_schema")]
+     Keyword(String),
+ }
+@@ -221,50 +230,53 @@ fn is_keep_filename(f: &FilenameCfg) -> bool {
+ /// Narrows `FilenameCfg::Keyword`'s schema to [`FilenameCfg::KEYWORDS`] (D46).
+ fn filename_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+     keyword_domain_schema(FilenameCfg::KEYWORDS)
+ }
+ 
+ /// `output.on_collision` policy (spec 4.8): applies to an existing rendered
+ /// output path and to two planned outputs rendering to the same path. Does
+ /// not override `SourceOverwrite` (output path equal to an input path),
+ /// which is always a hard error regardless of this policy (spec 5.2).
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(rename_all = "lowercase")]
+ pub enum CollisionPolicy {
+     /// Treat the collision as an error; the default policy.
+     #[default]
+     Error,
+     /// Skip (do not produce) the colliding output.
+     Skip,
+     /// Replace the existing file. Only reaches files that are not inputs:
+     /// the `SourceOverwrite` check runs first and is never overridden.
+     Overwrite,
+ }
+ 
+ /// Binary keep-or-drop toggle shared by `attachments.unmatched`,
+ /// `tags.global` and `tags.track` (spec 4.9).
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(rename_all = "lowercase")]
+ pub enum KeepDrop {
+     /// Copy the corresponding structure from the sources into the output
+     /// (mkvmerge's default behavior, left untouched).
+     #[default]
+     Keep,
+     /// Exclude the corresponding structure from the output (mapped to the
+     /// matching `--no-*` mkvmerge option at command generation).
+     Drop,
+ }
+ 
+ /// One track rule (spec 4.5): selects exactly one track (subject to
+ /// strict independent uniqueness, spec 2) and optionally applies property
+ /// changes to it.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct TrackRule {
+     /// Where the rule resolves against: the primary file (default) or an
+     /// external donor located via a [`Locator`] (spec 4.5, 4.6).
+     #[serde(default = "SourceCfg::primary", skip_serializing_if = "is_primary")]
+     #[schemars(extend("default" = serde_json::to_value(SourceCfg::primary()).unwrap()))]
+     pub source: SourceCfg,
+     /// The match expression a track of `source` must satisfy; serialized
+     /// under the profile key `match` (renamed here because `match` is a
+     /// Rust keyword).
+@@ -278,20 +290,21 @@ pub struct TrackRule {
+     pub optional: bool,
+     /// Settable-property changes to apply to the resolved track (spec 4.4
+     /// table); `None` leaves the track's properties untouched.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub changes: Option<BTreeMap<String, Scalar>>,
+ }
+ 
+ /// `track.source` value: the primary file, or an external donor (spec 4.5).
+ /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`].
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(untagged)]
+ pub enum SourceCfg {
+     /// Resolve against an external donor file located by this locator
+     /// (spec 4.6).
+     External(ExternalBlock),
+     /// Keyword form; the only accepted value is `"primary"` (the rule's own
+     /// primary file).
+     #[schemars(schema_with = "source_keyword_schema")]
+     Keyword(String),
+ }
+@@ -321,20 +334,21 @@ fn is_primary(s: &SourceCfg) -> bool {
+ fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+     keyword_domain_schema(SourceCfg::KEYWORDS)
+ }
+ 
+ /// External file locator (spec 4.6): finds candidate donor files; the
+ /// owning rule's `match` then selects exactly one track inside the located
+ /// file. Uniqueness applies at both stages: two or more matching files is
+ /// `AmbiguousExternal`, two or more matching tracks inside the file is
+ /// `AmbiguousRule`.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct Locator {
+     /// Directory to search, relative to the primary file's directory, or
+     /// absolute. A filesystem path; serialized as a plain string, so the
+     /// profile format is unchanged. Use forward slashes in profiles for
+     /// portability (Windows accepts them).
+     pub path: PathBuf,
+     /// Whether the search descends into subdirectories of `path`. Defaults
+     /// to `false`, deliberately asymmetric with `input.recursive`
+     /// (default `true`).
+@@ -356,20 +370,21 @@ pub struct Locator {
+     pub match_pattern: Option<String>,
+     /// Whether `match_pattern` matching is case-sensitive. Defaults to
+     /// `false` (the rendered pattern is prefixed `(?i)`, spec 4.7).
+     #[serde(default, skip_serializing_if = "is_default")]
+     #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
+     pub case_sensitive: bool,
+ }
+ 
+ /// Attachment handling (spec 4.9).
+ #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct AttachmentsCfg {
+     /// Policy for attachments no `rules` entry selects. Defaults to `keep`:
+     /// deliberate asymmetry with tracks (unmatched tracks are always
+     /// dropped), since dropping fonts silently breaks ASS subtitle
+     /// rendering.
+     #[serde(default, skip_serializing_if = "is_default")]
+     #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
+     pub unmatched: KeepDrop,
+     /// Ordered select/drop/add rules (spec 4.9). Unlike track rules, not
+@@ -379,20 +394,21 @@ pub struct AttachmentsCfg {
+     #[serde(default, skip_serializing_if = "is_default")]
+     #[schemars(extend("default" = serde_json::to_value(<Vec<AttachmentRule>>::default()).unwrap()))]
+     pub rules: Vec<AttachmentRule>,
+ }
+ 
+ /// Track handling: the unmatched-track policy plus the ordered rules
+ /// (spec 4.5). Parallel in shape to [`AttachmentsCfg`], but `unmatched`
+ /// defaults to `drop`: only rule-matched tracks survive unless the profile
+ /// opts into `keep` (spec 4.9 asymmetry note).
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct TracksCfg {
+     /// Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
+     /// `drop` (the declarative default). `keep` passes them through
+     /// untouched; consumed by `command` (Task 2). Donor tracks are
+     /// unaffected: a donor contributes only its rule-selected track.
+     #[serde(default = "drop_policy", skip_serializing_if = "is_drop_policy")]
+     #[schemars(extend("default" = serde_json::to_value(drop_policy()).unwrap()))]
+     pub unmatched: KeepDrop,
+     /// Ordered track rules; list order defines the output `--track-order`
+@@ -413,39 +429,41 @@ fn drop_policy() -> KeepDrop {
+ /// keep` and reloading it as `drop` - the owner-ruled-legal `core-83`
+ /// pure-passthrough profile, destroyed. Named after, and calling, the same
+ /// `drop_policy` its own `#[serde(default = ...)]` names.
+ fn is_drop_policy(k: &KeepDrop) -> bool {
+     *k == drop_policy()
+ }
+ 
+ /// Exactly one of `select` / `drop` / `add` must be set; enforced in
+ /// validate.rs (AttachmentRuleShape) so the parse error stays readable.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct AttachmentRule {
+     /// Select (keep) attachments matching this expression over
+     /// `file_name`/`content_type`/`description` (spec 4.9).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub select: Option<MatchExpr>,
+     /// Drop attachments matching this expression; same property set as
+     /// `select`.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub drop: Option<MatchExpr>,
+     /// Add an external file as an attachment, located the same way as a
+     /// track's external source (spec 4.6, 4.9).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub add: Option<Locator>,
+ }
+ 
+ /// `chapters` value: keep, drop, or an external locator (spec 4.9).
+ /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`]/[`SourceCfg`].
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(untagged)]
+ pub enum ChaptersCfg {
+     /// Resolve exactly one chapters file (XML or simple format, as
+     /// mkvmerge accepts) via this locator.
+     External(ExternalBlock),
+     /// Keyword form: `"keep"` or `"drop"`.
+     #[schemars(schema_with = "chapters_keyword_schema")]
+     Keyword(String),
+ }
+ 
+@@ -463,36 +481,38 @@ impl Default for ChaptersCfg {
+ }
+ 
+ /// Narrows `ChaptersCfg::Keyword`'s schema to [`ChaptersCfg::KEYWORDS`] (D46).
+ fn chapters_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+     keyword_domain_schema(ChaptersCfg::KEYWORDS)
+ }
+ 
+ /// Global and per-track tag handling (spec 4.9), mapped to
+ /// `--no-global-tags`/`--no-track-tags`.
+ #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(deny_unknown_fields)]
+ pub struct TagsCfg {
+     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
+     #[serde(default, skip_serializing_if = "is_default")]
+     #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
+     pub global: KeepDrop,
+     /// Per-track tags: keep or drop. Defaults to `keep`.
+     #[serde(default, skip_serializing_if = "is_default")]
+     #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
+     pub track: KeepDrop,
+ }
+ 
+ /// `title` value: keep, clear, or a literal-mode template (spec 4.9).
+ /// `#[serde(untagged)]`, same variant-resolution rule as the other
+ /// keyword-or-block enums above.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
++#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
+ #[serde(untagged)]
+ pub enum TitleCfg {
+     /// Literal-mode template rendering the output title (spec 4.7).
+     Template(TemplateBlock),
+     /// Keyword form: `"keep"` or `"clear"`.
+     #[schemars(schema_with = "title_keyword_schema")]
+     Keyword(String),
+ }
+ 
+ impl TitleCfg {
+diff --git a/crates/muxsmith-core/tests/ts_export.rs b/crates/muxsmith-core/tests/ts_export.rs
+new file mode 100644
+index 0000000..fd80abd
+--- /dev/null
++++ b/crates/muxsmith-core/tests/ts_export.rs
+@@ -0,0 +1,36 @@
++//! D44: generation entry point for the ts-rs bindings
++//! (`cargo test -p muxsmith-core --features ts`). ts-rs's own
++//! `#[ts(export)]` attribute, present on the 21 wire types (the 20 model
++//! types plus `StructuredEdit`, D44/D49), generates one hidden `#[test]`
++//! per type that writes `profile.ts` as a side effect of running this
++//! binary. This file supplies the other committed artifact ts-rs cannot
++//! produce on its own: `keywords.ts`. ts-rs exports types, not values, and
++//! the four keyword domains are `pub const` value arrays, so a small
++//! hand-written emitter writes them as TypeScript `as const` arrays (D44
++//! `:592-611`). Both artifacts share one destination, `TS_RS_EXPORT_DIR`
++//! (`.cargo/config.toml`).
++#![cfg(feature = "ts")]
++
++use std::path::Path;
++
++use muxsmith_core::profile::model::{ChaptersCfg, FilenameCfg, SourceCfg, TitleCfg};
++
++#[test]
++fn emit_keywords_ts() {
++    let dir = std::env::var("TS_RS_EXPORT_DIR").unwrap();
++    let mut out = String::from("// @generated by `cargo test -p muxsmith-core --features ts`\n");
++    for (name, domain) in [
++        ("FILENAME_KEYWORDS", FilenameCfg::KEYWORDS),
++        ("SOURCE_KEYWORDS", SourceCfg::KEYWORDS),
++        ("CHAPTERS_KEYWORDS", ChaptersCfg::KEYWORDS),
++        ("TITLE_KEYWORDS", TitleCfg::KEYWORDS),
++    ] {
++        let items = domain
++            .iter()
++            .map(|k| format!("\"{k}\""))
++            .collect::<Vec<_>>()
++            .join(", ");
++        out.push_str(&format!("export const {name} = [{items}] as const;\n"));
++    }
++    std::fs::write(Path::new(&dir).join("keywords.ts"), out).unwrap();
++}
+diff --git a/src/bindings/keywords.ts b/src/bindings/keywords.ts
+new file mode 100644
+index 0000000..4506149
+--- /dev/null
++++ b/src/bindings/keywords.ts
+@@ -0,0 +1,5 @@
++// @generated by `cargo test -p muxsmith-core --features ts`
++export const FILENAME_KEYWORDS = ["keep"] as const;
++export const SOURCE_KEYWORDS = ["primary"] as const;
++export const CHAPTERS_KEYWORDS = ["keep", "drop"] as const;
++export const TITLE_KEYWORDS = ["keep", "clear"] as const;
+diff --git a/src/bindings/profile.ts b/src/bindings/profile.ts
+new file mode 100644
+index 0000000..75933d1
+--- /dev/null
++++ b/src/bindings/profile.ts
+@@ -0,0 +1,405 @@
++// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.
++
++/**
++ * Exactly one of `select` / `drop` / `add` must be set; enforced in
++ * validate.rs (AttachmentRuleShape) so the parse error stays readable.
++ */
++export type AttachmentRule = { 
++/**
++ * Select (keep) attachments matching this expression over
++ * `file_name`/`content_type`/`description` (spec 4.9).
++ */
++select?: MatchExpr | null, 
++/**
++ * Drop attachments matching this expression; same property set as
++ * `select`.
++ */
++drop?: MatchExpr | null, 
++/**
++ * Add an external file as an attachment, located the same way as a
++ * track's external source (spec 4.6, 4.9).
++ */
++add?: Locator | null, };
++
++/**
++ * Attachment handling (spec 4.9).
++ */
++export type AttachmentsCfg = { 
++/**
++ * Policy for attachments no `rules` entry selects. Defaults to `keep`:
++ * deliberate asymmetry with tracks (unmatched tracks are always
++ * dropped), since dropping fonts silently breaks ASS subtitle
++ * rendering.
++ */
++unmatched?: KeepDrop, 
++/**
++ * Ordered select/drop/add rules (spec 4.9). Unlike track rules, not
++ * uniqueness-constrained: a `select`/`drop` expression may match
++ * several attachments (fonts come in sets); rules apply in list order,
++ * first matching rule wins per attachment.
++ */
++rules?: Array<AttachmentRule>, };
++
++/**
++ * `chapters` value: keep, drop, or an external locator (spec 4.9).
++ * `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`]/[`SourceCfg`].
++ */
++export type ChaptersCfg = ExternalBlock | string;
++
++/**
++ * `output.on_collision` policy (spec 4.8): applies to an existing rendered
++ * output path and to two planned outputs rendering to the same path. Does
++ * not override `SourceOverwrite` (output path equal to an input path),
++ * which is always a hard error regardless of this policy (spec 5.2).
++ */
++export type CollisionPolicy = "error" | "skip" | "overwrite";
++
++/**
++ * Shared `{ external: ... }` block; standalone for the same
++ * `deny_unknown_fields` reason as [`TemplateBlock`].
++ */
++export type ExternalBlock = { 
++/**
++ * The external locator (spec 4.6) resolved to find the donor file(s).
++ */
++external: Locator, };
++
++/**
++ * `output.filename` value: either a literal-mode template or the `keep`
++ * keyword (spec 4.8). `#[serde(untagged)]`: matches whichever variant
++ * deserializes first, so a bare string becomes `Keyword` and a
++ * `{ template: ... }` map becomes `Template`.
++ */
++export type FilenameCfg = TemplateBlock | string;
++
++/**
++ * Primary-file selection and directory-walk options (spec 4.2).
++ */
++export type Input = { 
++/**
++ * Regex searched (not anchored) against each candidate file's
++ * basename; the first match's span and capture groups become the
++ * identifier (spec 3) and populate template fields (`{match}`,
++ * `{g1}`, named groups).
++ */
++pattern: string, 
++/**
++ * Candidate file extensions, matched case-insensitively; not restricted
++ * to MKV. Checked once per batch against the local `mkvmerge
++ * --list-types` (spec 4.2): an entry absent from that list is still
++ * used for matching (so a typo silently excludes candidates) but
++ * raises `UnknownExtension`. Skipped, not raised, when the runtime
++ * capability is unavailable.
++ */
++extensions: Array<string>, 
++/**
++ * Whether the source directory walk descends into subdirectories.
++ * Defaults to `true`.
++ */
++recursive?: boolean, };
++
++/**
++ * Binary keep-or-drop toggle shared by `attachments.unmatched`,
++ * `tags.global` and `tags.track` (spec 4.9).
++ */
++export type KeepDrop = "keep" | "drop";
++
++/**
++ * External file locator (spec 4.6): finds candidate donor files; the
++ * owning rule's `match` then selects exactly one track inside the located
++ * file. Uniqueness applies at both stages: two or more matching files is
++ * `AmbiguousExternal`, two or more matching tracks inside the file is
++ * `AmbiguousRule`.
++ */
++export type Locator = { 
++/**
++ * Directory to search, relative to the primary file's directory, or
++ * absolute. A filesystem path; serialized as a plain string, so the
++ * profile format is unchanged. Use forward slashes in profiles for
++ * portability (Windows accepts them).
++ */
++path: string, 
++/**
++ * Whether the search descends into subdirectories of `path`. Defaults
++ * to `false`, deliberately asymmetric with `input.recursive`
++ * (default `true`).
++ */
++recursive?: boolean, 
++/**
++ * Candidate extensions, validated against `mkvmerge --list-types`
++ * like `input.extensions`.
++ */
++extensions: Array<string>, 
++/**
++ * Sugar for `match_pattern: '{match}'`: the candidate's basename must
++ * match the primary's identifier. Mutually exclusive with
++ * `match_pattern` (`LocatorConflict` if both are set); the only valid
++ * value is `true`.
++ */
++match_to_source?: boolean | null, 
++/**
++ * Regex-mode template (spec 4.7) the candidate's basename must match;
++ * mutually exclusive with `match_to_source`.
++ */
++match_pattern?: string | null, 
++/**
++ * Whether `match_pattern` matching is case-sensitive. Defaults to
++ * `false` (the rendered pattern is prefixed `(?i)`, spec 4.7).
++ */
++case_sensitive?: boolean, };
++
++/**
++ * One match expression: a conjunction of up to five parts, all present
++ * parts must hold (spec 4.3). Evaluated against every track/attachment of
++ * a resolved source; `any`/`not` recurse to arbitrary depth (typical
++ * profiles stay flat).
++ */
++export type MatchExpr = { 
++/**
++ * Property -> value equality after normalization; case-sensitive for
++ * strings (language values are normalized separately, spec 4.4).
++ * Multiple entries in the map are AND'd.
++ */
++exact?: { [key in string]: Scalar } | null, 
++/**
++ * Property -> substring, case-insensitive containment; string
++ * properties only ([`crate::capability::PropType::String`] required),
++ * otherwise a config-time type error.
++ */
++substring?: { [key in string]: string } | null, 
++/**
++ * Property -> regex, taken as written (use `(?i)` for case-insensitive
++ * matching); string properties only, same type-error rule as `substring`.
++ */
++regex?: { [key in string]: string } | null, 
++/**
++ * At least one sub-expression must hold (logical OR over the list).
++ */
++any?: Array<MatchExpr> | null, 
++/**
++ * No sub-expression may hold (logical NOR over the list).
++ */
++not?: Array<MatchExpr> | null, };
++
++/**
++ * Informational profile metadata; not used by matching or planning.
++ */
++export type Meta = { 
++/**
++ * Human-readable profile name (e.g. shown in the GUI's recent-profiles list).
++ */
++name?: string | null, 
++/**
++ * Prose note for humans reading the profile file; carried through
++ * serialization but never interpreted or rendered by the tool.
++ */
++description?: string | null, };
++
++/**
++ * Output naming and collision handling (spec 4.8).
++ */
++export type OutputCfg = { 
++/**
++ * Output directory; profile default, usually overridden per run via
++ * CLI/GUI run inputs (spec 3, 4.8).
++ */
++directory?: string | null, 
++/**
++ * `keep` (source basename, `.mkv` extension enforced) or a literal-mode
++ * template (spec 4.7); defaults to `keep`.
++ */
++filename?: FilenameCfg, 
++/**
++ * Policy when the rendered output path already exists or two planned
++ * outputs collide. An output path equal to any input path is always a
++ * hard `SourceOverwrite` error regardless of this policy (spec 4.8, 5.2).
++ */
++on_collision?: CollisionPolicy, };
++
++/**
++ * The top-level profile document (spec 4): input matching, output naming,
++ * track rules (in output order), and attachments/chapters/tags/title
++ * configuration. Deserializes with `deny_unknown_fields` throughout: an
++ * unrecognized key is a config error, not a silently ignored typo (spec 4:
++ * "Unknown keys are errors, not warnings").
++ */
++export type Profile = { 
++/**
++ * Format version; must equal `1` in v1 (`UnsupportedProfileVersion` if
++ * not). Incremented only on breaking format changes (spec 4).
++ */
++profile_version: number, 
++/**
++ * Optional descriptive metadata; purely informational, never
++ * interpreted by matching or planning.
++ */
++meta?: Meta | null, 
++/**
++ * Primary-file matching rule and directory-walk options (spec 4.2).
++ */
++input: Input, 
++/**
++ * Output naming and collision policy (spec 4.8).
++ */
++output?: OutputCfg, 
++/**
++ * Track selection/change rules plus the unmatched-track policy
++ * (spec 4.5). Restructured into a block so the policy lives with its
++ * rules, matching `attachments` and `output`/`tags`.
++ */
++tracks: TracksCfg, 
++/**
++ * Attachment keep/drop/add rules (spec 4.9).
++ */
++attachments?: AttachmentsCfg, 
++/**
++ * Chapters handling: keep, drop, or an external locator (spec 4.9).
++ */
++chapters?: ChaptersCfg, 
++/**
++ * Global and per-track tag handling (spec 4.9).
++ */
++tags?: TagsCfg, 
++/**
++ * Output title handling: keep, clear, or a literal-mode template
++ * (spec 4.9).
++ */
++title?: TitleCfg, };
++
++/**
++ * A scalar value inside `exact`/`changes` maps (spec 4.3/4.4).
++ * `#[serde(untagged)]`: deserialization tries each variant in the order
++ * declared below, so ordering is semantically load-bearing for numbers:
++ * a plain numeric literal (`3`) matches `Int` before it ever reaches
++ * `Float`, so only literals with a decimal point become `Float`. The
++ * `Bool`-before-`Str` order is not load-bearing for typed YAML/JSON input
++ * (a boolean node never deserializes as a string) but is kept explicit
++ * for clarity.
++ */
++export type Scalar = boolean | number | number | string;
++
++/**
++ * `track.source` value: the primary file, or an external donor (spec 4.5).
++ * `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`].
++ */
++export type SourceCfg = ExternalBlock | string;
++
++/**
++ * The closed grammar of suggestion edits (spec 5.3, D6); only ever narrows a
++ * rule. Populated by the engine (see `suggest`) and accepted back from the
++ * shell to apply (D43, D49).
++ *
++ * `AddExact`/`AddNotExact` carry a typed [`Scalar`], not a display string:
++ * `exact` compares each property in its own domain (`core-72`), so the
++ * variant is a core semantic. The engine holds the typed value when it builds
++ * the edit; carrying it is what makes the applied delta identical to the
++ * simulated one (`core-03`, D49).
++ */
++export type StructuredEdit = { "kind": "add_exact", 
++/**
++ * The matchable property to constrain.
++ */
++property: string, 
++/**
++ * The value to require, in the type the engine identified.
++ */
++value: Scalar, } | { "kind": "add_not_exact", 
++/**
++ * The matchable property to exclude on.
++ */
++property: string, 
++/**
++ * The value to exclude, in the type the engine identified.
++ */
++value: Scalar, } | { "kind": "add_substring", 
++/**
++ * The `track_name` substring to require.
++ */
++value: string, } | { "kind": "add_not_substring", 
++/**
++ * The `track_name` substring to exclude.
++ */
++value: string, };
++
++/**
++ * Global and per-track tag handling (spec 4.9), mapped to
++ * `--no-global-tags`/`--no-track-tags`.
++ */
++export type TagsCfg = { 
++/**
++ * Global (container-level) tags: keep or drop. Defaults to `keep`.
++ */
++global?: KeepDrop, 
++/**
++ * Per-track tags: keep or drop. Defaults to `keep`.
++ */
++track?: KeepDrop, };
++
++/**
++ * Shared `{ template: ... }` block; a standalone struct (not an inline
++ * enum variant) because serde ignores `deny_unknown_fields` on struct
++ * variants of untagged enums.
++ */
++export type TemplateBlock = { 
++/**
++ * The template source text (spec 4.7); rendered in literal or regex
++ * mode depending on where the block appears.
++ */
++template: string, };
++
++/**
++ * `title` value: keep, clear, or a literal-mode template (spec 4.9).
++ * `#[serde(untagged)]`, same variant-resolution rule as the other
++ * keyword-or-block enums above.
++ */
++export type TitleCfg = TemplateBlock | string;
++
++/**
++ * One track rule (spec 4.5): selects exactly one track (subject to
++ * strict independent uniqueness, spec 2) and optionally applies property
++ * changes to it.
++ */
++export type TrackRule = { 
++/**
++ * Where the rule resolves against: the primary file (default) or an
++ * external donor located via a [`Locator`] (spec 4.5, 4.6).
++ */
++source?: SourceCfg, 
++/**
++ * The match expression a track of `source` must satisfy; serialized
++ * under the profile key `match` (renamed here because `match` is a
++ * Rust keyword).
++ */
++match: MatchExpr, 
++/**
++ * Tolerates zero matching tracks (spec 5.1). Two candidates on an
++ * optional rule remain an `AmbiguousRule` error; `optional` covers
++ * only the zero-candidate case, never widening uniqueness.
++ */
++optional?: boolean, 
++/**
++ * Settable-property changes to apply to the resolved track (spec 4.4
++ * table); `None` leaves the track's properties untouched.
++ */
++changes?: { [key in string]: Scalar } | null, };
++
++/**
++ * Track handling: the unmatched-track policy plus the ordered rules
++ * (spec 4.5). Parallel in shape to [`AttachmentsCfg`], but `unmatched`
++ * defaults to `drop`: only rule-matched tracks survive unless the profile
++ * opts into `keep` (spec 4.9 asymmetry note).
++ */
++export type TracksCfg = { 
++/**
++ * Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
++ * `drop` (the declarative default). `keep` passes them through
++ * untouched; consumed by `command` (Task 2). Donor tracks are
++ * unaffected: a donor contributes only its rule-selected track.
++ */
++unmatched?: KeepDrop, 
++/**
++ * Ordered track rules; list order defines the output `--track-order`
++ * (spec 4.5). Uniqueness-constrained (spec 2): each rule resolves to
++ * exactly one track.
++ */
++rules: Array<TrackRule>, };

@@ -1,0 +1,1186 @@
+# Review package: 80d410ce248ed8265e56bd0816fb583bb46d68c0..c50866a
+
+## Commits
+c50866a gui: the ten field widgets, exhaustive by never-arm, plus the wave-3 test-mount harness (D45)
+
+## Files changed
+ e2e/global.d.ts                              |  11 ++
+ e2e/mount-entry.ts                           |  79 +++++++++++
+ e2e/mount.ts                                 |  33 +++++
+ e2e/smoke.spec.ts                            | 196 +++++++++++++++++++++++++++
+ e2e/tsconfig.json                            |   2 +-
+ e2e/vite.mount.config.ts                     |  36 +++++
+ package.json                                 |   2 +-
+ src/editor/widgets/BoolWidget.vue            |  21 +++
+ src/editor/widgets/DirectoryPathWidget.vue   |  28 ++++
+ src/editor/widgets/FieldWidgetDispatcher.vue |  69 ++++++++++
+ src/editor/widgets/KeywordOrBlockWidget.vue  |  58 ++++++++
+ src/editor/widgets/ListWidget.vue            |  99 ++++++++++++++
+ src/editor/widgets/OptionalFlagWidget.vue    |  32 +++++
+ src/editor/widgets/PropertyMapWidget.vue     |  90 ++++++++++++
+ src/editor/widgets/SectionWidget.vue         |  49 +++++++
+ src/editor/widgets/SelectWidget.vue          |  31 +++++
+ src/editor/widgets/StringListWidget.vue      |  39 ++++++
+ src/editor/widgets/TextWidget.vue            |  31 +++++
+ src/editor/widgets/shared.ts                 |  58 ++++++++
+ 19 files changed, 962 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/e2e/global.d.ts b/e2e/global.d.ts
+index 284ad42..c0881a0 100644
+--- a/e2e/global.d.ts
++++ b/e2e/global.d.ts
+@@ -28,12 +28,23 @@ declare global {
+     };
+     /** `@tauri-apps/plugin-os`'s `platform()` reads this global directly
+      * (verified: node_modules/@tauri-apps/plugin-os/dist-js/index.js has
+      * no `invoke` call at all for `platform()`) -- neither `mockIPC` nor
+      * `mockWindows` ever sets it, so `mocks.ts`'s `installMockIPC` does. */
+     __TAURI_OS_PLUGIN_INTERNALS__?: Record<string, unknown>;
+     /** Bound via `page.exposeFunction` in `mocks.ts`: every mocked
+      * `invoke()` call is forwarded here so tests can assert on real
+      * invocation evidence instead of a UI echo. */
+     __muxsmithRecordInvoke__?: (cmd: string, args: unknown) => void;
++    /** Set by `mount-entry.ts` (bundled by `vite.mount.config.ts`, wave-3
++     * amendment): mounts one editor component in isolation onto `#mount`,
++     * round-tripping its `modelValue`/`update:modelValue` v-model. See
++     * `mount.ts` for the Playwright-side driver. */
++    __muxsmithMount__: (spec: { component: string; props?: Record<string, unknown>; locale?: string }) => void;
++    /** Reads the mounted component's current model value (the live
++     * `modelValue` the harness's wrapper root holds). */
++    __muxsmithModel__: () => unknown;
++    /** Every `update:modelValue` event the mounted component has emitted,
++     * in order; reset on each `__muxsmithMount__` call. */
++    __muxsmithEmitted__: Array<{ event: string; payload: unknown }>;
+   }
+ }
+diff --git a/e2e/mount-entry.ts b/e2e/mount-entry.ts
+new file mode 100644
+index 0000000..d4ac337
+--- /dev/null
++++ b/e2e/mount-entry.ts
+@@ -0,0 +1,79 @@
++/**
++ * Browser-side component mount harness (wave-3 amendment, mount-harness
++ * routing): bundled standalone by `vite.mount.config.ts` into a
++ * dependency-free IIFE (`e2e/.generated/mount-harness.js`), injected into a
++ * blank `page.setContent()` page via `page.addScriptTag({ path })`
++ * (`mount.ts`). Extends the `tauri-mock-entry.ts` precedent (real
++ * dependencies bundled once, re-exported on a `window.__muxsmith*__`
++ * global) to solve a different problem: no editor mount point exists in
++ * the running app before Task 13 (`src/main.ts` mounts only `App.vue`,
++ * whose `View` union is `"batch" | "jobs"`), so Tasks 10-12's rendering
++ * assertions cannot reach editor UI through `page.goto("/")`. This module
++ * mounts one component at a time in isolation instead.
++ *
++ * `import.meta.glob`'s result is PATH-keyed (`"../src/editor/widgets/
++ * TextWidget.vue"`, not `"TextWidget"`) -- `resolvePath` below
++ * reconstructs the full path from the bare basename a caller passes, there
++ * is no separate basename-to-module map. `eager: true` is mandatory: an
++ * IIFE build forbids code-splitting, which a lazy glob would introduce.
++ */
++import { createApp, h, ref } from "vue";
++import type { Component } from "vue";
++import { createFluentVue } from "fluent-vue";
++import { buildBundles } from "../src/i18n";
++
++const modules = import.meta.glob<{ default: Component }>(
++  ["../src/editor/widgets/*.vue", "../src/views/EditorView.vue"],
++  { eager: true },
++);
++
++function resolvePath(component: string): string {
++  return component === "EditorView"
++    ? "../src/views/EditorView.vue"
++    : `../src/editor/widgets/${component}.vue`;
++}
++
++interface MountSpec {
++  component: string;
++  props?: Record<string, unknown>;
++  locale?: string;
++}
++
++let currentApp: ReturnType<typeof createApp> | null = null;
++
++function mount(spec: MountSpec): void {
++  currentApp?.unmount();
++  window.__muxsmithEmitted__ = [];
++
++  const path = resolvePath(spec.component);
++  const mod = modules[path];
++  if (!mod) {
++    throw new Error(`unknown mount component "${spec.component}"`);
++  }
++  const Comp = mod.default;
++
++  const model = ref(spec.props?.modelValue);
++  window.__muxsmithModel__ = () => model.value;
++
++  const app = createApp({
++    render: () =>
++      h(Comp, {
++        ...spec.props,
++        modelValue: model.value,
++        "onUpdate:modelValue": (v: unknown) => {
++          model.value = v;
++          window.__muxsmithEmitted__.push({ event: "update:modelValue", payload: v });
++        },
++      }),
++  });
++  app.use(createFluentVue({ bundles: buildBundles(spec.locale ?? "en") }));
++
++  const root = document.getElementById("mount");
++  if (!root) {
++    throw new Error('mount-entry: no "#mount" element in the page');
++  }
++  currentApp = app;
++  app.mount(root);
++}
++
++window.__muxsmithMount__ = mount;
+diff --git a/e2e/mount.ts b/e2e/mount.ts
+new file mode 100644
+index 0000000..f9b2169
+--- /dev/null
++++ b/e2e/mount.ts
+@@ -0,0 +1,33 @@
++/**
++ * Playwright-side helper for the component mount harness (wave-3
++ * amendment, mount-harness routing), parallel to `mocks.ts`: injects
++ * `mount-harness.js` (built by `vite.mount.config.ts`) into a blank page
++ * and drives `window.__muxsmithMount__`/`__muxsmithModel__`/
++ * `__muxsmithEmitted__` (typed in `global.d.ts`). No Tauri IPC mock is
++ * installed here -- the widgets and, through Task 12, `EditorView` are fed
++ * their model as a prop; IPC wiring is Task 13.
++ */
++import { resolve } from "node:path";
++import type { Page } from "@playwright/test";
++
++const MOUNT_HARNESS_PATH = resolve(import.meta.dirname, ".generated/mount-harness.js");
++
++export interface MountSpec {
++  component: string;
++  props?: Record<string, unknown>;
++  locale?: string;
++}
++
++export async function mountComponent(page: Page, spec: MountSpec): Promise<void> {
++  await page.setContent('<!doctype html><div id="mount"></div>');
++  await page.addScriptTag({ path: MOUNT_HARNESS_PATH });
++  await page.evaluate((s) => window.__muxsmithMount__(s), spec);
++}
++
++export function readModel(page: Page): Promise<unknown> {
++  return page.evaluate(() => window.__muxsmithModel__());
++}
++
++export function readEmitted(page: Page): Promise<Array<{ event: string; payload: unknown }>> {
++  return page.evaluate(() => window.__muxsmithEmitted__);
++}
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index d61646c..9f88594 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -13,34 +13,46 @@
+  * Every user-facing string asserted against comes from `e2e/i18n-en.ts`
+  * (the real en Fluent catalog), never a hand-duplicated literal (Task 12's
+  * binding test-discipline convention). Locators prefer `getByRole`;
+  * `data-testid` is the fallback where no distinct accessible role/name
+  * exists.
+  */
+ import { expect, test } from "@playwright/test";
+ import AxeBuilder from "@axe-core/playwright";
+ import type { Page } from "@playwright/test";
+ import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
++import { mountComponent, readModel } from "./mount";
+ import { en } from "./i18n-en";
+ import type { FluentVariable } from "@fluent/bundle";
+ import {
+   JOB_EVENT_CHANNEL,
+   RUN_FINISHED_CHANNEL,
+ } from "../src/ipc";
+ import type {
+   AppSettings,
+   JobEvent,
+   MkvmergeInfo,
+   ReportDocument,
+   RunFinishedEvent,
+   StartedRun,
+ } from "../src/ipc";
++import {
++  COLLISION_POLICIES,
++  inputFields,
++  locatorFields,
++  matchExprFields,
++  metaFields,
++  outputFields,
++  profileFields,
++  trackRuleFields,
++} from "../src/editor/registries";
++import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
+ 
+ /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
+  * default role-name matching is a case-insensitive SUBSTRING match, which
+  * collides here for real (not hypothetically): "Run" (the batch-run
+  * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
+  * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
+  * list), so an un-exact match resolves to 2-3 elements and Playwright's
+  * strict mode rejects the locator. */
+ function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
+   return { name: en(id, args), exact: true };
+@@ -565,10 +577,194 @@ test.describe("german locale", () => {
+     });
+     await page.reload();
+ 
+     await page.getByTestId("open-settings").click();
+     const reloadedDialog = page.getByTestId("settings-dialog");
+     await expect(reloadedDialog.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
+     const reloadedLocaleSelect = reloadedDialog.getByRole("combobox", { name: "Sprache", exact: true });
+     await expect(reloadedLocaleSelect).toHaveValue("de");
+   });
+ });
++
++// Task 10 (D45, wave-3 mount-harness amendment): per-widget rendering
++// assertions for the ten FieldWidget variants, mounted in isolation via
++// `mount.ts` -- `page.goto("/")` reaches no widget (no editor mount point
++// exists in the running app before Task 13). Every `spec` fixture below is
++// a REAL entry pulled from Task 9's registries (`src/editor/registries.ts`),
++// not a hand-rolled FieldSpec literal, so a test failure here can never be
++// "the fixture drifted from the real registry shape". Accessible names come
++// from `en(id)` over the real labelKey exactly as the rest of this file
++// does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
++// values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
++// D45's own rule that widget option tokens render as profile-format
++// tokens, not via new Fluent keys. `editor-attachment-rule-add`/`-drop`
++// ("Add"/"Drop") are reused verbatim for the generic add/remove-row
++// affordance on `list`/`propertyMap`: both are already-existing,
++// already-translated (en+de) generic verbs -- "Drop" is the app's own
++// established exclude-this-item vocabulary (KEEP_DROP) -- so reusing them
++// keeps `gui-editor.ftl` at 43 keys, matching `browse-button`'s existing
++// reuse across FirstRun/SettingsDialog/BatchView.
++test.describe("editor widgets: mount-harness rendering", () => {
++  test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
++    await mountComponent(page, {
++      component: "FieldWidgetDispatcher",
++      props: { spec: inputFields.recursive, modelValue: true },
++    });
++    const field = page.getByRole("checkbox", name("editor-input-recursive"));
++    await expect(field).toBeChecked();
++    await field.uncheck();
++    await expect.poll(() => readModel(page)).toBe(false);
++  });
++
++  test("text widget (single-line) renders a textbox and edits update the held model", async ({ page }) => {
++    await mountComponent(page, {
++      component: "TextWidget",
++      props: { spec: inputFields.pattern, modelValue: "^S[0-9]+E[0-9]+" },
++    });
++    const field = page.getByRole("textbox", name("editor-input-pattern"));
++    await expect(field).toHaveValue("^S[0-9]+E[0-9]+");
++    await field.fill(".*");
++    await expect.poll(() => readModel(page)).toBe(".*");
++  });
++
++  test("text widget (multiline) renders a textbox for a multiline field", async ({ page }) => {
++    await mountComponent(page, {
++      component: "TextWidget",
++      props: { spec: metaFields.description, modelValue: "note" },
++    });
++    const field = page.getByRole("textbox", name("editor-meta-description"));
++    await expect(field).toHaveValue("note");
++    await field.fill("longer note");
++    await expect.poll(() => readModel(page)).toBe("longer note");
++  });
++
++  test("bool widget renders a checkbox and toggling updates the held model", async ({ page }) => {
++    await mountComponent(page, {
++      component: "BoolWidget",
++      props: { spec: inputFields.recursive, modelValue: false },
++    });
++    const field = page.getByRole("checkbox", name("editor-input-recursive"));
++    await expect(field).not.toBeChecked();
++    await field.check();
++    await expect.poll(() => readModel(page)).toBe(true);
++  });
++
++  test("optionalFlag widget's off state is absence, not false (validate.rs rejects Some(false))", async ({
++    page,
++  }) => {
++    await mountComponent(page, {
++      component: "OptionalFlagWidget",
++      props: { spec: locatorFields.match_to_source, modelValue: undefined },
++    });
++    const field = page.getByRole("checkbox", name("editor-locator-match-to-source"));
++    await expect(field).not.toBeChecked();
++    await field.check();
++    await expect.poll(() => readModel(page)).toBe(true);
++    await field.uncheck();
++    await expect.poll(() => readModel(page)).toBeUndefined();
++  });
++
++  test("select widget renders a combobox of its raw (untranslated) domain tokens", async ({ page }) => {
++    await mountComponent(page, {
++      component: "SelectWidget",
++      props: { spec: outputFields.on_collision, modelValue: "error" },
++    });
++    const field = page.getByRole("combobox", name("editor-output-on-collision"));
++    await expect(field).toHaveValue("error");
++    for (const token of COLLISION_POLICIES) {
++      await expect(field.getByRole("option", { name: token, exact: true })).toBeAttached();
++    }
++    await field.selectOption("overwrite");
++    await expect.poll(() => readModel(page)).toBe("overwrite");
++  });
++
++  test("keywordOrBlock widget offers its keyword tokens in a combobox plus a nested block section", async ({
++    page,
++  }) => {
++    await mountComponent(page, {
++      component: "KeywordOrBlockWidget",
++      props: { spec: profileFields.chapters, modelValue: "keep" },
++    });
++    const field = page.getByRole("combobox", name("editor-profile-chapters"));
++    for (const token of CHAPTERS_KEYWORDS) {
++      await expect(field.getByRole("option", { name: token, exact: true })).toBeAttached();
++    }
++    await field.selectOption("drop");
++    await expect.poll(() => readModel(page)).toBe("drop");
++
++    // The nested block section (ExternalBlock, per profileFields.chapters'
++    // `block: "externalBlock"`) is always present too -- AttachmentRule's
++    // one-of precedent: no mode toggle, core diagnoses an over-set model.
++    const blockGroup = page.getByRole("group", name("editor-external-block-external"));
++    await expect(blockGroup).toBeVisible();
++  });
++
++  test("directoryPath widget renders a plain path textbox (no IPC dialog -- Task 13's job)", async ({ page }) => {
++    await mountComponent(page, {
++      component: "DirectoryPathWidget",
++      props: { spec: outputFields.directory, modelValue: "/out" },
++    });
++    const field = page.getByRole("textbox", name("editor-output-directory"));
++    await expect(field).toHaveValue("/out");
++    await field.fill("/other");
++    await expect.poll(() => readModel(page)).toBe("/other");
++  });
++
++  test("stringList widget round-trips a comma-separated list of strings", async ({ page }) => {
++    await mountComponent(page, {
++      component: "StringListWidget",
++      props: { spec: inputFields.extensions, modelValue: ["mkv", "mp4"] },
++    });
++    const field = page.getByRole("textbox", name("editor-input-extensions"));
++    await expect(field).toHaveValue("mkv, mp4");
++    await field.fill("mkv, mp4, avi");
++    await expect.poll(() => readModel(page)).toEqual(["mkv", "mp4", "avi"]);
++  });
++
++  test("propertyMap widget: add/remove rows edit a key-value map", async ({ page }) => {
++    await mountComponent(page, {
++      component: "PropertyMapWidget",
++      props: { spec: trackRuleFields.changes, modelValue: { forced: "true" } },
++    });
++    await expect(page.getByTestId("property-map-key").first()).toHaveValue("forced");
++    await expect(page.getByTestId("property-map-value").first()).toHaveValue("true");
++
++    await page.getByRole("button", name("editor-attachment-rule-add")).click();
++    await expect(page.getByTestId("property-map-key")).toHaveCount(2);
++    await page.getByTestId("property-map-key").nth(1).fill("default");
++    await page.getByTestId("property-map-value").nth(1).fill("true");
++    await expect.poll(() => readModel(page)).toEqual({ forced: "true", default: "true" });
++
++    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
++    await expect.poll(() => readModel(page)).toEqual({ default: "true" });
++  });
++
++  test("list widget: add/remove nested items (matchExpr.any, item: matchExpr)", async ({ page }) => {
++    await mountComponent(page, {
++      component: "ListWidget",
++      props: { spec: matchExprFields.any, modelValue: [] },
++    });
++    await expect.poll(() => readModel(page)).toEqual([]);
++
++    await page.getByRole("button", name("editor-attachment-rule-add")).click();
++    await expect.poll(() => readModel(page)).toEqual([{}]);
++    // Each item renders its own nested MatchExpr fields via SectionWidget.
++    await expect(page.getByRole("group", name("editor-match-expr-exact"))).toBeVisible();
++
++    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
++    await expect.poll(() => readModel(page)).toEqual([]);
++  });
++
++  test("section widget renders a fieldset/legend group of its sub-fields, created implicitly on first edit", async ({
++    page,
++  }) => {
++    await mountComponent(page, {
++      component: "SectionWidget",
++      props: { spec: profileFields.input, modelValue: undefined },
++    });
++    const group = page.getByRole("group", name("editor-profile-input"));
++    await expect(group).toBeVisible();
++    const pattern = group.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("^S");
++    await expect.poll(() => readModel(page)).toMatchObject({ pattern: "^S" });
++  });
++});
+diff --git a/e2e/tsconfig.json b/e2e/tsconfig.json
+index 8577e2f..17d9260 100644
+--- a/e2e/tsconfig.json
++++ b/e2e/tsconfig.json
+@@ -1,8 +1,8 @@
+ {
+   "extends": "../tsconfig.json",
+   "compilerOptions": {
+-    "types": ["node", "@playwright/test"],
++    "types": ["node", "@playwright/test", "vite/client"],
+     "noEmit": true
+   },
+   "include": ["**/*.ts", "../playwright.config.ts"]
+ }
+diff --git a/e2e/vite.mount.config.ts b/e2e/vite.mount.config.ts
+new file mode 100644
+index 0000000..c38bfd0
+--- /dev/null
++++ b/e2e/vite.mount.config.ts
+@@ -0,0 +1,36 @@
++import { resolve } from "node:path";
++import { defineConfig } from "vite";
++import vue from "@vitejs/plugin-vue";
++
++const here = import.meta.dirname;
++
++export default defineConfig({
++  plugins: [vue()],
++  // Vue's `esm-bundler` build deliberately leaves `process.env.NODE_ENV`
++  // unreplaced (dev-mode warning guards) and expects the consuming
++  // bundler to define it -- `vite build` on the app's own `index.html`
++  // does this automatically via its internal esbuild `define` wiring, but
++  // `build.lib` (this config, and the one it is parallel to,
++  // `vite.harness.config.ts`) does not get the same automatic
++  // substitution for a bundled dependency (a known Vite library-mode gap,
++  // not exercised until this config: `vite.harness.config.ts` bundles
++  // only `@tauri-apps/api`, which has no `process.env` reference).
++  // Confirmed empirically: without this, the IIFE throws `ReferenceError:
++  // process is not defined` at the very first Vue module evaluated
++  // (`shared.esm-bundler.js`'s `EMPTY_OBJ` constant), before
++  // `window.__muxsmithMount__` is ever assigned.
++  define: {
++    "process.env.NODE_ENV": JSON.stringify("production"),
++  },
++  build: {
++    outDir: resolve(here, ".generated"),
++    emptyOutDir: false, // must NOT wipe tauri-mock-harness.js, built by the step before
++    minify: false,
++    lib: {
++      entry: resolve(here, "mount-entry.ts"),
++      name: "MuxsmithMountHarness",
++      formats: ["iife"],
++      fileName: () => "mount-harness.js",
++    },
++  },
++});
+diff --git a/package.json b/package.json
+index a725aa4..1b7637a 100644
+--- a/package.json
++++ b/package.json
+@@ -3,21 +3,21 @@
+   "private": true,
+   "version": "0.1.0",
+   "type": "module",
+   "packageManager": "pnpm@11.10.0",
+   "scripts": {
+     "dev": "vite",
+     "build": "vue-tsc --noEmit && vite build",
+     "preview": "vite preview",
+     "lint": "eslint .",
+     "check:i18n": "node scripts/check-i18n.mjs",
+-    "test:e2e": "tsc --noEmit -p e2e/tsconfig.json && vite build --config e2e/vite.harness.config.ts && playwright test"
++    "test:e2e": "tsc --noEmit -p e2e/tsconfig.json && vite build --config e2e/vite.harness.config.ts && vite build --config e2e/vite.mount.config.ts && playwright test"
+   },
+   "dependencies": {
+     "@fluent/bundle": "0.19.1",
+     "@tauri-apps/api": "2.11.1",
+     "@tauri-apps/plugin-clipboard-manager": "2.3.2",
+     "@tauri-apps/plugin-dialog": "2.7.1",
+     "@tauri-apps/plugin-fs": "2.5.1",
+     "@tauri-apps/plugin-os": "2.3.2",
+     "fluent-vue": "3.8.2",
+     "vue": "3.5.39"
+diff --git a/src/editor/widgets/BoolWidget.vue b/src/editor/widgets/BoolWidget.vue
+new file mode 100644
+index 0000000..7d81e2c
+--- /dev/null
++++ b/src/editor/widgets/BoolWidget.vue
+@@ -0,0 +1,21 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "bool" }` -- a plain two-state checkbox.
++import { useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"bool"> }>();
++const model = defineModel<boolean>();
++
++const id = useId();
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <input
++      :id="id"
++      v-model="model"
++      type="checkbox"
++    >
++  </div>
++</template>
+diff --git a/src/editor/widgets/DirectoryPathWidget.vue b/src/editor/widgets/DirectoryPathWidget.vue
+new file mode 100644
+index 0000000..29f4bfd
+--- /dev/null
++++ b/src/editor/widgets/DirectoryPathWidget.vue
+@@ -0,0 +1,28 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "directoryPath"; optional }`. A plain path
++// textbox -- no file-picker dialog integration here: that needs a Tauri
++// IPC round trip (`@tauri-apps/plugin-dialog`), and the mount-harness
++// amendment is explicit that these widgets install no IPC mock because
++// they are fed their model as a prop; wiring a real picker is Task 13's
++// job alongside the rest of the IPC surface. `optional` is not enforced
++// here either (zero semantic validation, spec 7): an empty string is a
++// legal "unset" value core can diagnose if it isn't.
++import { useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"directoryPath"> }>();
++const model = defineModel<string | null>();
++
++const id = useId();
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <input
++      :id="id"
++      v-model="model"
++      type="text"
++    >
++  </div>
++</template>
+diff --git a/src/editor/widgets/FieldWidgetDispatcher.vue b/src/editor/widgets/FieldWidgetDispatcher.vue
+new file mode 100644
+index 0000000..c2d1686
+--- /dev/null
++++ b/src/editor/widgets/FieldWidgetDispatcher.vue
+@@ -0,0 +1,69 @@
++<script setup lang="ts">
++// D45: the widget dispatcher -- given one `EditableField`, resolves and
++// renders the component matching its `widget.kind`. `widgetComponentFor`'s
++// switch carries an explicit `const _exhaustive: never = kind` default
++// arm (D45's own deliberate, minimal improvement over the existing house
++// shape at `src/jobRowState.ts:44-55`, which relies on plain control-flow
++// exhaustiveness with no such arm): a `FieldWidget` variant added without
++// a case here fails the *build* with TS2322 naming the unhandled kind,
++// not just an unreachable `default` at runtime.
++//
++// The registry forces label+widget EXISTENCE per field, not
++// type-suitability (D45); this dispatcher mirrors that by passing `spec`
++// straight through `<component :is>` rather than re-deriving a narrower
++// per-kind prop type at the call site -- a mismatched widget-to-field
++// pairing is a visible rendering bug caught the first time the panel
++// opens, the same accepted gap the registry itself already names.
++import type { Component } from "vue";
++import type { EditableField, FieldWidget } from "../fieldSpec";
++import TextWidget from "./TextWidget.vue";
++import BoolWidget from "./BoolWidget.vue";
++import OptionalFlagWidget from "./OptionalFlagWidget.vue";
++import SelectWidget from "./SelectWidget.vue";
++import KeywordOrBlockWidget from "./KeywordOrBlockWidget.vue";
++import DirectoryPathWidget from "./DirectoryPathWidget.vue";
++import StringListWidget from "./StringListWidget.vue";
++import PropertyMapWidget from "./PropertyMapWidget.vue";
++import ListWidget from "./ListWidget.vue";
++import SectionWidget from "./SectionWidget.vue";
++
++defineProps<{ spec: EditableField }>();
++const model = defineModel<unknown>();
++
++function widgetComponentFor(kind: FieldWidget["kind"]): Component {
++  switch (kind) {
++    case "text":
++      return TextWidget;
++    case "bool":
++      return BoolWidget;
++    case "optionalFlag":
++      return OptionalFlagWidget;
++    case "select":
++      return SelectWidget;
++    case "keywordOrBlock":
++      return KeywordOrBlockWidget;
++    case "directoryPath":
++      return DirectoryPathWidget;
++    case "stringList":
++      return StringListWidget;
++    case "propertyMap":
++      return PropertyMapWidget;
++    case "list":
++      return ListWidget;
++    case "section":
++      return SectionWidget;
++    default: {
++      const _exhaustive: never = kind;
++      throw new Error(`unhandled FieldWidget kind: ${String(_exhaustive)}`);
++    }
++  }
++}
++</script>
++
++<template>
++  <component
++    :is="widgetComponentFor(spec.widget.kind)"
++    v-model="model"
++    :spec="spec"
++  />
++</template>
+diff --git a/src/editor/widgets/KeywordOrBlockWidget.vue b/src/editor/widgets/KeywordOrBlockWidget.vue
+new file mode 100644
+index 0000000..efa34d4
+--- /dev/null
++++ b/src/editor/widgets/KeywordOrBlockWidget.vue
+@@ -0,0 +1,58 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "keywordOrBlock"; keywords; block }`. The
++// underlying wire type is an untagged `Block | string` (e.g. FilenameCfg,
++// ChaptersCfg, SourceCfg): the value is EITHER one of the fixed `keywords`
++// tokens OR a `block`-shaped nested struct. No mode toggle switches
++// between them (that needs UI-only translated text with no existing
++// catalog key, and spec 7 keeps this class of either-or resolution out of
++// the frontend already -- AttachmentRule's one-of is the named precedent:
++// three independent optional sections, no toggle, core diagnoses an
++// over-set model). The keyword combobox and the nested block section are
++// therefore both always visible; whichever the user actually populates is
++// what gets sent.
++import { computed, useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++import SectionWidget from "./SectionWidget.vue";
++
++const props = defineProps<{ spec: EditableFieldOf<"keywordOrBlock"> }>();
++const model = defineModel<string | Record<string, unknown> | null>();
++
++const id = useId();
++
++const isKeyword = computed(() => typeof model.value === "string");
++
++const blockSpec = computed<EditableFieldOf<"section">>(() => ({
++  labelKey: props.spec.labelKey,
++  widget: { kind: "section", of: props.spec.widget.block, optional: true },
++}));
++
++const blockModel = computed<Record<string, unknown> | null | undefined>({
++  get: () => (isKeyword.value ? undefined : (model.value as Record<string, unknown> | null | undefined)),
++  set: (value) => {
++    model.value = value;
++  },
++});
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <select
++      :id="id"
++      :value="isKeyword ? model : ''"
++      @change="model = ($event.target as HTMLSelectElement).value"
++    >
++      <option
++        v-for="keyword in spec.widget.keywords"
++        :key="keyword"
++        :value="keyword"
++      >
++        {{ keyword }}
++      </option>
++    </select>
++    <SectionWidget
++      v-model="blockModel"
++      :spec="blockSpec"
++    />
++  </div>
++</template>
+diff --git a/src/editor/widgets/ListWidget.vue b/src/editor/widgets/ListWidget.vue
+new file mode 100644
+index 0000000..c46dd3c
+--- /dev/null
++++ b/src/editor/widgets/ListWidget.vue
+@@ -0,0 +1,99 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "list"; item; reorderable }`. Each item
++// renders through `SectionWidget` (synthesized against `item`'s own
++// registry), recursing via `FieldWidgetDispatcher`. This generic widget is
++// NOT the spec 8.2 top-level rule grid (`tracks.rules`/
++// `attachments.rules`): that is Task 11's own bespoke grid with drag
++// handles and per-rule summaries, built directly against `profile.ts`
++// types rather than through this dispatcher. The registry's only current
++// consumers of a generic `list` are `matchExpr.any`/`matchExpr.not`, both
++// `reorderable: false`; `reorderable: true` is still handled here (native
++// HTML5 drag-and-drop on the item itself, matching spec 8.2's own "drag to
++// reorder" wording, needs no translated chrome) so the widget stays
++// correct against the full `FieldWidget` contract, not just today's
++// registry contents. Add/remove reuse `editor-attachment-rule-add`/`-drop`
++// -- see `PropertyMapWidget.vue`'s doc for why that reuse is sound.
++import { computed } from "vue";
++import type { EditableFieldOf } from "./shared";
++import SectionWidget from "./SectionWidget.vue";
++
++const props = defineProps<{ spec: EditableFieldOf<"list"> }>();
++const model = defineModel<unknown[] | null>();
++
++const items = computed(() => model.value ?? []);
++
++const itemSpec = computed<EditableFieldOf<"section">>(() => ({
++  labelKey: props.spec.labelKey,
++  widget: { kind: "section", of: props.spec.widget.item, optional: false },
++}));
++
++function itemValue(index: number): Record<string, unknown> | null {
++  return (items.value[index] as Record<string, unknown> | null) ?? null;
++}
++
++function setItemValue(index: number, value: unknown) {
++  const next = [...items.value];
++  next[index] = value;
++  model.value = next;
++}
++
++function addItem() {
++  model.value = [...items.value, {}];
++}
++
++function removeItem(index: number) {
++  const next = [...items.value];
++  next.splice(index, 1);
++  model.value = next;
++}
++
++let dragIndex: number | null = null;
++
++function onDragStart(index: number) {
++  dragIndex = index;
++}
++
++function onDrop(index: number) {
++  if (dragIndex === null || dragIndex === index) {
++    return;
++  }
++  const next = [...items.value];
++  const [moved] = next.splice(dragIndex, 1);
++  next.splice(index, 0, moved);
++  model.value = next;
++  dragIndex = null;
++}
++</script>
++
++<template>
++  <fieldset>
++    <legend>{{ $t(spec.labelKey) }}</legend>
++    <div
++      v-for="(_, index) in items"
++      :key="index"
++      :draggable="spec.widget.reorderable"
++      @dragstart="onDragStart(index)"
++      @dragover.prevent
++      @drop="onDrop(index)"
++    >
++      <SectionWidget
++        :spec="itemSpec"
++        :model-value="itemValue(index)"
++        @update:model-value="setItemValue(index, $event)"
++      />
++      <button
++        type="button"
++        :aria-label="$t('editor-attachment-rule-drop')"
++        @click="removeItem(index)"
++      >
++        {{ $t("editor-attachment-rule-drop") }}
++      </button>
++    </div>
++    <button
++      type="button"
++      @click="addItem"
++    >
++      {{ $t("editor-attachment-rule-add") }}
++    </button>
++  </fieldset>
++</template>
+diff --git a/src/editor/widgets/OptionalFlagWidget.vue b/src/editor/widgets/OptionalFlagWidget.vue
+new file mode 100644
+index 0000000..e8f119b
+--- /dev/null
++++ b/src/editor/widgets/OptionalFlagWidget.vue
+@@ -0,0 +1,32 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "optionalFlag" }`. NOT a native checkbox
++// v-model: the off-state is absence (`undefined`), not `false`
++// (validate.rs:466-472 rejects `Some(false)`; model.rs's own doc says "the
++// only valid value is true" -- a tri-state control would offer a value the
++// validator rejects), so `:checked`/`@change` are wired by hand instead of
++// letting `v-model` write a bare `false`.
++import { useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"optionalFlag"> }>();
++const model = defineModel<true | undefined>();
++
++const id = useId();
++
++function onChange(event: Event) {
++  const checked = (event.target as HTMLInputElement).checked;
++  model.value = checked ? true : undefined;
++}
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <input
++      :id="id"
++      type="checkbox"
++      :checked="model === true"
++      @change="onChange"
++    >
++  </div>
++</template>
+diff --git a/src/editor/widgets/PropertyMapWidget.vue b/src/editor/widgets/PropertyMapWidget.vue
+new file mode 100644
+index 0000000..747610f
+--- /dev/null
++++ b/src/editor/widgets/PropertyMapWidget.vue
+@@ -0,0 +1,90 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "propertyMap"; properties; values }` (e.g.
++// TrackRule.changes, MatchExpr.exact/substring/regex -- a `Record<string,
++// Scalar | string>`). `properties` (matchable/settable) names which
++// capability domain the keys come from, but no such domain is exposed to
++// the frontend (no ts-rs binding for `capability::matchable_type`/
++// `capability::settable` exists); the frontend performs zero semantic
++// validation (spec 7) and holds the model as data, so property NAMES are
++// free text here -- core diagnoses an unknown/mistyped one. `values`
++// ("scalar" vs "string") is likewise not enforced: every value is edited
++// as a string (still a legal `Scalar`, since `Scalar = boolean | number |
++// string`); a "scalar" field that actually needs a real boolean/number is
++// the same class of accepted gap the registry itself already names ("a
++// mismatched widget is a visible rendering bug caught the first time the
++// panel opens" -- D45).
++//
++// Row `key`/`value` inputs use `data-testid` (no distinct accessible
++// role/name exists for a free-text property name, matching the house
++// fallback convention). Add/remove buttons reuse the existing
++// `editor-attachment-rule-add`/`-drop` keys ("Add"/"Drop") verbatim
++// rather than adding new ones: gui-editor.ftl stays at 43 keys (D45), and
++// "Drop" is already this app's own established exclude-this-item
++// vocabulary (KEEP_DROP), the same reuse pattern `browse-button` already
++// has across FirstRun/SettingsDialog/BatchView.
++import { computed } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"propertyMap"> }>();
++const model = defineModel<Record<string, string> | null>();
++
++const rows = computed(() => Object.entries(model.value ?? {}));
++
++function setKey(index: number, key: string) {
++  const next = [...rows.value];
++  next[index] = [key, next[index][1]];
++  model.value = Object.fromEntries(next);
++}
++
++function setValue(index: number, value: string) {
++  const next = [...rows.value];
++  next[index] = [next[index][0], value];
++  model.value = Object.fromEntries(next);
++}
++
++function addRow() {
++  model.value = { ...(model.value ?? {}), "": "" };
++}
++
++function removeRow(index: number) {
++  const next = [...rows.value];
++  next.splice(index, 1);
++  model.value = Object.fromEntries(next);
++}
++</script>
++
++<template>
++  <fieldset>
++    <legend>{{ $t(spec.labelKey) }}</legend>
++    <div
++      v-for="([key, value], index) in rows"
++      :key="index"
++    >
++      <input
++        data-testid="property-map-key"
++        type="text"
++        :value="key"
++        @input="setKey(index, ($event.target as HTMLInputElement).value)"
++      >
++      <input
++        data-testid="property-map-value"
++        type="text"
++        :value="value"
++        @input="setValue(index, ($event.target as HTMLInputElement).value)"
++      >
++      <button
++        type="button"
++        :aria-label="$t('editor-attachment-rule-drop')"
++        @click="removeRow(index)"
++      >
++        {{ $t("editor-attachment-rule-drop") }}
++      </button>
++    </div>
++    <button
++      type="button"
++      @click="addRow"
++    >
++      {{ $t("editor-attachment-rule-add") }}
++    </button>
++  </fieldset>
++</template>
+diff --git a/src/editor/widgets/SectionWidget.vue b/src/editor/widgets/SectionWidget.vue
+new file mode 100644
+index 0000000..c09ce7a
+--- /dev/null
++++ b/src/editor/widgets/SectionWidget.vue
+@@ -0,0 +1,49 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "section"; of; optional }` -- a nested
++// struct's own fields, driven by its registry (`of`), recursing through
++// `FieldWidgetDispatcher`. `optional` is not a toggle here: an absent
++// section (`modelValue` undefined) still renders its sub-fields against an
++// empty object, so editing any one of them implicitly creates the section
++// (no "create this section" button, no chrome text needed -- consistent
++// with `zero semantic validation, holds the model as data`). `FixedField`
++// entries (`"fixed" in fieldSpec`; currently only `Profile.profile_version`)
++// render nothing: `FixedField.why` is a source comment, never user prose
++// (`fieldSpec.ts`'s own doc on the type).
++import { computed } from "vue";
++import type { EditableField } from "../fieldSpec";
++import type { EditableFieldOf } from "./shared";
++import { registryByName } from "./shared";
++import FieldWidgetDispatcher from "./FieldWidgetDispatcher.vue";
++
++const props = defineProps<{ spec: EditableFieldOf<"section"> }>();
++const model = defineModel<Record<string, unknown> | null>();
++
++const registry = computed(() => registryByName[props.spec.widget.of]);
++
++const fields = computed(() =>
++  Object.entries(registry.value).filter(
++    (entry): entry is [string, EditableField] => !("fixed" in entry[1]),
++  ),
++);
++
++function fieldValue(key: string): unknown {
++  return (model.value ?? {})[key];
++}
++
++function setFieldValue(key: string, value: unknown) {
++  model.value = { ...(model.value ?? {}), [key]: value };
++}
++</script>
++
++<template>
++  <fieldset>
++    <legend>{{ $t(spec.labelKey) }}</legend>
++    <FieldWidgetDispatcher
++      v-for="[key, fieldSpec] in fields"
++      :key="key"
++      :spec="fieldSpec"
++      :model-value="fieldValue(key)"
++      @update:model-value="setFieldValue(key, $event)"
++    />
++  </fieldset>
++</template>
+diff --git a/src/editor/widgets/SelectWidget.vue b/src/editor/widgets/SelectWidget.vue
+new file mode 100644
+index 0000000..92bdd4b
+--- /dev/null
++++ b/src/editor/widgets/SelectWidget.vue
+@@ -0,0 +1,31 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "select"; options }`. `options` are
++// profile-format tokens (e.g. COLLISION_POLICIES, KEEP_DROP) rendered raw,
++// never through `$t` -- they are config vocabulary, not UI prose, and
++// gui-editor.ftl stays at its 43 label keys (D45's own constraint).
++import { useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"select"> }>();
++const model = defineModel<string>();
++
++const id = useId();
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <select
++      :id="id"
++      v-model="model"
++    >
++      <option
++        v-for="option in spec.widget.options"
++        :key="option"
++        :value="option"
++      >
++        {{ option }}
++      </option>
++    </select>
++  </div>
++</template>
+diff --git a/src/editor/widgets/StringListWidget.vue b/src/editor/widgets/StringListWidget.vue
+new file mode 100644
+index 0000000..c779471
+--- /dev/null
++++ b/src/editor/widgets/StringListWidget.vue
+@@ -0,0 +1,39 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "stringList" }` (e.g. Input.extensions,
++// Locator.extensions -- a small set of short tokens). A single
++// comma-separated textbox rather than per-item add/remove rows: no
++// generic "add"/"remove" chrome text exists in gui-editor.ftl's 43 keys
++// (D45 forbids growing it), and a flat scalar list is small and short
++// enough that comma-separated editing is a common, idiomatic pattern for
++// exactly this shape (tags/extensions-style fields). Parsing is
++// structural (split/trim/filter empty), not semantic interpretation of
++// the values -- consistent with spec 7's zero-semantic-validation rule.
++import { computed, useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"stringList"> }>();
++const model = defineModel<string[] | null>();
++
++const id = useId();
++
++const text = computed<string>({
++  get: () => (model.value ?? []).join(", "),
++  set: (value: string) => {
++    model.value = value
++      .split(",")
++      .map((item) => item.trim())
++      .filter((item) => item.length > 0);
++  },
++});
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <input
++      :id="id"
++      v-model="text"
++      type="text"
++    >
++  </div>
++</template>
+diff --git a/src/editor/widgets/TextWidget.vue b/src/editor/widgets/TextWidget.vue
+new file mode 100644
+index 0000000..43fbfad
+--- /dev/null
++++ b/src/editor/widgets/TextWidget.vue
+@@ -0,0 +1,31 @@
++<script setup lang="ts">
++// D45 field widget: `{ kind: "text"; syntax; multiline }`. `syntax` (plain/
++// regex/templateLiteral/templateRegex) is descriptive metadata only -- the
++// frontend performs zero semantic validation (spec 7), so every syntax
++// renders the same plain control, `multiline` picking `<textarea>` over
++// `<input>`.
++import { useId } from "vue";
++import type { EditableFieldOf } from "./shared";
++
++defineProps<{ spec: EditableFieldOf<"text"> }>();
++const model = defineModel<string | null>();
++
++const id = useId();
++</script>
++
++<template>
++  <div>
++    <label :for="id">{{ $t(spec.labelKey) }}</label>
++    <textarea
++      v-if="spec.widget.multiline"
++      :id="id"
++      v-model="model"
++    />
++    <input
++      v-else
++      :id="id"
++      v-model="model"
++      type="text"
++    >
++  </div>
++</template>
+diff --git a/src/editor/widgets/shared.ts b/src/editor/widgets/shared.ts
+new file mode 100644
+index 0000000..483fbd9
+--- /dev/null
++++ b/src/editor/widgets/shared.ts
+@@ -0,0 +1,58 @@
++/**
++ * Shared, non-component plumbing for the ten `FieldWidget` components
++ * (D45): the per-kind prop-narrowing helper and the `RegistryName ->
++ * registry` lookup `SectionWidget`/`ListWidget`/`KeywordOrBlockWidget` need
++ * to recurse into a nested struct's own registry without depending on
++ * which registry module owns it.
++ */
++import type { FieldSpec, FieldWidget, RegistryName } from "../fieldSpec";
++import {
++  attachmentRuleFields,
++  attachmentsFields,
++  externalBlockFields,
++  inputFields,
++  locatorFields,
++  matchExprFields,
++  metaFields,
++  outputFields,
++  profileFields,
++  tagsFields,
++  templateBlockFields,
++  trackRuleFields,
++  tracksFields,
++} from "../registries";
++
++/**
++ * An `EditableField` narrowed to one `FieldWidget` variant, e.g.
++ * `EditableFieldOf<"text">` has `widget: { kind: "text"; syntax:
++ * TextSyntax; multiline: boolean }`. Each widget component's `spec` prop
++ * uses this so the component only ever sees the shape it renders, while
++ * the dispatcher (which must hold every kind) stays on the union.
++ */
++export type EditableFieldOf<K extends FieldWidget["kind"]> = {
++  labelKey: string;
++  widget: Extract<FieldWidget, { kind: K }>;
++};
++
++/**
++ * The 13 registries (Task 9, `registries.ts`), keyed by the `RegistryName`
++ * a `section`/`list`/`keywordOrBlock` widget's `of`/`item`/`block` field
++ * names. One entry per `RegistryName` member -- if a 14th registry is ever
++ * added, `RegistryName` grows and this object literal fails to satisfy
++ * `Record<RegistryName, ...>` until the entry is added here too.
++ */
++export const registryByName: Record<RegistryName, Record<string, FieldSpec>> = {
++  profile: profileFields,
++  meta: metaFields,
++  input: inputFields,
++  output: outputFields,
++  templateBlock: templateBlockFields,
++  externalBlock: externalBlockFields,
++  trackRule: trackRuleFields,
++  locator: locatorFields,
++  attachments: attachmentsFields,
++  tracks: tracksFields,
++  attachmentRule: attachmentRuleFields,
++  tags: tagsFields,
++  matchExpr: matchExprFields,
++};

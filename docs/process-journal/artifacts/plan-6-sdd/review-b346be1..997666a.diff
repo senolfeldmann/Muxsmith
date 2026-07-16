@@ -1,0 +1,600 @@
+# Review package: b346be1..997666a
+
+## Commits
+997666a shell: load/save/validate-model/apply commands and their error codes (D42, D43, D49)
+
+## Files changed
+ locales/de/gui-common.ftl |   6 ++
+ locales/en/gui-common.ftl |   7 ++
+ src-tauri/src/error.rs    |  82 +++++++++++++++++++
+ src-tauri/src/lib.rs      | 201 +++++++++++++++++++++++++++++++++++++++++++---
+ 4 files changed, 284 insertions(+), 12 deletions(-)
+
+## Diff
+diff --git a/locales/de/gui-common.ftl b/locales/de/gui-common.ftl
+index 45102d5..5d754e3 100644
+--- a/locales/de/gui-common.ftl
++++ b/locales/de/gui-common.ftl
+@@ -25,20 +25,26 @@ browse-button-tooltip = Die Datei über einen Dateidialog auswählen.
+ mkvmerge-not-found = mkvmerge wurde nicht gefunden.
+ mkvmerge-too-old = Das gefundene mkvmerge ({ $found }) ist älter als die erforderliche Mindestversion { $minimum }.
+ mkvmerge-spawn-failed = mkvmerge konnte nicht gestartet werden: { $detail }
+ identify-failed = Die Datei konnte nicht identifiziert werden: { $detail }
+ mkvmerge-query-failed = Die Abfrage von mkvmerge ist fehlgeschlagen: { $detail }
+ settings-dir-unavailable = Der Speicherort der Anwendungseinstellungen konnte auf diesem System nicht ermittelt werden.
+ settings-io-failed = Die Anwendungseinstellungen konnten nicht gelesen oder geschrieben werden: { $detail }
+ settings-parse-failed = Die Datei mit den Anwendungseinstellungen ist beschädigt: { $detail }
+ internal-task-failed = Ein interner Fehler ist aufgetreten: { $detail }
+ 
++profile-save-io-failed = Das Profil konnte nicht geschrieben werden: { $detail }
++profile-save-failed = Das Profil konnte für das Speichern nicht serialisiert werden: { $detail }
++apply-unparsable-config-path = Der Vorschlag konnte nicht angewendet werden: "{ $path }" benennt keine Regel.
++apply-rule-index-out-of-range = Der Vorschlag konnte nicht angewendet werden: keine Regel an Index { $index } (Regelanzahl: { $rules }).
++apply-edit-changed-nothing = Der Vorschlag hat nichts geändert: Regel { $index } schränkt "{ $property }" bereits ein.
++
+ firstrun-detecting = mkvmerge wird gesucht...
+ firstrun-missing-heading = mkvmerge wurde nicht gefunden
+ firstrun-too-old-heading = mkvmerge ist zu alt
+ firstrun-detect-failed-heading = mkvmerge-Erkennung fehlgeschlagen
+ firstrun-guidance-windows = Installiere MKVToolNix von mkvtoolnix.download und versuche es erneut, oder verweise Muxsmith unten direkt auf mkvmerge.exe (üblicherweise unter %ProgramFiles%\MKVToolNix\mkvmerge.exe).
+ firstrun-guidance-macos = Installiere MKVToolNix von mkvtoolnix.download nach /Applications und versuche es erneut, oder verweise Muxsmith unten direkt auf die mkvmerge-Binärdatei (üblicherweise /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge oder /usr/local/bin/mkvmerge).
+ firstrun-guidance-linux = Installiere das Paket mkvtoolnix aus deiner Distribution (z. B. apt, dnf, pacman) und versuche es erneut, oder verweise Muxsmith unten direkt auf die mkvmerge-Binärdatei (üblicherweise /usr/bin/mkvmerge oder /usr/local/bin/mkvmerge).
+ firstrun-guidance-fallback = Installiere MKVToolNix von mkvtoolnix.download und versuche es erneut, oder verweise Muxsmith unten direkt auf die mkvmerge-Binärdatei.
+ firstrun-picker-label = Pfad zur mkvmerge-Programmdatei
+ firstrun-picker-hint = Gib den Pfad zur mkvmerge-Programmdatei ein oder wähle sie aus, falls sie nicht an einem Standardort installiert ist.
+diff --git a/locales/en/gui-common.ftl b/locales/en/gui-common.ftl
+index 02cd0ee..f2c4699 100644
+--- a/locales/en/gui-common.ftl
++++ b/locales/en/gui-common.ftl
+@@ -39,20 +39,27 @@ mkvmerge-spawn-failed = mkvmerge could not be started: { $detail }
+ # `{ $file }`, but IpcError::from(IdentifyError) (error.rs) only ever
+ # attaches a `detail` param (the underlying JSON-parse/stat error text),
+ # never `file` -- a literal copy would reference an unpopulated variable.
+ identify-failed = Could not identify the file: { $detail }
+ mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
+ settings-dir-unavailable = The application settings location could not be determined on this system.
+ settings-io-failed = Application settings could not be read or written: { $detail }
+ settings-parse-failed = The application settings file is corrupt: { $detail }
+ internal-task-failed = An internal error occurred: { $detail }
+ 
++## D42/D43: the editor's IPC error codes (save_profile, apply_suggestion).
++profile-save-io-failed = The profile could not be written: { $detail }
++profile-save-failed = The profile could not be serialized for saving: { $detail }
++apply-unparsable-config-path = The suggestion could not be applied: "{ $path }" does not name a rule.
++apply-rule-index-out-of-range = The suggestion could not be applied: no rule at index { $index } (rule count: { $rules }).
++apply-edit-changed-nothing = The suggestion changed nothing: rule { $index } already constrains "{ $property }".
++
+ ## T9: first-run mkvmerge detection (D28).
+ firstrun-detecting = Looking for mkvmerge...
+ firstrun-missing-heading = mkvmerge was not found
+ firstrun-too-old-heading = mkvmerge is too old
+ firstrun-detect-failed-heading = mkvmerge detection failed
+ firstrun-guidance-windows = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at mkvmerge.exe below (typically under %ProgramFiles%\MKVToolNix\mkvmerge.exe).
+ firstrun-guidance-macos = Install MKVToolNix from mkvtoolnix.download into /Applications, then retry, or point Muxsmith directly at the mkvmerge binary below (typically /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge or /usr/local/bin/mkvmerge).
+ firstrun-guidance-linux = Install the mkvtoolnix package from your distribution (e.g. apt, dnf, pacman), then retry, or point Muxsmith directly at the mkvmerge binary below (typically /usr/bin/mkvmerge or /usr/local/bin/mkvmerge).
+ firstrun-guidance-fallback = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at the mkvmerge binary below.
+ firstrun-picker-label = mkvmerge executable path
+diff --git a/src-tauri/src/error.rs b/src-tauri/src/error.rs
+index bb21766..68b12f6 100644
+--- a/src-tauri/src/error.rs
++++ b/src-tauri/src/error.rs
+@@ -11,20 +11,22 @@
+ //! caller cannot proceed past (a state conflict, a bad argument, an
+ //! unreadable path) rather than plan content, which the shell's `Ok`
+ //! payloads carry as data instead (spec 7). The one accepted exception
+ //! (spec 8.4): a third-party error's own message text, passed through
+ //! verbatim as a `detail` param.
+ 
+ use std::collections::HashMap;
+ 
+ use muxsmith_core::capability::runtime::RuntimeError;
+ use muxsmith_core::identify::IdentifyError;
++use muxsmith_core::planner::ApplyError;
++use muxsmith_core::profile::save::SaveError;
+ use serde::Serialize;
+ 
+ use crate::settings::SettingsError;
+ 
+ /// A command failure: a stable code plus structured params, never prose
+ /// (spec 8.4). Implements `Serialize` directly (not `std::error::Error`)
+ /// because that is all a `#[tauri::command]` return type's error half
+ /// requires; the frontend receives exactly this shape as the rejected
+ /// promise's payload.
+ #[derive(Debug, Clone, PartialEq, Serialize)]
+@@ -124,20 +126,65 @@ impl From<SettingsError> for IpcError {
+     fn from(e: SettingsError) -> IpcError {
+         match e {
+             SettingsError::Io(detail) => IpcError::new("settings-io-failed").with("detail", detail),
+             SettingsError::Parse(detail) => {
+                 IpcError::new("settings-parse-failed").with("detail", detail)
+             }
+         }
+     }
+ }
+ 
++/// Maps a profile-save failure ([`muxsmith_core::profile::save::to_file`])
++/// to an [`IpcError`] (D42). Same split as [`From<SettingsError>`] above,
++/// same reason: `Io` (permissions, full disk, bad path) and `Serialize`
++/// (the model could not be turned into text) are different failures, kept
++/// distinguishable rather than folded into one code (`core-124`, Şenol
++/// ruling 2026-07-16: `SaveError::{Io,Serialize}` maps to
++/// `profile-save-io-failed`/`profile-save-failed`, never `ParseError` --
++/// that catalog entry asserts a parse, which a write failure never had).
++impl From<SaveError> for IpcError {
++    fn from(e: SaveError) -> IpcError {
++        match e {
++            SaveError::Io(detail) => IpcError::new("profile-save-io-failed").with("detail", detail),
++            SaveError::Serialize(detail) => {
++                IpcError::new("profile-save-failed").with("detail", detail)
++            }
++        }
++    }
++}
++
++/// Maps an [`ApplyError`] ([`muxsmith_core::planner::apply_suggestion`]) to
++/// an [`IpcError`] (D43/D49 "The shell mapping", verbatim). Every variant
++/// here is a frontend-side bug surfaced as data rather than silently
++/// swallowed: an unparsable `config_path`, an index past the end of
++/// `tracks.rules`, or a suggestion computed against a since-edited model
++/// (`EditChangedNothing`) that would otherwise silently no-op.
++impl From<ApplyError> for IpcError {
++    fn from(e: ApplyError) -> IpcError {
++        match e {
++            ApplyError::UnparsableConfigPath(path) => {
++                IpcError::new("apply-unparsable-config-path").with("path", path)
++            }
++            ApplyError::RuleIndexOutOfRange { index, rules } => {
++                IpcError::new("apply-rule-index-out-of-range")
++                    .with("index", index.to_string())
++                    .with("rules", rules.to_string())
++            }
++            ApplyError::EditChangedNothing { index, property } => {
++                IpcError::new("apply-edit-changed-nothing")
++                    .with("index", index.to_string())
++                    .with("property", property)
++            }
++        }
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     #[test]
+     fn not_found_has_no_params() {
+         let err: IpcError = RuntimeError::NotFound.into();
+         assert_eq!(err.code, "mkvmerge-not-found");
+         assert!(err.params.is_empty());
+     }
+@@ -211,20 +258,55 @@ mod tests {
+     #[test]
+     fn settings_errors_map_to_distinct_codes() {
+         let io: IpcError = SettingsError::Io("permission denied".into()).into();
+         let parse: IpcError = SettingsError::Parse("unexpected EOF".into()).into();
+         assert_eq!(io.code, "settings-io-failed");
+         assert_eq!(io.params["detail"], "permission denied");
+         assert_eq!(parse.code, "settings-parse-failed");
+         assert_ne!(io.code, parse.code);
+     }
+ 
++    #[test]
++    fn save_errors_map_to_distinct_codes() {
++        let io: IpcError = SaveError::Io("permission denied".into()).into();
++        let ser: IpcError = SaveError::Serialize("bad float".into()).into();
++        assert_eq!(io.code, "profile-save-io-failed");
++        assert_eq!(io.params["detail"], "permission denied");
++        assert_eq!(ser.code, "profile-save-failed");
++        assert_ne!(io.code, ser.code);
++    }
++
++    #[test]
++    fn apply_errors_map_to_distinct_codes() {
++        let unparsable: IpcError =
++            ApplyError::UnparsableConfigPath("not-a-rule-path".into()).into();
++        let oob: IpcError = ApplyError::RuleIndexOutOfRange { index: 7, rules: 1 }.into();
++        let noop: IpcError = ApplyError::EditChangedNothing {
++            index: 0,
++            property: "forced_track".into(),
++        }
++        .into();
++
++        assert_eq!(unparsable.code, "apply-unparsable-config-path");
++        assert_eq!(unparsable.params["path"], "not-a-rule-path");
++        assert_eq!(oob.code, "apply-rule-index-out-of-range");
++        assert_eq!(oob.params["index"], "7");
++        assert_eq!(oob.params["rules"], "1");
++        assert_eq!(noop.code, "apply-edit-changed-nothing");
++        assert_eq!(noop.params["index"], "0");
++        assert_eq!(noop.params["property"], "forced_track");
++
++        assert_ne!(unparsable.code, oob.code);
++        assert_ne!(oob.code, noop.code);
++        assert_ne!(unparsable.code, noop.code);
++    }
++
+     #[test]
+     fn with_overwrites_a_prior_value_for_the_same_key() {
+         let err = IpcError::new("x").with("k", "a").with("k", "b");
+         assert_eq!(err.params["k"], "b");
+     }
+ 
+     #[test]
+     fn new_builds_with_empty_params() {
+         let e = IpcError::new("run-already-active");
+         assert_eq!(e.code, "run-already-active");
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 038087b..e131649 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -1,40 +1,43 @@
+ //! Muxsmith GUI shell (Tauri 2). This crate wires the Tauri application
+ //! (window, plugins, IPC commands) around the same `muxsmith-core`
+ //! planning/execution engine the CLI uses; no muxing or planning logic
+ //! lives here (D23: "commands + job event stream, no logic").
+ //!
+-//! Two tasks contribute to this shell, sharing one [`AppState`]: T7
++//! Three tasks contribute to this shell, sharing one [`AppState`]: T7
+ //! (D23/D27/D28) adds the read-only IPC surface -- `validate_profile`,
+ //! `dry_run`, `identify`, `detect_mkvmerge` -- plus app-settings
+ //! persistence (`get_settings`/`set_settings`); T8 (D23/D31) adds the run
+ //! lifecycle (`start_run`/`cancel_run`/`cancel_job`/`list_runs`/
+ //! `get_job_log`, the `muxsmith://job-event`/`muxsmith://run-finished`
+-//! window events, and the close-with-active-run confirmation dialog).
++//! window events, and the close-with-active-run confirmation dialog);
++//! Plan 6's editor task (D42/D43) adds `load_profile`/`save_profile`/
++//! `validate_profile_model`/`apply_suggestion`, none of which touch
++//! [`AppState`] -- the editor's model lives in the frontend, not the shell.
+ //!
+ //! Not `#![deny(missing_docs)]`: `src-tauri` is a bin-shaped crate (the
+ //! `[lib]` target exists only so Tauri's mobile entry point can call into
+ //! it), unlike `muxsmith-core`/`muxsmith-cli`. Public items are still
+ //! documented.
+ 
+ mod error;
+ mod run;
+ mod settings;
+ 
+ use std::path::{Path, PathBuf};
+ use std::sync::Mutex;
+ use std::sync::atomic::AtomicBool;
+ 
+ use muxsmith_core::capability::runtime::Mkvmerge;
+ use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier};
+-use muxsmith_core::planner::{RunInputs, plan_batch};
+-use muxsmith_core::profile::{lint, load, validate};
++use muxsmith_core::planner::{self, RunInputs, StructuredEdit, plan_batch};
++use muxsmith_core::profile::{Profile, lint, load, save, validate};
+ use muxsmith_core::report;
+ use serde::Serialize;
+ use tauri::State;
+ 
+ use error::IpcError;
+ use run::RunSlot;
+ use settings::AppSettings;
+ 
+ /// Satisfies [`report::json::config_only_document`]/[`report::json::batch_document`]'s
+ /// mandatory [`report::json::DiagnosticRenderer`] parameter without the
+@@ -284,20 +287,86 @@ fn identify_body(
+ /// an [`IpcError`] (see [`MkvmergeInfo`]'s doc), not a partial `Ok`.
+ fn detect_mkvmerge_body(mkvmerge_override: Option<&Path>) -> Result<MkvmergeInfo, IpcError> {
+     let mkv = Mkvmerge::detect(mkvmerge_override)?;
+     let pair = mkv.version_pair()?;
+     Ok(MkvmergeInfo {
+         path: mkv.path().display().to_string(),
+         version: format!("{}.{}", pair.0, pair.1),
+     })
+ }
+ 
++/// `load_profile`'s command body (testable without a Tauri runtime, D42
++/// as amended by Task 1): returns **no bespoke struct**. Mirrors
++/// [`validate_profile_body`]'s [`report::json::config_only_document`]
++/// construction with one added key, `"profile"`: the parsed model on a
++/// successful [`load::from_file`], or `null` on a `ParseError`. Its
++/// `config_diagnostics` is therefore byte-identical in shape to
++/// `validate_profile_body`'s (`core-85-report-json-dry`: neither surface
++/// owns document logic, and no second document shape is invented) --
++/// pinned by `load_profile_body_matches_validate_profile_diagnostics_and_adds_the_model`
++/// below. One round trip, because the editor needs both the diagnostics
++/// and the model and a second call would let them disagree.
++fn load_profile_body(path: &Path) -> serde_json::Value {
++    match load::from_file(path) {
++        Ok(profile) => {
++            let diags = validate::config_diagnostics(&profile);
++            let mut doc = report::json::config_only_document(&diags, None, &ShellRenderer);
++            doc["profile"] = serde_json::to_value(&profile).expect("Profile always serializes");
++            doc
++        }
++        Err(d) => {
++            let mut doc = report::json::config_only_document(&[d], None, &ShellRenderer);
++            doc["profile"] = serde_json::Value::Null;
++            doc
++        }
++    }
++}
++
++/// `save_profile`'s command body (testable without a Tauri runtime, D42):
++/// writes `profile` to `path` via [`save::to_file`]. Unlike the read-only
++/// bodies above, a save failure is a genuine [`IpcError`]
++/// (`SaveError`, mapped in [`crate::error`]), not a folded diagnostic: a
++/// full disk or an unwritable path is an operational failure of the write
++/// itself, not a problem with the profile's content (`core-124-error-currency-split`).
++fn save_profile_body(profile: &Profile, path: &Path) -> Result<(), IpcError> {
++    save::to_file(profile, path).map_err(IpcError::from)
++}
++
++/// `validate_profile_model`'s command body (testable without a Tauri
++/// runtime, D42): wraps [`validate::config_diagnostics`] directly -- no
++/// filesystem access, the model already lives in memory on the frontend.
++/// Byte-identical envelope to [`validate_profile_body`]/[`load_profile_body`]
++/// (`core-85`): all three go through [`report::json::config_only_document`],
++/// so the frontend has exactly one document shape to render regardless of
++/// which of the three commands produced it.
++fn validate_profile_model_body(profile: &Profile) -> serde_json::Value {
++    let diags = validate::config_diagnostics(profile);
++    report::json::config_only_document(&diags, None, &ShellRenderer)
++}
++
++/// `apply_suggestion`'s command body (testable without a Tauri runtime,
++/// D43): forwards to [`planner::apply_suggestion`], core's narrow-only
++/// applier (D6, `core-33-suggestion-narrow-only`, `core-44-suggestion-no-clobber`).
++/// A genuine [`IpcError`] (`ApplyError`, mapped in [`crate::error`]) covers
++/// a frontend-side bug (an unparsable `config_path`, an index past the end
++/// of `tracks.rules`) or a suggestion computed against a since-edited model
++/// (`EditChangedNothing`). The caller re-validates the returned model
++/// through `validate_profile_model` (D43: no compound apply-and-validate
++/// command -- this function does not validate and does not re-plan).
++fn apply_suggestion_body(
++    profile: &Profile,
++    config_path: &str,
++    edit: &StructuredEdit,
++) -> Result<Profile, IpcError> {
++    planner::apply_suggestion(profile, config_path, edit).map_err(Into::into)
++}
++
+ /// `validate_profile` IPC command (D23, this task's brief): static
+ /// validation only, never touches mkvmerge. Runs on a blocking task
+ /// (`tauri::async_runtime::spawn_blocking`) since [`validate_profile_body`]
+ /// touches the filesystem; the webview thread never blocks on it. The
+ /// `Err` case here is the async task itself panicking (a bug, not an
+ /// expected outcome): every "expected" failure -- a missing or malformed
+ /// profile -- is folded into the returned document by
+ /// [`validate_profile_body`] instead.
+ #[tauri::command]
+ async fn validate_profile(path: String) -> Result<serde_json::Value, IpcError> {
+@@ -369,20 +438,76 @@ async fn identify(state: State<'_, AppState>, file: String) -> Result<serde_json
+ #[tauri::command]
+ async fn detect_mkvmerge(state: State<'_, AppState>) -> Result<MkvmergeInfo, IpcError> {
+     let settings_path = state.settings_path.clone();
+     on_blocking(move || {
+         let mkvmerge_override = load_settings_from(settings_path.as_deref())?.mkvmerge_path;
+         detect_mkvmerge_body(mkvmerge_override.as_deref().map(Path::new))
+     })
+     .await
+ }
+ 
++/// `load_profile` IPC command (D42, this task's brief): on a blocking task
++/// ([`load_profile_body`] touches the filesystem), the same reason
++/// `validate_profile` runs on `on_blocking`. No `state` parameter: unlike
++/// `dry_run`/`identify`/`detect_mkvmerge`, the editor never needs the
++/// mkvmerge override.
++#[tauri::command]
++async fn load_profile(path: String) -> Result<serde_json::Value, IpcError> {
++    on_blocking(move || Ok(load_profile_body(Path::new(&path)))).await
++}
++
++/// `save_profile` IPC command (D42): on a blocking task
++/// ([`save_profile_body`] touches the filesystem, same reason as
++/// `load_profile`). Unlike the read-only commands, this one can genuinely
++/// fail: a full disk or a bad path surfaces as [`IpcError`] via
++/// [`SaveError`]'s mapping in [`crate::error`], not folded into a document.
++///
++/// [`SaveError`]: muxsmith_core::profile::save::SaveError
++#[tauri::command]
++async fn save_profile(path: String, profile: Profile) -> Result<(), IpcError> {
++    on_blocking(move || save_profile_body(&profile, Path::new(&path))).await
++}
++
++/// `validate_profile_model` IPC command (D42): on a blocking task for a
++/// **different reason** than the disk-touching commands above --
++/// [`validate_profile_model_body`] never touches the filesystem, but
++/// [`validate::config_diagnostics`] compiles every regex and parses every
++/// template in the profile (`core-84-regex-recompile`), and this command
++/// runs on every keystroke in the editor (spec 7). Tauri 2 runs a
++/// non-`async` command on the application's main thread, so a plain `fn`
++/// here would stall the webview on each edit -- the same reasoning already
++/// recorded for `detect_mkvmerge` above. "Touches the disk" is not the
++/// criterion; "could stall the webview" is.
++#[tauri::command]
++async fn validate_profile_model(profile: Profile) -> Result<serde_json::Value, IpcError> {
++    on_blocking(move || Ok(validate_profile_model_body(&profile))).await
++}
++
++/// `apply_suggestion` IPC command (D43): on a blocking task for the same
++/// CPU-bound-on-every-edit reason as `validate_profile_model` --
++/// [`planner::apply_suggestion`] does not touch the filesystem either, but
++/// it is invoked from the same edit path. A genuine [`IpcError`] via
++/// [`ApplyError`]'s mapping in [`crate::error`] on a frontend-side bug or a
++/// suggestion computed against a since-edited model; the caller
++/// re-validates the returned profile through `validate_profile_model`
++/// (D43: no compound apply-and-validate command).
++///
++/// [`ApplyError`]: muxsmith_core::planner::ApplyError
++#[tauri::command]
++async fn apply_suggestion(
++    profile: Profile,
++    config_path: String,
++    edit: StructuredEdit,
++) -> Result<Profile, IpcError> {
++    on_blocking(move || apply_suggestion_body(&profile, &config_path, &edit)).await
++}
++
+ /// `get_settings` IPC command (D27). Plain local JSON file I/O, no
+ /// subprocess; kept a non-async, main-thread command like Tauri's own
+ /// trivial-state-access examples.
+ #[tauri::command]
+ fn get_settings(state: State<AppState>) -> Result<AppSettings, IpcError> {
+     state.load_settings()
+ }
+ 
+ /// `set_settings` IPC command (D27). Writes the full settings object the
+ /// frontend hands over; [`settings::save`] caps `recent_profiles` at write
+@@ -390,24 +515,25 @@ fn get_settings(state: State<AppState>) -> Result<AppSettings, IpcError> {
+ #[tauri::command]
+ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), IpcError> {
+     state.save_settings(&settings)
+ }
+ 
+ /// Builds and runs the Tauri application: registers the `dialog`,
+ /// `clipboard-manager`, `os`, and `fs` plugins (capabilities in
+ /// `capabilities/default.json` gate what each grants to the *frontend*; the
+ /// shell's own Rust-side dialog use in the private `run::on_close_requested`
+ /// bypasses the IPC permission layer and needs no capability entry), manages the
+-/// single unified [`AppState`], registers both tasks' IPC commands under
++/// single unified [`AppState`], registers every task's IPC commands under
+ /// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
+-/// type, so the read-only/settings commands and the run-lifecycle commands
+-/// must share the same registration), wires the D31 close-with-active-run
++/// type, so the read-only/settings commands, the run-lifecycle commands,
++/// and the editor commands (D42/D43, none of which use `State`) must share
++/// the same registration), wires the D31 close-with-active-run
+ /// confirmation, and launches the main window from `tauri.conf.json`.
+ ///
+ /// The `os` plugin (T9, D28) is here rather than in `@tauri-apps/api`
+ /// (which this task's brief names): Tauri 2 moved OS/platform detection
+ /// out of the core API into this separate plugin (`@tauri-apps/plugin-os`
+ /// on the frontend side), so `FirstRun.vue`'s per-OS guidance needs it
+ /// registered like `dialog`/`clipboard-manager` are.
+ ///
+ /// The `fs` plugin (T11, D30 gap closure: export a finished job's log as
+ /// text) is the write half of the history view's save-as flow -- the
+@@ -435,20 +561,24 @@ pub fn run() {
+         .plugin(tauri_plugin_dialog::init())
+         .plugin(tauri_plugin_fs::init())
+         .plugin(tauri_plugin_clipboard_manager::init())
+         .plugin(tauri_plugin_os::init())
+         .manage(AppState::default())
+         .invoke_handler(tauri::generate_handler![
+             validate_profile,
+             dry_run,
+             identify,
+             detect_mkvmerge,
++            load_profile,
++            save_profile,
++            validate_profile_model,
++            apply_suggestion,
+             get_settings,
+             set_settings,
+             run::start_run,
+             run::cancel_run,
+             run::cancel_job,
+             run::list_runs,
+             run::get_job_log,
+         ])
+         .on_window_event(run::on_close_requested)
+         .run(tauri::generate_context!())
+@@ -544,52 +674,99 @@ mod tests {
+             .arg("--version")
+             .output()
+             .map(|o| o.status.success())
+             .unwrap_or(false)
+     }
+ 
+     fn minimal_profile_yaml() -> &'static str {
+         "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
+     }
+ 
++    // A loadable but invalid profile (zero track rules, yields the
++    // `no-track-rules` diagnostic): shared by `validate_profile_body`'s and
++    // `load_profile_body`'s tests below instead of forked as two inline
++    // literals (`testing-support-helpers`).
++    const LOADABLE_INVALID_PROFILE: &str =
++        "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules: []\n";
++
+     // --- validate_profile_body ---
+ 
+     #[test]
+     fn validate_profile_body_reports_load_failure_with_no_mkvmerge_key() {
+         let dir = tempfile::tempdir().unwrap();
+         let doc = validate_profile_body(&dir.path().join("missing.yaml"));
+         assert!(doc["files"].as_array().unwrap().is_empty());
+         assert!(!doc["config_diagnostics"].as_array().unwrap().is_empty());
+         assert!(doc.get("mkvmerge_found").is_none());
+     }
+ 
+     #[test]
+     fn validate_profile_body_reports_validate_diagnostics_for_a_loadable_invalid_profile() {
+         let dir = tempfile::tempdir().unwrap();
+         let path = dir.path().join("p.yaml");
+-        std::fs::write(
+-            &path,
+-            "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules: []\n",
+-        )
+-        .unwrap();
++        std::fs::write(&path, LOADABLE_INVALID_PROFILE).unwrap();
+ 
+         let doc = validate_profile_body(&path);
+         let codes: Vec<&str> = doc["config_diagnostics"]
+             .as_array()
+             .unwrap()
+             .iter()
+             .map(|d| d["code"].as_str().unwrap())
+             .collect();
+         assert!(codes.contains(&"no-track-rules"), "codes: {codes:?}");
+         assert!(doc.get("mkvmerge_found").is_none());
+     }
+ 
++    // --- load_profile_body ---
++
++    #[test]
++    fn load_profile_body_matches_validate_profile_diagnostics_and_adds_the_model() {
++        let dir = tempfile::tempdir().unwrap();
++
++        // A loadable but invalid profile: load_profile's diagnostics envelope is
++        // byte-identical to validate_profile's, plus the parsed model under "profile".
++        let invalid = dir.path().join("p.yaml");
++        std::fs::write(&invalid, LOADABLE_INVALID_PROFILE).unwrap();
++        let loaded = load_profile_body(&invalid);
++        let validated = validate_profile_body(&invalid);
++        assert_eq!(
++            loaded["config_diagnostics"], validated["config_diagnostics"],
++            "load_profile's config_diagnostics must be shape-identical to validate_profile's (core-85)"
++        );
++        assert_eq!(
++            loaded["files"], validated["files"],
++            "same envelope, not a second shape"
++        );
++        assert!(
++            !loaded["profile"].is_null(),
++            "a loadable profile is present under \"profile\""
++        );
++        assert!(
++            validated.get("profile").is_none(),
++            "validate_profile carries no model"
++        );
++
++        // A load failure (missing file, the same fixture shape as lib.rs:557-563):
++        // "profile" is null and the single diagnostic still matches validate's.
++        let missing = dir.path().join("missing.yaml"); // never written
++        let loaded_missing = load_profile_body(&missing);
++        let validated_missing = validate_profile_body(&missing);
++        assert_eq!(
++            loaded_missing["config_diagnostics"],
++            validated_missing["config_diagnostics"]
++        );
++        assert!(
++            loaded_missing["profile"].is_null(),
++            "a load failure yields profile: null"
++        );
++    }
++
+     // --- dry_run_body ---
+ 
+     #[test]
+     fn dry_run_body_load_failure_mirrors_config_only_document_with_no_mkvmerge_key() {
+         let dir = tempfile::tempdir().unwrap();
+         let doc = dry_run_body(&dir.path().join("missing.yaml"), None, None, None);
+         assert!(doc.get("mkvmerge_found").is_none());
+         assert!(doc["files"].as_array().unwrap().is_empty());
+     }
+ 

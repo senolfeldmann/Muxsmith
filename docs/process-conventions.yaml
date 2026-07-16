@@ -294,7 +294,7 @@ entries:
   domain: ci
   statement: "Dependabot/Renovate activation is deferred to Şenol's call; the eventual cadence is a CI-cost decision because every dependency PR triggers the full 3-OS matrix."
   steelman: null
-  blocked_on: "go-public/1.0 timing (free only once the repo is public); activation remains Şenol's call"
+  blocked_on: "Şenol's activation call at near-1.0 (the go-public half cleared 2026-07-10; re-pointed by the plan-6 close sweep - ROADMAP near-1.0 carries the timing)"
   status: blocked
   promoted_at: 1
   count: 1
@@ -308,7 +308,7 @@ entries:
   domain: ci
   statement: "Release-tag packaging artifacts (msi/dmg/deb/rpm/AppImage) remain deferred until go-public, because tags trigger the full 3-OS matrix and paid minutes while the repo is private."
   steelman: null
-  blocked_on: "external - go-public / paid-minutes cost"
+  blocked_on: "Plan 8 (packaging/release pipeline; the go-public half cleared 2026-07-10, re-pointed by the plan-6 close sweep - the work is Plan 8's by the 2026-07-15 re-cut)"
   status: blocked
   promoted_at: 1
   count: 1

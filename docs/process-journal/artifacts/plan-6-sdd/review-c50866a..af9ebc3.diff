@@ -1,0 +1,241 @@
+# Review package: c50866a..af9ebc3
+
+## Commits
+af9ebc3 gui: the profile editor's rule grid with drag-reorder (D45)
+
+## Files changed
+ e2e/smoke.spec.ts        |  52 ++++++++++++++++++
+ src/views/EditorView.vue | 136 +++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 188 insertions(+)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 9f88594..613348e 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -39,20 +39,21 @@ import {
+   COLLISION_POLICIES,
+   inputFields,
+   locatorFields,
+   matchExprFields,
+   metaFields,
+   outputFields,
+   profileFields,
+   trackRuleFields,
+ } from "../src/editor/registries";
+ import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
++import type { Profile } from "../src/bindings/profile";
+ 
+ /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
+  * default role-name matching is a case-insensitive SUBSTRING match, which
+  * collides here for real (not hypothetically): "Run" (the batch-run
+  * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
+  * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
+  * list), so an un-exact match resolves to 2-3 elements and Playwright's
+  * strict mode rejects the locator. */
+ function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
+   return { name: en(id, args), exact: true };
+@@ -761,10 +762,61 @@ test.describe("editor widgets: mount-harness rendering", () => {
+       component: "SectionWidget",
+       props: { spec: profileFields.input, modelValue: undefined },
+     });
+     const group = page.getByRole("group", name("editor-profile-input"));
+     await expect(group).toBeVisible();
+     const pattern = group.getByRole("textbox", name("editor-input-pattern"));
+     await pattern.fill("^S");
+     await expect.poll(() => readModel(page)).toMatchObject({ pattern: "^S" });
+   });
+ });
++
++// Task 11 (D45, wave-3 mount-harness amendment): the profile editor's
++// top-level rule grid (spec 8.2's "track-rule grid ... drag to reorder"),
++// mounted in isolation via `mount.ts` exactly like Task 10's widgets --
++// `EditorView` has no nav entry to reach via `page.goto("/")` until Task 13
++// wires it into App.vue. `EditorView` takes a `Profile` as its `modelValue`
++// and emits `update:modelValue` on reorder (the natural pre-IPC v-model
++// shape); that is the only behaviour under test here -- no sections, no
++// widget dispatch, no save (Tasks 12-13). The fixture's two rules differ by
++// `match.exact.type`, a REAL matchable property (`capability/mod.rs`'s
++// `TYPE_VALUES = ["audio", "buttons", "subtitles", "video"]`), not a
++// hand-rolled marker.
++test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
++  const twoRuleProfile: Profile = {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: {
++      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
++    },
++  };
++
++  test("renders tracks.rules in order; a drag-reorder swaps the rows and updates the held model", async ({
++    page,
++  }) => {
++    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
++
++    const rows = page.getByTestId("editor-rule-row");
++    await expect(rows).toHaveCount(2);
++    await expect(rows.nth(0)).toContainText("video");
++    await expect(rows.nth(1)).toContainText("audio");
++
++    // Reorder is a semantic model edit, not a DOM mutation (binding note):
++    // `EditorView`'s drag handlers never read `dataTransfer`, only a
++    // closure index (mirroring `ListWidget.vue`'s identical mechanics), so
++    // dispatching bare `dragstart`/`drop` suffices -- following Playwright's
++    // documented programmatic-DnD pattern (a shared DataTransfer JSHandle
++    // across both events) regardless, since it is the correct cross-browser
++    // way to fire these two event types synthetically.
++    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
++    await rows.nth(0).dispatchEvent("dragstart", { dataTransfer });
++    await rows.nth(1).dispatchEvent("drop", { dataTransfer });
++
++    await expect(rows.nth(0)).toContainText("audio");
++    await expect(rows.nth(1)).toContainText("video");
++
++    const model = (await readModel(page)) as Profile;
++    expect(
++      model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type),
++    ).toEqual(["audio", "video"]);
++  });
++});
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+new file mode 100644
+index 0000000..08e3244
+--- /dev/null
++++ b/src/views/EditorView.vue
+@@ -0,0 +1,136 @@
++<script setup lang="ts">
++// Task 11 (D45, spec 8.2 view 4): the profile editor's top-level rule
++// grid and its drag-reorder, mounted standalone via the wave-3 harness (no
++// nav entry exists until Task 13's App.vue wiring). Bespoke against
++// `profile.ts` types directly, NOT through the field-widget dispatcher --
++// see `ListWidget.vue`'s own doc on why the generic `list` widget is not
++// this grid. Sections, the full per-rule detail editor, save and open IPC
++// all follow in Tasks 12-13; this view holds only `tracks.rules` for now,
++// but its `modelValue`/`update:modelValue` v-model contract is already the
++// full `Profile`, so those tasks extend this file rather than reshaping
++// its interface.
++//
++// Reorder is a SEMANTIC MODEL EDIT (binding note), not a DOM mutation: a
++// drop rebuilds `tracks.rules` immutably and re-emits the whole profile,
++// mirroring `ListWidget.vue`'s own reorder mechanics (a closure
++// `dragIndex`, no `dataTransfer` read -- native HTML5 drag-and-drop needs
++// no translated chrome for that reason, same rationale as that widget).
++//
++// Zero frontend semantic validation (spec 7): every row summary below is
++// either a real profile-format token (`SOURCE_KEYWORDS`'s "primary"), an
++// actual value already present in the model (an external path, a matchable
++// property name and its scalar, a settable property name), or a plain
++// count -- never app-authored prose, so no new `gui-editor.ftl` key is
++// needed beyond the four `TrackRule` field labels the registry already
++// carries (D45).
++import { computed } from "vue";
++import type { Profile, TrackRule } from "../bindings/profile";
++import { SOURCE_KEYWORDS } from "../bindings/keywords";
++
++const model = defineModel<Profile>();
++
++const rules = computed<TrackRule[]>(() => model.value?.tracks.rules ?? []);
++
++function sourceSummary(rule: TrackRule): string {
++  if (typeof rule.source === "string") {
++    return rule.source;
++  }
++  if (rule.source) {
++    return rule.source.external.path;
++  }
++  return SOURCE_KEYWORDS[0];
++}
++
++function matchSummary(rule: TrackRule): string {
++  const expr = rule.match;
++  const parts: string[] = [];
++  for (const [key, value] of Object.entries(expr.exact ?? {})) {
++    parts.push(`${key}=${value}`);
++  }
++  for (const [key, value] of Object.entries(expr.substring ?? {})) {
++    parts.push(`${key}~${value}`);
++  }
++  for (const [key, value] of Object.entries(expr.regex ?? {})) {
++    parts.push(`${key}~/${value}/`);
++  }
++  if (expr.any && expr.any.length > 0) {
++    parts.push(`any(${expr.any.length})`);
++  }
++  if (expr.not && expr.not.length > 0) {
++    parts.push(`not(${expr.not.length})`);
++  }
++  return parts.join(", ");
++}
++
++function changesSummary(rule: TrackRule): string {
++  return Object.keys(rule.changes ?? {}).join(", ");
++}
++
++let dragIndex: number | null = null;
++
++function onDragStart(index: number) {
++  dragIndex = index;
++}
++
++function onDrop(index: number) {
++  if (dragIndex === null || dragIndex === index || !model.value) {
++    dragIndex = null;
++    return;
++  }
++  const nextRules = [...rules.value];
++  const [moved] = nextRules.splice(dragIndex, 1);
++  nextRules.splice(index, 0, moved);
++  model.value = {
++    ...model.value,
++    tracks: { ...model.value.tracks, rules: nextRules },
++  };
++  dragIndex = null;
++}
++</script>
++
++<template>
++  <section data-testid="view-editor">
++    <h2>{{ $t("editor-tracks-rules") }}</h2>
++    <table>
++      <thead>
++        <tr>
++          <th scope="col">
++            {{ $t("editor-track-rule-source") }}
++          </th>
++          <th scope="col">
++            {{ $t("editor-track-rule-match-expr") }}
++          </th>
++          <th scope="col">
++            {{ $t("editor-track-rule-optional") }}
++          </th>
++          <th scope="col">
++            {{ $t("editor-track-rule-changes") }}
++          </th>
++        </tr>
++      </thead>
++      <tbody>
++        <tr
++          v-for="(rule, index) in rules"
++          :key="index"
++          data-testid="editor-rule-row"
++          draggable="true"
++          @dragstart="onDragStart(index)"
++          @dragover.prevent
++          @drop="onDrop(index)"
++        >
++          <td>{{ sourceSummary(rule) }}</td>
++          <td>{{ matchSummary(rule) }}</td>
++          <td>
++            <input
++              type="checkbox"
++              disabled
++              :checked="rule.optional === true"
++              :aria-label="$t('editor-track-rule-optional')"
++            >
++          </td>
++          <td>{{ changesSummary(rule) }}</td>
++        </tr>
++      </tbody>
++    </table>
++  </section>
++</template>

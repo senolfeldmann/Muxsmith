@@ -1,0 +1,167 @@
+# Review package: 0922df9..81b4038
+
+## Commits
+81b4038 core: profile::save writes canonical YAML/JSON from the model (D41)
+
+## Files changed
+ crates/muxsmith-core/src/profile/mod.rs    |  6 ++-
+ crates/muxsmith-core/src/profile/save.rs   | 62 ++++++++++++++++++++++++++++++
+ crates/muxsmith-core/tests/profile_save.rs | 60 +++++++++++++++++++++++++++++
+ 3 files changed, 126 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/src/profile/mod.rs b/crates/muxsmith-core/src/profile/mod.rs
+index 4d88820..c576598 100644
+--- a/crates/muxsmith-core/src/profile/mod.rs
++++ b/crates/muxsmith-core/src/profile/mod.rs
+@@ -1,12 +1,14 @@
+ //! Profile parsing and semantic layer (spec 4): [`load`] parses YAML/JSON
+-//! into the serde model, [`model`] mirrors the file format 1:1, [`match_expr`]
+-//! is the match algebra (4.3), [`validate`] runs config-time semantic checks
++//! into the serde model, [`save`] writes the model back out canonically
++//! (D41), [`model`] mirrors the file format 1:1, [`match_expr`] is the
++//! match algebra (4.3), [`validate`] runs config-time semantic checks
+ //! (5.4), and [`lint`] adds the provable-overlap static check.
+ 
+ pub mod lint;
+ pub mod load;
+ pub mod match_expr;
+ pub mod model;
++pub mod save;
+ pub mod validate;
+ 
+ pub use model::Profile;
+diff --git a/crates/muxsmith-core/src/profile/save.rs b/crates/muxsmith-core/src/profile/save.rs
+new file mode 100644
+index 0000000..1960955
+--- /dev/null
++++ b/crates/muxsmith-core/src/profile/save.rs
+@@ -0,0 +1,62 @@
++//! Profile file writing (spec 8.2, D41): serializes the in-memory
++//! [`Profile`] model back to YAML or JSON. Saving is a canonical rewrite
++//! from the model, mirroring [`super::load`]'s read path in reverse:
++//! comments, key order and flow/block formatting in the user's original
++//! file are not preserved, and this is by design, not a defect (D41's
++//! rationale: YAML has no concept of comment attachment, so any
++//! "preserving" writer invents an association the spec disclaims).
++
++use std::fs;
++use std::path::Path;
++
++use super::load::Format;
++use super::model::Profile;
++
++/// A failure of the profile writer. Not a [`crate::report::Diagnostic`]: a
++/// `Diagnostic` describes a problem with the profile or the plan, and a
++/// write failure leaves a valid model and, say, a full disk
++/// (`core-124-error-currency-split`). Data only (no prose); the shell maps
++/// this to an `IpcError`, mirroring `SettingsError` in `src-tauri`.
++#[derive(Debug, Clone, PartialEq)]
++pub enum SaveError {
++    /// The file could not be written (permissions, full disk, bad path);
++    /// `detail` is the underlying I/O error text.
++    Io(String),
++    /// The model could not be serialized to the target format; `detail` is
++    /// the underlying serde error text.
++    Serialize(String),
++}
++
++/// Serializes `profile` to `format`'s canonical text: `yaml_serde::to_string`
++/// for [`Format::Yaml`], `serde_json::to_string_pretty` for
++/// [`Format::Json`]. Both are the crate's ordinary serde writers, no
++/// hand-rolled formatting; a serialization failure (neither writer can fail
++/// on this model today, but the model derives `Serialize` generically)
++/// surfaces as [`SaveError::Serialize`] rather than a panic.
++pub fn to_string(profile: &Profile, format: Format) -> Result<String, SaveError> {
++    match format {
++        Format::Yaml => {
++            yaml_serde::to_string(profile).map_err(|e| SaveError::Serialize(e.to_string()))
++        }
++        Format::Json => {
++            serde_json::to_string_pretty(profile).map_err(|e| SaveError::Serialize(e.to_string()))
++        }
++    }
++}
++
++/// Writes `profile` to `path`, picking [`Format`] from the path extension
++/// exactly as [`super::load::from_file`] does (`Some("json")` ->
++/// [`Format::Json`], everything else -> [`Format::Yaml`]), so a `.json`
++/// profile saves as JSON and a `.yaml`/`.yml`/extension-less path saves as
++/// YAML: the format never silently changes underfoot. Serialization
++/// failures and I/O failures ([`fs::write`]: missing parent directory,
++/// permissions, full disk) are both reported as a [`SaveError`], never a
++/// panic.
++pub fn to_file(profile: &Profile, path: &Path) -> Result<(), SaveError> {
++    let format = match path.extension().and_then(|e| e.to_str()) {
++        Some("json") => Format::Json,
++        _ => Format::Yaml, // .yaml, .yml, and anything else writes YAML
++    };
++    let text = to_string(profile, format)?;
++    fs::write(path, text).map_err(|e| SaveError::Io(e.to_string()))
++}
+diff --git a/crates/muxsmith-core/tests/profile_save.rs b/crates/muxsmith-core/tests/profile_save.rs
+new file mode 100644
+index 0000000..f570006
+--- /dev/null
++++ b/crates/muxsmith-core/tests/profile_save.rs
+@@ -0,0 +1,60 @@
++//! Spec 8.2 / D41: saving writes canonical YAML from the model. These tests
++//! pin the correctness floor (a saved profile reloads equal) and the
++//! format-from-extension contract; the default-omission behaviour is D48's
++//! and is tested in its own guards.
++
++use muxsmith_core::profile::load::{Format, from_file, from_str};
++use muxsmith_core::profile::save::{SaveError, to_file, to_string};
++
++const REFERENCE: &str = include_str!("fixtures/reference.yaml");
++
++#[test]
++fn canonical_yaml_round_trips_to_an_equal_model() {
++    let p = from_str(REFERENCE, Format::Yaml).expect("fixture parses");
++    let text = to_string(&p, Format::Yaml).expect("model serializes");
++    let p2 = from_str(&text, Format::Yaml).expect("canonical output re-parses");
++    assert_eq!(p, p2, "a saved profile must reload to an equal model (D41)");
++}
++
++#[test]
++fn canonical_json_round_trips_to_an_equal_model() {
++    let p = from_str(REFERENCE, Format::Yaml).expect("fixture parses");
++    let text = to_string(&p, Format::Json).expect("model serializes");
++    let p2 = from_str(&text, Format::Json).expect("canonical JSON re-parses");
++    assert_eq!(p, p2);
++}
++
++#[test]
++fn to_file_picks_json_from_the_extension_and_never_changes_format() {
++    let dir = tempfile::tempdir().unwrap();
++    let p = from_str(REFERENCE, Format::Yaml).expect("fixture parses");
++
++    let json_path = dir.path().join("profile.json");
++    to_file(&p, &json_path).expect("writes");
++    let text = std::fs::read_to_string(&json_path).unwrap();
++    assert!(
++        text.trim_start().starts_with('{'),
++        "a .json path must save as JSON, not YAML: {text}"
++    );
++    assert_eq!(from_file(&json_path).unwrap(), p);
++
++    let yaml_path = dir.path().join("profile.yaml");
++    to_file(&p, &yaml_path).expect("writes");
++    let text = std::fs::read_to_string(&yaml_path).unwrap();
++    assert!(
++        !text.trim_start().starts_with('{'),
++        "a .yaml path must save as YAML: {text}"
++    );
++    assert_eq!(from_file(&yaml_path).unwrap(), p);
++}
++
++#[test]
++fn an_unwritable_path_is_an_io_error_not_a_panic() {
++    let p = from_str(REFERENCE, Format::Yaml).expect("fixture parses");
++    let dir = tempfile::tempdir().unwrap();
++    let nope = dir.path().join("no-such-dir").join("profile.yaml");
++    match to_file(&p, &nope) {
++        Err(SaveError::Io(detail)) => assert!(!detail.is_empty(), "detail carries the io message"),
++        other => panic!("expected SaveError::Io, got {other:?}"),
++    }
++}

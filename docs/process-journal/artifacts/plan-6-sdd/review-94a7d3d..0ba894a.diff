@@ -1,0 +1,792 @@
+# Review package: 94a7d3d..0ba894a
+
+## Commits
+0ba894a gui: editor section composition and widget dispatch, the generic action keys, and the settable + matchable typed value cells (D45, owner rulings 2026-07-16)
+
+## Files changed
+ e2e/smoke.spec.ts                        | 158 ++++++++++++++++++++++++++--
+ locales/de/gui-editor.ftl                |   5 +
+ locales/en/gui-editor.ftl                |   5 +
+ src/editor/widgets/ListWidget.vue        |  30 +++---
+ src/editor/widgets/PropertyMapWidget.vue | 142 +++++++++++++++++++++-----
+ src/views/EditorView.vue                 | 170 ++++++++++++++++++++++---------
+ 6 files changed, 408 insertions(+), 102 deletions(-)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 1d9f201..023136a 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -590,27 +590,26 @@ test.describe("german locale", () => {
+ // assertions for the ten FieldWidget variants, mounted in isolation via
+ // `mount.ts` -- `page.goto("/")` reaches no widget (no editor mount point
+ // exists in the running app before Task 13). Every `spec` fixture below is
+ // a REAL entry pulled from Task 9's registries (`src/editor/registries.ts`),
+ // not a hand-rolled FieldSpec literal, so a test failure here can never be
+ // "the fixture drifted from the real registry shape". Accessible names come
+ // from `en(id)` over the real labelKey exactly as the rest of this file
+ // does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
+ // values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
+ // D45's own rule that widget option tokens render as profile-format
+-// tokens, not via new Fluent keys. `editor-attachment-rule-add`/`-drop`
+-// ("Add"/"Drop") are reused verbatim for the generic add/remove-row
+-// affordance on `list`/`propertyMap`: both are already-existing,
+-// already-translated (en+de) generic verbs -- "Drop" is the app's own
+-// established exclude-this-item vocabulary (KEEP_DROP) -- so reusing them
+-// keeps `gui-editor.ftl` at 43 keys, matching `browse-button`'s existing
+-// reuse across FirstRun/SettingsDialog/BatchView.
++// tokens, not via new Fluent keys. `list`/`propertyMap`'s generic
++// add/remove-row buttons use the two dedicated `editor-action-add`/
++// `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
++// NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
++// the AttachmentRule fields they are the registry labels for. Catalog
++// budget is 45 (42 labels + 1 save-surface note + 2 generic action keys).
+ test.describe("editor widgets: mount-harness rendering", () => {
+   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
+     await mountComponent(page, {
+       component: "FieldWidgetDispatcher",
+       props: { spec: inputFields.recursive, modelValue: true },
+     });
+     const field = page.getByRole("checkbox", name("editor-input-recursive"));
+     await expect(field).toBeChecked();
+     await field.uncheck();
+     await expect.poll(() => readModel(page)).toBe(false);
+@@ -722,43 +721,43 @@ test.describe("editor widgets: mount-harness rendering", () => {
+   });
+ 
+   test("propertyMap widget: add/remove rows edit a key-value map", async ({ page }) => {
+     await mountComponent(page, {
+       component: "PropertyMapWidget",
+       props: { spec: trackRuleFields.changes, modelValue: { forced: "true" } },
+     });
+     await expect(page.getByTestId("property-map-key").first()).toHaveValue("forced");
+     await expect(page.getByTestId("property-map-value").first()).toHaveValue("true");
+ 
+-    await page.getByRole("button", name("editor-attachment-rule-add")).click();
++    await page.getByRole("button", name("editor-action-add")).click();
+     await expect(page.getByTestId("property-map-key")).toHaveCount(2);
+     await page.getByTestId("property-map-key").nth(1).fill("default");
+     await page.getByTestId("property-map-value").nth(1).fill("true");
+     await expect.poll(() => readModel(page)).toEqual({ forced: "true", default: "true" });
+ 
+-    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
++    await page.getByRole("button", name("editor-action-remove")).first().click();
+     await expect.poll(() => readModel(page)).toEqual({ default: "true" });
+   });
+ 
+   test("list widget: add/remove nested items (matchExpr.any, item: matchExpr)", async ({ page }) => {
+     await mountComponent(page, {
+       component: "ListWidget",
+       props: { spec: matchExprFields.any, modelValue: [] },
+     });
+     await expect.poll(() => readModel(page)).toEqual([]);
+ 
+-    await page.getByRole("button", name("editor-attachment-rule-add")).click();
++    await page.getByRole("button", name("editor-action-add")).click();
+     await expect.poll(() => readModel(page)).toEqual([{}]);
+     // Each item renders its own nested MatchExpr fields via SectionWidget.
+     await expect(page.getByRole("group", name("editor-match-expr-exact"))).toBeVisible();
+ 
+-    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
++    await page.getByRole("button", name("editor-action-remove")).first().click();
+     await expect.poll(() => readModel(page)).toEqual([]);
+   });
+ 
+   test("section widget renders a fieldset/legend group of its sub-fields, created implicitly on first edit", async ({
+     page,
+   }) => {
+     await mountComponent(page, {
+       component: "SectionWidget",
+       props: { spec: profileFields.input, modelValue: undefined },
+     });
+@@ -815,10 +814,147 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
+     await expect(rows.nth(1)).toContainText("video");
+ 
+     await expect
+       .poll(async () => {
+         const model = (await readModel(page)) as Profile;
+         return model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type);
+       })
+       .toEqual(["audio", "video"]);
+   });
+ });
++
++// Task 12 (D45, amended 2026-07-16, owner-rulings routing): EditorView's
++// section composition (driven by the 13 registries, not hand-listed
++// fields -- adding a field to the model + registry surfaces it here with
++// no view edit) plus the two typed-value-cell anti-vacuity cases Ruling 2
++// requires (`gui-typed-scalar-needs-typed-input`): a settable Boolean
++// round-trips a real `true`, and a matchable Boolean/Float likewise. The
++// generic add/remove action captions ("Add"/"Remove", Ruling 1) are
++// asserted by the repointed Task-10 propertyMap/list specs above, not
++// re-asserted here.
++test.describe("editor view: section composition and typed value cells (Task 12, D45)", () => {
++  test("EditorView composes every profile section from the registries, dispatching each field to its widget", async ({
++    page,
++  }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      meta: { name: "demo", description: "a note" },
++      input: { pattern: "^S", extensions: ["mkv"], recursive: true },
++      output: { directory: "/out", filename: "keep", on_collision: "error" },
++      tracks: { unmatched: "drop", rules: [] },
++      attachments: { unmatched: "keep", rules: [] },
++      chapters: "keep",
++      tags: { global: "keep", track: "keep" },
++      title: "keep",
++    };
++    await mountComponent(page, { component: "EditorView", props: { modelValue: profile } });
++
++    // Every top-level `section`-kind field renders as a labeled group,
++    // dispatched generically off `profileFields` -- `tracks` is the one
++    // hand-built exception (Task 11's own rule grid), asserted below.
++    for (const id of [
++      "editor-profile-meta",
++      "editor-profile-input",
++      "editor-profile-output",
++      "editor-profile-tracks",
++      "editor-profile-attachments",
++      "editor-profile-tags",
++    ]) {
++      await expect(page.getByRole("group", name(id))).toBeVisible();
++    }
++
++    // select -> combobox of its raw (untranslated) domain tokens (D45).
++    const collision = page.getByRole("combobox", name("editor-output-on-collision"));
++    await expect(collision).toHaveValue("error");
++    for (const token of COLLISION_POLICIES) {
++      await expect(collision.getByRole("option", { name: token, exact: true })).toBeAttached();
++    }
++
++    // keywordOrBlock -> combobox of its keyword tokens (D45).
++    const chaptersCombo = page.getByRole("combobox", name("editor-profile-chapters"));
++    await expect(chaptersCombo).toHaveValue("keep");
++    for (const token of CHAPTERS_KEYWORDS) {
++      await expect(chaptersCombo.getByRole("option", { name: token, exact: true })).toBeAttached();
++    }
++
++    // optionalFlag -> checkbox, reached through `chapters`' always-present
++    // nested ExternalBlock -> Locator (KeywordOrBlockWidget's own
++    // precedent) -- not a hand-listed lookup, just the registry recursing.
++    const matchToSource = page.getByRole("checkbox", name("editor-locator-match-to-source"));
++    await expect(matchToSource).not.toBeChecked();
++
++    // `tracks`: `unmatched` dispatches generically through the registry;
++    // `rules` keeps Task 11's own bespoke drag-reorder grid unchanged.
++    // Scoped to the "Tracks" group: `editor-tracks-unmatched` and
++    // `editor-attachments-unmatched` share the same en/de rendered text
++    // ("Unmatched"), a pre-existing catalog coincidence unrelated to this
++    // task, so an unscoped role+name lookup is ambiguous.
++    const tracksGroup = page.getByRole("group", name("editor-profile-tracks"));
++    const tracksUnmatched = tracksGroup.getByRole("combobox", name("editor-tracks-unmatched"));
++    await expect(tracksUnmatched).toHaveValue("drop");
++    await expect(tracksGroup.getByRole("heading", name("editor-tracks-rules"))).toBeVisible();
++  });
++
++  test("propertyMap typed value cells: the settable Boolean/String anti-vacuity round trip (Ruling 2)", async ({
++    page,
++  }) => {
++    await mountComponent(page, {
++      component: "PropertyMapWidget",
++      props: { spec: trackRuleFields.changes, modelValue: { forced_track: false } },
++    });
++    const checkbox = page.getByRole("checkbox");
++    await expect(checkbox).not.toBeChecked();
++    await checkbox.check();
++    const afterCheck = (await readModel(page)) as Record<string, unknown>;
++    expect(afterCheck).toEqual({ forced_track: true });
++    expect(afterCheck.forced_track).toBe(true); // a real boolean, not the string "true"
++
++    await page.getByRole("button", name("editor-action-add")).click();
++    await page.getByTestId("property-map-key").nth(1).fill("language");
++    await page.getByTestId("property-map-value").nth(1).fill("eng");
++    await expect.poll(() => readModel(page)).toEqual({ forced_track: true, language: "eng" });
++  });
++
++  test("propertyMap typed value cells: the matchable Boolean/Float/Integer anti-vacuity round trip (Ruling 2)", async ({
++    page,
++  }) => {
++    // Boolean: matchable_type("forced_track") == Boolean.
++    await mountComponent(page, {
++      component: "PropertyMapWidget",
++      props: { spec: matchExprFields.exact, modelValue: { forced_track: false } },
++    });
++    const checkbox = page.getByRole("checkbox");
++    await expect(checkbox).not.toBeChecked();
++    await checkbox.check();
++    const boolModel = (await readModel(page)) as Record<string, unknown>;
++    expect(boolModel).toEqual({ forced_track: true });
++    expect(boolModel.forced_track).toBe(true);
++
++    // Float: matchable_type("min_luminance") == Float, the one new input
++    // variant (step="any").
++    await mountComponent(page, {
++      component: "PropertyMapWidget",
++      props: { spec: matchExprFields.exact, modelValue: { min_luminance: 1 } },
++    });
++    const floatCell = page.getByRole("spinbutton");
++    await expect(floatCell).toHaveAttribute("step", "any");
++    await floatCell.fill("1.5");
++    const floatModel = (await readModel(page)) as Record<string, unknown>;
++    expect(floatModel).toEqual({ min_luminance: 1.5 });
++    expect(floatModel.min_luminance).toBe(1.5);
++    expect(typeof floatModel.min_luminance).toBe("number");
++
++    // Integer: audio_channels rides the same <input type="number"> branch
++    // minus step="any" (the exhaustive switch's remaining arm; not a
++    // separately required fixture per the brief, added because it is cheap).
++    await mountComponent(page, {
++      component: "PropertyMapWidget",
++      props: { spec: matchExprFields.exact, modelValue: { audio_channels: 2 } },
++    });
++    const intCell = page.getByRole("spinbutton");
++    await expect(intCell).not.toHaveAttribute("step", "any");
++    await intCell.fill("6");
++    const intModel = (await readModel(page)) as Record<string, unknown>;
++    expect(intModel).toEqual({ audio_channels: 6 });
++    expect(typeof intModel.audio_channels).toBe("number");
++  });
++});
+diff --git a/locales/de/gui-editor.ftl b/locales/de/gui-editor.ftl
+index b32df97..4b78b58 100644
+--- a/locales/de/gui-editor.ftl
++++ b/locales/de/gui-editor.ftl
+@@ -84,10 +84,15 @@ editor-tags-track = Spur
+ 
+ editor-match-expr-exact = Exakt
+ editor-match-expr-substring = Substring
+ editor-match-expr-regex = Regex
+ editor-match-expr-any = Beliebig
+ editor-match-expr-not = Nicht
+ 
+ ## Save surface (D41)
+ 
+ editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung bleiben dabei nicht erhalten, und Felder, die auf ihrem Standardwert stehen, werden nicht zurückgeschrieben.
++
++## Generic list/map actions
++
++editor-action-add = Hinzufügen
++editor-action-remove = Entfernen
+diff --git a/locales/en/gui-editor.ftl b/locales/en/gui-editor.ftl
+index 2c557c1..58e2997 100644
+--- a/locales/en/gui-editor.ftl
++++ b/locales/en/gui-editor.ftl
+@@ -82,10 +82,15 @@ editor-tags-track = Track
+ 
+ editor-match-expr-exact = Exact
+ editor-match-expr-substring = Substring
+ editor-match-expr-regex = Regex
+ editor-match-expr-any = Any
+ editor-match-expr-not = Not
+ 
+ ## Save surface (D41)
+ 
+ editor-save-note = Saving rewrites the file from the model: comments, key order and formatting are not preserved, and fields left at their default are not written back.
++
++## Generic list/map actions
++
++editor-action-add = Add
++editor-action-remove = Remove
+diff --git a/src/editor/widgets/ListWidget.vue b/src/editor/widgets/ListWidget.vue
+index c46dd3c..0a5bb25 100644
+--- a/src/editor/widgets/ListWidget.vue
++++ b/src/editor/widgets/ListWidget.vue
+@@ -1,25 +1,27 @@
+ <script setup lang="ts">
+ // D45 field widget: `{ kind: "list"; item; reorderable }`. Each item
+ // renders through `SectionWidget` (synthesized against `item`'s own
+ // registry), recursing via `FieldWidgetDispatcher`. This generic widget is
+-// NOT the spec 8.2 top-level rule grid (`tracks.rules`/
+-// `attachments.rules`): that is Task 11's own bespoke grid with drag
+-// handles and per-rule summaries, built directly against `profile.ts`
+-// types rather than through this dispatcher. The registry's only current
+-// consumers of a generic `list` are `matchExpr.any`/`matchExpr.not`, both
+-// `reorderable: false`; `reorderable: true` is still handled here (native
+-// HTML5 drag-and-drop on the item itself, matching spec 8.2's own "drag to
+-// reorder" wording, needs no translated chrome) so the widget stays
+-// correct against the full `FieldWidget` contract, not just today's
+-// registry contents. Add/remove reuse `editor-attachment-rule-add`/`-drop`
+-// -- see `PropertyMapWidget.vue`'s doc for why that reuse is sound.
++// NOT the spec 8.2 top-level rule grid (`tracks.rules`): that is Task 11's
++// own bespoke grid with drag handles and per-rule summaries, built
++// directly against `profile.ts` types rather than through this
++// dispatcher. `attachments.rules` (`reorderable: true`) DOES render
++// through this generic widget -- its rows are not scalar summaries the
++// way TrackRule's are (two of its three fields are themselves nested
++// match expressions), so there is no compact grid to build, and native
++// HTML5 drag-and-drop on the item itself (matching spec 8.2's own "drag to
++// reorder" wording, needs no translated chrome) is already handled here.
++// Add/remove use the two generic `editor-action-add`/`-remove` keys
++// (owner Ruling 1, amended 2026-07-16; budget 45) -- not
++// `editor-attachment-rule-add`/`-drop`, which now caption only the
++// AttachmentRule fields they are the registry labels for.
+ import { computed } from "vue";
+ import type { EditableFieldOf } from "./shared";
+ import SectionWidget from "./SectionWidget.vue";
+ 
+ const props = defineProps<{ spec: EditableFieldOf<"list"> }>();
+ const model = defineModel<unknown[] | null>();
+ 
+ const items = computed(() => model.value ?? []);
+ 
+ const itemSpec = computed<EditableFieldOf<"section">>(() => ({
+@@ -76,24 +78,24 @@ function onDrop(index: number) {
+       @dragover.prevent
+       @drop="onDrop(index)"
+     >
+       <SectionWidget
+         :spec="itemSpec"
+         :model-value="itemValue(index)"
+         @update:model-value="setItemValue(index, $event)"
+       />
+       <button
+         type="button"
+-        :aria-label="$t('editor-attachment-rule-drop')"
++        :aria-label="$t('editor-action-remove')"
+         @click="removeItem(index)"
+       >
+-        {{ $t("editor-attachment-rule-drop") }}
++        {{ $t("editor-action-remove") }}
+       </button>
+     </div>
+     <button
+       type="button"
+       @click="addItem"
+     >
+-      {{ $t("editor-attachment-rule-add") }}
++      {{ $t("editor-action-add") }}
+     </button>
+   </fieldset>
+ </template>
+diff --git a/src/editor/widgets/PropertyMapWidget.vue b/src/editor/widgets/PropertyMapWidget.vue
+index 747610f..dbb5718 100644
+--- a/src/editor/widgets/PropertyMapWidget.vue
++++ b/src/editor/widgets/PropertyMapWidget.vue
+@@ -1,54 +1,119 @@
+ <script setup lang="ts">
+ // D45 field widget: `{ kind: "propertyMap"; properties; values }` (e.g.
+ // TrackRule.changes, MatchExpr.exact/substring/regex -- a `Record<string,
+-// Scalar | string>`). `properties` (matchable/settable) names which
+-// capability domain the keys come from, but no such domain is exposed to
+-// the frontend (no ts-rs binding for `capability::matchable_type`/
+-// `capability::settable` exists); the frontend performs zero semantic
+-// validation (spec 7) and holds the model as data, so property NAMES are
+-// free text here -- core diagnoses an unknown/mistyped one. `values`
+-// ("scalar" vs "string") is likewise not enforced: every value is edited
+-// as a string (still a legal `Scalar`, since `Scalar = boolean | number |
+-// string`); a "scalar" field that actually needs a real boolean/number is
+-// the same class of accepted gap the registry itself already names ("a
+-// mismatched widget is a visible rendering bug caught the first time the
+-// panel opens" -- D45).
++// Scalar>`). `properties` (matchable/settable) names which capability
++// domain the keys come from; property NAMES stay free text here (no
++// closed-domain enforcement on the key itself -- core diagnoses an
++// unknown/mistyped one), consistent with spec 7's zero-semantic-validation
++// rule.
+ //
+-// Row `key`/`value` inputs use `data-testid` (no distinct accessible
+-// role/name exists for a free-text property name, matching the house
+-// fallback convention). Add/remove buttons reuse the existing
+-// `editor-attachment-rule-add`/`-drop` keys ("Add"/"Drop") verbatim
+-// rather than adding new ones: gui-editor.ftl stays at 43 keys (D45), and
+-// "Drop" is already this app's own established exclude-this-item
+-// vocabulary (KEEP_DROP), the same reuse pattern `browse-button` already
+-// has across FirstRun/SettingsDialog/BatchView.
++// VALUE cells ARE typed (owner Ruling 2, amended 2026-07-16, house
++// principle `gui-typed-scalar-needs-typed-input`): whenever
++// `spec.widget.values === "scalar"`, a row's value cell renders by the
++// property's declared scalar type, looked up in Task 12a's committed
++// `SETTABLE_TYPES` (`properties: "settable"`) or `MATCHABLE_TYPES`
++// (`properties: "matchable"`) -- through one switch over `PropScalarType`
++// in `cellKindFor`, exhaustive via the house `const _exhaustive: never =
++// scalarType` arm (`FieldWidgetDispatcher.vue`'s own shape): `boolean` ->
++// checkbox (a real `true`/`false`), `integer` -> `<input type="number">`,
++// `float` -> `<input type="number" step="any">` (the one new input
++// variant, decimal-accepting, enumerated inside this switch, not a new
++// `FieldWidget` kind), `string` -> text. A property in NEITHER map
++// (unknown, or user-mistyped) falls back to the text cell before the
++// switch is ever reached -- core catches the unknown property anyway.
++// `values === "string"` (`matchExpr.substring`/`regex`) stays a text cell
++// unconditionally: a substring/regex pattern is `String` BY DEFINITION
++// (never a Boolean/number), so it is gated out before any type lookup --
++// a closed boundary on the `values` facet, not a fork. This is why `model`
++// widens from `Record<string, string>` to `Record<string, Scalar>` (from
++// `../../bindings/profile`): a Boolean settable/matchable must reload as a
++// real `true`, not the string `"true"`.
++//
++// Row `key` inputs use `data-testid` (no distinct accessible role/name
++// exists for a free-text property name, matching the house fallback
++// convention); the value cell keeps the SAME `data-testid` across every
++// typed variant so a row stays locatable regardless of its resolved type,
++// while its accessible role (checkbox/spinbutton/textbox) carries the
++// type-specific test assertions. Add/remove use the two generic
++// `editor-action-add`/`-remove` keys (owner Ruling 1, amended 2026-07-16;
++// catalog budget 45) -- not `editor-attachment-rule-add`/`-drop`, which
++// now caption only the AttachmentRule fields they are the registry labels
++// for (`registries.ts:185-189`).
+ import { computed } from "vue";
+ import type { EditableFieldOf } from "./shared";
++import { MATCHABLE_TYPES, SETTABLE_TYPES } from "../../bindings/settables";
++import type { PropScalarType } from "../../bindings/settables";
++import type { Scalar } from "../../bindings/profile";
+ 
+-defineProps<{ spec: EditableFieldOf<"propertyMap"> }>();
+-const model = defineModel<Record<string, string> | null>();
++const props = defineProps<{ spec: EditableFieldOf<"propertyMap"> }>();
++const model = defineModel<Record<string, Scalar> | null>();
+ 
+ const rows = computed(() => Object.entries(model.value ?? {}));
+ 
++/** Which value-cell control a row's property name resolves to. Not one of
++ *  the 10 `FieldWidget` kinds -- this is the typed switch INSIDE the
++ *  `propertyMap` cell, per the binding point above. */
++type ValueCellKind = "checkbox" | "integer" | "float" | "text";
++
++function cellKindFor(key: string): ValueCellKind {
++  if (props.spec.widget.values !== "scalar") {
++    return "text";
++  }
++  const table =
++    props.spec.widget.properties === "settable"
++      ? (SETTABLE_TYPES as Record<string, PropScalarType>)
++      : (MATCHABLE_TYPES as Record<string, PropScalarType>);
++  const scalarType = table[key];
++  if (scalarType === undefined) {
++    return "text";
++  }
++  switch (scalarType) {
++    case "boolean":
++      return "checkbox";
++    case "integer":
++      return "integer";
++    case "float":
++      return "float";
++    case "string":
++      return "text";
++    default: {
++      const _exhaustive: never = scalarType;
++      throw new Error(`unhandled PropScalarType: ${String(_exhaustive)}`);
++    }
++  }
++}
++
+ function setKey(index: number, key: string) {
+   const next = [...rows.value];
+   next[index] = [key, next[index][1]];
+   model.value = Object.fromEntries(next);
+ }
+ 
+-function setValue(index: number, value: string) {
++function setValue(index: number, value: Scalar) {
+   const next = [...rows.value];
+   next[index] = [next[index][0], value];
+   model.value = Object.fromEntries(next);
+ }
+ 
++function onCheckboxInput(index: number, event: Event) {
++  setValue(index, (event.target as HTMLInputElement).checked);
++}
++
++function onNumberInput(index: number, event: Event) {
++  setValue(index, Number((event.target as HTMLInputElement).value));
++}
++
++function onTextInput(index: number, event: Event) {
++  setValue(index, (event.target as HTMLInputElement).value);
++}
++
+ function addRow() {
+   model.value = { ...(model.value ?? {}), "": "" };
+ }
+ 
+ function removeRow(index: number) {
+   const next = [...rows.value];
+   next.splice(index, 1);
+   model.value = Object.fromEntries(next);
+ }
+ </script>
+@@ -60,31 +125,54 @@ function removeRow(index: number) {
+       v-for="([key, value], index) in rows"
+       :key="index"
+     >
+       <input
+         data-testid="property-map-key"
+         type="text"
+         :value="key"
+         @input="setKey(index, ($event.target as HTMLInputElement).value)"
+       >
+       <input
++        v-if="cellKindFor(key) === 'checkbox'"
++        data-testid="property-map-value"
++        type="checkbox"
++        :checked="value === true"
++        @change="onCheckboxInput(index, $event)"
++      >
++      <input
++        v-else-if="cellKindFor(key) === 'integer'"
++        data-testid="property-map-value"
++        type="number"
++        :value="value"
++        @input="onNumberInput(index, $event)"
++      >
++      <input
++        v-else-if="cellKindFor(key) === 'float'"
++        data-testid="property-map-value"
++        type="number"
++        step="any"
++        :value="value"
++        @input="onNumberInput(index, $event)"
++      >
++      <input
++        v-else
+         data-testid="property-map-value"
+         type="text"
+         :value="value"
+-        @input="setValue(index, ($event.target as HTMLInputElement).value)"
++        @input="onTextInput(index, $event)"
+       >
+       <button
+         type="button"
+-        :aria-label="$t('editor-attachment-rule-drop')"
++        :aria-label="$t('editor-action-remove')"
+         @click="removeRow(index)"
+       >
+-        {{ $t("editor-attachment-rule-drop") }}
++        {{ $t("editor-action-remove") }}
+       </button>
+     </div>
+     <button
+       type="button"
+       @click="addRow"
+     >
+-      {{ $t("editor-attachment-rule-add") }}
++      {{ $t("editor-action-add") }}
+     </button>
+   </fieldset>
+ </template>
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index 6ffd721..ea7033e 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -1,43 +1,97 @@
+ <script setup lang="ts">
+ // Task 11 (D45, spec 8.2 view 4): the profile editor's top-level rule
+ // grid and its drag-reorder, mounted standalone via the wave-3 harness (no
+ // nav entry exists until Task 13's App.vue wiring). Bespoke against
+ // `profile.ts` types directly, NOT through the field-widget dispatcher --
+ // see `ListWidget.vue`'s own doc on why the generic `list` widget is not
+-// this grid. Sections, the full per-rule detail editor, save and open IPC
+-// all follow in Tasks 12-13; this view holds only `tracks.rules` for now,
+-// but its `modelValue`/`update:modelValue` v-model contract is already the
+-// full `Profile`, so those tasks extend this file rather than reshaping
+-// its interface.
++// this grid. `tracks.rules` stays this bespoke, read-only-summary grid
++// unchanged by Task 12 (its own test is untouched); `tracks.unmatched`
++// joins it as a normal registry-dispatched field, below.
+ //
+ // Reorder is a SEMANTIC MODEL EDIT (binding note), not a DOM mutation: a
+ // drop rebuilds `tracks.rules` immutably and re-emits the whole profile,
+ // mirroring `ListWidget.vue`'s own reorder mechanics (a closure
+ // `dragIndex`, no `dataTransfer` read -- native HTML5 drag-and-drop needs
+ // no translated chrome for that reason, same rationale as that widget).
+ //
+ // Zero frontend semantic validation (spec 7): every row summary below is
+ // either a real profile-format token (`SOURCE_KEYWORDS`'s "primary"), an
+ // actual value already present in the model (an external path, a matchable
+ // property name and its scalar, a settable property name), or a plain
+ // count -- never app-authored prose, so no new `gui-editor.ftl` key is
+ // needed beyond the four `TrackRule` field labels the registry already
+ // carries (D45).
++//
++// Task 12 (D45, amended 2026-07-16): SECTION COMPOSITION, driven by
++// `profileFields` (Task 9's registry), not by a hand-listed field set --
++// adding a field to `Profile` + its registry surfaces it here with no view
++// edit. Every top-level `EditableField` dispatches generically through
++// `FieldWidgetDispatcher`, with exactly ONE hand-built exception: `tracks`.
++// `tracks.unmatched` still dispatches generically (below); `tracks.rules`
++// keeps the bespoke grid above instead of the generic `list` widget, for
++// the same reason `ListWidget.vue`'s own doc gives for why `attachments.
++// rules` (unlike `tracks.rules`) DOES render generically -- TrackRule's
++// shape lends itself to compact single-row summaries (source/match/
++// changes as text, optional as a column), and Task 11 already built that
++// grid with drag-reorder before this task existed; replacing it with the
++// generic per-item `SectionWidget` form would drop the grid semantics
++// (and would break Task 11's own `data-testid="editor-rule-row"` /
++// `toContainText` assertions, which this task does not touch). `profile_
++// version` (`FixedField`) is skipped the same way `SectionWidget.vue`
++// skips one: filtered out, never dispatched, nothing rendered for it.
+ import { computed } from "vue";
+ import type { Profile, TrackRule } from "../bindings/profile";
+ import { SOURCE_KEYWORDS } from "../bindings/keywords";
++import type { EditableField } from "../editor/fieldSpec";
++import { profileFields, tracksFields } from "../editor/registries";
++import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
+ 
+ const model = defineModel<Profile>();
+ 
+ const rules = computed<TrackRule[]>(() => model.value?.tracks.rules ?? []);
+ 
++// Every top-level `profileFields` entry except `tracks` (see the doc
++// comment above) and `profile_version` (`FixedField`, never rendered).
++const topLevelFields = computed(() =>
++  Object.entries(profileFields).filter(
++    (entry): entry is [string, EditableField] => entry[0] !== "tracks" && !("fixed" in entry[1]),
++  ),
++);
++
++// `tracksFields.unmatched` is a real `EditableField` (registries.ts's own
++// literal), but `tracksFields`'s declared type is `Record<keyof TracksCfg,
++// FieldSpec>` (the `FixedField | EditableField` union), so a single
++// property access does not narrow on its own -- same asymmetry `fields`
++// in `SectionWidget.vue` closes with a runtime `"fixed" in entry[1]` guard
++// over the whole registry; here there is exactly one known field, so a
++// direct assertion is the equivalent for a single access.
++const tracksUnmatchedSpec = tracksFields.unmatched as EditableField;
++
++function fieldValue(key: string): unknown {
++  return (model.value as unknown as Record<string, unknown> | undefined)?.[key];
++}
++
++function setFieldValue(key: string, value: unknown) {
++  model.value = { ...(model.value ?? ({} as Profile)), [key]: value } as Profile;
++}
++
++function setTracksUnmatched(value: unknown) {
++  if (!model.value) {
++    return;
++  }
++  model.value = {
++    ...model.value,
++    tracks: { ...model.value.tracks, unmatched: value as Profile["tracks"]["unmatched"] },
++  };
++}
++
+ function sourceSummary(rule: TrackRule): string {
+   if (typeof rule.source === "string") {
+     return rule.source;
+   }
+   if (rule.source) {
+     return rule.source.external.path;
+   }
+   return SOURCE_KEYWORDS[0];
+ }
+ 
+@@ -83,57 +137,73 @@ function onDrop(index: number) {
+   model.value = {
+     ...model.value,
+     tracks: { ...model.value.tracks, rules: nextRules },
+   };
+   dragIndex = null;
+ }
+ </script>
+ 
+ <template>
+   <section data-testid="view-editor">
+-    <h2>{{ $t("editor-tracks-rules") }}</h2>
+-    <table>
+-      <caption>
+-        {{ $t("editor-tracks-rules") }}
+-      </caption>
+-      <thead>
+-        <tr>
+-          <th scope="col">
+-            {{ $t("editor-track-rule-source") }}
+-          </th>
+-          <th scope="col">
+-            {{ $t("editor-track-rule-match-expr") }}
+-          </th>
+-          <th scope="col">
+-            {{ $t("editor-track-rule-optional") }}
+-          </th>
+-          <th scope="col">
+-            {{ $t("editor-track-rule-changes") }}
+-          </th>
+-        </tr>
+-      </thead>
+-      <tbody>
+-        <tr
+-          v-for="(rule, index) in rules"
+-          :key="index"
+-          data-testid="editor-rule-row"
+-          draggable="true"
+-          @dragstart="onDragStart(index)"
+-          @dragover.prevent
+-          @drop="onDrop(index)"
+-        >
+-          <td>{{ sourceSummary(rule) }}</td>
+-          <td>{{ matchSummary(rule) }}</td>
+-          <td>
+-            <input
+-              type="checkbox"
+-              disabled
+-              :checked="rule.optional === true"
+-              :aria-label="$t('editor-track-rule-optional')"
+-            >
+-          </td>
+-          <td>{{ changesSummary(rule) }}</td>
+-        </tr>
+-      </tbody>
+-    </table>
++    <FieldWidgetDispatcher
++      v-for="[key, spec] in topLevelFields"
++      :key="key"
++      :spec="spec"
++      :model-value="fieldValue(key)"
++      @update:model-value="setFieldValue(key, $event)"
++    />
++
++    <fieldset>
++      <legend>{{ $t("editor-profile-tracks") }}</legend>
++      <FieldWidgetDispatcher
++        :spec="tracksUnmatchedSpec"
++        :model-value="model?.tracks.unmatched"
++        @update:model-value="setTracksUnmatched"
++      />
++      <h2>{{ $t("editor-tracks-rules") }}</h2>
++      <table>
++        <caption>
++          {{ $t("editor-tracks-rules") }}
++        </caption>
++        <thead>
++          <tr>
++            <th scope="col">
++              {{ $t("editor-track-rule-source") }}
++            </th>
++            <th scope="col">
++              {{ $t("editor-track-rule-match-expr") }}
++            </th>
++            <th scope="col">
++              {{ $t("editor-track-rule-optional") }}
++            </th>
++            <th scope="col">
++              {{ $t("editor-track-rule-changes") }}
++            </th>
++          </tr>
++        </thead>
++        <tbody>
++          <tr
++            v-for="(rule, index) in rules"
++            :key="index"
++            data-testid="editor-rule-row"
++            draggable="true"
++            @dragstart="onDragStart(index)"
++            @dragover.prevent
++            @drop="onDrop(index)"
++          >
++            <td>{{ sourceSummary(rule) }}</td>
++            <td>{{ matchSummary(rule) }}</td>
++            <td>
++              <input
++                type="checkbox"
++                disabled
++                :checked="rule.optional === true"
++                :aria-label="$t('editor-track-rule-optional')"
++              >
++            </td>
++            <td>{{ changesSummary(rule) }}</td>
++          </tr>
++        </tbody>
++      </table>
++    </fieldset>
+   </section>
+ </template>

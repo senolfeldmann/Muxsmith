@@ -1,0 +1,739 @@
+# Review package: 0ba894a..5b230a2
+
+## Commits
+5b230a2 gui: the editor's open/save with its standing note, nav entry and ipc signatures (D45, D41)
+
+## Files changed
+ e2e/smoke.spec.ts        | 155 +++++++++++++++++++++++++
+ src/App.vue              |  30 ++++-
+ src/ipc.ts               |  53 ++++++++-
+ src/views/EditorView.vue | 295 +++++++++++++++++++++++++++++++++++++----------
+ 4 files changed, 465 insertions(+), 68 deletions(-)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 023136a..4708369 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -22,21 +22,23 @@ import type { Page } from "@playwright/test";
+ import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
+ import { mountComponent, readModel } from "./mount";
+ import { en } from "./i18n-en";
+ import type { FluentVariable } from "@fluent/bundle";
+ import {
+   JOB_EVENT_CHANNEL,
+   RUN_FINISHED_CHANNEL,
+ } from "../src/ipc";
+ import type {
+   AppSettings,
++  Diagnostic,
+   JobEvent,
++  LoadProfileDocument,
+   MkvmergeInfo,
+   ReportDocument,
+   RunFinishedEvent,
+   StartedRun,
+ } from "../src/ipc";
+ import {
+   COLLISION_POLICIES,
+   inputFields,
+   locatorFields,
+   matchExprFields,
+@@ -951,10 +953,163 @@ test.describe("editor view: section composition and typed value cells (Task 12,
+       props: { spec: matchExprFields.exact, modelValue: { audio_channels: 2 } },
+     });
+     const intCell = page.getByRole("spinbutton");
+     await expect(intCell).not.toHaveAttribute("step", "any");
+     await intCell.fill("6");
+     const intModel = (await readModel(page)) as Record<string, unknown>;
+     expect(intModel).toEqual({ audio_channels: 6 });
+     expect(typeof intModel.audio_channels).toBe("number");
+   });
+ });
++
++// Task 13 (D45, D41, D42): open/save wiring, the save-surface standing
++// note, the nav entry, and validate-on-edit -- through the real, served
++// app (`page.goto("/")`), unlike Tasks 10-12's mount-harness specs above:
++// the editor is reachable from the nav for the first time. `load_profile`'s
++// mocked response is `LoadProfileDocument`-shaped (`ReportDocument` plus
++// `profile`); `validate_profile_model`'s scripted queue covers both the
++// auto-revalidate right after Open (spec 7: "every profile edit" covers
++// the load itself, `EditorView.vue`'s own watcher fires on the model
++// assignment `pickAndOpen` makes) and the deliberate edits below --
++// `mocks.ts`'s own queue semantics repeat the last entry once exhausted,
++// so a single trailing "clean" entry covers every subsequent clean
++// re-validation without an exact call count.
++test.describe("editor view: open/save (Task 13, D45/D41)", () => {
++  const PROFILE_PATH = "/profiles/editor-demo.yaml";
++
++  const editorProfile: Profile = {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: { rules: [] },
++  };
++
++  const loadedDoc: LoadProfileDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++    profile: editorProfile,
++  };
++
++  const errorDiagnostic: Diagnostic = {
++    code: "unsupported-source",
++    severity: "error",
++    config_path: "tracks[0].match",
++    params: { kind: "primary" },
++    rendered: "unsupported-source",
++  };
++
++  const errorDoc: ReportDocument = {
++    config_diagnostics: [errorDiagnostic],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  const cleanDoc: ReportDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  test("the nav opens the editor; opening a profile shows the save note; Save is disabled while an error diagnostic exists and enabled when clean; saving calls save_profile", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        load_profile: [resolveWith(loadedDoc)],
++        validate_profile_model: [resolveWith(cleanDoc), resolveWith(errorDoc), resolveWith(cleanDoc)],
++        save_profile: [resolveWith(null)],
++      },
++    });
++
++    await page.goto("/");
++
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await expect(editor).toBeVisible();
++
++    await editor.getByRole("button", name("batch-profile-pick")).click();
++    await expect(
++      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
++    ).toBeVisible();
++    await expect(editor.getByText(en("editor-save-note"))).toBeVisible();
++
++    const saveButton = editor.getByRole("button", name("settings-save"));
++    // The auto-revalidate right after Open resolved clean (first queued
++    // response) -- Save starts enabled.
++    await expect(saveButton).toBeEnabled();
++
++    // An edit triggers the second queued (error) validate_profile_model
++    // response.
++    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
++    await patternField.fill("^S[0-9]+E[0-9]+");
++    await expect(saveButton).toBeDisabled();
++    await expect(
++      editor.getByText(
++        en("batch-diagnostic-line", {
++          severity: en("severity-error"),
++          message: en("unsupported-source", { kind: "primary" }),
++        }),
++      ),
++    ).toBeVisible();
++
++    await assertNoSeriousA11yViolations(page);
++
++    // A further edit triggers the third queued (clean) response, clearing
++    // the error.
++    await patternField.fill(".*");
++    await expect(saveButton).toBeEnabled();
++
++    await saveButton.click();
++    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
++    expect(saveCalls).toHaveLength(1);
++    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
++    expect(saveArgs.path).toBe(PROFILE_PATH);
++    expect(saveArgs.profile.input.pattern).toBe(".*");
++  });
++
++  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if)", async ({
++    page,
++  }) => {
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        load_profile: [resolveWith(loadedDoc)],
++        validate_profile_model: [resolveWith(cleanDoc)],
++      },
++    });
++
++    await page.goto("/");
++
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await editor.getByRole("button", name("batch-profile-pick")).click();
++    await expect(
++      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
++    ).toBeVisible();
++
++    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
++    await patternField.fill("kept-through-switch");
++    await expect(patternField).toHaveValue("kept-through-switch");
++
++    await page.getByTestId("nav-jobs").click();
++    await expect(page.getByTestId("view-jobs")).toBeVisible();
++    await expect(editor).toBeHidden();
++
++    await page.getByTestId("nav-editor").click();
++    await expect(editor).toBeVisible();
++    // Still mounted, not recreated: the field value and the open path
++    // survived the round trip through Jobs.
++    await expect(patternField).toHaveValue("kept-through-switch");
++    await expect(
++      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
++    ).toBeVisible();
++  });
++});
+diff --git a/src/App.vue b/src/App.vue
+index d708dbc..4d24011 100644
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -1,20 +1,21 @@
+ <script setup lang="ts">
+ import { onMounted, ref, useTemplateRef } from "vue";
+ import BatchView from "./views/BatchView.vue";
+ import JobsView from "./views/JobsView.vue";
++import EditorView from "./views/EditorView.vue";
+ import FirstRun from "./views/FirstRun.vue";
+ import SettingsDialog from "./components/SettingsDialog.vue";
+ import { detectMkvmerge } from "./ipc";
+ import type { IpcError, RunRequest } from "./ipc";
+ 
+-type View = "batch" | "jobs";
++type View = "batch" | "jobs" | "editor";
+ 
+ // Startup gate (D28, T9 brief): probe mkvmerge exactly once on mount. A
+ // clean result unlocks the shell; a missing/too-old one mounts FirstRun
+ // instead, which owns its own retry loop and clears `blockedError` itself
+ // once a fresh detect succeeds (see its `resolved` emit) -- checkMkvmerge
+ // never runs a second time.
+ const checking = ref(true);
+ const blockedError = ref<IpcError | null>(null);
+ const activeView = ref<View>("batch");
+ const settingsDialog = useTemplateRef("settingsDialog");
+@@ -78,42 +79,59 @@ onMounted(checkMkvmerge);
+         {{ $t("nav-batch") }}
+       </button>
+       <button
+         type="button"
+         data-testid="nav-jobs"
+         :aria-current="activeView === 'jobs' ? 'page' : undefined"
+         @click="activeView = 'jobs'"
+       >
+         {{ $t("nav-jobs") }}
+       </button>
++      <!-- Task 13 (D45): no new nav-* Fluent key (D45's catalog table adds
++           none for this task) -- reuses `batch-profile-heading` ("Profile"),
++           BatchView's own heading for its profile-picking section, the same
++           cross-view key reuse `JobsView.vue`'s own `<h2>` already relies on
++           for `nav-jobs`. See `EditorView.vue`'s doc comment for the fuller
++           reuse rationale. -->
++      <button
++        type="button"
++        data-testid="nav-editor"
++        :aria-current="activeView === 'editor' ? 'page' : undefined"
++        @click="activeView = 'editor'"
++      >
++        {{ $t("batch-profile-heading") }}
++      </button>
+       <button
+         type="button"
+         data-testid="open-settings"
+         :title="$t('settings-open-tooltip')"
+         @click="settingsDialog?.open()"
+       >
+         {{ $t("settings-open-label") }}
+       </button>
+     </nav>
+     <main>
+-      <!-- v-show, not v-if: both views stay mounted across tab switches, so
+-           JobsView's live run listeners (registered in its onMounted, torn
+-           down in onUnmounted) survive navigating away mid-run. The hidden
++      <!-- v-show, not v-if: all three views stay mounted across tab
++           switches, so JobsView's live run listeners (registered in its
++           onMounted, torn down in onUnmounted) survive navigating away
++           mid-run, and EditorView's open profile/diagnostics/currentPath
++           state (Task 13) survives a switch to Jobs and back. The hidden
+            view is display:none -- out of the a11y tree, cannot trap focus.
+            Only the first-run gate above (v-if/v-else-if) unmounts the
+-           shell; eager-mounting both views at startup costs nothing at
+-           this scale. -->
++           shell; eager-mounting all three views at startup costs nothing
++           at this scale. -->
+       <BatchView
+         v-show="activeView === 'batch'"
+         :run-active="jobsRunActive"
+         @start-run="onStartRun"
+       />
+       <JobsView
+         v-show="activeView === 'jobs'"
+         v-model:run-active="jobsRunActive"
+         :pending-run="pendingRun"
+         @consumed="pendingRun = null"
+       />
++      <EditorView v-show="activeView === 'editor'" />
+     </main>
+     <SettingsDialog ref="settingsDialog" />
+   </template>
+ </template>
+diff --git a/src/ipc.ts b/src/ipc.ts
+index d2c3500..39615d9 100644
+--- a/src/ipc.ts
++++ b/src/ipc.ts
+@@ -1,22 +1,24 @@
+ /**
+  * Typed IPC wrappers (D23): one thin function per Rust `#[tauri::command]`
+  * in `src-tauri/src/lib.rs`/`src-tauri/src/run.rs`, with argument/return
+  * types mirroring the Rust structs field-for-field. Deliberately dumb: no
+  * retries, no caching, no error translation -- `IpcError` rejects exactly
+  * as the shell sends it, and callers render it through their own Fluent
+  * bundle (spec 8.4). T9 itself only calls `detectMkvmerge`/`getSettings`/
+  * `setSettings`; the rest exist so T10 (`validateProfile`, `dryRun`) and
+- * T11 (the run lifecycle, `listRuns`, `getJobLog`) do not each redefine
+- * this layer.
++ * T11 (the run lifecycle, `listRuns`, `getJobLog`), and T13 (`loadProfile`,
++ * `saveProfile`, `validateProfileModel`; `applySuggestion` for T14) do not
++ * each redefine this layer.
+  */
+ import { invoke } from "@tauri-apps/api/core";
++import type { Profile, StructuredEdit } from "./bindings/profile";
+ 
+ /** Mirrors `src-tauri/src/error.rs::IpcError`; the shape every rejected
+  * command promise carries. */
+ export interface IpcError {
+   code: string;
+   params: Record<string, string>;
+ }
+ 
+ /** Mirrors `src-tauri/src/settings.rs::DirMemory`. */
+ export interface DirMemory {
+@@ -245,20 +247,67 @@ export function detectMkvmerge(): Promise<MkvmergeInfo> {
+ }
+ 
+ export function getSettings(): Promise<AppSettings> {
+   return invoke<AppSettings>("get_settings");
+ }
+ 
+ export function setSettings(settings: AppSettings): Promise<void> {
+   return invoke<void>("set_settings", { settings });
+ }
+ 
++// --- editor commands (D42, wired here by Task 13) -----------------------
++
++/**
++ * `load_profile`'s return shape (D42, as amended by Task 1): byte-identical
++ * `config_diagnostics` envelope to `validate_profile`/`validate_profile_model`
++ * (`report::json::config_only_document`, `src-tauri/src/lib.rs::
++ * load_profile_body`'s own doc), plus the parsed model -- `null` on a
++ * `ParseError`, never a second document shape. Still the untyped
++ * `serde_json::Value` document on the Rust side; this interface mirrors its
++ * known JSON shape exactly like `ReportDocument` above already does for
++ * `validate_profile`/`dry_run`, the same "hand-written, not ts-rs" split
++ * D42/D45 draw between the model (ts-rs) and command signatures (hand-built).
++ */
++export interface LoadProfileDocument extends ReportDocument {
++  profile: Profile | null;
++}
++
++export function loadProfile(path: string): Promise<LoadProfileDocument> {
++  return invoke<LoadProfileDocument>("load_profile", { path });
++}
++
++export function saveProfile(path: string, profile: Profile): Promise<void> {
++  return invoke<void>("save_profile", { path, profile });
++}
++
++export function validateProfileModel(profile: Profile): Promise<ReportDocument> {
++  return invoke<ReportDocument>("validate_profile_model", { profile });
++}
++
++/**
++ * `apply_suggestion`'s signature (D43): lands here for Task 14's use (the
++ * apply control lives in the batch view, not the editor -- D41's own
++ * pairing note). `StructuredEdit` is ts-rs-generated (`src/bindings/
++ * profile.ts`, D42/D45's "ts-rs types the model" set); `Suggestion.edit`
++ * above stays untyped (`unknown`) since D22 confines the GUI to
++ * show-and-copy on `yaml_fragment` and no code interprets a batch-supplied
++ * edit's shape today -- this function's own `edit` parameter is the one
++ * place `StructuredEdit` is actually consumed, once Task 14 wires it.
++ */
++export function applySuggestion(
++  profile: Profile,
++  configPath: string,
++  edit: StructuredEdit,
++): Promise<Profile> {
++  return invoke<Profile>("apply_suggestion", { profile, configPath, edit });
++}
++
+ /**
+  * The Plan 5 wave-5 shell contract (controller-defined, T10/T11 briefs):
+  * what BatchView's `start-run` emit hands to App, which stores it and
+  * passes it to JobsView as the `pending-run` prop. Deliberately not
+  * `startRun`'s own parameter type above: `null` here means "unset,
+  * JobsView/the backend picks the default" for every field, whereas
+  * `startRun`'s optional fields are `undefined`-shaped; T11 maps between
+  * the two when it actually calls `startRun`.
+  */
+ export interface RunRequest {
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index ea7033e..35e7220 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -32,29 +32,165 @@
+ // the same reason `ListWidget.vue`'s own doc gives for why `attachments.
+ // rules` (unlike `tracks.rules`) DOES render generically -- TrackRule's
+ // shape lends itself to compact single-row summaries (source/match/
+ // changes as text, optional as a column), and Task 11 already built that
+ // grid with drag-reorder before this task existed; replacing it with the
+ // generic per-item `SectionWidget` form would drop the grid semantics
+ // (and would break Task 11's own `data-testid="editor-rule-row"` /
+ // `toContainText` assertions, which this task does not touch). `profile_
+ // version` (`FixedField`) is skipped the same way `SectionWidget.vue`
+ // skips one: filtered out, never dispatched, nothing rendered for it.
+-import { computed } from "vue";
++//
++// Task 13 (D45, D41, D42): open/save wiring, the save-surface standing
++// note, and validate-on-edit. `EditorView` owns its own open/save/
++// validate state (`currentPath`, `diagnostics`, the ipc-error pair)
++// rather than App.vue, matching the brief's own "wire ... into
++// EditorView.vue" step: App.vue's only change is the nav entry and mount
++// block, no v-model, no shared editor state there. This keeps
++// `EditorView` mountable from an injected `modelValue` alone -- the Tasks
++// 10-12 mount-harness specs feed one directly, install no IPC mock, and
++// never click Open, so the validate-on-edit watcher below is gated on
++// `currentPath` (only Open's own IPC round trip ever sets it): a bare-
++// mounted `EditorView` edits its model plenty (drag-reorder, widget
++// input) but never triggers `validate_profile_model`, keeping those specs
++// green with no injected mock (mount-harness amendment's own review-
++// check).
++//
++// No new `gui-editor.ftl`/`gui-common.ftl` keys: D45's design-doc catalog
++// table enumerates every Fluent key the whole plan adds, and Task 13
++// carries none (`gui-editor.ftl` stays 45, the brief's own Files list
++// carries no `.ftl`). The Open button, the currently-open-path line, and
++// the file-dialog filter name reuse `batch-profile-pick`/`batch-profile-
++// current`/`batch-profile-filter-name` (BatchView's own "choose + show a
++// profile path" affordance -- their content is generic, not batch-
++// specific, and cross-view key reuse already has two precedents:
++// `browse-button`'s own documented reuse across BatchView/FirstRun/
++// SettingsDialog, and `JobsView.vue`'s `<h2>` reusing `nav-jobs`
++// internally rather than a bespoke `jobs-view-heading`). Save reuses
++// `settings-save` ("Save", `SettingsDialog.vue`) the same way. The
++// diagnostics heading reuses `batch-diagnostics-heading` ("Diagnostics").
++// `editor-save-note` is Task 9's own key, exactly as the brief names it.
++// Diagnostics render through the already-shared `DiagnosticsPanel.vue`
++// (its own doc comment: "no per-caller variant"), a third consumer beside
++// BatchView/ResolutionTable, contributing no new template `$t()` calls.
++import { computed, ref, watch } from "vue";
++import { useFluent } from "fluent-vue";
++import { open as openDialog } from "@tauri-apps/plugin-dialog";
+ import type { Profile, TrackRule } from "../bindings/profile";
+ import { SOURCE_KEYWORDS } from "../bindings/keywords";
+ import type { EditableField } from "../editor/fieldSpec";
+ import { profileFields, tracksFields } from "../editor/registries";
+ import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
++import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
++import { loadProfile, saveProfile, validateProfileModel } from "../ipc";
++import type { Diagnostic, IpcError } from "../ipc";
+ 
+ const model = defineModel<Profile>();
+ 
++const fluent = useFluent();
++
++// --- Task 13: open/save/validate state ----------------------------------
++
++const currentPath = ref<string | null>(null);
++const diagnostics = ref<Diagnostic[]>([]);
++const opening = ref(false);
++const saving = ref(false);
++const ipcErrorCode = ref<string | null>(null);
++const ipcErrorParams = ref<Record<string, string>>({});
++
++const hasErrors = computed(() => diagnostics.value.some((d) => d.severity === "error"));
++
++// The one sanctioned frontend affordance (spec 7, D41 binding point):
++// Save is disabled while any error-severity diagnostic exists.
++const saveDisabled = computed(
++  () => !model.value || !currentPath.value || hasErrors.value || saving.value || opening.value,
++);
++
++let validationGeneration = 0;
++
++// Spec 7 ("every profile edit"): revalidates through `validate_profile_model`
++// whenever the held model changes. Gated on `currentPath` -- see the doc
++// comment above for why a bare mount-harness `EditorView` never reaches
++// this. Every top-level `model.value =` assignment throughout the widget
++// tree is a fresh object (`SectionWidget.vue`'s own `{ ...model.value,
++// [key]: value }`, mirrored at every level up to this component's own
++// `setFieldValue`/`setTracksUnmatched`/`onDrop` below), so a shallow watch
++// (no `deep: true`) reliably fires on every leaf edit. `validationGeneration`
++// discards a stale response: `validate_profile_model` runs on a Tauri
++// blocking-task thread pool (D42's own doc on why it is `async` at all),
++// so rapid edits can resolve out of order.
++watch(model, async (value) => {
++  if (!currentPath.value || !value) {
++    return;
++  }
++  const generation = ++validationGeneration;
++  try {
++    const result = await validateProfileModel(value);
++    if (generation === validationGeneration) {
++      diagnostics.value = result.config_diagnostics;
++    }
++  } catch (e) {
++    // Background, per-edit validation; a genuine failure here is an
++    // internal-task panic (D42's own doc on `validate_profile_model`), not
++    // a user action to react to -- mirrors BatchView's identical
++    // tolerance for its own background `rememberRecentProfile` write.
++    console.warn("[editor] background validation failed:", e);
++  }
++});
++
++async function pickAndOpen(): Promise<void> {
++  if (opening.value || saving.value) {
++    return;
++  }
++  const picked = await openDialog({
++    multiple: false,
++    directory: false,
++    filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
++  });
++  if (typeof picked !== "string") {
++    return;
++  }
++  opening.value = true;
++  ipcErrorCode.value = null;
++  try {
++    const doc = await loadProfile(picked);
++    currentPath.value = picked;
++    diagnostics.value = doc.config_diagnostics;
++    model.value = doc.profile ?? undefined;
++  } catch (e) {
++    const err = e as IpcError;
++    ipcErrorCode.value = err.code;
++    ipcErrorParams.value = err.params;
++  } finally {
++    opening.value = false;
++  }
++}
++
++async function doSave(): Promise<void> {
++  if (saveDisabled.value || !model.value || !currentPath.value) {
++    return;
++  }
++  saving.value = true;
++  ipcErrorCode.value = null;
++  try {
++    await saveProfile(currentPath.value, model.value);
++  } catch (e) {
++    const err = e as IpcError;
++    ipcErrorCode.value = err.code;
++    ipcErrorParams.value = err.params;
++  } finally {
++    saving.value = false;
++  }
++}
++
++// --- Tasks 11-12: section composition + the rule grid -------------------
++
+ const rules = computed<TrackRule[]>(() => model.value?.tracks.rules ?? []);
+ 
+ // Every top-level `profileFields` entry except `tracks` (see the doc
+ // comment above) and `profile_version` (`FixedField`, never rendered).
+ const topLevelFields = computed(() =>
+   Object.entries(profileFields).filter(
+     (entry): entry is [string, EditableField] => entry[0] !== "tracks" && !("fixed" in entry[1]),
+   ),
+ );
+ 
+@@ -137,73 +273,112 @@ function onDrop(index: number) {
+   model.value = {
+     ...model.value,
+     tracks: { ...model.value.tracks, rules: nextRules },
+   };
+   dragIndex = null;
+ }
+ </script>
+ 
+ <template>
+   <section data-testid="view-editor">
+-    <FieldWidgetDispatcher
+-      v-for="[key, spec] in topLevelFields"
+-      :key="key"
+-      :spec="spec"
+-      :model-value="fieldValue(key)"
+-      @update:model-value="setFieldValue(key, $event)"
+-    />
+-
+-    <fieldset>
+-      <legend>{{ $t("editor-profile-tracks") }}</legend>
++    <button
++      type="button"
++      data-testid="editor-open"
++      :disabled="opening || saving"
++      :aria-busy="opening"
++      @click="pickAndOpen"
++    >
++      {{ $t("batch-profile-pick") }}
++    </button>
++    <p v-if="currentPath">
++      {{ $t("batch-profile-current", { path: currentPath }) }}
++    </p>
++    <p
++      v-if="ipcErrorCode"
++      role="alert"
++    >
++      {{ $t(ipcErrorCode, ipcErrorParams) }}
++    </p>
++
++    <section aria-labelledby="editor-diagnostics-heading">
++      <h3 id="editor-diagnostics-heading">
++        {{ $t("batch-diagnostics-heading") }}
++      </h3>
++      <DiagnosticsPanel :diagnostics="diagnostics" />
++    </section>
++
++    <template v-if="model">
+       <FieldWidgetDispatcher
+-        :spec="tracksUnmatchedSpec"
+-        :model-value="model?.tracks.unmatched"
+-        @update:model-value="setTracksUnmatched"
++        v-for="[key, spec] in topLevelFields"
++        :key="key"
++        :spec="spec"
++        :model-value="fieldValue(key)"
++        @update:model-value="setFieldValue(key, $event)"
+       />
+-      <h2>{{ $t("editor-tracks-rules") }}</h2>
+-      <table>
+-        <caption>
+-          {{ $t("editor-tracks-rules") }}
+-        </caption>
+-        <thead>
+-          <tr>
+-            <th scope="col">
+-              {{ $t("editor-track-rule-source") }}
+-            </th>
+-            <th scope="col">
+-              {{ $t("editor-track-rule-match-expr") }}
+-            </th>
+-            <th scope="col">
+-              {{ $t("editor-track-rule-optional") }}
+-            </th>
+-            <th scope="col">
+-              {{ $t("editor-track-rule-changes") }}
+-            </th>
+-          </tr>
+-        </thead>
+-        <tbody>
+-          <tr
+-            v-for="(rule, index) in rules"
+-            :key="index"
+-            data-testid="editor-rule-row"
+-            draggable="true"
+-            @dragstart="onDragStart(index)"
+-            @dragover.prevent
+-            @drop="onDrop(index)"
+-          >
+-            <td>{{ sourceSummary(rule) }}</td>
+-            <td>{{ matchSummary(rule) }}</td>
+-            <td>
+-              <input
+-                type="checkbox"
+-                disabled
+-                :checked="rule.optional === true"
+-                :aria-label="$t('editor-track-rule-optional')"
+-              >
+-            </td>
+-            <td>{{ changesSummary(rule) }}</td>
+-          </tr>
+-        </tbody>
+-      </table>
+-    </fieldset>
++
++      <fieldset>
++        <legend>{{ $t("editor-profile-tracks") }}</legend>
++        <FieldWidgetDispatcher
++          :spec="tracksUnmatchedSpec"
++          :model-value="model?.tracks.unmatched"
++          @update:model-value="setTracksUnmatched"
++        />
++        <h2>{{ $t("editor-tracks-rules") }}</h2>
++        <table>
++          <caption>
++            {{ $t("editor-tracks-rules") }}
++          </caption>
++          <thead>
++            <tr>
++              <th scope="col">
++                {{ $t("editor-track-rule-source") }}
++              </th>
++              <th scope="col">
++                {{ $t("editor-track-rule-match-expr") }}
++              </th>
++              <th scope="col">
++                {{ $t("editor-track-rule-optional") }}
++              </th>
++              <th scope="col">
++                {{ $t("editor-track-rule-changes") }}
++              </th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr
++              v-for="(rule, index) in rules"
++              :key="index"
++              data-testid="editor-rule-row"
++              draggable="true"
++              @dragstart="onDragStart(index)"
++              @dragover.prevent
++              @drop="onDrop(index)"
++            >
++              <td>{{ sourceSummary(rule) }}</td>
++              <td>{{ matchSummary(rule) }}</td>
++              <td>
++                <input
++                  type="checkbox"
++                  disabled
++                  :checked="rule.optional === true"
++                  :aria-label="$t('editor-track-rule-optional')"
++                >
++              </td>
++              <td>{{ changesSummary(rule) }}</td>
++            </tr>
++          </tbody>
++        </table>
++      </fieldset>
++
++      <p>{{ $t("editor-save-note") }}</p>
++      <button
++        type="button"
++        data-testid="editor-save"
++        :disabled="saveDisabled"
++        :aria-busy="saving"
++        @click="doSave"
++      >
++        {{ $t("settings-save") }}
++      </button>
++    </template>
+   </section>
+ </template>

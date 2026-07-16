@@ -1,0 +1,427 @@
+# Review package: 81b4038..7134bb6
+
+## Commits
+7134bb6 core: keyword domains project into the schema from one constant set (D46)
+
+## Files changed
+ crates/muxsmith-cli/tests/cli_schema.rs          | 41 +++++++++++++--
+ crates/muxsmith-core/src/profile/model.rs        | 63 +++++++++++++++++++++++-
+ crates/muxsmith-core/src/profile/validate.rs     | 16 +++---
+ crates/muxsmith-core/tests/validate_semantics.rs | 24 +++++++++
+ 4 files changed, 132 insertions(+), 12 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-cli/tests/cli_schema.rs b/crates/muxsmith-cli/tests/cli_schema.rs
+index d0006f3..305f738 100644
+--- a/crates/muxsmith-cli/tests/cli_schema.rs
++++ b/crates/muxsmith-cli/tests/cli_schema.rs
+@@ -1,22 +1,57 @@
+ use assert_cmd::Command;
+ 
+-#[test]
+-fn schema_prints_json_schema_and_exits_zero() {
++/// The one legal way to invoke `muxsmith schema` and parse its stdout; every
++/// test in this file shares it rather than re-inlining the invocation.
++fn schema_json() -> serde_json::Value {
+     let out = Command::cargo_bin("muxsmith")
+         .unwrap()
+         .arg("schema")
+         .assert()
+         .success()
+         .get_output()
+         .stdout
+         .clone();
+-    let schema: serde_json::Value = serde_json::from_slice(&out).unwrap();
++    serde_json::from_slice(&out).unwrap()
++}
++
++#[test]
++fn schema_prints_json_schema_and_exits_zero() {
++    let schema = schema_json();
+     let text = schema.to_string();
+     assert!(text.contains("profile_version"));
+     assert!(text.contains("tracks"));
+ }
+ 
+ #[test]
+ fn no_args_shows_usage_and_fails() {
+     Command::cargo_bin("muxsmith").unwrap().assert().failure();
+ }
++
++#[test]
++fn keyword_domains_project_as_closed_enums_not_bare_strings() {
++    let schema = schema_json();
++    let cases = [
++        ("FilenameCfg", vec!["keep"]),
++        ("SourceCfg", vec!["primary"]),
++        ("ChaptersCfg", vec!["keep", "drop"]),
++        ("TitleCfg", vec!["keep", "clear"]),
++    ];
++    for (ty, expected) in cases {
++        let branches = schema["$defs"][ty]["anyOf"].as_array().unwrap_or_else(|| {
++            panic!("{ty} must still project anyOf (D46 narrows the string branch only)")
++        });
++        let string_branch = branches
++            .iter()
++            .find(|b| b["type"] == "string")
++            .unwrap_or_else(|| panic!("{ty} must keep a string branch"));
++        let got: Vec<&str> = string_branch["enum"]
++            .as_array()
++            .unwrap_or_else(|| {
++                panic!("{ty}'s string branch must carry an enum, not a bare string type")
++            })
++            .iter()
++            .map(|v| v.as_str().unwrap())
++            .collect();
++        assert_eq!(got, expected, "{ty} keyword domain");
++    }
++}
+diff --git a/crates/muxsmith-core/src/profile/model.rs b/crates/muxsmith-core/src/profile/model.rs
+index 0e465ca..cf7a2c6 100644
+--- a/crates/muxsmith-core/src/profile/model.rs
++++ b/crates/muxsmith-core/src/profile/model.rs
+@@ -1,21 +1,34 @@
+ //! Profile data model (spec 4). Serde-only: semantic validation lives in
+ //! validate.rs, so this file stays a faithful mirror of the file format.
+ 
+ use std::collections::BTreeMap;
+ use std::path::PathBuf;
+ 
+-use schemars::JsonSchema;
++use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+ use serde::{Deserialize, Serialize};
+ 
+ use super::match_expr::{MatchExpr, Scalar};
+ 
++/// Shared schema shape for a keyword-domain projection (D46): a closed
++/// `enum` of the domain's values, not `oneOf` + per-value `const` (rejected;
++/// there is no per-value prose to attach, see D46). Used by the four
++/// `Keyword` arm `schema_with` overrides below; the doc comment on the
++/// variant itself still merges in as the branch's `description`, so this
++/// helper does not set one.
++fn keyword_domain_schema(domain: &'static [&'static str]) -> Schema {
++    json_schema!({
++        "type": "string",
++        "enum": domain,
++    })
++}
++
+ /// The top-level profile document (spec 4): input matching, output naming,
+ /// track rules (in output order), and attachments/chapters/tags/title
+ /// configuration. Deserializes with `deny_unknown_fields` throughout: an
+ /// unrecognized key is a config error, not a silently ignored typo (spec 4:
+ /// "Unknown keys are errors, not warnings").
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct Profile {
+     /// Format version; must equal `1` in v1 (`UnsupportedProfileVersion` if
+     /// not). Incremented only on breaking format changes (spec 4).
+@@ -141,31 +154,42 @@ pub struct ExternalBlock {
+ /// deserializes first, so a bare string becomes `Keyword` and a
+ /// `{ template: ... }` map becomes `Template`.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum FilenameCfg {
+     /// Literal-mode template (spec 4.7); `.mkv` appended if missing, path
+     /// separators in the rendered name are errors (spec 4.8).
+     Template(TemplateBlock),
+     /// Keyword form; the only accepted value is `"keep"` (`validate.rs`
+     /// rejects anything else as `InvalidKeyword`).
++    #[schemars(schema_with = "filename_keyword_schema")]
+     Keyword(String),
+ }
+ 
+ impl FilenameCfg {
++    /// Closed keyword domain for `output.filename` (spec 4.8): the single
++    /// source for the `validate.rs` guard, its `InvalidKeyword` `allowed`
++    /// hint, and this enum's schema projection (D46).
++    pub const KEYWORDS: &'static [&'static str] = &["keep"];
++
+     /// The `keep` keyword variant: reuse the source basename (`.mkv`
+     /// extension enforced). Also the serde default for `output.filename`.
+     pub fn keep() -> Self {
+         FilenameCfg::Keyword("keep".into())
+     }
+ }
+ 
++/// Narrows `FilenameCfg::Keyword`'s schema to [`FilenameCfg::KEYWORDS`] (D46).
++fn filename_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
++    keyword_domain_schema(FilenameCfg::KEYWORDS)
++}
++
+ /// `output.on_collision` policy (spec 4.8): applies to an existing rendered
+ /// output path and to two planned outputs rendering to the same path. Does
+ /// not override `SourceOverwrite` (output path equal to an input path),
+ /// which is always a hard error regardless of this policy (spec 5.2).
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(rename_all = "lowercase")]
+ pub enum CollisionPolicy {
+     /// Treat the collision as an error; the default policy.
+     #[default]
+     Error,
+@@ -219,31 +243,42 @@ pub struct TrackRule {
+ /// `track.source` value: the primary file, or an external donor (spec 4.5).
+ /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`].
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum SourceCfg {
+     /// Resolve against an external donor file located by this locator
+     /// (spec 4.6).
+     External(ExternalBlock),
+     /// Keyword form; the only accepted value is `"primary"` (the rule's own
+     /// primary file).
++    #[schemars(schema_with = "source_keyword_schema")]
+     Keyword(String),
+ }
+ 
+ impl SourceCfg {
++    /// Closed keyword domain for `track.source` (spec 4.5): the single
++    /// source for the `validate.rs` guard, its `InvalidKeyword` `allowed`
++    /// hint, and this enum's schema projection (D46).
++    pub const KEYWORDS: &'static [&'static str] = &["primary"];
++
+     /// The `primary` keyword variant: resolve against the rule's own
+     /// primary file. Also the serde default for `track.source`.
+     pub fn primary() -> Self {
+         SourceCfg::Keyword("primary".into())
+     }
+ }
+ 
++/// Narrows `SourceCfg::Keyword`'s schema to [`SourceCfg::KEYWORDS`] (D46).
++fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
++    keyword_domain_schema(SourceCfg::KEYWORDS)
++}
++
+ /// External file locator (spec 4.6): finds candidate donor files; the
+ /// owning rule's `match` then selects exactly one track inside the located
+ /// file. Uniqueness applies at both stages: two or more matching files is
+ /// `AmbiguousExternal`, two or more matching tracks inside the file is
+ /// `AmbiguousRule`.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct Locator {
+     /// Directory to search, relative to the primary file's directory, or
+     /// absolute. A filesystem path; serialized as a plain string, so the
+@@ -336,29 +371,42 @@ pub struct AttachmentRule {
+ 
+ /// `chapters` value: keep, drop, or an external locator (spec 4.9).
+ /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`]/[`SourceCfg`].
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum ChaptersCfg {
+     /// Resolve exactly one chapters file (XML or simple format, as
+     /// mkvmerge accepts) via this locator.
+     External(ExternalBlock),
+     /// Keyword form: `"keep"` or `"drop"`.
++    #[schemars(schema_with = "chapters_keyword_schema")]
+     Keyword(String),
+ }
+ 
++impl ChaptersCfg {
++    /// Closed keyword domain for `chapters` (spec 4.9): the single source
++    /// for the `validate.rs` guard, its `InvalidKeyword` `allowed` hint, and
++    /// this enum's schema projection (D46).
++    pub const KEYWORDS: &'static [&'static str] = &["keep", "drop"];
++}
++
+ impl Default for ChaptersCfg {
+     fn default() -> Self {
+         ChaptersCfg::Keyword("keep".into())
+     }
+ }
+ 
++/// Narrows `ChaptersCfg::Keyword`'s schema to [`ChaptersCfg::KEYWORDS`] (D46).
++fn chapters_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
++    keyword_domain_schema(ChaptersCfg::KEYWORDS)
++}
++
+ /// Global and per-track tag handling (spec 4.9), mapped to
+ /// `--no-global-tags`/`--no-track-tags`.
+ #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+ #[serde(deny_unknown_fields)]
+ pub struct TagsCfg {
+     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
+     #[serde(default)]
+     pub global: KeepDrop,
+     /// Per-track tags: keep or drop. Defaults to `keep`.
+     #[serde(default)]
+@@ -367,18 +415,31 @@ pub struct TagsCfg {
+ 
+ /// `title` value: keep, clear, or a literal-mode template (spec 4.9).
+ /// `#[serde(untagged)]`, same variant-resolution rule as the other
+ /// keyword-or-block enums above.
+ #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+ #[serde(untagged)]
+ pub enum TitleCfg {
+     /// Literal-mode template rendering the output title (spec 4.7).
+     Template(TemplateBlock),
+     /// Keyword form: `"keep"` or `"clear"`.
++    #[schemars(schema_with = "title_keyword_schema")]
+     Keyword(String),
+ }
+ 
++impl TitleCfg {
++    /// Closed keyword domain for `title` (spec 4.9): the single source for
++    /// the `validate.rs` guard, its `InvalidKeyword` `allowed` hint, and
++    /// this enum's schema projection (D46).
++    pub const KEYWORDS: &'static [&'static str] = &["keep", "clear"];
++}
++
+ impl Default for TitleCfg {
+     fn default() -> Self {
+         TitleCfg::Keyword("keep".into())
+     }
+ }
++
++/// Narrows `TitleCfg::Keyword`'s schema to [`TitleCfg::KEYWORDS`] (D46).
++fn title_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
++    keyword_domain_schema(TitleCfg::KEYWORDS)
++}
+diff --git a/crates/muxsmith-core/src/profile/validate.rs b/crates/muxsmith-core/src/profile/validate.rs
+index 1d42113..3726c3e 100644
+--- a/crates/muxsmith-core/src/profile/validate.rs
++++ b/crates/muxsmith-core/src/profile/validate.rs
+@@ -95,86 +95,86 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
+             &rule.match_expr,
+             &format!("{base}.match"),
+             track_prop_type,
+             &mut diags,
+         );
+         if let Some(changes) = &rule.changes {
+             validate_changes(changes, &format!("{base}.changes"), &mut diags);
+         }
+ 
+         match &rule.source {
+-            SourceCfg::Keyword(k) if k == "primary" => {}
++            SourceCfg::Keyword(k) if SourceCfg::KEYWORDS.contains(&k.as_str()) => {}
+             SourceCfg::Keyword(k) => diags.push(
+                 Diagnostic::error(DiagCode::InvalidKeyword, format!("{base}.source"))
+                     .with("found", k.clone())
+-                    .with("allowed", "primary"),
++                    .with("allowed", domain_hint(SourceCfg::KEYWORDS)),
+             ),
+             SourceCfg::External(block) => {
+                 validate_locator(
+                     &block.external,
+                     &format!("{base}.source.external"),
+                     &template_fields,
+                     &mut diags,
+                 );
+             }
+         }
+     }
+ 
+     for (i, rule) in profile.attachments.rules.iter().enumerate() {
+         let base = format!("attachments.rules[{i}]");
+         validate_attachment_rule(rule, &base, &template_fields, &mut diags);
+     }
+ 
+     // output.filename
+     match &profile.output.filename {
+-        FilenameCfg::Keyword(k) if k == "keep" => {}
++        FilenameCfg::Keyword(k) if FilenameCfg::KEYWORDS.contains(&k.as_str()) => {}
+         FilenameCfg::Keyword(k) => diags.push(
+             Diagnostic::error(DiagCode::InvalidKeyword, "output.filename")
+                 .with("found", k.clone())
+-                .with("allowed", "keep"),
++                .with("allowed", domain_hint(FilenameCfg::KEYWORDS)),
+         ),
+         FilenameCfg::Template(block) => {
+             let mut fields = template_fields.clone();
+             fields.push("source_stem".into());
+             validate_template(
+                 &block.template,
+                 "output.filename.template",
+                 &fields,
+                 true,
+                 &mut diags,
+             );
+         }
+     }
+ 
+     match &profile.chapters {
+-        ChaptersCfg::Keyword(k) if k == "keep" || k == "drop" => {}
++        ChaptersCfg::Keyword(k) if ChaptersCfg::KEYWORDS.contains(&k.as_str()) => {}
+         ChaptersCfg::Keyword(k) => diags.push(
+             Diagnostic::error(DiagCode::InvalidKeyword, "chapters")
+                 .with("found", k.clone())
+-                .with("allowed", "keep, drop"),
++                .with("allowed", domain_hint(ChaptersCfg::KEYWORDS)),
+         ),
+         ChaptersCfg::External(block) => {
+             validate_locator(
+                 &block.external,
+                 "chapters.external",
+                 &template_fields,
+                 &mut diags,
+             );
+         }
+     }
+ 
+     match &profile.title {
+-        TitleCfg::Keyword(k) if k == "keep" || k == "clear" => {}
++        TitleCfg::Keyword(k) if TitleCfg::KEYWORDS.contains(&k.as_str()) => {}
+         TitleCfg::Keyword(k) => diags.push(
+             Diagnostic::error(DiagCode::InvalidKeyword, "title")
+                 .with("found", k.clone())
+-                .with("allowed", "keep, clear"),
++                .with("allowed", domain_hint(TitleCfg::KEYWORDS)),
+         ),
+         TitleCfg::Template(block) => {
+             let mut fields = template_fields.clone();
+             fields.push("source_stem".into());
+             validate_template(
+                 &block.template,
+                 "title.template",
+                 &fields,
+                 false,
+                 &mut diags,
+diff --git a/crates/muxsmith-core/tests/validate_semantics.rs b/crates/muxsmith-core/tests/validate_semantics.rs
+index 4637a09..9d0579b 100644
+--- a/crates/muxsmith-core/tests/validate_semantics.rs
++++ b/crates/muxsmith-core/tests/validate_semantics.rs
+@@ -270,20 +270,44 @@ fn b4_raw_on_codec_kind_is_raw_on_known_property_warning() {
+         .iter()
+         .find(|d| d.code == DiagCode::RawOnKnownProperty)
+         .expect("raw:codec_kind must emit RawOnKnownProperty");
+     assert_eq!(d.severity, Severity::Warning);
+     assert_eq!(d.params["property"], "codec_kind");
+     // The bare codec_kind exact-only guard must not fire on the raw: form; raw:
+     // bypasses the alias machinery entirely.
+     assert!(!codes(&p).contains(&DiagCode::CodecKindExactOnly));
+ }
+ 
++// D46: the `Keyword(String)` arm keeps its `String` so a misspelled keyword
++// stays reachable as InvalidKeyword (with `found`/`allowed`) instead of
++// falling through to serde's untagged-enum error.
++#[test]
++fn misspelled_chapters_keyword_is_invalid_keyword_with_const_derived_allowed() {
++    let y = r#"
++profile_version: 1
++input: { pattern: 'E(\d+)', extensions: [mkv] }
++tracks:
++  rules:
++    - match: { exact: { type: video } }
++chapters: kepp
++"#;
++    let p = from_str(y, Format::Yaml).unwrap();
++    let diags = validate(&p);
++    let d = diags
++        .iter()
++        .find(|d| d.code == DiagCode::InvalidKeyword)
++        .expect("misspelled chapters keyword must be InvalidKeyword");
++    assert_eq!(d.config_path, "chapters");
++    assert_eq!(d.params["found"], "kepp");
++    assert_eq!(d.params["allowed"], "keep, drop");
++}
++
+ #[test]
+ fn attachment_match_uses_attachment_property_set() {
+     let y = r#"
+ profile_version: 1
+ input: { pattern: 'E(\d+)', extensions: [mkv] }
+ tracks:
+   rules:
+     - match: { exact: { type: video } }
+ attachments:
+   rules:

@@ -1,0 +1,122 @@
+# Review package: 0922df9..e027811
+
+## Commits
+e027811 docs: the JSON schema is a supported hand-authoring artifact; fold spec 8.1/8.2/8.4 amendments (D47, D41, D48)
+
+## Files changed
+ README.md                                          | 30 +++++++++++++++++++++-
+ .../specs/2026-07-08-muxsmith-v1-design.md         |  5 ++--
+ 2 files changed, 32 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/README.md b/README.md
+index 483f366..cfdf541 100644
+--- a/README.md
++++ b/README.md
+@@ -138,21 +138,49 @@ $ muxsmith dry-run series.yaml --source /media/series --output /media/clean
+ ### `muxsmith run <profile> [--source DIR] [--output DIR] [--jobs N] [--fail-fast] [--on-collision <policy>]`
+ 
+ The same planning, then execution with `N` parallel mux jobs (default 1). Every job's full mkvmerge command line and output persist to the run log (auto-pruned after 14 days). `--fail-fast` stops dequeuing new jobs after the first failure and lets in-flight jobs finish cleanly.
+ 
+ ```console
+ $ muxsmith run series.yaml --source /media/series --output /media/clean --jobs 8
+ ```
+ 
+ ### `muxsmith schema`
+ 
+-Prints the profile's JSON Schema, pretty-printed, to stdout.
++Prints the profile's JSON Schema, pretty-printed, to stdout. Redirect it to a file and point your editor at it, and hand-authoring a profile gets the same autocompletion and inline validation as any other structured config format: every key, every enum value, every field's shape, right there while you type.
++
++```console
++$ muxsmith schema > muxsmith-profile.schema.json
++```
++
++**VS Code**, via the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml), in `settings.json`:
++
++```jsonc
++{
++  "yaml.schemas": {
++    "./muxsmith-profile.schema.json": "*.muxsmith.yaml"
++  }
++}
++```
++
++**Neovim / Helix**, via `yaml-language-server`, in your `lspconfig` settings:
++
++```lua
++settings = {
++  yaml = {
++    schemas = {
++      ["./muxsmith-profile.schema.json"] = "*.muxsmith.yaml",
++    },
++  },
++}
++```
++
++Bind it in editor settings, not with the in-file `# yaml-language-server: $schema=...` modeline. The modeline is one line and no editor config, which is exactly why it is a trap: it lives inside a YAML comment, and the GUI's save does not preserve comments, key order, or formatting - it writes the profile fresh from its own model. Wire up a modeline, then save the same profile once from the GUI, and the binding is gone. No error, no warning: the file still works, your editor just quietly stops helping. Bind the schema in your editor's own settings instead, and it survives every save because it never lived in the file the GUI rewrites.
+ 
+ Two conventions that hold everywhere: **command-line flags override profile-stored values** (`--source`, `--output`, `--on-collision`), and **exit codes mirror mkvmerge's own**: `0` clean, `1` finished with warnings, `2` errors - your scripts already speak this dialect.
+ 
+ ## 🖱️ The GUI
+ 
+ The desktop app wraps the same engine: a batch view (pick a profile, pick directories, dry-run, run), a live jobs view with per-job cancel, and a run history with log export. Same profiles, same semantics, same logs as the CLI.
+ 
+ <!-- placeholder(1.0): one GUI screenshot -->
+ 
+ ## 🤝 How this got built (a human-AI story)
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index 93aee0b..14f2f3e 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -358,26 +358,27 @@ Rules that keep it DRY:
+ muxsmith validate <profile>
+ muxsmith dry-run  <profile> [--source DIR] [--output DIR] [--json]
+ muxsmith run      <profile> [--source DIR] [--output DIR] [--jobs N] [--fail-fast] [--json]
+ muxsmith identify <file> [--json]
+ muxsmith schema                      # print the profile JSON Schema
+ ```
+ 
+ - Flags override profile-stored run inputs.
+ - Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors.
+ - `--json` emits the structured report for scripting; default output is human-readable rendering of the same data, including suggestion YAML fragments.
++- `muxsmith schema` is a supported user feature, not only a debug aid (D47): the README's "Using the CLI" section documents redirecting its output to a file and binding it in editor settings (`yaml.schemas` in VS Code, the equivalent `lspconfig` block for Neovim/Helix) for autocompletion and inline validation while hand-authoring a profile.
+ 
+ ### 8.2 GUI
+ 
+ Three views, modeled on mkvtoolnix-gui:
+ 
+-1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Inline validation markers from core diagnostics.
++1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
+ 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
+ 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.
+ 
+ App settings (not profile data): mkvmerge path override, default parallelism. Stored in the platform config directory.
+ 
+ First-run and startup: detect mkvtoolnix (PATH, then platform-standard install locations, then configured override); if missing, per-OS installation guidance. Minimum supported mkvtoolnix version is fixed during implementation and enforced with a clear error.
+ 
+ ### 8.3 Self-explanation and help mode
+ 
+ Baseline discoverability: every non-obvious control carries a tooltip; views carry small inline explanations where a first-time user would otherwise guess. The UI must be usable without reading external documentation.
+@@ -388,21 +389,21 @@ On top of that, an integrated **help mode**:
+ - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
+ - Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings).
+ - Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked or help mode exits.
+ 
+ Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
+ 
+ ### 8.4 Internationalization architecture
+ 
+ Localization readiness is structural, not deferred polish:
+ 
+-- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), and the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text.
++- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text, and the JSON Schema's `description` fields (Rust doc comments, D47). The schema documents a file format, the same category as this spec and the README, both English-only by design; it is not application UI and not a diagnostic, so Fluent's localization mandate does not reach it.
+ - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
+ - Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
+ - v1 ships English content only (non-goal 11); the mechanism ships complete.
+ 
+ ## 9. Capability model and version skew
+ 
+ 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code, including the closed value domains of enum-typed properties (e.g. `type`) for config-time `InvalidPropertyValue` checks. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
+ 2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`. A property name unknown to the pinned model is a config-time `UnknownProperty` error (typo protection) unless the profile opts in with a `raw:` prefix (D32). A `raw:`-prefixed property bypasses the capability existence/type/domain checks and is matched untyped: byte-literal value equality against the property named verbatim, with no `language` normalization, no `codec_kind` alias expansion, and no false-when-absent Boolean shortcut. The opt-in is announced at config time by `RawProperty` (info), or by `RawOnKnownProperty` (warning) when the bare name is a model property with special matching semantics (`language`, `codec_kind`) that `raw:` degrades to byte-literal equality. At plan time each `raw:` property consumed while resolving a rule raises an `UnknownPropertySkew` warning carrying `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so the untyped match is visible whether the runtime schema is genuinely newer than pinned or the same. Additionally, planning emits a `SchemaDrift` info notice once per batch if any source file's `identification_format_version` exceeds the pinned version, alerting the user that their mkvmerge may support properties not yet in Muxsmith's model and enabling opt-in via the `raw:` prefix. Forward compatibility without lying about type safety: the untyped path is opt-in and declared, never inferred from a version bump. Upgrading the pinned schema (item 1) remains the typed path for a property that should become first-class.
+ 
+ ## 10. Testing

@@ -1,0 +1,280 @@
+# Review package: 99b43c9..HEAD
+
+## Commits
+0922df9 plan 6 design: fold the four owner rulings (SaveError currency, one-key save note, load_profile envelope, editor tooltips to Plan 7) and repoint section 2's ApplyError row to D49
+
+## Files changed
+ docs/superpowers/specs/2026-07-15-plan-6-design.md | 101 ++++++++++++++++-----
+ 1 file changed, 80 insertions(+), 21 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-07-15-plan-6-design.md b/docs/superpowers/specs/2026-07-15-plan-6-design.md
+index 091a24e..ef6665d 100644
+--- a/docs/superpowers/specs/2026-07-15-plan-6-design.md
++++ b/docs/superpowers/specs/2026-07-15-plan-6-design.md
+@@ -122,28 +122,64 @@ the D41 save-surface note must be honest about.
+ ## D41: Saving writes canonical YAML from the model; comments, formatting and key order are not preserved
+ 
+ **Decision** (owner, 2026-07-15). Saving from the editor serializes the
+ in-memory `Profile` to YAML. Comments, formatting, key order and flow/block
+ style in the user's file are not preserved. This applies **uniformly**: there
+ is no editor-owned vs foreign distinction. A profile is a profile - parse it,
+ and if it is valid, edit and save it; if not, the existing diagnostic chain
+ (`ParseError`, `profile/load.rs:36-47`) reports why.
+ 
+ The writer lives in **core**, as `muxsmith_core::profile::save`, mirroring
+-`profile::load`: `to_string(&Profile, Format) -> Result<String, Diagnostic>`
+-and `to_file(&Profile, &Path) -> Result<(), Diagnostic>`, with `Format`
++`profile::load`: `to_string(&Profile, Format) -> Result<String, SaveError>`
++and `to_file(&Profile, &Path) -> Result<(), SaveError>`, with `Format`
+ selected from the path extension exactly as `load::from_file` selects it
+ (`profile/load.rs:57-62`), so a `.json` profile saves as JSON and never
+ silently changes format. Neither surface owns document logic
+ (`core-85-report-json-dry`: "neither surface owns document logic"); the CLI
+ gets the same function for free if it ever needs it.
+ 
++**Error currency: `SaveError`, mapped to `IpcError` at the shell** (owner
++ruling 2026-07-16, superseding this ADR's original `Result<_, Diagnostic>`).
++
++```rust
++/// A failure of the profile writer. Not a `Diagnostic`: a `Diagnostic`
++/// describes a problem with the profile or the plan, and a write failure
++/// leaves a valid model and a full disk (`core-124-error-currency-split`).
++pub enum SaveError {
++    /// The file could not be written (permissions, full disk, bad path).
++    Io(String),
++    /// The model could not be serialized to the target format.
++    Serialize(String),
++}
++```
++
++The shell maps it in `src-tauri/src/error.rs`, mirroring `SettingsError`:
++`SaveError::Io` -> `profile-save-io-failed`, `SaveError::Serialize` ->
++`profile-save-failed`, both carrying a `detail` param (the spec 8.4
++third-party-message exception). No new `DiagCode`; `diagnostics.ftl` is
++untouched.
++
++**Why not a `Diagnostic`.** The original signature was chosen for symmetry
++with `profile::load`, which does return `Result<Profile, Diagnostic>`. The
++symmetry does not carry: the loader's `Diagnostic` is right because a parse
++failure IS a profile problem - the file's content is wrong - whereas a write
++failure is not. `src-tauri/src/error.rs:8-15` already drew that line ("an
++`IpcError` describes an IPC-protocol-level failure ... an unreadable path")
++and this ADR contradicted it unnoticed through four review rounds, because
++the boundary was written only in rustdoc and nowhere a reviewer checks. It
++is now Tier-2 `core-124-error-currency-split`. Reusing `ParseError` was
++rejected outright: its catalog prose is `parse-error = The profile could not
++be parsed: { $detail }`, which is a false statement for a full disk. Adding
++a new `DiagCode` was rejected because `catalog_completeness.rs` matches
++`DiagCode` exhaustively, so it would force new user-facing bilingual prose
++for a condition that is not a profile diagnostic at all.
++
+ **Rationale.** YAML has no concept of comment attachment.
+ [YAML 1.2.2 §6.6](https://yaml.org/spec/1.2.2/#66-comments) states outright
+ that comments "are not associated with a particular node". Every library that
+ "preserves comments" invents an association the specification disclaims. The
+ consequence is measurable and was reproduced for this document: removing a
+ rule via `yamlpatch` 1.26.1 leaves the removed rule's leading comment
+ labelling the **next** rule.
+ 
+ ```yaml
+ # before
+@@ -268,22 +304,23 @@ A standing note, not a modal; no detection of whether comments are present
+ (that would need the parser to see them). The controller's proposed wording
+ was "saving rewrites the file canonically and does not preserve comments".
+ **Comments are the smaller half** and the note must not stop there. Measured
+ under D48, `reference.yaml` still comes back as 112 lines from 80: its map keys
+ re-sort, its flow style expands to block style, and three whole blocks
+ (`output`, `attachments`, `chapters`) disappear because every field in them sat
+ on its default. A note naming only comments would understate what the user is
+ about to see, and would be read as a defect report the first time someone diffs
+ their profile. The note names the whole behaviour: **the file is rewritten from
+ the model - comments, key order and formatting are not preserved, and fields
+-left at their default are not written back.** Two new Fluent keys, en+de (D47's
+-catalog table).
++left at their default are not written back.** One new Fluent key, en+de (section 2's catalog table). Owner ruling
++2026-07-16: the note is a single message; `gui-editor.ftl` carries 43 keys,
++as section 2 already states.
+ 
+ **Supersedes D22's stated reason.** D22 (`2026-07-10-plan-5-gui-design-decisions.md:36-37`)
+ coupled apply to the editor because "One-click apply means comment-preserving
+ YAML mutation; that machinery belongs to the editor (Plan 6), which owns
+ profile mutation anyway." Under D41 that premise dissolves: apply is
+ deserialize, mutate model, serialize canonical - no comment machinery exists
+ anywhere.
+ 
+ **D22's conclusion survives on a different, stronger reason**, recorded here
+ so the pairing is not re-opened as unmotivated: apply mutates the profile, and
+@@ -301,21 +338,21 @@ No wire-format change.
+ ---
+ 
+ ## D42: The editor's command surface - three new commands; the path-based `validate_profile` stays
+ 
+ **Decision.** Three commands are added to the `invoke_handler`
+ (`src-tauri/src/lib.rs:440-452`); the existing `validate_profile` is
+ **unchanged**.
+ 
+ | command | signature | notes |
+ |---|---|---|
+-| `load_profile` | `async fn load_profile(path: String) -> Result<ProfileDocument, IpcError>` | New. Returns the model **plus** its config diagnostics in one document. |
++| `load_profile` | `async fn load_profile(path: String) -> Result<serde_json::Value, IpcError>` | New. Returns the `config_only_document` envelope plus a `"profile"` key (the model, or `null` on `ParseError`); no bespoke struct (owner 2026-07-16, `core-85`). |
+ | `save_profile` | `async fn save_profile(path: String, profile: Profile) -> Result<(), IpcError>` | New. `profile::save::to_file`. |
+ | `validate_profile_model` | `async fn validate_profile_model(profile: Profile) -> Result<serde_json::Value, IpcError>` | New. Wraps the existing `validate::config_diagnostics(&profile)` (`profile/validate.rs:193`). |
+ 
+ All three are `async` and run on `on_blocking` (`src-tauri/src/lib.rs:73-79`),
+ but for **two different reasons**, and the distinction is recorded because it
+ is the thing an implementer would get wrong by pattern-matching:
+ 
+ - `load_profile` and `save_profile` touch the disk. That is the same reason
+   every other `on_blocking` command in this shell has.
+ - **`validate_profile_model` does not touch the disk at all.**
+@@ -331,29 +368,33 @@ is the thing an implementer would get wrong by pattern-matching:
+   and the cost is real enough that regex recompilation is already a tracked
+   item (`core-84-regex-recompile`).
+ 
+ The distinction matters: `get_settings`/`set_settings` are deliberately
+ non-async main-thread commands despite doing real file I/O, because they are
+ trivial and rare. "Touches the disk" is not the criterion; "could stall the
+ webview" is. The `Err` case stays what it is everywhere else in this file: the
+ blocking task itself panicking. Expected failures are diagnostics in the
+ document, not `Err`.
+ 
+-`ProfileDocument` is `{ profile: Option<Profile>, diagnostics: Vec<Diagnostic> }`,
+-serialized through the existing `report::json` document machinery so its
+-`diagnostics` array is byte-identical in shape to the one `validate_profile`
+-already returns (`core-85-report-json-dry`: neither surface owns document
+-logic). On a `ParseError` the profile is absent and the single diagnostic
+-explains why,
+-mirroring `config_diagnostics_from_file`'s own short-circuit
+-(`profile/validate.rs:203-208`). One round trip, because the editor needs both
+-and a second call would let them disagree.
++`load_profile` returns **no bespoke struct**. It returns the existing
++`report::json::config_only_document(&diags, None, &ShellRenderer)` envelope
++(the same document machinery `validate_profile` uses) with one added key,
++`"profile"`: the parsed model, or `null` on a `ParseError`. Its diagnostics
++therefore live under `config_diagnostics`, carry the injected `rendered`
++field, and are **byte-identical in shape** to what `validate_profile` already
++returns (`core-85-report-json-dry`: neither surface owns document logic, and
++no second document shape is invented). On a `ParseError` the `"profile"` value
++is `null` and the single diagnostic explains why, mirroring
++`config_diagnostics_from_file`'s own short-circuit
++(`profile/validate.rs:203-208`). One round trip, because the editor needs
++both and a second call would let them disagree. (Owner decision 2026-07-16,
++superseding the original bespoke `ProfileDocument` struct.)
+ 
+ **`validate_profile(path)` is kept, not changed.** It has a live consumer:
+ `src/views/BatchView.vue:118` calls it with a picked path, and the batch view
+ has no model to send. Retargeting it would break Plan 5's shipped view for no
+ gain. The two commands are not redundant: one validates a file the user picked
+ by path, the other validates a model the user is editing. Both funnel into the
+ same `config_diagnostics`, so no logic is duplicated (spec 7: "all validation
+ lives in exactly one place").
+ 
+ **Rejected: one command with a `{Path | Model}` enum argument.**
+@@ -394,22 +435,22 @@ fidelity argument also does not survive contact: `config_diagnostics` is
+ path-free and pure (`profile/validate.rs:20-21`), so validating a temp file and
+ validating the model produce **identical** diagnostics - the disk round-trip
+ buys nothing and costs a write per keystroke. This is the shape the brief's gap
+ table names ("or it writes to disk before every check").
+ 
+ **The frontend still performs zero semantic validation** (spec 7,
+ `gui-08` neighbourhood). It holds the model as data, sends it, renders the
+ returned diagnostics. Its only local logic stays the UX affordance spec 7
+ sanctions by name: disabling Save while errors exist.
+ 
+-**Interface changes:** three new IPC commands; new `ProfileDocument` wire
+-shape; `Profile` becomes a wire type in both directions (it already derives
++**Interface changes:** three new IPC commands; the `load_profile` document shape (the `config_only_document` envelope plus a `"profile"` key);
++`Profile` becomes a wire type in both directions (it already derives
+ both halves, `profile/model.rs:17`).
+ 
+ ---
+ 
+ ## D43: `apply_suggestion` is written fresh in core; only `StructuredEdit` gains `Deserialize`
+ 
+ **Decision.** A new core function
+ `planner::apply_suggestion(profile: &Profile, config_path: &str, edit: &StructuredEdit) -> Result<Profile, ApplyError>`
+ returns a new `Profile` with the edit applied to the rule named by
+ `config_path`. The Tauri command forwards:
+@@ -1727,23 +1768,23 @@ emits a strict subset of what it emits now.
+ No new user-facing string outside the catalogs. New file
+ `locales/{en,de}/gui-editor.ftl`; `check-i18n`'s check 3 enforces en/de parity
+ on it from the moment it exists (`scripts/check-i18n.mjs` picks up any
+ `locales/<tag>/` directory automatically, and `locales/de/` exists today with
+ all six catalogs). Keys the decisions above create, by owner:
+ 
+ | decision | keys | catalog | count |
+ |---|---|---|---|
+ | D45 | one `labelKey` per `EditableField` across the 13 registries | `gui-editor.ftl` (new) | **42** |
+ | D41 | the save-surface standing note (rewrite-from-model wording) | `gui-editor.ftl` (new) | 1 |
+-| D41 | save-failure `IpcError` codes | `gui-common.ftl` | codes |
++| D41 | save-failure `IpcError` codes (`profile-save-io-failed`, `profile-save-failed`) | `gui-common.ftl` | 2 |
+ | D43 | apply button label + tooltip | `gui-batch.ftl` | 2 |
+-| D43 | `ApplyError` codes (`suggestion-rule-not-found`) | `gui-common.ftl` | codes |
++| D43 | `ApplyError` codes (`apply-unparsable-config-path`, `apply-rule-index-out-of-range`, `apply-edit-changed-nothing`) | `gui-common.ftl` | 3 |
+ 
+ **Catalog placement follows the tree's existing split, it is not invented here:**
+ every `IpcError` code today lives in `gui-common.ftl` (`mkvmerge-spawn-failed`,
+ `settings-io-failed`, `internal-task-failed`, ...), so D41's and D43's shell
+ errors join them. D43's apply control lives in the **batch view**, not the editor
+ - spec 8.2 puts the diagnostics panel and its one-click apply there, and D41
+ records why the plan-scope pairing is not a UI-location one - so its two strings
+ go to the existing `gui-batch.ftl` beside `SuggestionCard.vue`'s current
+ copy-button keys. Only the editor's own surface justifies a new catalog, which is
+ why `gui-editor.ftl` carries **43**: the 42 registry labels plus the save-surface
+@@ -1868,23 +1909,28 @@ rule, which is the right authority for them.
+ 
+ - **The D23 `runActive` reset re-check** (`docs/ROADMAP.md:58-64`). A run-path
+   concern in `src/views/JobsView.vue:150-200`, touching neither the editor, nor
+   apply, nor the schema. The re-cut re-pointed the ledger entries out of Plan 6
+   but left this named input behind; per correction #8 it belongs with the
+   run-path work, not here. Named for the controller in section 9. The code
+   carries a thorough self-documenting rationale for its current shape
+   (`JobsView.vue:161-175`), so this is a re-read, not a known defect.
+ - **Help mode** (Plan 7), including the editor's own help-ids. The re-cut
+   sequenced Plan 7 after Plan 6 precisely so the editor's controls get their
+-  help-ids in that pass rather than a retrofit (`docs/ROADMAP.md:68-70`). The
+-  spec 8.3 **tooltip/inline-explanation baseline still applies to the editor's
+-  views** (D22's "NOT deferred" clause); only the sidebar machinery waits.
++  help-ids in that pass rather than a retrofit (`docs/ROADMAP.md:68-70`).
++  The editor's own spec 8.3 tooltip/inline-explanation baseline **defers to
++  Plan 7** with the sidebar (owner ruling 2026-07-16): the editor ships in
++  Plan 6 WITHOUT tooltips, and its 42 controls get their tooltip keys in the
++  Plan 7 pass, in the same pass as their help-ids, rather than as a retrofit -
++  the re-cut's own stated reason for sequencing Plan 7 after Plan 6. So
++  `gui-editor.ftl` carries 43 keys in Plan 6 (42 labels + 1 save-surface note)
++  and grows by the tooltip set in Plan 7 (`docs/ROADMAP.md:74-84`).
+ - **The planner seam / `plan_pipeline` hoist** (Plan 9). D43 calls the existing
+   engine helpers directly and does not restructure them.
+ - **A richer suggestion grammar** (reorder, relax). `core-33-suggestion-narrow-only`
+   keeps v1 narrow-only; D43 does not widen it.
+ - **Per-file manual override in the GUI.** `gui-02` is a settled restraint with
+   an "open in mkvtoolnix-gui" escape hatch parked at v1.x. The editor edits the
+   *profile*; nothing in this plan lets a user tweak one file's outcome.
+ - **Localizing the JSON Schema** (D47) and **SchemaStore publication** (D47),
+   both triggered rather than built.
+ - **`ts-rs` typing the Tauri command signatures.** D44 types the model only;
+@@ -1996,10 +2042,23 @@ otherwise improvise:
+   silently destroys user data on the other 4 (D48).
+ - Each of the 17 fields carries `#[schemars(extend("default" = <derived>))]`;
+   without it the published schema loses its `default` annotations. The three
+   struct-valued fields derive to `"default": {}` and that is accepted, not
+   patched with a literal (D48).
+ - **Both** D48 guards ship with the serializer, not after it. Guard 2 is not
+   optional and is not to be argued out at the keyboard on the grounds that the
+   derivation makes it vacuous - that argument is already recorded in D48, and
+   the safeguard-stays-until-built rule holds the guard in until it exists and
+   can be measured (trigger 2).
++- The writer returns `SaveError`, **not** a `Diagnostic`, and the shell maps
++  it to `profile-save-io-failed` / `profile-save-failed` in `gui-common.ftl`.
++  No new `DiagCode` and no `diagnostics.ftl` change (owner ruling 2026-07-16,
++  `core-124-error-currency-split`).
++- The save-surface note is **one** Fluent message, so `gui-editor.ftl` carries
++  43 keys: 42 registry labels + 1 note (owner ruling 2026-07-16).
++- `load_profile` returns the `config_only_document` envelope plus a `"profile"`
++  key, **not** a bespoke `ProfileDocument` struct; its diagnostics are
++  byte-identical in shape to `validate_profile`'s (owner decision 2026-07-16,
++  `core-85-report-json-dry`).
++- The editor ships in Plan 6 **without tooltips**; spec 8.3's editor tooltip
++  baseline defers to Plan 7. `gui-editor.ftl` gets no tooltip budget here
++  (owner ruling 2026-07-16, `docs/ROADMAP.md:74-84`).

@@ -1,0 +1,592 @@
+# Review package: 597cee8..57cc117
+
+## Commits
+57cc117 gui: the field registry, its catalogs, and the label-key i18n gate (D45)
+
+## Files changed
+ locales/de/gui-editor.ftl |  93 ++++++++++++++++++++
+ locales/en/gui-editor.ftl |  91 ++++++++++++++++++++
+ scripts/check-i18n.mjs    |  21 +++++
+ src/editor/fieldSpec.ts   |  70 +++++++++++++++
+ src/editor/registries.ts  | 215 ++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 490 insertions(+)
+
+## Diff
+diff --git a/locales/de/gui-editor.ftl b/locales/de/gui-editor.ftl
+new file mode 100644
+index 0000000..b32df97
+--- /dev/null
++++ b/locales/de/gui-editor.ftl
+@@ -0,0 +1,93 @@
++## German (de) translation of locales/en/gui-editor.ftl. The en catalog is
++## the source of truth; keys mirror it (id parity enforced by
++## scripts/check-i18n.mjs). Match -> Match (Match-Ausdruck, Match-Muster,
++## established loanword, not "Übereinstimmung"), external locator ->
++## externer Verweis, template -> Vorlage, property -> Eigenschaft. Straight
++## ASCII quotes as in en; declarative register throughout (the save note is
++## a statement, not a command, so it stays declarative rather than
++## du-imperative).
++
++## Profile (top-level sections)
++
++editor-profile-meta = Metadaten
++editor-profile-input = Eingabe
++editor-profile-output = Ausgabe
++editor-profile-tracks = Spuren
++editor-profile-attachments = Anhänge
++editor-profile-chapters = Kapitel
++editor-profile-tags = Tags
++editor-profile-title = Titel
++
++## Meta
++
++editor-meta-name = Name
++editor-meta-description = Beschreibung
++
++## Input
++
++editor-input-pattern = Muster
++editor-input-extensions = Erweiterungen
++editor-input-recursive = Rekursiv
++
++## Output (OutputCfg)
++
++editor-output-directory = Verzeichnis
++editor-output-filename = Dateiname
++editor-output-on-collision = Bei Kollision
++
++## TemplateBlock
++
++editor-template-block-template = Vorlage
++
++## ExternalBlock
++
++editor-external-block-external = Externer Verweis
++
++## TrackRule
++
++editor-track-rule-source = Quelle
++editor-track-rule-match-expr = Match
++editor-track-rule-optional = Optional
++editor-track-rule-changes = Änderungen
++
++## Locator
++
++editor-locator-path = Pfad
++editor-locator-recursive = Rekursiv
++editor-locator-extensions = Erweiterungen
++editor-locator-match-to-source = Match zur Quelle
++editor-locator-match-pattern = Match-Muster
++editor-locator-case-sensitive = Groß-/Kleinschreibung beachten
++
++## Attachments (AttachmentsCfg)
++
++editor-attachments-unmatched = Nicht zugeordnet
++editor-attachments-rules = Regeln
++
++## Tracks (TracksCfg)
++
++editor-tracks-unmatched = Nicht zugeordnet
++editor-tracks-rules = Regeln
++
++## AttachmentRule
++
++editor-attachment-rule-select = Auswählen
++editor-attachment-rule-drop = Verwerfen
++editor-attachment-rule-add = Hinzufügen
++
++## Tags (TagsCfg)
++
++editor-tags-global = Global
++editor-tags-track = Spur
++
++## MatchExpr
++
++editor-match-expr-exact = Exakt
++editor-match-expr-substring = Substring
++editor-match-expr-regex = Regex
++editor-match-expr-any = Beliebig
++editor-match-expr-not = Nicht
++
++## Save surface (D41)
++
++editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung bleiben dabei nicht erhalten, und Felder, die auf ihrem Standardwert stehen, werden nicht zurückgeschrieben.
+diff --git a/locales/en/gui-editor.ftl b/locales/en/gui-editor.ftl
+new file mode 100644
+index 0000000..2c557c1
+--- /dev/null
++++ b/locales/en/gui-editor.ftl
+@@ -0,0 +1,91 @@
++# T9-T13: the profile editor (spec 8.2 view 4, D45). One labelKey per
++# EditableField across the 13 field registries (src/editor/registries.ts),
++# grouped below by the struct each registry covers, plus the save-surface
++# note (D41). No tooltip keys: the editor ships without tooltips (Plan 7).
++# Widget facets (select/keywordOrBlock options) render from the domain
++# arrays (profile-format tokens), not from this catalog.
++
++## Profile (top-level sections)
++
++editor-profile-meta = Metadata
++editor-profile-input = Input
++editor-profile-output = Output
++editor-profile-tracks = Tracks
++editor-profile-attachments = Attachments
++editor-profile-chapters = Chapters
++editor-profile-tags = Tags
++editor-profile-title = Title
++
++## Meta
++
++editor-meta-name = Name
++editor-meta-description = Description
++
++## Input
++
++editor-input-pattern = Pattern
++editor-input-extensions = Extensions
++editor-input-recursive = Recursive
++
++## Output (OutputCfg)
++
++editor-output-directory = Directory
++editor-output-filename = Filename
++editor-output-on-collision = On collision
++
++## TemplateBlock
++
++editor-template-block-template = Template
++
++## ExternalBlock
++
++editor-external-block-external = External locator
++
++## TrackRule
++
++editor-track-rule-source = Source
++editor-track-rule-match-expr = Match
++editor-track-rule-optional = Optional
++editor-track-rule-changes = Changes
++
++## Locator
++
++editor-locator-path = Path
++editor-locator-recursive = Recursive
++editor-locator-extensions = Extensions
++editor-locator-match-to-source = Match to source
++editor-locator-match-pattern = Match pattern
++editor-locator-case-sensitive = Case-sensitive
++
++## Attachments (AttachmentsCfg)
++
++editor-attachments-unmatched = Unmatched
++editor-attachments-rules = Rules
++
++## Tracks (TracksCfg)
++
++editor-tracks-unmatched = Unmatched
++editor-tracks-rules = Rules
++
++## AttachmentRule
++
++editor-attachment-rule-select = Select
++editor-attachment-rule-drop = Drop
++editor-attachment-rule-add = Add
++
++## Tags (TagsCfg)
++
++editor-tags-global = Global
++editor-tags-track = Track
++
++## MatchExpr
++
++editor-match-expr-exact = Exact
++editor-match-expr-substring = Substring
++editor-match-expr-regex = Regex
++editor-match-expr-any = Any
++editor-match-expr-not = Not
++
++## Save surface (D41)
++
++editor-save-note = Saving rewrites the file from the model: comments, key order and formatting are not preserved, and fields left at their default are not written back.
+diff --git a/scripts/check-i18n.mjs b/scripts/check-i18n.mjs
+index 34f3cc0..19e60c0 100644
+--- a/scripts/check-i18n.mjs
++++ b/scripts/check-i18n.mjs
+@@ -8,20 +8,26 @@
+ //     catalog (locales/en/gui-*.ftl + diagnostics.ftl -- the same set
+ //     src/i18n/index.ts itself globs; cli.ftl is CLI-only vocabulary the
+ //     frontend never renders, excluded exactly like the real loader. This
+ //     exclusion is scoped to checks 1 and 2 only -- see check 3 below for
+ //     why cli.ftl is NOT excluded from cross-locale parity.)
+ //     A call whose first argument is not a plain quoted string (a
+ //     computed key -- `$t(stateKey)`, `$t(err.code, err.params)`, a
+ //     template literal `` $t(`severity-${d.severity}`) ``) is dynamic and
+ //     cannot be statically resolved, so it is skipped here, never
+ //     flagged.
++//     D45: the same hard-failure scan also covers every literal
++//     `labelKey: "..."` in src/**/*.{vue,ts} (a registry's `FieldSpec`,
++//     e.g. src/editor/registries.ts) -- the editor components read the
++//     key off the spec and pass it to $t() at render time, so this is
++//     check 1's own coverage extended to that literal shape, not a
++//     second mechanism.
+ //
+ //  2. WARNING ONLY (always exit 0 on this half): gui-* catalog ids never
+ //     referenced anywhere in src/. Many ids are reached only dynamically
+ //     rather than as a literal $t() argument -- a diagnostic code via
+ //     `$t(d.code, d.params)`, a shell IpcError code via
+ //     `$t(err.code, err.params)`, a state-chip key returned from a
+ //     mapping function (`jobRowState.ts`'s `jobStateKey`) -- so "used"
+ //     here also counts any catalog id that appears anywhere in src/ as a
+ //     quoted string literal (covers the mapping-function case, e.g.
+ //     `case "ok": return "jobs-state-ok";`), plus two explicit
+@@ -160,38 +166,53 @@ const sourceFiles = readdirSync(SRC, { recursive: true })
+   .filter((f) => /\.(vue|ts)$/.test(f))
+   .map((f) => join(SRC, f));
+ 
+ // Requires a non-identifier character (or start of line) immediately
+ // before the optional `$` -- without this, `t(` also matches the tail of
+ // `emit(`, `writeText(`, `useFluent(`, `attempt(`, `.mount(`, etc., which
+ // this codebase has plenty of (verified empirically against src/ before
+ // settling on this pattern).
+ const CALL_RE = /(?<![\w$])\$?t\(\s*(['"])([^'"]*)\1/g;
+ 
++// D45: a registry's `FieldSpec.labelKey` (src/editor/registries.ts) is a
++// message id exactly like a literal $t() call, just never passed through
++// $t() itself -- the editor components (Tasks 10-13) read it off the spec
++// and hand it to $t() at render time, so this scan is check 1's own
++// coverage extended to that one additional literal shape, same
++// line-based approach as CALL_RE (not a Fluent parser, not a TS parser).
++const LABEL_KEY_RE = /labelKey:\s*(['"])([^'"]*)\1/g;
++
+ const missing = []; // { id, file, line }
+ const literalCallIds = new Set();
+ const literalAnywhereIds = new Set();
+ const fileTexts = new Map();
+ 
+ for (const file of sourceFiles) {
+   const text = readFileSync(file, "utf8");
+   fileTexts.set(file, text);
+ 
+   const lines = text.split("\n");
+   lines.forEach((line, i) => {
+     for (const m of line.matchAll(CALL_RE)) {
+       const id = m[2];
+       literalCallIds.add(id);
+       if (!knownIds.has(id)) {
+         missing.push({ id, file: relative(ROOT, file), line: i + 1 });
+       }
+     }
++    for (const m of line.matchAll(LABEL_KEY_RE)) {
++      const id = m[2];
++      literalCallIds.add(id);
++      if (!knownIds.has(id)) {
++        missing.push({ id, file: relative(ROOT, file), line: i + 1 });
++      }
++    }
+   });
+ }
+ 
+ for (const id of knownIds.keys()) {
+   for (const text of fileTexts.values()) {
+     if (text.includes(`"${id}"`) || text.includes(`'${id}'`)) {
+       literalAnywhereIds.add(id);
+       break;
+     }
+   }
+diff --git a/src/editor/fieldSpec.ts b/src/editor/fieldSpec.ts
+new file mode 100644
+index 0000000..6f1df53
+--- /dev/null
++++ b/src/editor/fieldSpec.ts
+@@ -0,0 +1,70 @@
++/**
++ * The registry types the editor's field registries (`registries.ts`) are
++ * built against (D45). The compiler's grip on completeness is the
++ * `Record<keyof T, FieldSpec>` shape a registry is declared with, not this
++ * file: `FieldSpec`/`FieldWidget`/`RegistryName` only give that shape
++ * somewhere to point.
++ */
++
++/** A field the editor renders. */
++export interface EditableField {
++  labelKey: string;
++  widget: FieldWidget;
++}
++
++/** A field that exists in the model and is deliberately not exposed.
++ *  `why` is a source comment, not user prose: nothing renders it. */
++export interface FixedField {
++  readonly fixed: true;
++  why: string;
++}
++
++export type FieldSpec = EditableField | FixedField;
++
++/**
++ * `Input.pattern` is a regex compiled directly; `TemplateBlock.template` is
++ * a template in literal mode (spec 4.8); `Locator.match_pattern` is a
++ * template in regex mode (spec 4.7) -- a genuinely third thing from either.
++ * `Meta.*` is plain prose.
++ */
++export type TextSyntax = "plain" | "regex" | "templateLiteral" | "templateRegex";
++
++/**
++ * The name of one of the editor's 13 registries (one per edited struct),
++ * used by `keywordOrBlock`/`list`/`section` to point at another registry
++ * without depending on its module. Symmetric with the 13-struct table in
++ * `registries.ts`: one name per struct, regardless of whether every struct
++ * is actually pointed at by another widget.
++ */
++export type RegistryName =
++  | "profile"
++  | "meta"
++  | "input"
++  | "output"
++  | "templateBlock"
++  | "externalBlock"
++  | "trackRule"
++  | "locator"
++  | "attachments"
++  | "tracks"
++  | "attachmentRule"
++  | "tags"
++  | "matchExpr";
++
++/**
++ * 10 variants, closed. `fixed` is not one of them: it is the other half of
++ * the `FieldSpec` union above, which is the whole point of splitting them.
++ */
++export type FieldWidget =
++  | { kind: "text"; syntax: TextSyntax; multiline: boolean }
++  | { kind: "bool" }
++  // checked -> Some(true), unchecked -> absent (validate.rs:466-472 rejects
++  // Some(false); not a tri-state).
++  | { kind: "optionalFlag" }
++  | { kind: "select"; options: readonly string[] }
++  | { kind: "keywordOrBlock"; keywords: readonly string[]; block: RegistryName }
++  | { kind: "directoryPath"; optional: boolean }
++  | { kind: "stringList" }
++  | { kind: "propertyMap"; properties: "matchable" | "settable"; values: "scalar" | "string" }
++  | { kind: "list"; item: RegistryName; reorderable: boolean }
++  | { kind: "section"; of: RegistryName; optional: boolean };
+diff --git a/src/editor/registries.ts b/src/editor/registries.ts
+new file mode 100644
+index 0000000..b998657
+--- /dev/null
++++ b/src/editor/registries.ts
+@@ -0,0 +1,215 @@
++/**
++ * The editor's field registries (D45): one `Record<keyof T, FieldSpec>` per
++ * edited struct, the forcing function that fails the *build* (not a test)
++ * when a field added to the Rust model has no label-and-widget decision
++ * recorded against it. All 13 structs reachable from `Profile` are
++ * registered; there is no subset, because registering only some of them
++ * would silently unnotice a field added to an unregistered struct -- the
++ * exact failure this mechanism exists to close.
++ *
++ * 42 of the 43 fields are `EditableField`; the sole `FixedField` is
++ * `Profile.profile_version` (spec 4 pins it at 1). Widget choices come
++ * straight from the 43-row table in D45 (design `:889-936`); do not
++ * re-derive them here.
++ */
++import type {
++  AttachmentRule,
++  AttachmentsCfg,
++  CollisionPolicy,
++  ExternalBlock,
++  Input,
++  KeepDrop,
++  Locator,
++  MatchExpr,
++  Meta,
++  OutputCfg,
++  Profile,
++  TagsCfg,
++  TemplateBlock,
++  TrackRule,
++  TracksCfg,
++} from "../bindings/profile";
++import {
++  CHAPTERS_KEYWORDS,
++  FILENAME_KEYWORDS,
++  SOURCE_KEYWORDS,
++  TITLE_KEYWORDS,
++} from "../bindings/keywords";
++import type { FieldSpec } from "./fieldSpec";
++
++// --- Option arrays, with a compile-time completeness guard -------------
++//
++// D45's own `never`-arm principle applied to a value list rather than a
++// switch: `satisfies` checks the array against the Rust-derived union, and
++// the `Exclude<...> extends never` check below catches a variant ADDED to
++// the union that this array has not caught up with (`satisfies` alone only
++// catches an array member NOT in the union, the opposite direction).
++//
++// The four keyword arrays (FILENAME_KEYWORDS, SOURCE_KEYWORDS,
++// CHAPTERS_KEYWORDS, TITLE_KEYWORDS) get no such guard here: they are
++// generated into src/bindings/keywords.ts from the Rust constants (D46),
++// because the untagged enums they cover project to `Block | string` in TS
++// -- the keyword domain is not in the type at all, so no `satisfies` guard
++// could see it. Imported above, never hand-written.
++
++export const COLLISION_POLICIES = [
++  "error",
++  "skip",
++  "overwrite",
++] as const satisfies readonly CollisionPolicy[];
++type _CollisionPoliciesComplete =
++  Exclude<CollisionPolicy, (typeof COLLISION_POLICIES)[number]> extends never ? true : never;
++const _collisionPoliciesComplete: _CollisionPoliciesComplete = true;
++void _collisionPoliciesComplete;
++
++export const KEEP_DROP = ["keep", "drop"] as const satisfies readonly KeepDrop[];
++type _KeepDropComplete = Exclude<KeepDrop, (typeof KEEP_DROP)[number]> extends never ? true : never;
++const _keepDropComplete: _KeepDropComplete = true;
++void _keepDropComplete;
++
++// --- Registries, one per edited struct (13) -----------------------------
++
++export const profileFields: Record<keyof Profile, FieldSpec> = {
++  profile_version: {
++    fixed: true,
++    why: "Format version; spec 4 pins it at 1 and increments it only on a breaking format change. The editor never writes this field.",
++  },
++  meta: { labelKey: "editor-profile-meta", widget: { kind: "section", of: "meta", optional: true } },
++  input: { labelKey: "editor-profile-input", widget: { kind: "section", of: "input", optional: false } },
++  output: { labelKey: "editor-profile-output", widget: { kind: "section", of: "output", optional: false } },
++  tracks: { labelKey: "editor-profile-tracks", widget: { kind: "section", of: "tracks", optional: false } },
++  attachments: {
++    labelKey: "editor-profile-attachments",
++    widget: { kind: "section", of: "attachments", optional: false },
++  },
++  chapters: {
++    labelKey: "editor-profile-chapters",
++    widget: { kind: "keywordOrBlock", keywords: CHAPTERS_KEYWORDS, block: "externalBlock" },
++  },
++  tags: { labelKey: "editor-profile-tags", widget: { kind: "section", of: "tags", optional: false } },
++  title: {
++    labelKey: "editor-profile-title",
++    widget: { kind: "keywordOrBlock", keywords: TITLE_KEYWORDS, block: "templateBlock" },
++  },
++};
++
++export const metaFields: Record<keyof Meta, FieldSpec> = {
++  name: { labelKey: "editor-meta-name", widget: { kind: "text", syntax: "plain", multiline: false } },
++  description: {
++    labelKey: "editor-meta-description",
++    widget: { kind: "text", syntax: "plain", multiline: true },
++  },
++};
++
++export const inputFields: Record<keyof Input, FieldSpec> = {
++  pattern: { labelKey: "editor-input-pattern", widget: { kind: "text", syntax: "regex", multiline: false } },
++  extensions: { labelKey: "editor-input-extensions", widget: { kind: "stringList" } },
++  recursive: { labelKey: "editor-input-recursive", widget: { kind: "bool" } },
++};
++
++export const outputFields: Record<keyof OutputCfg, FieldSpec> = {
++  directory: { labelKey: "editor-output-directory", widget: { kind: "directoryPath", optional: true } },
++  filename: {
++    labelKey: "editor-output-filename",
++    widget: { kind: "keywordOrBlock", keywords: FILENAME_KEYWORDS, block: "templateBlock" },
++  },
++  on_collision: { labelKey: "editor-output-on-collision", widget: { kind: "select", options: COLLISION_POLICIES } },
++};
++
++export const templateBlockFields: Record<keyof TemplateBlock, FieldSpec> = {
++  template: {
++    labelKey: "editor-template-block-template",
++    widget: { kind: "text", syntax: "templateLiteral", multiline: false },
++  },
++};
++
++export const externalBlockFields: Record<keyof ExternalBlock, FieldSpec> = {
++  external: {
++    labelKey: "editor-external-block-external",
++    widget: { kind: "section", of: "locator", optional: false },
++  },
++};
++
++// `match_expr` below is the Rust field name (D45's own table names it that
++// way, since the serialized/TS key `match` shadows the `match` keyword);
++// the object key here is `match`, the actual `keyof TrackRule` member --
++// ts-rs respects TrackRule's `#[serde(rename = "match")]` when projecting
++// this binding (src/bindings/profile.ts), so `match_expr` is not a key of
++// the generated type and would fail Record<keyof TrackRule, FieldSpec>.
++export const trackRuleFields: Record<keyof TrackRule, FieldSpec> = {
++  source: {
++    labelKey: "editor-track-rule-source",
++    widget: { kind: "keywordOrBlock", keywords: SOURCE_KEYWORDS, block: "externalBlock" },
++  },
++  match: {
++    labelKey: "editor-track-rule-match-expr",
++    widget: { kind: "section", of: "matchExpr", optional: false },
++  },
++  optional: { labelKey: "editor-track-rule-optional", widget: { kind: "bool" } },
++  changes: {
++    labelKey: "editor-track-rule-changes",
++    widget: { kind: "propertyMap", properties: "settable", values: "scalar" },
++  },
++};
++
++export const locatorFields: Record<keyof Locator, FieldSpec> = {
++  path: { labelKey: "editor-locator-path", widget: { kind: "directoryPath", optional: false } },
++  recursive: { labelKey: "editor-locator-recursive", widget: { kind: "bool" } },
++  extensions: { labelKey: "editor-locator-extensions", widget: { kind: "stringList" } },
++  match_to_source: { labelKey: "editor-locator-match-to-source", widget: { kind: "optionalFlag" } },
++  match_pattern: {
++    labelKey: "editor-locator-match-pattern",
++    widget: { kind: "text", syntax: "templateRegex", multiline: false },
++  },
++  case_sensitive: { labelKey: "editor-locator-case-sensitive", widget: { kind: "bool" } },
++};
++
++export const attachmentsFields: Record<keyof AttachmentsCfg, FieldSpec> = {
++  unmatched: { labelKey: "editor-attachments-unmatched", widget: { kind: "select", options: KEEP_DROP } },
++  rules: {
++    labelKey: "editor-attachments-rules",
++    widget: { kind: "list", item: "attachmentRule", reorderable: true },
++  },
++};
++
++export const tracksFields: Record<keyof TracksCfg, FieldSpec> = {
++  unmatched: { labelKey: "editor-tracks-unmatched", widget: { kind: "select", options: KEEP_DROP } },
++  rules: { labelKey: "editor-tracks-rules", widget: { kind: "list", item: "trackRule", reorderable: true } },
++};
++
++export const attachmentRuleFields: Record<keyof AttachmentRule, FieldSpec> = {
++  select: {
++    labelKey: "editor-attachment-rule-select",
++    widget: { kind: "section", of: "matchExpr", optional: true },
++  },
++  drop: {
++    labelKey: "editor-attachment-rule-drop",
++    widget: { kind: "section", of: "matchExpr", optional: true },
++  },
++  add: { labelKey: "editor-attachment-rule-add", widget: { kind: "section", of: "locator", optional: true } },
++};
++
++export const tagsFields: Record<keyof TagsCfg, FieldSpec> = {
++  global: { labelKey: "editor-tags-global", widget: { kind: "select", options: KEEP_DROP } },
++  track: { labelKey: "editor-tags-track", widget: { kind: "select", options: KEEP_DROP } },
++};
++
++export const matchExprFields: Record<keyof MatchExpr, FieldSpec> = {
++  exact: {
++    labelKey: "editor-match-expr-exact",
++    widget: { kind: "propertyMap", properties: "matchable", values: "scalar" },
++  },
++  substring: {
++    labelKey: "editor-match-expr-substring",
++    widget: { kind: "propertyMap", properties: "matchable", values: "string" },
++  },
++  regex: {
++    labelKey: "editor-match-expr-regex",
++    widget: { kind: "propertyMap", properties: "matchable", values: "string" },
++  },
++  // `any` is a logical OR and `not` a logical NOR (spec 4.3) over a set of
++  // sub-expressions; order carries no meaning for either, unlike
++  // tracks.rules (output order) and attachments.rules (first-match-wins).
++  any: { labelKey: "editor-match-expr-any", widget: { kind: "list", item: "matchExpr", reorderable: false } },
++  not: { labelKey: "editor-match-expr-not", widget: { kind: "list", item: "matchExpr", reorderable: false } },
++};

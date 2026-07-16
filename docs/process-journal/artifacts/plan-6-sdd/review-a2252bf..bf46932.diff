@@ -1,0 +1,583 @@
+# Review package: a2252bf..bf46932
+
+## Commits
+bf46932 gui: one-click apply-suggestion in the batch view (D43, D49)
+
+## Files changed
+ e2e/smoke.spec.ts                   | 138 +++++++++++++++++++++++++++++++++++-
+ locales/de/gui-batch.ftl            |   2 +
+ locales/en/gui-batch.ftl            |   8 ++-
+ src/components/DiagnosticsPanel.vue |  14 ++++
+ src/components/SuggestionCard.vue   |  54 +++++++++++---
+ src/views/BatchView.vue             |  82 +++++++++++++++++++--
+ 6 files changed, 282 insertions(+), 16 deletions(-)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 868e1fd..62de5db 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -41,21 +41,21 @@ import {
+   COLLISION_POLICIES,
+   inputFields,
+   locatorFields,
+   matchExprFields,
+   metaFields,
+   outputFields,
+   profileFields,
+   trackRuleFields,
+ } from "../src/editor/registries";
+ import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
+-import type { Profile } from "../src/bindings/profile";
++import type { Profile, StructuredEdit } from "../src/bindings/profile";
+ 
+ /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
+  * default role-name matching is a case-insensitive SUBSTRING match, which
+  * collides here for real (not hypothetically): "Run" (the batch-run
+  * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
+  * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
+  * list), so an un-exact match resolves to 2-3 elements and Playwright's
+  * strict mode rejects the locator. */
+ function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
+   return { name: en(id, args), exact: true };
+@@ -329,20 +329,156 @@ test.describe("batch view: dry run", () => {
+     );
+ 
+     const diagnosticsSection = batch.getByRole("region", name("batch-diagnostics-heading"));
+     await expect(diagnosticsSection).toContainText("further suggestion");
+     expect(visibleText(await diagnosticsSection.textContent())).toContain(
+       "info: 1 further suggestion for this rule was capped at 3 and not shown.",
+     );
+ 
+     await assertNoSeriousA11yViolations(page);
+   });
++
++  // Task 14 (D43, D49, apply-wiring routing): one-click apply. Two
++  // DISTINCT fixture values on purpose: `PROFILE_PATH` is the picked
++  // profile FILE (what `load_profile`/`save_profile` take), and
++  // `SUGGESTION_CONFIG_PATH` is a config-field LOCATOR (`tracks[<N>].
++  // match`, parsed core-side by `rule_index_of`) -- what the suggestion
++  // carries and what `apply_suggestion` takes. Equal values would let a
++  // locator-as-path swap pass silently (exactly the bug an earlier draft
++  // of this task had, caught by controller review, not by this echo
++  // mock, because that draft's fixture set them equal); distinct values
++  // make a swap in either direction fail an assertion below. `APPLY_EDIT`
++  // is a real `StructuredEdit` (unlike the copy-only fixture above, whose
++  // `edit: null` was never read pre-Task-14 and stays that way -- it is
++  // not this test's concern) so the echo assertion is meaningful.
++  // `core-109-two-required-no-fix`'s no-fix/partition diagnostic
++  // (`suggestion-partition`) sits in the SAME report to pair the apply
++  // button's presence with its absence on the identical
++  // `getByRole("button", name("batch-suggestion-apply"))` selector, so a
++  // typo'd selector cannot make the negative pass vacuously (house
++  // paired-control template, falsifiability occurrence 5).
++  const SUGGESTION_CONFIG_PATH = "tracks[0].match";
++  const APPLY_EDIT: StructuredEdit = { kind: "add_exact", property: "codec_kind", value: "srt" };
++
++  const loadedProfile: Profile = {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: { rules: [] },
++  };
++
++  const appliedProfile: Profile = {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: { rules: [{ source: "primary", match: { exact: { codec_kind: "srt" } }, changes: {} }] },
++  };
++
++  const loadedForApply: LoadProfileDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++    profile: loadedProfile,
++  };
++
++  const applyReport: ReportDocument = {
++    config_diagnostics: [
++      {
++        code: "suggestion-partition",
++        severity: "warning",
++        config_path: "tracks[1].match",
++        params: { kind: "overflow", dropped: "1" },
++        rendered: "suggestion-partition",
++      },
++    ],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [
++      {
++        resolves: "unknown-property",
++        config_path: SUGGESTION_CONFIG_PATH,
++        edit: APPLY_EDIT,
++        yaml_fragment: SUGGESTION_YAML,
++      },
++    ],
++    mkvmerge_found: true,
++  };
++
++  test("a suggestion card's apply button drives load_profile -> apply_suggestion -> save_profile, config_path/edit unmodified and never confused with the profile path; a no-fix diagnostic renders no apply button", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        validate_profile: [resolveWith(emptyReport)],
++        dry_run: [resolveWith(applyReport)],
++        load_profile: [resolveWith(loadedForApply)],
++        apply_suggestion: [resolveWith(appliedProfile)],
++        save_profile: [resolveWith(null)],
++      },
++    });
++
++    await page.goto("/");
++
++    const batch = page.getByTestId("view-batch");
++    await batch.getByRole("button", name("batch-profile-pick")).click();
++    await batch.getByRole("button", name("batch-dry-run")).click();
++
++    const suggestion = batch.getByRole("article");
++    const applyButton = suggestion.getByRole("button", name("batch-suggestion-apply"));
++    await expect(applyButton).toBeVisible();
++
++    // Paired negative: the no-fix/partition diagnostic (rendered by
++    // DiagnosticsPanel, unchanged by Task 14) carries no `Suggestion` and
++    // so gets no apply control, on the identical selector the positive
++    // assertion above just proved resolves.
++    const diagnosticsSection = batch.getByRole("region", name("batch-diagnostics-heading"));
++    await expect(diagnosticsSection).toContainText("further resolution group");
++    await expect(
++      diagnosticsSection.getByRole("button", name("batch-suggestion-apply")),
++    ).toHaveCount(0);
++
++    await assertNoSeriousA11yViolations(page);
++
++    await applyButton.click();
++    // The round trip (load, apply, save) completed once `applying` drops
++    // aria-busy -- a robust wait for three chained mocked IPC calls
++    // instead of racing the recorded-call assertions below against them.
++    await expect(applyButton).not.toHaveAttribute("aria-busy", "true");
++
++    const loadCalls = recorded.filter((r) => r.cmd === "load_profile");
++    expect(loadCalls).toHaveLength(1);
++    expect((loadCalls[0].args as { path: string }).path).toBe(PROFILE_PATH);
++
++    const applyCalls = recorded.filter((r) => r.cmd === "apply_suggestion");
++    expect(applyCalls).toHaveLength(1);
++    const applyArgs = applyCalls[0].args as {
++      profile: Profile;
++      configPath: string;
++      edit: StructuredEdit;
++    };
++    // The locator, not the file path -- the assertion this task's earlier
++    // draft got backwards.
++    expect(applyArgs.configPath).toBe(SUGGESTION_CONFIG_PATH);
++    expect(applyArgs.configPath).not.toBe(PROFILE_PATH);
++    expect(applyArgs.edit).toEqual(APPLY_EDIT);
++    expect(applyArgs.profile).toEqual(loadedProfile);
++
++    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
++    expect(saveCalls).toHaveLength(1);
++    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
++    // The file path, not the locator.
++    expect(saveArgs.path).toBe(PROFILE_PATH);
++    expect(saveArgs.path).not.toBe(SUGGESTION_CONFIG_PATH);
++    expect(saveArgs.profile).toEqual(appliedProfile);
++  });
+ });
+ 
+ test.describe("jobs view: live run", () => {
+   const PROFILE_PATH = "/profiles/run-demo.yaml";
+   const JOB0_OUTPUT = "output/episode1.mkv";
+   const JOB1_OUTPUT = "output/episode2.mkv";
+   const RUN_ID = "20260710-190000Z";
+ 
+   const runnableReport: ReportDocument = {
+     config_diagnostics: [],
+diff --git a/locales/de/gui-batch.ftl b/locales/de/gui-batch.ftl
+index 3b588d2..2fbf562 100644
+--- a/locales/de/gui-batch.ftl
++++ b/locales/de/gui-batch.ftl
+@@ -44,17 +44,19 @@ batch-files-heading = Dateien
+ batch-resolution-rule-header = Regel
+ batch-resolution-track-header = Aufgelöste Spur
+ batch-file-caption = { $source } (Kennung: { $identifier }) -> { $output }
+ batch-file-no-plan = { $source } (Kennung: { $identifier }): kein Plan erzeugt; siehe Meldungen unten.
+ 
+ batch-suggestions-heading = Vorschläge
+ batch-suggestion-header = Vorschlag für { $config_path }:
+ batch-suggestion-copy = Kopieren
+ batch-suggestion-copy-tooltip = Dieses YAML-Fragment in die Zwischenablage kopieren.
+ batch-suggestion-copied = In die Zwischenablage kopiert.
++batch-suggestion-apply = Anwenden
++batch-suggestion-apply-tooltip = Diese Korrektur auf das Profil anwenden und speichern.
+ 
+ batch-run = Starten
+ batch-run-tooltip = Diesen Stapel starten: jede aufgelöste Datei mit mkvmerge multiplexen.
+ batch-run-tooltip-no-profile = Vor dem Starten ein Profil auswählen und prüfen.
+ batch-run-tooltip-errors = Vor dem Starten jede Meldung mit Schweregrad Fehler beheben.
+ batch-run-tooltip-mkvmerge-missing = mkvmerge ist nicht verfügbar; korrigiere die Erkennung in den Einstellungen, bevor du startest.
+ batch-run-tooltip-run-active = Es läuft bereits ein Stapel. Warte, bis er fertig ist, oder wechsle zur Jobs-Ansicht, um ihn abzubrechen.
+diff --git a/locales/en/gui-batch.ftl b/locales/en/gui-batch.ftl
+index ec3af94..90e314a 100644
+--- a/locales/en/gui-batch.ftl
++++ b/locales/en/gui-batch.ftl
+@@ -1,12 +1,14 @@
+-## T10: BatchView.vue and its components (spec 8.2 view 2, D22: suggestions
+-## are show-and-copy only, never applied). `browse-button` (gui-common.ftl,
++## T10: BatchView.vue and its components (spec 8.2 view 2). Suggestions were
++## show-and-copy only through Plan 5 (D22); Task 14 (D43, D49) added
++## one-click apply, its two keys beside the copy-button ones below.
++## `browse-button` (gui-common.ftl,
+ ## the generic "Browse..." label) is reused for the source/output directory
+ ## pickers, but their tooltip is `batch-browse-dir-tooltip` below, not
+ ## gui-common.ftl's `browse-button-tooltip` (fix: that one says "Choose the
+ ## file with a file picker", wrong noun for a directory picker; it stays
+ ## reserved for genuine file pickers, e.g. FirstRun's/SettingsDialog's
+ ## mkvmerge-path browse button).
+ 
+ batch-view-heading = Batch
+ 
+ batch-profile-heading = Profile
+@@ -47,20 +49,22 @@ batch-files-heading = Files
+ batch-resolution-rule-header = Rule
+ batch-resolution-track-header = Resolved track
+ batch-file-caption = { $source } (identifier: { $identifier }) -> { $output }
+ batch-file-no-plan = { $source } (identifier: { $identifier }): no plan produced; see diagnostics below.
+ 
+ batch-suggestions-heading = Suggestions
+ batch-suggestion-header = Suggestion for { $config_path }:
+ batch-suggestion-copy = Copy
+ batch-suggestion-copy-tooltip = Copy this YAML fragment to the clipboard.
+ batch-suggestion-copied = Copied to clipboard.
++batch-suggestion-apply = Apply
++batch-suggestion-apply-tooltip = Apply this fix to the profile and save it.
+ 
+ batch-run = Run
+ batch-run-tooltip = Start this batch: mux every resolved file with mkvmerge.
+ batch-run-tooltip-no-profile = Choose and validate a profile before running.
+ batch-run-tooltip-errors = Fix every error-severity diagnostic before running.
+ batch-run-tooltip-mkvmerge-missing = mkvmerge is not available; fix detection in Settings before running.
+ # D23 ("the UI additionally disables Run while active", fix): a batch is
+ # already running elsewhere in the app (App.vue forwards JobsView's own
+ # runActive state down as this view's `runActive` prop).
+ batch-run-tooltip-run-active = A batch is already running. Wait for it to finish, or switch to the Jobs view to cancel it.
+diff --git a/src/components/DiagnosticsPanel.vue b/src/components/DiagnosticsPanel.vue
+index 427b8cf..6f1fed8 100644
+--- a/src/components/DiagnosticsPanel.vue
++++ b/src/components/DiagnosticsPanel.vue
+@@ -7,20 +7,34 @@ import { diagnosticFluentParams } from "../diagnosticFluentParams";
+ // `code`/`params` rendered through `diagnostics.ftl` -- the same catalog
+ // the CLI's `Renderer` reads (spec 7), so a diagnostic reads identically
+ // in both surfaces. Reused for the batch/config-level diagnostics
+ // (BatchView) and, once per file, for `ReportFile.diagnostics`
+ // (ResolutionTable): same shape, same rendering, no per-caller variant.
+ //
+ // Deliberately no "no diagnostics" empty state here: an empty list means
+ // there is nothing to say at this spot, and BatchView's own `role="status"`
+ // summary line already covers the batch-wide zero-diagnostics case: a
+ // second, repeated-per-instance empty message would be noise.
++//
++// Task 14 (D43, D49) added one-click apply: `SuggestionCard.vue` renders
++// the apply control and emits it, `BatchView.vue` (their common parent --
++// both are siblings there, not nested) handles the emit and owns the
++// round trip. This component is not in that chain and left untouched by
++// design: `core-109-two-required-no-fix`'s no-fix/partition diagnostic
++// (`suggestion-partition`) renders here exactly as any other diagnostic,
++// with no apply control, because no `Suggestion` exists for it to apply
++// -- not a gap this panel needs to close. Giving a `Diagnostic` an apply
++// affordance here (e.g. cross-rendering the `Suggestion` its
++// `suggestion_ref` names) would need a second, `Suggestion`-typed prop
++// threaded through every call site, reopening the "same shape, same
++// rendering, no per-caller variant" genericity this component is built
++// on for a feature the sibling/parent pair above already provides.
+ defineProps<{ diagnostics: Diagnostic[] }>();
+ </script>
+ 
+ <template>
+   <ul v-if="diagnostics.length">
+     <li
+       v-for="(d, i) in diagnostics"
+       :key="i"
+     >
+       <span
+diff --git a/src/components/SuggestionCard.vue b/src/components/SuggestionCard.vue
+index 62302cc..15dc5ef 100644
+--- a/src/components/SuggestionCard.vue
++++ b/src/components/SuggestionCard.vue
+@@ -1,43 +1,69 @@
+ <script setup lang="ts">
+ import { ref } from "vue";
+ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+ import type { Suggestion } from "../ipc";
+ 
+-// D22: Plan 5 ships suggestions as show-and-copy only, never applied --
+-// the profile is never mutated from here. `edit` (the structured,
+-// machine-applicable form) is deliberately never read; only
+-// `config_path` and `yaml_fragment` -- the exact text the CLI itself
+-// prints for `dry-run-suggestion` -- are shown/copied. `resolves` (the
+-// `DiagCode` this fixes) is likewise left unshown, matching the CLI's own
+-// suggestion header (`muxsmith-cli/src/commands/mod.rs`), which never
+-// prints it either.
+-const props = defineProps<{ suggestion: Suggestion }>();
++// D22 (Plan 5): suggestions shipped show-and-copy only, `edit` (the
++// structured, machine-applicable form) deliberately never read, nothing
++// ever applied from here. Task 14 (D43, D49) falsifies both: the apply
++// button below reads `edit` and emits it, with `config_path`, to
++// `BatchView` (this card's parent), which forwards both opaque to
++// `apply_suggestion` (Task 14's amended wiring: this card renders and
++// emits, it does not orchestrate the load/apply/save round trip itself
++// -- `BatchView` owns the picked profile path apply needs, this card
++// never sees a file path at all). D22's OWN stated reason for gating
++// apply behind the editor -- "one-click apply means comment-preserving
++// YAML mutation, machinery that belongs to the editor" -- is dead: D41
++// settled that saving rewrites the file canonically and never preserves
++// comments, so no comment-preserving machinery exists anywhere to gate
++// apply on. The editor+apply pairing survives on a different, stronger
++// reason (D41): apply mutates the profile, and whichever surface holds
++// the in-memory model owns marking it dirty -- the pairing D41 records
++// is plan-scope, not a UI-location or runtime-sharing one (spec 8.2 puts
++// apply in the batch view precisely because of this). `config_path` and
++// `edit` are the two opaque fields core does all the interpreting of
++// (D43): neither is parsed or read here, only forwarded. `yaml_fragment`
++// -- the exact text the CLI itself prints for `dry-run-suggestion` -- is
++// still shown/copied. `resolves` (the `DiagCode` this fixes) is likewise
++// left unshown, matching the CLI's own suggestion header
++// (`muxsmith-cli/src/commands/mod.rs`), which never prints it either.
++const props = defineProps<{ suggestion: Suggestion; applying?: boolean }>();
++
++const emit = defineEmits<{ apply: [payload: { config_path: string; edit: unknown }] }>();
+ 
+ const copied = ref(false);
+ let copiedTimeout: ReturnType<typeof setTimeout> | undefined;
+ 
+ async function copy() {
+   try {
+     await writeText(props.suggestion.yaml_fragment);
+     copied.value = true;
+     clearTimeout(copiedTimeout);
+     // Transient confirmation only; a failed copy leaves the button ready
+     // to retry rather than surfacing a modal error over what is a minor,
+     // easily-repeated action.
+     copiedTimeout = setTimeout(() => {
+       copied.value = false;
+     }, 2000);
+   } catch {
+     copied.value = false;
+   }
+ }
++
++/** Emits this card's two opaque fields unmodified; `BatchView` (the
++ * parent that owns the picked profile path and the established IPC
++ * busy/try/catch/finally idiom) does the actual round trip. Neither
++ * field is parsed or interpreted here (D43's binding point). */
++function requestApply() {
++  emit("apply", { config_path: props.suggestion.config_path, edit: props.suggestion.edit });
++}
+ </script>
+ 
+ <template>
+   <article data-testid="batch-suggestion-card">
+     <p>
+       {{ $t("batch-suggestion-header", { config_path: suggestion.config_path }) }}
+     </p>
+     <pre><code>{{ suggestion.yaml_fragment }}</code></pre>
+     <button
+       type="button"
+@@ -46,12 +72,22 @@ async function copy() {
+       @click="copy"
+     >
+       {{ $t("batch-suggestion-copy") }}
+     </button>
+     <p
+       v-if="copied"
+       role="status"
+     >
+       {{ $t("batch-suggestion-copied") }}
+     </p>
++    <button
++      type="button"
++      data-testid="batch-suggestion-apply"
++      :title="$t('batch-suggestion-apply-tooltip')"
++      :disabled="applying"
++      :aria-busy="applying"
++      @click="requestApply"
++    >
++      {{ $t("batch-suggestion-apply") }}
++    </button>
+   </article>
+ </template>
+diff --git a/src/views/BatchView.vue b/src/views/BatchView.vue
+index 04211e1..ca733c9 100644
+--- a/src/views/BatchView.vue
++++ b/src/views/BatchView.vue
+@@ -1,46 +1,65 @@
+ <script setup lang="ts">
+ import { computed, onMounted, ref } from "vue";
+ import { useFluent } from "fluent-vue";
+ import { open as openDialog } from "@tauri-apps/plugin-dialog";
+ import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
+ import ResolutionTable from "../components/ResolutionTable.vue";
+ import SuggestionCard from "../components/SuggestionCard.vue";
+-import { defaultAppSettings, dryRun, getSettings, setSettings, validateProfile } from "../ipc";
++import {
++  applySuggestion,
++  defaultAppSettings,
++  dryRun,
++  getSettings,
++  loadProfile,
++  saveProfile,
++  setSettings,
++  validateProfile,
++} from "../ipc";
+ import type {
+   AppSettings,
+   Diagnostic,
+   DirMemory,
+   IpcError,
+   ReportDocument,
+   RunRequest,
+ } from "../ipc";
++import type { StructuredEdit } from "../bindings/profile";
+ 
+ // Task 10 (spec 8.2 view 2, D22): profile pick + recents, source/output
+ // directory memory, dry-run report rendering, suggestions as show+copy
+ // cards, and the `start-run` handoff to App/JobsView (Plan 5 wave-5
+-// contract). No profile mutation anywhere in this view (D22; that is
+-// Plan 6's profile editor).
++// contract). Through Plan 5, no profile mutation anywhere in this view.
++// Task 14 (D43, D49) adds exactly one: `onApplySuggestion` below, the
++// narrow load/apply/save round trip behind a `SuggestionCard`'s `apply`
++// emit -- everything else in this view (pick, dirs, dry-run, run handoff)
++// stays read-only. Full profile editing remains Plan 6's editor.
+ 
+ const fluent = useFluent();
+ 
+ const settings = ref<AppSettings>(defaultAppSettings());
+ const selectedProfile = ref<string | null>(null);
+ const sourceDir = ref("");
+ const outputDir = ref("");
+ const report = ref<ReportDocument | null>(null);
+ const validating = ref(false);
+ const dryRunning = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+ const ipcErrorParams = ref<Record<string, string>>({});
++// Task 14 (D43, D49, apply-wiring routing): which `report.suggestions`
++// index is mid-round-trip, or `null` when none is -- drives the clicked
++// card's own `aria-busy` (not a single shared boolean) and, folded into
++// `busy` below, gates every other action while an apply is in flight the
++// same way `validating`/`dryRunning` already do.
++const applyingIndex = ref<number | null>(null);
+ 
+-const busy = computed(() => validating.value || dryRunning.value);
++const busy = computed(() => validating.value || dryRunning.value || applyingIndex.value !== null);
+ 
+ // Fix (D23): "the UI additionally disables Run while active" -- App
+ // forwards JobsView's own runActive state here (this view has no other
+ // way to know a run is active; App is the sole broker between the two
+ // views). Optional/defaulted so this view still type-checks and behaves
+ // correctly standalone, matching JobsView's own `pendingRun?:` precedent.
+ const props = withDefaults(defineProps<{ runActive?: boolean }>(), { runActive: false });
+ 
+ const emit = defineEmits<{ "start-run": [payload: RunRequest] }>();
+ 
+@@ -187,20 +206,73 @@ async function runDryRun(): Promise<void> {
+     );
+   } catch (e) {
+     const err = e as IpcError;
+     ipcErrorCode.value = err.code;
+     ipcErrorParams.value = err.params;
+   } finally {
+     dryRunning.value = false;
+   }
+ }
+ 
++/** Task 14 (D43, D49, apply-wiring routing): handles a `SuggestionCard`'s
++ * `apply` emit. `payload.config_path` is a config-field LOCATOR
++ * (`tracks[<N>].match`, parsed core-side by `rule_index_of`), never a
++ * file path -- it and `payload.edit` are forwarded to `apply_suggestion`
++ * exactly as received, never parsed or interpreted here. The load/save
++ * path is always `selectedProfile`, the profile FILE this view already
++ * has open; apply does not validate or re-plan (D43: no compound
++ * apply-and-validate command), and this view does not auto-refresh the
++ * report afterwards (design D43's post-apply validation is the editor's
++ * `validate_profile_model` round trip, which this view does not have;
++ * `core-03`'s guarantee is that the applied edit survives the *next*
++ * dry run, not that apply triggers one -- auto-refresh is a deferred,
++ * controller-routed ROADMAP candidate, not built here). */
++async function onApplySuggestion(
++  payload: { config_path: string; edit: unknown },
++  index: number,
++): Promise<void> {
++  if (!selectedProfile.value || busy.value) {
++    return;
++  }
++  applyingIndex.value = index;
++  ipcErrorCode.value = null;
++  try {
++    const doc = await loadProfile(selectedProfile.value);
++    if (!doc.profile) {
++      // A `ParseError` since the suggestion was computed: `load_profile`
++      // folds it into a single explanatory diagnostic rather than
++      // throwing (D42's own doc on `load_profile`'s envelope), so that
++      // diagnostic's own code/params are the correct thing to surface
++      // through this view's existing shared alert line -- reusing it
++      // needs no bespoke fallback code.
++      const parseDiagnostic = doc.config_diagnostics[0];
++      if (parseDiagnostic) {
++        ipcErrorCode.value = parseDiagnostic.code;
++        ipcErrorParams.value = parseDiagnostic.params;
++      }
++      return;
++    }
++    const updated = await applySuggestion(
++      doc.profile,
++      payload.config_path,
++      payload.edit as StructuredEdit,
++    );
++    await saveProfile(selectedProfile.value, updated);
++  } catch (e) {
++    const err = e as IpcError;
++    ipcErrorCode.value = err.code;
++    ipcErrorParams.value = err.params;
++  } finally {
++    applyingIndex.value = null;
++  }
++}
++
+ // `report.value` covers both shapes T7 returns: `validate_profile`'s
+ // config-only document (files/batch_diagnostics/suggestions always empty)
+ // and `dry_run`'s full `batch_document`. Grouping config+batch-level
+ // diagnostics here (as opposed to per-file, rendered inside each
+ // ResolutionTable) covers cross-file/runtime facts like DuplicateIdentifier
+ // that the brief's "config + per-file" wording does not name explicitly
+ // but that can carry error severity -- hiding them here while still
+ // counting them in the summary/Run-gate below would make an error block
+ // Run with no visible explanation.
+ const generalDiagnostics = computed<Diagnostic[]>(() =>
+@@ -424,20 +496,22 @@ function emitStartRun(): void {
+         aria-labelledby="batch-suggestions-heading"
+       >
+         <h3 id="batch-suggestions-heading">
+           {{ $t("batch-suggestions-heading") }}
+         </h3>
+         <SuggestionCard
+           v-for="(s, i) in report.suggestions"
+           :key="i"
+           :data-index="i"
+           :suggestion="s"
++          :applying="applyingIndex === i"
++          @apply="onApplySuggestion($event, i)"
+         />
+       </section>
+     </template>
+ 
+     <button
+       type="button"
+       data-testid="batch-run"
+       :disabled="runDisabled"
+       :aria-busy="busy"
+       :title="runTooltip"

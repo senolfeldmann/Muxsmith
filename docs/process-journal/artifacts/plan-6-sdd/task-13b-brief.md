@@ -1,0 +1,110 @@
+### Task 13b: D45 / spec 8.2 - the per-rule detail editor beneath the track-rule grid (amended 2026-07-16, detail-editor routing)
+
+**Stream E** (`.worktrees/plan6-e`), sequenced **after Task 13 and before Task 14**. It closes a confirmed plan-coverage gap: spec 8.2 (`docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md:374`) promises a "detail editor per rule"; the design assigns `tracks.rules` the editable `list { item: "trackRule", reorderable: true }` slot (`docs/superpowers/specs/2026-07-15-plan-6-design.md:925`); but Task 11's deliberately read-only summary grid occupies that registry slot and no task builds per-rule editing, so as-built the editor edits attachment rules (through `ListWidget` -> `SectionWidget`) while track rules can only be reordered (`registry-slot-capability-delta`, `docs/decision-ledger.yaml`; Task-12 review Q2). Owner ruling (Şenol, 2026-07-16): **option (a)** - a detail panel **beneath the grid**, mkvtoolnix-gui style; expandable grid rows were rejected (DOM churn inside the protected grid, nested forms in table rows). It touches only files Task 13 also touches (`src/views/EditorView.vue`, `e2e/smoke.spec.ts`), so it serializes behind Task 13.
+
+**Files:**
+- Modify: `src/views/EditorView.vue` (row selection on the Task-11 grid + the detail panel; update the file's own header doc comment)
+- Modify: `src/editor/widgets/DirectoryPathWidget.vue` (comment-only: retire a dead directory-picker forward-reference, amended 2026-07-16, detail-editor routing)
+- Test: `e2e/smoke.spec.ts` (extend - one additive describe block; and a comment-only reword of the Task-10 directoryPath test title, no assertion change)
+
+**Interfaces:**
+- Consumes: Task 11's rule grid, Task 12's composed widgets (`SectionWidget`, `FieldWidgetDispatcher`, `PropertyMapWidget`'s typed cells), and Task 13's open/save/validate wiring - all already landed in `EditorView.vue`.
+- Produces: per-rule editing of `tracks.rules`, fulfilling the spec-8.2 "detail editor per rule" promise. No new component, no new registry, no new catalog key, no API change.
+
+**Read first:** the Task-12 review Q2 adjudication as recorded in `registry-slot-capability-delta` (`docs/decision-ledger.yaml`); `src/editor/widgets/ListWidget.vue` (the AttachmentRule-item precedent this task copies: it synthesizes `{ kind: "section", of: item }`, mounts `SectionWidget`, and writes each item back immutably); `src/editor/widgets/SectionWidget.vue` (renders a registry's fields through `FieldWidgetDispatcher`, model `Record<string, unknown> | null`, immutable write); `src/components/RunHistory.vue:164-185` (the house interactive-selection precedent: a native `<button>` with `:aria-current`, keyboard-reachable for free).
+
+Binding points:
+- **The vehicle is the existing registry composition, not a bespoke form.** The panel renders the selected rule through **`SectionWidget`** with a synthesized `{ labelKey: "editor-tracks-rules", widget: { kind: "section", of: "trackRule", optional: false } }` spec. `registryByName["trackRule"]` is `trackRuleFields` (`src/editor/widgets/shared.ts:51`), so the panel dispatches the same four `TrackRule` fields (`source` keywordOrBlock, `match` section-of-matchExpr, `optional` bool, `changes` propertyMap settable/scalar; `src/editor/registries.ts:139-153`) through `FieldWidgetDispatcher`. This is byte-for-byte the machinery `ListWidget` already uses for AttachmentRule items, so track-rule editing becomes the same code path as attachment-rule editing - exactly what the registry slot at design `:925` was designed to provide and what the read-only grid withheld (the capability delta the ledger entry names).
+- **Typed cells and validation are consumed, not rebuilt.** `changes` gets Task 12's settable typed cells and `match.exact` gets Task 12's matchable typed cells for free (`PropertyMapWidget` already switches on `PropScalarType`); validate-on-edit is Task 13's `watch(model, ...)`, which fires because every panel edit reassigns `model.value` to a fresh object (`SectionWidget`'s `{ ...model.value, [key]: value }` propagated up through `setRuleValue`). This task adds no typing and no validation.
+- **Selection is a native button with `:aria-current`, the house precedent, not a hand-rolled interactive `<tr>`.** The Task-11 grid's first cell (`source`) gains a `<button type="button" data-testid="editor-rule-select" :aria-current="...">{{ sourceSummary(rule) }}</button>` wrapping its existing summary text; clicking sets `selectedIndex`. A native button is focusable and Enter/Space-activated for free (`RunHistory.vue:168-173`'s `jobs-history-run` shape), so no `tabindex`/`role`/`@keydown` is hand-rolled - which also keeps the suite's axe pass (`e2e/smoke.spec.ts:75-83`) green, since a table row carrying `tabindex` + `role` + `aria-selected` is precisely the shape axe flags. The button's visible label is the already-rendered `sourceSummary(rule)` (a real profile token or path, lint-clean under D27 `no-raw-text` exactly as the current `<td>` is), so **no catalog key is added**.
+- **BOUNDARY (additive only).** The grid *component* gains selection wiring; the protected mount-harness specs stay green **unmodified** except the one additive describe block this task enumerates below. Task 11's grid spec (`e2e/smoke.spec.ts:785-825`) asserts row count, the `match`-cell text (`toContainText("video")`/`"audio"`), and drag-reorder - none touch the `source` cell, so wrapping its text in a button leaves them passing unmodified. Task 12's composition spec (`:836-897`) mounts a `rules: []` profile, so no row and no panel render; it is untouched. Task 13's review-check terms continue to bind: no mount spec deleted, ported, guarded or skipped; `EditorView` stays mountable from `modelValue` alone (this task adds no on-mount fetch); the panel's edits reach Task 13's validation only when `currentPath` is set, so a bare mount-harness `EditorView` (no Open) edits the panel with zero IPC, keeping the added spec green with no injected mock.
+- **No selection renders no panel** (the empty state), which needs no key because nothing is rendered: `v-if` on the selected rule. Selection is cleared on reorder (`onDrop` sets `selectedIndex = null`) so a post-reorder edit can never land on a rule the user did not re-select; an out-of-range `selectedIndex` after Open is already inert because the selected-rule lookup is bounds-guarded (`rules[selectedIndex] ?? null`), mirroring `ListWidget.itemValue`.
+- **Zero new catalog keys (owner budget 45, unchanged).** All four `trackRuleFields` labels already exist (`editor-track-rule-source`/`-match-expr`/`-optional`/`-changes`, `locales/en/gui-editor.ftl:46-49`); the panel's `SectionWidget` legend reuses `editor-tracks-rules` ("Rules", `:68`, already the grid heading and caption); the panel is additionally labelled by `aria-labelledby` pointing at the selected grid row (each row gets `:id="\`editor-rule-row-${index}\`"`, the panel `:aria-labelledby="\`editor-rule-row-${selectedIndex}\`"`), a zero-key mechanism that names the panel by the rule it edits. If per-rule editing were ever found to need a distinct key, that is a **NEEDS_CONTEXT** to the controller, not an invented key and not a reused unrelated key (the `generic-action-keys` precedent).
+
+- [ ] **Step 1: Write the failing detail-editor assertions (amended 2026-07-16, detail-editor routing)**
+
+Extend `e2e/smoke.spec.ts` with one additive describe block, `"editor view: rule detail editor (Task 13b, D45 / spec 8.2)"`, mounting through the Task-10 harness (`e2e/mount.ts`), not the served app. Use a two-rule fixture (the Task-11 `twoRuleProfile` shape) whose row 0 has `optional` unset, so checking it is a real state change, not a vacuous re-assert. Assert, in order:
+1. **No selection, no panel:** before any click, `getByTestId("editor-rule-detail")` has count 0. This absence assertion is made non-vacuous by assertion 2 in the same test, which asserts the panel *appears* on selection: if the panel always rendered, the count-0 pre-selection assertion fails; if it never rendered, the presence assertion fails; the RED run (Step 2) exercises the presence branch, so the pair cannot both pass vacuously.
+2. **Select opens the panel with the four fields:** click `getByTestId("editor-rule-select").first()`; assert `getByTestId("editor-rule-detail")` is visible and, scoped to it, the four fields dispatch to their widgets - `source` a combobox (`name("editor-track-rule-source")`), `optional` a checkbox (`name("editor-track-rule-optional")`), `changes` a property-map control, `match` a nested group - through `getByRole`/`name(...)` against the real en catalog, never a hand-typed literal.
+3. **Edit `optional`, model and grid both update (anti-vacuity):** within the panel, `getByRole("checkbox", name("editor-track-rule-optional"))` (unique inside the panel; the grid's summary checkbox is outside it and disabled), `.check()` it, then assert `(readModel()).tracks.rules[0].optional` is the boolean `true` via `.toBe(true)` (a real boolean, not the string `"true"`), **and** assert the grid row's own summary checkbox (`getByTestId("editor-rule-row").first().getByRole("checkbox")`) is now `toBeChecked()` - proving the grid summaries re-render from the same model the panel wrote.
+
+- [ ] **Step 2: Run to confirm they fail (amended 2026-07-16, detail-editor routing)**
+
+```bash
+pnpm test:e2e
+```
+Expected: FAIL, named - `getByTestId("editor-rule-select")` matches nothing (no selection button exists yet) so the click times out, and `editor-rule-detail` never appears. That is the genuine RED (selection and panel do not exist in the Task-13 `EditorView.vue`).
+
+- [ ] **Step 3: Add selection wiring to the grid (amended 2026-07-16, detail-editor routing)**
+
+In `src/views/EditorView.vue`: add `const selectedIndex = ref<number | null>(null)` and `function selectRule(index: number) { selectedIndex.value = index; }`. Give each grid `<tr>` an `:id="\`editor-rule-row-${index}\`"`; wrap the `source` cell's `{{ sourceSummary(rule) }}` in `<button type="button" data-testid="editor-rule-select" :aria-current="selectedIndex === index ? 'true' : undefined" @click="selectRule(index)">...</button>`. In `onDrop`, set `selectedIndex.value = null` after the reorder (additive one line). Nothing else in the grid changes - the `data-testid="editor-rule-row"`, the drag handlers, and the `match`/`optional`/`changes` summary cells stay exactly as Tasks 11/13 left them.
+
+- [ ] **Step 4: Add the detail panel beneath the grid (amended 2026-07-16, detail-editor routing)**
+
+Still in `EditorView.vue`, import `SectionWidget` (`../editor/widgets/SectionWidget.vue`) and the type `EditableFieldOf` (`../editor/widgets/shared`). Add:
+
+```ts
+const ruleDetailSpec: EditableFieldOf<"section"> = {
+  labelKey: "editor-tracks-rules",
+  widget: { kind: "section", of: "trackRule", optional: false },
+};
+
+const selectedRule = computed<Record<string, unknown> | null>(() =>
+  selectedIndex.value === null
+    ? null
+    : ((rules.value[selectedIndex.value] as Record<string, unknown> | undefined) ?? null),
+);
+
+function setRuleValue(value: unknown) {
+  if (selectedIndex.value === null || !model.value) {
+    return;
+  }
+  const next = [...rules.value];
+  next[selectedIndex.value] = value as TrackRule;
+  model.value = { ...model.value, tracks: { ...model.value.tracks, rules: next } };
+}
+```
+
+(`selectedRule`/`setRuleValue` mirror `ListWidget.vue`'s `itemValue`/`setItemValue` and this file's own `onDrop` immutable rebuild - the `Record<string, unknown>` cast on the way in and the `TrackRule` cast on the way out are the same asymmetry `ListWidget` closes.) Render the panel **immediately after the track-rule `<fieldset>` and before the save-surface note `<p>`**, inside Task 13's `<template v-if="model">` block (T13-dependent anchor; if Task 13's final layout differs, the invariant is "directly beneath the rule grid, above the save note"):
+
+```html
+<section
+  v-if="selectedRule"
+  data-testid="editor-rule-detail"
+  :aria-labelledby="`editor-rule-row-${selectedIndex}`"
+>
+  <SectionWidget
+    :spec="ruleDetailSpec"
+    :model-value="selectedRule"
+    @update:model-value="setRuleValue"
+  />
+</section>
+```
+
+- [ ] **Step 5: Update the doc comments - the header, and two dead directory-picker forward-references (amended 2026-07-16, detail-editor routing)**
+
+1. `EditorView.vue`'s header comment (`:1-74`) states `tracks.rules` "stays this bespoke, read-only-summary grid". Amend that sentence: the grid stays the read-only summary *of the row values*, but it now also carries row **selection**, and a **detail panel** below it edits the selected rule through `SectionWidget` over `trackRule` - the same registry path `attachments.rules` uses through `ListWidget`, closing the spec-8.2 "detail editor per rule" gap (`registry-slot-capability-delta`). Keep the note that reorder is a semantic model edit.
+2. Retire two dead forward-references that name a directory-picker IPC dialog as "Task 13's job" - a picker the design never promised (`directoryPath` is a plain path textbox by design; D45's widget architecture is prop-fed and zero-IPC) and Task 13's brief never mentioned (Task-13 review Q3). Comment-only, no behavior change, no new key:
+   - `src/editor/widgets/DirectoryPathWidget.vue:2-7`: reword to state the settled boundary, e.g. "no file-picker dialog: a picker is out of scope for Plan 6; the directory field is text-entry only (D45 widgets are prop-fed, zero-IPC)". Drop the "wiring a real picker is Task 13's job" clause.
+   - `e2e/smoke.spec.ts:701` (the Task-10 directoryPath test title): change "(no IPC dialog -- Task 13's job)" to state the same boundary, e.g. "(text-entry only; directory picker out of scope for Plan 6, D45 widgets are prop-fed/zero-IPC)". Title/comment only - the mount and assertions are unchanged.
+
+- [ ] **Step 6: Run the suite (amended 2026-07-16, detail-editor routing)**
+
+```bash
+pnpm build && pnpm lint && pnpm check:i18n && pnpm test:e2e
+```
+Expected: PASS - selection opens the panel, the four fields render, editing `optional` writes a real boolean and the grid summary follows; `check:i18n` stays green (no new key; the four `trackRule` labels and `editor-tracks-rules` were already used); Tasks 11/12/13 specs stay green unmodified; axe stays green (native-button selection). `pnpm lint`'s D27 `no-raw-text` passes because every added string is a `$t(...)` call or a model-derived binding.
+
+- [ ] **Step 7: Full gate, then commit (amended 2026-07-16, detail-editor routing)**
+
+- **Review-check (protected specs survive):** confirm `git diff <task-13-commit> -- e2e/smoke.spec.ts` shows no Task 10/11/12/13 mount-harness spec deleted, ported to the served app, or guarded/skipped - only the one additive Task-13b describe block added, plus the comment-only reword of the Task-10 directoryPath test title (which changes no assertion); confirm `EditorView` still mounts from `modelValue` alone (no `load_profile` in `onMounted`). A protected spec made to pass by editing it, or a panel that renders only after an on-mount fetch, is a wave-3 coverage regression, not a passing gate.
+
+Run the nine-part gate. Then:
+
+```bash
+git add src/views/EditorView.vue src/editor/widgets/DirectoryPathWidget.vue e2e/smoke.spec.ts
+git -c commit.gpgsign=false commit -m "gui: the per-rule detail editor beneath the track-rule grid, via SectionWidget over trackRule (D45, spec 8.2; registry-slot-capability-delta), and retire the dead directory-picker forward-references (Task-13 review Q3)"
+```
+
+---
+
