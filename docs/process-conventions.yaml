@@ -344,12 +344,29 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 4
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict: the brief's anchor list summed 19, stated 20, real 21 - untagged arithmetic over the tree"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1: the brief asserted rust-toolchain.toml components apply on a bare rustup toolchain install (false, rustup #4216); untagged, only the reviewer caught it; fix 308effc"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief premise 'the apply logic exists as a test helper, hoist it' refuted by the design implementer: tests/suggestions.rs:95 is a fixture generator that takes no Profile and mutates nothing; untagged"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15): the duty binds on ROLE - a load-bearing premise of a decision, tagged or not - and not on every incidental fact; contested scoping question closed"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T7 report + review verdict: the step-5 premise (self-contradiction sweep already run; spec 4.1 example consistent with canonical save) verified at the source; the memo gloss 'omits source/optional on every rule' found imprecise (2 of 7 rules legitimately carry one key), the operative conclusion held"}
+- id: brief-drafts-verified-against-tree
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "An SDD brief's literal draft (code, premises, cited line spans) is verified against the current tree and the neighboring-test/local idiom before use; divergences are adapted and SURFACED in the report, never transcribed or silently resolved. Generalizes earlier single-event entries (resolve_title brief-wording bug, packaging macOS-glob correction)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
+    - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T2 report + review verdict Q1: the brief's verbatim test code carried an unused `use std::path::Path;` that trips the -D warnings gate; deleted (single mechanical fix, outside every test body), surfaced in the report, adjudicated correct keyboard-level resolution"}
 - id: proc-no-work-needed-check
   kind: pattern
   tier: 2

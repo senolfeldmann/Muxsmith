@@ -3315,21 +3315,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-review verdict harvest (ROADMAP.md mixed-language entry cites planner.rs:428/:841, current tree :440-448/:811-824)"}
-- id: brief-drafts-verified-against-tree
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "An SDD brief's literal draft (code, premises, cited line spans) is verified against the current tree and the neighboring-test/local idiom before use; divergences are adapted and SURFACED in the report, never transcribed or silently resolved. Generalizes earlier single-event entries (resolve_title brief-wording bug, packaging macOS-glob correction)."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
-    - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
 - id: rustfmt-forbids-mid-chain-comments
   kind: pattern
   tier: 1
@@ -3504,3 +3489,17 @@ entries:
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "D49 review F7, and the reason the statement now names documents as well as plans: D49's 'no test asserts the wire change' rested on `grep -rn '\"edit\"'`, which cannot match an unquoted TS object key - e2e/smoke.spec.ts:177 carries `edit: null`. The conclusion happened to survive (that fixture is inert against `edit: unknown`), so the defect was in the METHOD while the result was right, which is precisely the state an absence-check cannot distinguish. The D49 reviewer's framing, adopted verbatim into the statement: nobody re-runs a negative"}
+- id: core-error-enum-derive-set
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Data-only error enums in core derive Debug, Clone, PartialEq (Diagnostic report/mod.rs, SaveError profile/save.rs; the shell's SettingsError predates the shape and lacks PartialEq). Open sub-question, not ruled: whether a brief's stated derive list is a floor (house-idiom derives may be added with disclosure) or a closed set - T2 added Clone beyond a closed-reading enumeration without disclosing it (reviewer Minor, accepted-as-known)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T2 review verdict (review-0922df9..81b4038.diff, Minor 1 + harvest): SaveError derives Clone beyond the brief's enumerated Debug+PartialEq, matching Diagnostic's derive shape; floor-vs-closed question surfaced for a future ruling"}
