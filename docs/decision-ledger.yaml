@@ -3474,21 +3474,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "D49 fix round: the author added apply_returns_ok_when_the_edit_reaches_the_model beside its new EditChangedNothing guard UNPROMPTED, on the stated grounds that the guard would otherwise pass against an apply_suggestion that returned the error unconditionally. Neither the owner ruling nor the fix dispatch asked for it. The re-reviewer flagged it as a pattern no house entry covers - a reviewer's instinct applied to one's own work"}
-- id: proc-verification-step-must-be-falsifiable
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "A verification step whose passing expectation is an ABSENCE - 'expected: no output', 'expected: exit 0', 'expected: no hits' - is itself verified by making it produce output once. An absence-expectation passes identically when the check works, when the check is malformed, and when the thing it greps for cannot syntactically exist; the three are indistinguishable from the green result, so an unfalsified absence-check is decoration that reads as coverage. Trigger is readable: you are writing an expected result that is empty. Handle: break the thing deliberately, watch the step go red, restore it. The same move the plan already mandates for its guards, applied to its own verification steps. Extends to a grep used as EVIDENCE in a document, not only to a step in a plan: nobody re-runs a negative, so the method has to be sound the first time - a grep returning nothing looks identical whether it was the right grep or the wrong one, and the reader has no way to tell which they are looking at."
-  steelman: "Absence-checks are the cheapest verification there is and most of them are trivially correct; demanding a red-run proof for every grep doubles the step count of a plan to catch a class of defect that costs one wasted grep when it fires. Rejected because the cost is not a wasted grep: a vacuous check is worse than no check, because the plan and its reviewer both then believe the property is guarded. The red-run proof is seconds, and it is exactly the discipline TDD already imposes on tests - a test you never saw fail is not evidence, and neither is a grep you never saw match."
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
-    - {date: "2026-07-16", kind: violated-corrected, ref: "D49 review F7, and the reason the statement now names documents as well as plans: D49's 'no test asserts the wire change' rested on `grep -rn '\"edit\"'`, which cannot match an unquoted TS object key - e2e/smoke.spec.ts:177 carries `edit: null`. The conclusion happened to survive (that fixture is inert against `edit: unknown`), so the defect was in the METHOD while the result was right, which is precisely the state an absence-check cannot distinguish. The D49 reviewer's framing, adopted verbatim into the statement: nobody re-runs a negative"}
 - id: core-error-enum-derive-set
   kind: pattern
   tier: 1
