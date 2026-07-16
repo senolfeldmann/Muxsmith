@@ -14,7 +14,8 @@ had accumulated **20 named inputs spanning four independent subsystems**,
 so it is decomposed into Plans 6-9, each with its own spec and
 brainstorming. All 20 are distributed below and every one is its own bullet
 under its plan, so the split (6 / 5 / 1 / 8) is recountable rather than
-asserted. Nothing was dropped in the re-cut.
+asserted. Nothing was dropped in the re-cut. (Split now 5 / 5 / 1 / 9:
+input #6 re-pointed from Plan 6 to Plan 9 by owner call 2026-07-16.)
 
 D22's editor+apply pairing is KEPT, but **not on D22's stated reason**: that
 reason was "one-click apply IS comment-preserving YAML mutation, which the
@@ -35,7 +36,8 @@ preserved (owner ruling 2026-07-15, rationale in the design ADRs: YAML
 1.2.2 §6.6 defines no comment-to-node association, and drag-to-reorder
 would silently make surviving comments describe the wrong rule).
 
-Named design inputs (6):
+Named design inputs (5; former #6 re-pointed to Plan 9 by owner call
+2026-07-16):
 
 1. Decide schema-driven vs UI-model editor. (2026-07-11, sweep walkthrough
    #23) **RESOLVED 2026-07-15:** UI-model, hand-built components, with
@@ -55,13 +57,6 @@ Named design inputs (6):
    real reason is input 2: `muxsmith schema` ships the artifact today.
 4. The profile editor itself. (D22)
 5. One-click apply-suggestion. (D22)
-6. Re-check the final fix wave's self-flagged deviation from D23's frontend
-   contract (reset gated on runActive instead of "reset after resolve Ok" -
-   "worth a second look", never taken) (S12). (2026-07-11, docs-tree sweep)
-   **Mis-filed:** the design review found it is run-path only
-   (JobsView.vue:150-200), i.e. it touches nothing Plan 6 builds. It stays
-   listed here until it is re-pointed by an owner call, rather than being
-   moved silently.
 
 ## Plan 7: help mode + i18n cluster
 
@@ -134,6 +129,12 @@ than in sequence.
   (2026-07-12, Plan 5.5 roll-up funnel)
 - Sort JSON config_diagnostics errors-first for validate parity (T9-m-iv;
   ledger cli-08). (2026-07-12, Plan 5.5 roll-up funnel)
+- Re-check the final fix wave's self-flagged deviation from D23's frontend
+  contract (reset gated on runActive instead of "reset after resolve Ok" -
+  "worth a second look", never taken) (S12). (2026-07-11, docs-tree sweep;
+  re-pointed here from the Plan-6 anchor by owner call 2026-07-16 - the
+  plan-6 design review established it is run-path only, JobsView.vue:150-200,
+  touching nothing Plan 6 builds.)
 
 ## Triggers
 
