@@ -4,10 +4,23 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use schemars::JsonSchema;
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use super::match_expr::{MatchExpr, Scalar};
+
+/// Shared schema shape for a keyword-domain projection (D46): a closed
+/// `enum` of the domain's values, not `oneOf` + per-value `const` (rejected;
+/// there is no per-value prose to attach, see D46). Used by the four
+/// `Keyword` arm `schema_with` overrides below; the doc comment on the
+/// variant itself still merges in as the branch's `description`, so this
+/// helper does not set one.
+fn keyword_domain_schema(domain: &'static [&'static str]) -> Schema {
+    json_schema!({
+        "type": "string",
+        "enum": domain,
+    })
+}
 
 /// The top-level profile document (spec 4): input matching, output naming,
 /// track rules (in output order), and attachments/chapters/tags/title
@@ -148,15 +161,26 @@ pub enum FilenameCfg {
     Template(TemplateBlock),
     /// Keyword form; the only accepted value is `"keep"` (`validate.rs`
     /// rejects anything else as `InvalidKeyword`).
+    #[schemars(schema_with = "filename_keyword_schema")]
     Keyword(String),
 }
 
 impl FilenameCfg {
+    /// Closed keyword domain for `output.filename` (spec 4.8): the single
+    /// source for the `validate.rs` guard, its `InvalidKeyword` `allowed`
+    /// hint, and this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["keep"];
+
     /// The `keep` keyword variant: reuse the source basename (`.mkv`
     /// extension enforced). Also the serde default for `output.filename`.
     pub fn keep() -> Self {
         FilenameCfg::Keyword("keep".into())
     }
+}
+
+/// Narrows `FilenameCfg::Keyword`'s schema to [`FilenameCfg::KEYWORDS`] (D46).
+fn filename_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(FilenameCfg::KEYWORDS)
 }
 
 /// `output.on_collision` policy (spec 4.8): applies to an existing rendered
@@ -226,15 +250,26 @@ pub enum SourceCfg {
     External(ExternalBlock),
     /// Keyword form; the only accepted value is `"primary"` (the rule's own
     /// primary file).
+    #[schemars(schema_with = "source_keyword_schema")]
     Keyword(String),
 }
 
 impl SourceCfg {
+    /// Closed keyword domain for `track.source` (spec 4.5): the single
+    /// source for the `validate.rs` guard, its `InvalidKeyword` `allowed`
+    /// hint, and this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["primary"];
+
     /// The `primary` keyword variant: resolve against the rule's own
     /// primary file. Also the serde default for `track.source`.
     pub fn primary() -> Self {
         SourceCfg::Keyword("primary".into())
     }
+}
+
+/// Narrows `SourceCfg::Keyword`'s schema to [`SourceCfg::KEYWORDS`] (D46).
+fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(SourceCfg::KEYWORDS)
 }
 
 /// External file locator (spec 4.6): finds candidate donor files; the
@@ -343,13 +378,26 @@ pub enum ChaptersCfg {
     /// mkvmerge accepts) via this locator.
     External(ExternalBlock),
     /// Keyword form: `"keep"` or `"drop"`.
+    #[schemars(schema_with = "chapters_keyword_schema")]
     Keyword(String),
+}
+
+impl ChaptersCfg {
+    /// Closed keyword domain for `chapters` (spec 4.9): the single source
+    /// for the `validate.rs` guard, its `InvalidKeyword` `allowed` hint, and
+    /// this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["keep", "drop"];
 }
 
 impl Default for ChaptersCfg {
     fn default() -> Self {
         ChaptersCfg::Keyword("keep".into())
     }
+}
+
+/// Narrows `ChaptersCfg::Keyword`'s schema to [`ChaptersCfg::KEYWORDS`] (D46).
+fn chapters_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(ChaptersCfg::KEYWORDS)
 }
 
 /// Global and per-track tag handling (spec 4.9), mapped to
@@ -374,11 +422,24 @@ pub enum TitleCfg {
     /// Literal-mode template rendering the output title (spec 4.7).
     Template(TemplateBlock),
     /// Keyword form: `"keep"` or `"clear"`.
+    #[schemars(schema_with = "title_keyword_schema")]
     Keyword(String),
+}
+
+impl TitleCfg {
+    /// Closed keyword domain for `title` (spec 4.9): the single source for
+    /// the `validate.rs` guard, its `InvalidKeyword` `allowed` hint, and
+    /// this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["keep", "clear"];
 }
 
 impl Default for TitleCfg {
     fn default() -> Self {
         TitleCfg::Keyword("keep".into())
     }
+}
+
+/// Narrows `TitleCfg::Keyword`'s schema to [`TitleCfg::KEYWORDS`] (D46).
+fn title_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(TitleCfg::KEYWORDS)
 }

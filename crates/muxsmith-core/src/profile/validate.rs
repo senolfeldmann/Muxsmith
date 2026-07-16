@@ -102,11 +102,11 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
         }
 
         match &rule.source {
-            SourceCfg::Keyword(k) if k == "primary" => {}
+            SourceCfg::Keyword(k) if SourceCfg::KEYWORDS.contains(&k.as_str()) => {}
             SourceCfg::Keyword(k) => diags.push(
                 Diagnostic::error(DiagCode::InvalidKeyword, format!("{base}.source"))
                     .with("found", k.clone())
-                    .with("allowed", "primary"),
+                    .with("allowed", domain_hint(SourceCfg::KEYWORDS)),
             ),
             SourceCfg::External(block) => {
                 validate_locator(
@@ -126,11 +126,11 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
 
     // output.filename
     match &profile.output.filename {
-        FilenameCfg::Keyword(k) if k == "keep" => {}
+        FilenameCfg::Keyword(k) if FilenameCfg::KEYWORDS.contains(&k.as_str()) => {}
         FilenameCfg::Keyword(k) => diags.push(
             Diagnostic::error(DiagCode::InvalidKeyword, "output.filename")
                 .with("found", k.clone())
-                .with("allowed", "keep"),
+                .with("allowed", domain_hint(FilenameCfg::KEYWORDS)),
         ),
         FilenameCfg::Template(block) => {
             let mut fields = template_fields.clone();
@@ -146,11 +146,11 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     }
 
     match &profile.chapters {
-        ChaptersCfg::Keyword(k) if k == "keep" || k == "drop" => {}
+        ChaptersCfg::Keyword(k) if ChaptersCfg::KEYWORDS.contains(&k.as_str()) => {}
         ChaptersCfg::Keyword(k) => diags.push(
             Diagnostic::error(DiagCode::InvalidKeyword, "chapters")
                 .with("found", k.clone())
-                .with("allowed", "keep, drop"),
+                .with("allowed", domain_hint(ChaptersCfg::KEYWORDS)),
         ),
         ChaptersCfg::External(block) => {
             validate_locator(
@@ -163,11 +163,11 @@ pub fn validate(profile: &Profile) -> Vec<Diagnostic> {
     }
 
     match &profile.title {
-        TitleCfg::Keyword(k) if k == "keep" || k == "clear" => {}
+        TitleCfg::Keyword(k) if TitleCfg::KEYWORDS.contains(&k.as_str()) => {}
         TitleCfg::Keyword(k) => diags.push(
             Diagnostic::error(DiagCode::InvalidKeyword, "title")
                 .with("found", k.clone())
-                .with("allowed", "keep, clear"),
+                .with("allowed", domain_hint(TitleCfg::KEYWORDS)),
         ),
         TitleCfg::Template(block) => {
             let mut fields = template_fields.clone();

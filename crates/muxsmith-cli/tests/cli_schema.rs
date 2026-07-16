@@ -1,7 +1,8 @@
 use assert_cmd::Command;
 
-#[test]
-fn schema_prints_json_schema_and_exits_zero() {
+/// The one legal way to invoke `muxsmith schema` and parse its stdout; every
+/// test in this file shares it rather than re-inlining the invocation.
+fn schema_json() -> serde_json::Value {
     let out = Command::cargo_bin("muxsmith")
         .unwrap()
         .arg("schema")
@@ -10,7 +11,12 @@ fn schema_prints_json_schema_and_exits_zero() {
         .get_output()
         .stdout
         .clone();
-    let schema: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    serde_json::from_slice(&out).unwrap()
+}
+
+#[test]
+fn schema_prints_json_schema_and_exits_zero() {
+    let schema = schema_json();
     let text = schema.to_string();
     assert!(text.contains("profile_version"));
     assert!(text.contains("tracks"));
@@ -19,4 +25,33 @@ fn schema_prints_json_schema_and_exits_zero() {
 #[test]
 fn no_args_shows_usage_and_fails() {
     Command::cargo_bin("muxsmith").unwrap().assert().failure();
+}
+
+#[test]
+fn keyword_domains_project_as_closed_enums_not_bare_strings() {
+    let schema = schema_json();
+    let cases = [
+        ("FilenameCfg", vec!["keep"]),
+        ("SourceCfg", vec!["primary"]),
+        ("ChaptersCfg", vec!["keep", "drop"]),
+        ("TitleCfg", vec!["keep", "clear"]),
+    ];
+    for (ty, expected) in cases {
+        let branches = schema["$defs"][ty]["anyOf"].as_array().unwrap_or_else(|| {
+            panic!("{ty} must still project anyOf (D46 narrows the string branch only)")
+        });
+        let string_branch = branches
+            .iter()
+            .find(|b| b["type"] == "string")
+            .unwrap_or_else(|| panic!("{ty} must keep a string branch"));
+        let got: Vec<&str> = string_branch["enum"]
+            .as_array()
+            .unwrap_or_else(|| {
+                panic!("{ty}'s string branch must carry an enum, not a bare string type")
+            })
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(got, expected, "{ty} keyword domain");
+    }
 }

@@ -277,6 +277,30 @@ fn b4_raw_on_codec_kind_is_raw_on_known_property_warning() {
     assert!(!codes(&p).contains(&DiagCode::CodecKindExactOnly));
 }
 
+// D46: the `Keyword(String)` arm keeps its `String` so a misspelled keyword
+// stays reachable as InvalidKeyword (with `found`/`allowed`) instead of
+// falling through to serde's untagged-enum error.
+#[test]
+fn misspelled_chapters_keyword_is_invalid_keyword_with_const_derived_allowed() {
+    let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: video } }
+chapters: kepp
+"#;
+    let p = from_str(y, Format::Yaml).unwrap();
+    let diags = validate(&p);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagCode::InvalidKeyword)
+        .expect("misspelled chapters keyword must be InvalidKeyword");
+    assert_eq!(d.config_path, "chapters");
+    assert_eq!(d.params["found"], "kepp");
+    assert_eq!(d.params["allowed"], "keep, drop");
+}
+
 #[test]
 fn attachment_match_uses_attachment_property_set() {
     let y = r#"
