@@ -3460,6 +3460,20 @@ entries:
   occurrences:
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief mandated 'the logic exists as a test helper apply_edit_to_first_rule (tests/suggestions.rs:95). Reuse before writing: hoist it into the library.' Refuted by the design implementer: it takes no Profile, mutates nothing, and hardcodes the fixture's own conditions as string literals - a fixture generator, not apply logic. Recorded as the design's correction #1"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan task 6 mandated 'reuse rule_index_of and with_rule_match; do not write a new applier'. Plan-review F1 (Critical): with_rule_match (planner.rs:1853) takes a MatchExpr, not a StructuredEdit; the bridge delta_for (:1809) is private AND needs a Scalar that batch identification supplies, which apply_suggestion does not have and D43 forbids re-planning to get. The seam the mandate asserted does not exist. Same failure as the occurrence above, one level down"}
+- id: proc-guard-needs-its-control
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A guard asserting that some input PRODUCES an error is paired with a control asserting the neighbouring input does NOT - otherwise the guard passes unchanged against an implementation that errors unconditionally, which is the degenerate implementation the guard was written to exclude. Sibling of proc-verification-step-must-be-falsifiable and the same failure in the positive direction: that entry covers a check whose expectation is an absence, this one a check whose expectation is a presence that a broken implementation supplies for free. Trigger is readable: you are writing assert!(matches!(result, Err(..))). Handle: write the Ok case beside it, from the nearest input that should NOT trip it."
+  steelman: "Every error test would double, and the pairs are obvious enough that a reviewer reading them sees the gap - a rule here spends test volume on a defect that has not shipped. Rejected because the control is one assertion on a fixture the guard already builds, and the degenerate implementation it excludes is not exotic: an early return, an inverted condition, or a predicate that is always true all produce it, and all leave the guard green. Cheap insurance against the one failure the guard cannot self-report."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "D49 fix round: the author added apply_returns_ok_when_the_edit_reaches_the_model beside its new EditChangedNothing guard UNPROMPTED, on the stated grounds that the guard would otherwise pass against an apply_suggestion that returned the error unconditionally. Neither the owner ruling nor the fix dispatch asked for it. The re-reviewer flagged it as a pattern no house entry covers - a reviewer's instinct applied to one's own work"}
 - id: proc-verification-step-must-be-falsifiable
   kind: pattern
   tier: 1
