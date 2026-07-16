@@ -145,7 +145,35 @@ $ muxsmith run series.yaml --source /media/series --output /media/clean --jobs 8
 
 ### `muxsmith schema`
 
-Prints the profile's JSON Schema, pretty-printed, to stdout.
+Prints the profile's JSON Schema, pretty-printed, to stdout. Redirect it to a file and point your editor at it, and hand-authoring a profile gets the same autocompletion and inline validation as any other structured config format: every key, every enum value, every field's shape, right there while you type.
+
+```console
+$ muxsmith schema > muxsmith-profile.schema.json
+```
+
+**VS Code**, via the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml), in `settings.json`:
+
+```jsonc
+{
+  "yaml.schemas": {
+    "./muxsmith-profile.schema.json": "*.muxsmith.yaml"
+  }
+}
+```
+
+**Neovim / Helix**, via `yaml-language-server`, in your `lspconfig` settings:
+
+```lua
+settings = {
+  yaml = {
+    schemas = {
+      ["./muxsmith-profile.schema.json"] = "*.muxsmith.yaml",
+    },
+  },
+}
+```
+
+Bind it in editor settings, not with the in-file `# yaml-language-server: $schema=...` modeline. The modeline is one line and no editor config, which is exactly why it is a trap: it lives inside a YAML comment, and the GUI's save does not preserve comments, key order, or formatting - it writes the profile fresh from its own model. Wire up a modeline, then save the same profile once from the GUI, and the binding is gone. No error, no warning: the file still works, your editor just quietly stops helping. Bind the schema in your editor's own settings instead, and it survives every save because it never lived in the file the GUI rewrites.
 
 Two conventions that hold everywhere: **command-line flags override profile-stored values** (`--source`, `--output`, `--on-collision`), and **exit codes mirror mkvmerge's own**: `0` clean, `1` finished with warnings, `2` errors - your scripts already speak this dialect.
 

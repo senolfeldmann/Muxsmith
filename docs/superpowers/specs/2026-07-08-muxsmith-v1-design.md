@@ -365,12 +365,13 @@ muxsmith schema                      # print the profile JSON Schema
 - Flags override profile-stored run inputs.
 - Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors.
 - `--json` emits the structured report for scripting; default output is human-readable rendering of the same data, including suggestion YAML fragments.
+- `muxsmith schema` is a supported user feature, not only a debug aid (D47): the README's "Using the CLI" section documents redirecting its output to a file and binding it in editor settings (`yaml.schemas` in VS Code, the equivalent `lspconfig` block for Neovim/Helix) for autocompletion and inline validation while hand-authoring a profile.
 
 ### 8.2 GUI
 
 Three views, modeled on mkvtoolnix-gui:
 
-1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Inline validation markers from core diagnostics.
+1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.
 
@@ -395,7 +396,7 @@ Mechanics: every help-annotated element carries a stable `help-id`; help content
 
 Localization readiness is structural, not deferred polish:
 
-- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), and the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text.
+- **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text, and the JSON Schema's `description` fields (Rust doc comments, D47). The schema documents a file format, the same category as this spec and the README, both English-only by design; it is not application UI and not a diagnostic, so Fluent's localization mandate does not reach it.
 - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
 - Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
 - v1 ships English content only (non-goal 11); the mechanism ships complete.
