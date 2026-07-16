@@ -814,9 +814,11 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
     await expect(rows.nth(0)).toContainText("audio");
     await expect(rows.nth(1)).toContainText("video");
 
-    const model = (await readModel(page)) as Profile;
-    expect(
-      model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type),
-    ).toEqual(["audio", "video"]);
+    await expect
+      .poll(async () => {
+        const model = (await readModel(page)) as Profile;
+        return model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type);
+      })
+      .toEqual(["audio", "video"]);
   });
 });

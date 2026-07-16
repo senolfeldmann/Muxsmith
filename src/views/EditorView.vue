@@ -92,6 +92,9 @@ function onDrop(index: number) {
   <section data-testid="view-editor">
     <h2>{{ $t("editor-tracks-rules") }}</h2>
     <table>
+      <caption>
+        {{ $t("editor-tracks-rules") }}
+      </caption>
       <thead>
         <tr>
           <th scope="col">
