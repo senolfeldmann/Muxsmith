@@ -1339,3 +1339,142 @@ test.describe("editor view: rule detail editor (Task 13b, D45 / spec 8.2)", () =
     await expect(page.getByTestId("editor-rule-row").first().getByRole("checkbox")).toBeChecked();
   });
 });
+
+// Task 13c (spec 8.2, amended 2026-07-16, recents routing): closes
+// whole-branch Finding 1 -- the editor as-built had only a pick button and
+// never fed or rendered the shared `AppSettings.recent_profiles` MRU
+// memory BatchView maintains. The fix extracts BatchView's
+// `rememberRecentProfile` round trip into `src/recentProfiles.ts` (a
+// behavior-identical refactor there) and routes the editor's pick button
+// and its new recents list through one `openPath` funnel, remembering the
+// opened profile the same never-clobber way. Served-app tests (nav to the
+// editor), not the mount harness, matching Task 13's own precedent above.
+// Two distinct fixture paths (`echo-mock-distinct-fixture-values`) so an
+// identity assertion cannot pass on a shared value: RECENT_PATH is
+// pre-seeded in the mocked `recent_profiles`, OPENED_PATH is what the
+// dialog returns.
+test.describe("editor view: recent profiles (Task 13c, spec 8.2 / recents routing)", () => {
+  const RECENT_PATH = "/profiles/seeded-recent.yaml";
+  const OPENED_PATH = "/profiles/freshly-opened.yaml";
+
+  const editorProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+
+  const loadedDoc: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: editorProfile,
+  };
+
+  function settingsWith(recentProfiles: string[]): AppSettings {
+    return {
+      mkvmerge_path: null,
+      default_jobs: 1,
+      locale: "en",
+      recent_profiles: recentProfiles,
+      dir_memory: {},
+    };
+  }
+
+  test("the pre-Open surface renders a seeded recent profile", async ({ page }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+
+    const recentButtons = editor.getByTestId("editor-recent-profile");
+    await expect(recentButtons).toHaveCount(1);
+    await expect(recentButtons.first()).toContainText(RECENT_PATH);
+  });
+
+  // Paired absence control (same selector, non-vacuous per assertion 1
+  // above): an empty memory renders no recent-profile buttons at all, so
+  // the "renders a seeded recent profile" test above cannot pass for a
+  // reason unrelated to the seeded fixture (e.g. a hard-coded literal).
+  test("the paired absence control: an empty recents memory renders no recent-profile buttons", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([]))],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+    await expect(editor.getByTestId("editor-recent-profile")).toHaveCount(0);
+  });
+
+  test("clicking a recent opens through the same load_profile funnel as pick", async ({ page }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
+        load_profile: [resolveWith(loadedDoc)],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await editor.getByTestId("editor-recent-profile").first().click();
+
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: RECENT_PATH })),
+    ).toBeVisible();
+
+    const loadCalls = recorded.filter((r) => r.cmd === "load_profile");
+    expect(loadCalls).toHaveLength(1);
+    expect((loadCalls[0].args as { path: string }).path).toBe(RECENT_PATH);
+  });
+
+  test("opening a profile writes it to the front of the shared recents memory (echo, distinct values)", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
+        "plugin:dialog|open": [resolveWith(OPENED_PATH)],
+        load_profile: [resolveWith(loadedDoc)],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    // Wait for the open to settle: `opening.value` only flips back to
+    // false in `openPath`'s `finally`, which runs after the awaited
+    // `rememberRecentProfile` round trip -- so the Open button re-enabling
+    // is the real "the recents write already happened" signal, unlike the
+    // `batch-profile-current` text (set earlier in the same try block).
+    await expect(editor.getByTestId("editor-open")).toBeEnabled();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: OPENED_PATH })),
+    ).toBeVisible();
+
+    const writes = recorded.filter((r) => r.cmd === "set_settings");
+    expect(writes).toHaveLength(1);
+    const written = (writes[0].args as { settings: AppSettings }).settings;
+    expect(written.recent_profiles[0]).toBe(OPENED_PATH);
+    expect(written.recent_profiles).toContain(RECENT_PATH);
+  });
+});

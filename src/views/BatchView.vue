@@ -24,6 +24,7 @@ import type {
   RunRequest,
 } from "../ipc";
 import type { StructuredEdit } from "../bindings/profile";
+import { rememberRecentProfile } from "../recentProfiles";
 
 // Task 10 (spec 8.2 view 2, D22): profile pick + recents, source/output
 // directory memory, dry-run report rendering, suggestions as show+copy
@@ -83,29 +84,6 @@ async function updateSettings(mutate: (current: AppSettings) => AppSettings): Pr
   settings.value = next;
 }
 
-/** Mirrors `src-tauri/src/settings.rs::RECENT_PROFILES_CAP` (D27). The
- * Rust side truncates only inside `save()`, so without this client-side
- * cap the *rendered* MRU list would grow past the limit within one
- * session (self-healing only on restart); truncating in the mutation
- * keeps `settings.value` identical to what was actually persisted. */
-const RECENT_PROFILES_CAP = 10;
-
-async function rememberRecentProfile(path: string): Promise<void> {
-  try {
-    await updateSettings((current) => ({
-      ...current,
-      recent_profiles: [path, ...current.recent_profiles.filter((p) => p !== path)].slice(
-        0,
-        RECENT_PROFILES_CAP,
-      ),
-    }));
-  } catch (e) {
-    // Background bookkeeping only; a failed recents write never blocks
-    // picking or validating the profile itself.
-    console.warn("[batch] failed to persist recent profile:", e);
-  }
-}
-
 async function persistDir(kind: "source" | "output", value: string): Promise<void> {
   if (!selectedProfile.value) {
     return;
@@ -154,7 +132,7 @@ async function selectProfile(path: string): Promise<void> {
   const memory = settings.value.dir_memory[path];
   sourceDir.value = memory?.source ?? "";
   outputDir.value = memory?.output ?? "";
-  await rememberRecentProfile(path);
+  settings.value = (await rememberRecentProfile(path)) ?? settings.value;
   await runValidate();
 }
 

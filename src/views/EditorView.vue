@@ -93,7 +93,7 @@
 // `editor-tracks-rules` ("Rules"), already the grid heading/caption.
 // Selection is cleared on reorder (`onDrop`) so a post-reorder edit can
 // never land on a rule the user did not re-select.
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useFluent } from "fluent-vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Profile, TrackRule } from "../bindings/profile";
@@ -104,8 +104,9 @@ import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
 import SectionWidget from "../editor/widgets/SectionWidget.vue";
 import type { EditableFieldOf } from "../editor/widgets/shared";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
-import { loadProfile, saveProfile, validateProfileModel } from "../ipc";
+import { getSettings, loadProfile, saveProfile, validateProfileModel } from "../ipc";
 import type { Diagnostic, IpcError } from "../ipc";
+import { rememberRecentProfile } from "../recentProfiles";
 
 const model = defineModel<Profile>();
 
@@ -119,6 +120,22 @@ const opening = ref(false);
 const saving = ref(false);
 const ipcErrorCode = ref<string | null>(null);
 const ipcErrorParams = ref<Record<string, string>>({});
+
+// Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
+// (`src/recentProfiles.ts`), fed on every open below and rendered in the
+// pre-Open empty state (template). The read is tolerant, mirroring
+// BatchView's own onMounted tolerance (T9/T10): a failed fetch just leaves
+// the list empty, the editor stays fully usable.
+const recents = ref<string[]>([]);
+
+onMounted(async () => {
+  try {
+    recents.value = (await getSettings()).recent_profiles;
+  } catch {
+    // Tolerant, mirrors BatchView's onMounted: recents start empty, the
+    // editor stays usable.
+  }
+});
 
 const hasErrors = computed(() => diagnostics.value.some((d) => d.severity === "error"));
 
@@ -160,6 +177,37 @@ watch(model, async (value) => {
   }
 });
 
+// Task 13c: one funnel. Both the Open dialog and a recents-list click route
+// through `openPath` -- mirrors BatchView routing both its pick and its
+// recents-click through `selectProfile` (T10).
+async function openPath(path: string): Promise<void> {
+  if (opening.value || saving.value) {
+    return;
+  }
+  opening.value = true;
+  ipcErrorCode.value = null;
+  try {
+    const doc = await loadProfile(path);
+    currentPath.value = path;
+    diagnostics.value = doc.config_diagnostics;
+    model.value = doc.profile ?? undefined;
+    // Background bookkeeping only (mirrors BatchView's identical
+    // tolerance): `rememberRecentProfile` swallows and returns `null` on
+    // failure, so a recents-write failure never reaches this `catch` and
+    // never surfaces as an open error.
+    const persisted = await rememberRecentProfile(path);
+    if (persisted) {
+      recents.value = persisted.recent_profiles;
+    }
+  } catch (e) {
+    const err = e as IpcError;
+    ipcErrorCode.value = err.code;
+    ipcErrorParams.value = err.params;
+  } finally {
+    opening.value = false;
+  }
+}
+
 async function pickAndOpen(): Promise<void> {
   if (opening.value || saving.value) {
     return;
@@ -172,20 +220,7 @@ async function pickAndOpen(): Promise<void> {
   if (typeof picked !== "string") {
     return;
   }
-  opening.value = true;
-  ipcErrorCode.value = null;
-  try {
-    const doc = await loadProfile(picked);
-    currentPath.value = picked;
-    diagnostics.value = doc.config_diagnostics;
-    model.value = doc.profile ?? undefined;
-  } catch (e) {
-    const err = e as IpcError;
-    ipcErrorCode.value = err.code;
-    ipcErrorParams.value = err.params;
-  } finally {
-    opening.value = false;
-  }
+  await openPath(picked);
 }
 
 async function doSave(): Promise<void> {
@@ -368,6 +403,32 @@ function onDragEnd() {
     <p v-if="currentPath">
       {{ $t("batch-profile-current", { path: currentPath }) }}
     </p>
+
+    <section
+      v-if="!currentPath && recents.length"
+      aria-labelledby="editor-recents-heading"
+      data-testid="editor-recents"
+    >
+      <h4 id="editor-recents-heading">
+        {{ $t("batch-recents-heading") }}
+      </h4>
+      <ul>
+        <li
+          v-for="path in recents"
+          :key="path"
+        >
+          <button
+            type="button"
+            data-testid="editor-recent-profile"
+            :disabled="opening || saving"
+            @click="openPath(path)"
+          >
+            {{ path }}
+          </button>
+        </li>
+      </ul>
+    </section>
+
     <p
       v-if="ipcErrorCode"
       role="alert"
