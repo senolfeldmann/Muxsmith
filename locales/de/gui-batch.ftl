@@ -51,6 +51,8 @@ batch-suggestion-header = Vorschlag für { $config_path }:
 batch-suggestion-copy = Kopieren
 batch-suggestion-copy-tooltip = Dieses YAML-Fragment in die Zwischenablage kopieren.
 batch-suggestion-copied = In die Zwischenablage kopiert.
+batch-suggestion-apply = Anwenden
+batch-suggestion-apply-tooltip = Diese Korrektur auf das Profil anwenden und speichern.
 
 batch-run = Starten
 batch-run-tooltip = Diesen Stapel starten: jede aufgelöste Datei mit mkvmerge multiplexen.

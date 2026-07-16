@@ -6,10 +6,12 @@
  * as the shell sends it, and callers render it through their own Fluent
  * bundle (spec 8.4). T9 itself only calls `detectMkvmerge`/`getSettings`/
  * `setSettings`; the rest exist so T10 (`validateProfile`, `dryRun`) and
- * T11 (the run lifecycle, `listRuns`, `getJobLog`) do not each redefine
- * this layer.
+ * T11 (the run lifecycle, `listRuns`, `getJobLog`), and T13 (`loadProfile`,
+ * `saveProfile`, `validateProfileModel`; `applySuggestion` for T14) do not
+ * each redefine this layer.
  */
 import { invoke } from "@tauri-apps/api/core";
+import type { Profile, StructuredEdit } from "./bindings/profile";
 
 /** Mirrors `src-tauri/src/error.rs::IpcError`; the shape every rejected
  * command promise carries. */
@@ -250,6 +252,53 @@ export function getSettings(): Promise<AppSettings> {
 
 export function setSettings(settings: AppSettings): Promise<void> {
   return invoke<void>("set_settings", { settings });
+}
+
+// --- editor commands (D42, wired here by Task 13) -----------------------
+
+/**
+ * `load_profile`'s return shape (D42, as amended by Task 1): byte-identical
+ * `config_diagnostics` envelope to `validate_profile`/`validate_profile_model`
+ * (`report::json::config_only_document`, `src-tauri/src/lib.rs::
+ * load_profile_body`'s own doc), plus the parsed model -- `null` on a
+ * `ParseError`, never a second document shape. Still the untyped
+ * `serde_json::Value` document on the Rust side; this interface mirrors its
+ * known JSON shape exactly like `ReportDocument` above already does for
+ * `validate_profile`/`dry_run`, the same "hand-written, not ts-rs" split
+ * D42/D45 draw between the model (ts-rs) and command signatures (hand-built).
+ */
+export interface LoadProfileDocument extends ReportDocument {
+  profile: Profile | null;
+}
+
+export function loadProfile(path: string): Promise<LoadProfileDocument> {
+  return invoke<LoadProfileDocument>("load_profile", { path });
+}
+
+export function saveProfile(path: string, profile: Profile): Promise<void> {
+  return invoke<void>("save_profile", { path, profile });
+}
+
+export function validateProfileModel(profile: Profile): Promise<ReportDocument> {
+  return invoke<ReportDocument>("validate_profile_model", { profile });
+}
+
+/**
+ * `apply_suggestion`'s signature (D43): lands here for Task 14's use (the
+ * apply control lives in the batch view, not the editor -- D41's own
+ * pairing note). `StructuredEdit` is ts-rs-generated (`src/bindings/
+ * profile.ts`, D42/D45's "ts-rs types the model" set); `Suggestion.edit`
+ * above stays untyped (`unknown`) since D22 confines the GUI to
+ * show-and-copy on `yaml_fragment` and no code interprets a batch-supplied
+ * edit's shape today -- this function's own `edit` parameter is the one
+ * place `StructuredEdit` is actually consumed, once Task 14 wires it.
+ */
+export function applySuggestion(
+  profile: Profile,
+  configPath: string,
+  edit: StructuredEdit,
+): Promise<Profile> {
+  return invoke<Profile>("apply_suggestion", { profile, configPath, edit });
 }
 
 /**

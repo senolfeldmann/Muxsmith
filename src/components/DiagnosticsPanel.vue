@@ -14,6 +14,20 @@ import { diagnosticFluentParams } from "../diagnosticFluentParams";
 // there is nothing to say at this spot, and BatchView's own `role="status"`
 // summary line already covers the batch-wide zero-diagnostics case: a
 // second, repeated-per-instance empty message would be noise.
+//
+// Task 14 (D43, D49) added one-click apply: `SuggestionCard.vue` renders
+// the apply control and emits it, `BatchView.vue` (their common parent --
+// both are siblings there, not nested) handles the emit and owns the
+// round trip. This component is not in that chain and left untouched by
+// design: `core-109-two-required-no-fix`'s no-fix/partition diagnostic
+// (`suggestion-partition`) renders here exactly as any other diagnostic,
+// with no apply control, because no `Suggestion` exists for it to apply
+// -- not a gap this panel needs to close. Giving a `Diagnostic` an apply
+// affordance here (e.g. cross-rendering the `Suggestion` its
+// `suggestion_ref` names) would need a second, `Suggestion`-typed prop
+// threaded through every call site, reopening the "same shape, same
+// rendering, no per-caller variant" genericity this component is built
+// on for a feature the sibling/parent pair above already provides.
 defineProps<{ diagnostics: Diagnostic[] }>();
 </script>
 

@@ -1914,8 +1914,8 @@ pub fn apply_suggestion(
 }
 
 // The match key an edit targets: the named property for the two exact variants,
-// the fixed `track_name` key for the two substring ones (delta_for,
-// planner.rs:1824, :1829).
+// the fixed `track_name` key for the two substring ones (`delta_for`'s two
+// substring arms).
 fn edit_key(edit: &StructuredEdit) -> &str {
     match edit {
         StructuredEdit::AddExact { property, .. }

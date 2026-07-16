@@ -15,6 +15,12 @@
 //     template literal `` $t(`severity-${d.severity}`) ``) is dynamic and
 //     cannot be statically resolved, so it is skipped here, never
 //     flagged.
+//     D45: the same hard-failure scan also covers every literal
+//     `labelKey: "..."` in src/**/*.{vue,ts} (a registry's `FieldSpec`,
+//     e.g. src/editor/registries.ts) -- the editor components read the
+//     key off the spec and pass it to $t() at render time, so this is
+//     check 1's own coverage extended to that literal shape, not a
+//     second mechanism.
 //
 //  2. WARNING ONLY (always exit 0 on this half): gui-* catalog ids never
 //     referenced anywhere in src/. Many ids are reached only dynamically
@@ -167,6 +173,14 @@ const sourceFiles = readdirSync(SRC, { recursive: true })
 // settling on this pattern).
 const CALL_RE = /(?<![\w$])\$?t\(\s*(['"])([^'"]*)\1/g;
 
+// D45: a registry's `FieldSpec.labelKey` (src/editor/registries.ts) is a
+// message id exactly like a literal $t() call, just never passed through
+// $t() itself -- the editor components (Tasks 10-13) read it off the spec
+// and hand it to $t() at render time, so this scan is check 1's own
+// coverage extended to that one additional literal shape, same
+// line-based approach as CALL_RE (not a Fluent parser, not a TS parser).
+const LABEL_KEY_RE = /labelKey:\s*(['"])([^'"]*)\1/g;
+
 const missing = []; // { id, file, line }
 const literalCallIds = new Set();
 const literalAnywhereIds = new Set();
@@ -179,6 +193,13 @@ for (const file of sourceFiles) {
   const lines = text.split("\n");
   lines.forEach((line, i) => {
     for (const m of line.matchAll(CALL_RE)) {
+      const id = m[2];
+      literalCallIds.add(id);
+      if (!knownIds.has(id)) {
+        missing.push({ id, file: relative(ROOT, file), line: i + 1 });
+      }
+    }
+    for (const m of line.matchAll(LABEL_KEY_RE)) {
       const id = m[2];
       literalCallIds.add(id);
       if (!knownIds.has(id)) {

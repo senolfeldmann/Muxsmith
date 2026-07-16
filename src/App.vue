@@ -2,12 +2,13 @@
 import { onMounted, ref, useTemplateRef } from "vue";
 import BatchView from "./views/BatchView.vue";
 import JobsView from "./views/JobsView.vue";
+import EditorView from "./views/EditorView.vue";
 import FirstRun from "./views/FirstRun.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import { detectMkvmerge } from "./ipc";
 import type { IpcError, RunRequest } from "./ipc";
 
-type View = "batch" | "jobs";
+type View = "batch" | "jobs" | "editor";
 
 // Startup gate (D28, T9 brief): probe mkvmerge exactly once on mount. A
 // clean result unlocks the shell; a missing/too-old one mounts FirstRun
@@ -85,6 +86,20 @@ onMounted(checkMkvmerge);
       >
         {{ $t("nav-jobs") }}
       </button>
+      <!-- Task 13 (D45): no new nav-* Fluent key (D45's catalog table adds
+           none for this task) -- reuses `batch-profile-heading` ("Profile"),
+           BatchView's own heading for its profile-picking section, the same
+           cross-view key reuse `JobsView.vue`'s own `<h2>` already relies on
+           for `nav-jobs`. See `EditorView.vue`'s doc comment for the fuller
+           reuse rationale. -->
+      <button
+        type="button"
+        data-testid="nav-editor"
+        :aria-current="activeView === 'editor' ? 'page' : undefined"
+        @click="activeView = 'editor'"
+      >
+        {{ $t("batch-profile-heading") }}
+      </button>
       <button
         type="button"
         data-testid="open-settings"
@@ -95,13 +110,15 @@ onMounted(checkMkvmerge);
       </button>
     </nav>
     <main>
-      <!-- v-show, not v-if: both views stay mounted across tab switches, so
-           JobsView's live run listeners (registered in its onMounted, torn
-           down in onUnmounted) survive navigating away mid-run. The hidden
+      <!-- v-show, not v-if: all three views stay mounted across tab
+           switches, so JobsView's live run listeners (registered in its
+           onMounted, torn down in onUnmounted) survive navigating away
+           mid-run, and EditorView's open profile/diagnostics/currentPath
+           state (Task 13) survives a switch to Jobs and back. The hidden
            view is display:none -- out of the a11y tree, cannot trap focus.
            Only the first-run gate above (v-if/v-else-if) unmounts the
-           shell; eager-mounting both views at startup costs nothing at
-           this scale. -->
+           shell; eager-mounting all three views at startup costs nothing
+           at this scale. -->
       <BatchView
         v-show="activeView === 'batch'"
         :run-active="jobsRunActive"
@@ -113,6 +130,7 @@ onMounted(checkMkvmerge);
         :pending-run="pendingRun"
         @consumed="pendingRun = null"
       />
+      <EditorView v-show="activeView === 'editor'" />
     </main>
     <SettingsDialog ref="settingsDialog" />
   </template>

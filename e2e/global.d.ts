@@ -35,5 +35,16 @@ declare global {
      * `invoke()` call is forwarded here so tests can assert on real
      * invocation evidence instead of a UI echo. */
     __muxsmithRecordInvoke__?: (cmd: string, args: unknown) => void;
+    /** Set by `mount-entry.ts` (bundled by `vite.mount.config.ts`, wave-3
+     * amendment): mounts one editor component in isolation onto `#mount`,
+     * round-tripping its `modelValue`/`update:modelValue` v-model. See
+     * `mount.ts` for the Playwright-side driver. */
+    __muxsmithMount__: (spec: { component: string; props?: Record<string, unknown>; locale?: string }) => void;
+    /** Reads the mounted component's current model value (the live
+     * `modelValue` the harness's wrapper root holds). */
+    __muxsmithModel__: () => unknown;
+    /** Every `update:modelValue` event the mounted component has emitted,
+     * in order; reset on each `__muxsmithMount__` call. */
+    __muxsmithEmitted__: Array<{ event: string; payload: unknown }>;
   }
 }

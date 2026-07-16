@@ -20,6 +20,7 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
+import { mountComponent, readModel } from "./mount";
 import { en } from "./i18n-en";
 import type { FluentVariable } from "@fluent/bundle";
 import {
@@ -28,12 +29,26 @@ import {
 } from "../src/ipc";
 import type {
   AppSettings,
+  Diagnostic,
   JobEvent,
+  LoadProfileDocument,
   MkvmergeInfo,
   ReportDocument,
   RunFinishedEvent,
   StartedRun,
 } from "../src/ipc";
+import {
+  COLLISION_POLICIES,
+  inputFields,
+  locatorFields,
+  matchExprFields,
+  metaFields,
+  outputFields,
+  profileFields,
+  trackRuleFields,
+} from "../src/editor/registries";
+import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
+import type { Profile, StructuredEdit } from "../src/bindings/profile";
 
 /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
  * default role-name matching is a case-insensitive SUBSTRING match, which
@@ -321,6 +336,142 @@ test.describe("batch view: dry run", () => {
 
     await assertNoSeriousA11yViolations(page);
   });
+
+  // Task 14 (D43, D49, apply-wiring routing): one-click apply. Two
+  // DISTINCT fixture values on purpose: `PROFILE_PATH` is the picked
+  // profile FILE (what `load_profile`/`save_profile` take), and
+  // `SUGGESTION_CONFIG_PATH` is a config-field LOCATOR (`tracks[<N>].
+  // match`, parsed core-side by `rule_index_of`) -- what the suggestion
+  // carries and what `apply_suggestion` takes. Equal values would let a
+  // locator-as-path swap pass silently (exactly the bug an earlier draft
+  // of this task had, caught by controller review, not by this echo
+  // mock, because that draft's fixture set them equal); distinct values
+  // make a swap in either direction fail an assertion below. `APPLY_EDIT`
+  // is a real `StructuredEdit` (unlike the copy-only fixture above, whose
+  // `edit: null` was never read pre-Task-14 and stays that way -- it is
+  // not this test's concern) so the echo assertion is meaningful.
+  // `core-109-two-required-no-fix`'s no-fix/partition diagnostic
+  // (`suggestion-partition`) sits in the SAME report to pair the apply
+  // button's presence with its absence on the identical
+  // `getByRole("button", name("batch-suggestion-apply"))` selector, so a
+  // typo'd selector cannot make the negative pass vacuously (house
+  // paired-control template, falsifiability occurrence 5).
+  const SUGGESTION_CONFIG_PATH = "tracks[0].match";
+  const APPLY_EDIT: StructuredEdit = { kind: "add_exact", property: "codec_kind", value: "srt" };
+
+  const loadedProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+
+  const appliedProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [{ source: "primary", match: { exact: { codec_kind: "srt" } }, changes: {} }] },
+  };
+
+  const loadedForApply: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: loadedProfile,
+  };
+
+  const applyReport: ReportDocument = {
+    config_diagnostics: [
+      {
+        code: "suggestion-partition",
+        severity: "warning",
+        config_path: "tracks[1].match",
+        params: { kind: "overflow", dropped: "1" },
+        rendered: "suggestion-partition",
+      },
+    ],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [
+      {
+        resolves: "unknown-property",
+        config_path: SUGGESTION_CONFIG_PATH,
+        edit: APPLY_EDIT,
+        yaml_fragment: SUGGESTION_YAML,
+      },
+    ],
+    mkvmerge_found: true,
+  };
+
+  test("a suggestion card's apply button drives load_profile -> apply_suggestion -> save_profile, config_path/edit unmodified and never confused with the profile path; a no-fix diagnostic renders no apply button", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        validate_profile: [resolveWith(emptyReport)],
+        dry_run: [resolveWith(applyReport)],
+        load_profile: [resolveWith(loadedForApply)],
+        apply_suggestion: [resolveWith(appliedProfile)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    await page.goto("/");
+
+    const batch = page.getByTestId("view-batch");
+    await batch.getByRole("button", name("batch-profile-pick")).click();
+    await batch.getByRole("button", name("batch-dry-run")).click();
+
+    const suggestion = batch.getByRole("article");
+    const applyButton = suggestion.getByRole("button", name("batch-suggestion-apply"));
+    await expect(applyButton).toBeVisible();
+
+    // Paired negative: the no-fix/partition diagnostic (rendered by
+    // DiagnosticsPanel, unchanged by Task 14) carries no `Suggestion` and
+    // so gets no apply control, on the identical selector the positive
+    // assertion above just proved resolves.
+    const diagnosticsSection = batch.getByRole("region", name("batch-diagnostics-heading"));
+    await expect(diagnosticsSection).toContainText("further resolution group");
+    await expect(
+      diagnosticsSection.getByRole("button", name("batch-suggestion-apply")),
+    ).toHaveCount(0);
+
+    await assertNoSeriousA11yViolations(page);
+
+    await applyButton.click();
+    // The round trip (load, apply, save) completed once `applying` drops
+    // aria-busy -- a robust wait for three chained mocked IPC calls
+    // instead of racing the recorded-call assertions below against them.
+    await expect(applyButton).not.toHaveAttribute("aria-busy", "true");
+
+    const loadCalls = recorded.filter((r) => r.cmd === "load_profile");
+    expect(loadCalls).toHaveLength(1);
+    expect((loadCalls[0].args as { path: string }).path).toBe(PROFILE_PATH);
+
+    const applyCalls = recorded.filter((r) => r.cmd === "apply_suggestion");
+    expect(applyCalls).toHaveLength(1);
+    const applyArgs = applyCalls[0].args as {
+      profile: Profile;
+      configPath: string;
+      edit: StructuredEdit;
+    };
+    // The locator, not the file path -- the assertion this task's earlier
+    // draft got backwards.
+    expect(applyArgs.configPath).toBe(SUGGESTION_CONFIG_PATH);
+    expect(applyArgs.configPath).not.toBe(PROFILE_PATH);
+    expect(applyArgs.edit).toEqual(APPLY_EDIT);
+    expect(applyArgs.profile).toEqual(loadedProfile);
+
+    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+    expect(saveCalls).toHaveLength(1);
+    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+    // The file path, not the locator.
+    expect(saveArgs.path).toBe(PROFILE_PATH);
+    expect(saveArgs.path).not.toBe(SUGGESTION_CONFIG_PATH);
+    expect(saveArgs.profile).toEqual(appliedProfile);
+  });
 });
 
 test.describe("jobs view: live run", () => {
@@ -570,5 +721,760 @@ test.describe("german locale", () => {
     await expect(reloadedDialog.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
     const reloadedLocaleSelect = reloadedDialog.getByRole("combobox", { name: "Sprache", exact: true });
     await expect(reloadedLocaleSelect).toHaveValue("de");
+  });
+});
+
+// Task 10 (D45, wave-3 mount-harness amendment): per-widget rendering
+// assertions for the ten FieldWidget variants, mounted in isolation via
+// `mount.ts` -- `page.goto("/")` reaches no widget (no editor mount point
+// exists in the running app before Task 13). Every `spec` fixture below is
+// a REAL entry pulled from Task 9's registries (`src/editor/registries.ts`),
+// not a hand-rolled FieldSpec literal, so a test failure here can never be
+// "the fixture drifted from the real registry shape". Accessible names come
+// from `en(id)` over the real labelKey exactly as the rest of this file
+// does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
+// values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
+// D45's own rule that widget option tokens render as profile-format
+// tokens, not via new Fluent keys. `list`/`propertyMap`'s generic
+// add/remove-row buttons use the two dedicated `editor-action-add`/
+// `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
+// NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
+// the AttachmentRule fields they are the registry labels for. Catalog
+// budget is 45 (42 labels + 1 save-surface note + 2 generic action keys).
+test.describe("editor widgets: mount-harness rendering", () => {
+  test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
+    await mountComponent(page, {
+      component: "FieldWidgetDispatcher",
+      props: { spec: inputFields.recursive, modelValue: true },
+    });
+    const field = page.getByRole("checkbox", name("editor-input-recursive"));
+    await expect(field).toBeChecked();
+    await field.uncheck();
+    await expect.poll(() => readModel(page)).toBe(false);
+  });
+
+  test("text widget (single-line) renders a textbox and edits update the held model", async ({ page }) => {
+    await mountComponent(page, {
+      component: "TextWidget",
+      props: { spec: inputFields.pattern, modelValue: "^S[0-9]+E[0-9]+" },
+    });
+    const field = page.getByRole("textbox", name("editor-input-pattern"));
+    await expect(field).toHaveValue("^S[0-9]+E[0-9]+");
+    await field.fill(".*");
+    await expect.poll(() => readModel(page)).toBe(".*");
+  });
+
+  test("text widget (multiline) renders a textbox for a multiline field", async ({ page }) => {
+    await mountComponent(page, {
+      component: "TextWidget",
+      props: { spec: metaFields.description, modelValue: "note" },
+    });
+    const field = page.getByRole("textbox", name("editor-meta-description"));
+    await expect(field).toHaveValue("note");
+    // The "textbox" role alone doesn't discriminate: a single-line
+    // `<input type="text">` carries the same role as a `<textarea>`, so
+    // this test would pass unchanged even if `multiline: true` rendered
+    // the single-line branch. Pin the actual element too.
+    expect(await field.evaluate((el) => el.tagName)).toBe("TEXTAREA");
+    await field.fill("longer note");
+    await expect.poll(() => readModel(page)).toBe("longer note");
+  });
+
+  test("bool widget renders a checkbox and toggling updates the held model", async ({ page }) => {
+    await mountComponent(page, {
+      component: "BoolWidget",
+      props: { spec: inputFields.recursive, modelValue: false },
+    });
+    const field = page.getByRole("checkbox", name("editor-input-recursive"));
+    await expect(field).not.toBeChecked();
+    await field.check();
+    await expect.poll(() => readModel(page)).toBe(true);
+  });
+
+  test("optionalFlag widget's off state is absence, not false (validate.rs rejects Some(false))", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "OptionalFlagWidget",
+      props: { spec: locatorFields.match_to_source, modelValue: undefined },
+    });
+    const field = page.getByRole("checkbox", name("editor-locator-match-to-source"));
+    await expect(field).not.toBeChecked();
+    await field.check();
+    await expect.poll(() => readModel(page)).toBe(true);
+    await field.uncheck();
+    await expect.poll(() => readModel(page)).toBeUndefined();
+  });
+
+  test("select widget renders a combobox of its raw (untranslated) domain tokens", async ({ page }) => {
+    await mountComponent(page, {
+      component: "SelectWidget",
+      props: { spec: outputFields.on_collision, modelValue: "error" },
+    });
+    const field = page.getByRole("combobox", name("editor-output-on-collision"));
+    await expect(field).toHaveValue("error");
+    for (const token of COLLISION_POLICIES) {
+      await expect(field.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+    await field.selectOption("overwrite");
+    await expect.poll(() => readModel(page)).toBe("overwrite");
+  });
+
+  test("keywordOrBlock widget offers its keyword tokens in a combobox plus a nested block section", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "KeywordOrBlockWidget",
+      props: { spec: profileFields.chapters, modelValue: "keep" },
+    });
+    const field = page.getByRole("combobox", name("editor-profile-chapters"));
+    for (const token of CHAPTERS_KEYWORDS) {
+      await expect(field.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+    await field.selectOption("drop");
+    await expect.poll(() => readModel(page)).toBe("drop");
+
+    // The nested block section (ExternalBlock, per profileFields.chapters'
+    // `block: "externalBlock"`) is always present too -- AttachmentRule's
+    // one-of precedent: no mode toggle, core diagnoses an over-set model.
+    const blockGroup = page.getByRole("group", name("editor-external-block-external"));
+    await expect(blockGroup).toBeVisible();
+  });
+
+  test("directoryPath widget renders a plain path textbox (text-entry only; directory picker out of scope for Plan 6, D45 widgets are prop-fed/zero-IPC)", async ({ page }) => {
+    await mountComponent(page, {
+      component: "DirectoryPathWidget",
+      props: { spec: outputFields.directory, modelValue: "/out" },
+    });
+    const field = page.getByRole("textbox", name("editor-output-directory"));
+    await expect(field).toHaveValue("/out");
+    await field.fill("/other");
+    await expect.poll(() => readModel(page)).toBe("/other");
+  });
+
+  test("stringList widget round-trips a comma-separated list of strings", async ({ page }) => {
+    await mountComponent(page, {
+      component: "StringListWidget",
+      props: { spec: inputFields.extensions, modelValue: ["mkv", "mp4"] },
+    });
+    const field = page.getByRole("textbox", name("editor-input-extensions"));
+    await expect(field).toHaveValue("mkv, mp4");
+    await field.fill("mkv, mp4, avi");
+    await expect.poll(() => readModel(page)).toEqual(["mkv", "mp4", "avi"]);
+  });
+
+  test("propertyMap widget: add/remove rows edit a key-value map", async ({ page }) => {
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: trackRuleFields.changes, modelValue: { forced: "true" } },
+    });
+    await expect(page.getByTestId("property-map-key").first()).toHaveValue("forced");
+    await expect(page.getByTestId("property-map-value").first()).toHaveValue("true");
+
+    await page.getByRole("button", name("editor-action-add")).click();
+    await expect(page.getByTestId("property-map-key")).toHaveCount(2);
+    await page.getByTestId("property-map-key").nth(1).fill("default");
+    await page.getByTestId("property-map-value").nth(1).fill("true");
+    await expect.poll(() => readModel(page)).toEqual({ forced: "true", default: "true" });
+
+    await page.getByRole("button", name("editor-action-remove")).first().click();
+    await expect.poll(() => readModel(page)).toEqual({ default: "true" });
+  });
+
+  test("list widget: add/remove nested items (matchExpr.any, item: matchExpr)", async ({ page }) => {
+    await mountComponent(page, {
+      component: "ListWidget",
+      props: { spec: matchExprFields.any, modelValue: [] },
+    });
+    await expect.poll(() => readModel(page)).toEqual([]);
+
+    await page.getByRole("button", name("editor-action-add")).click();
+    await expect.poll(() => readModel(page)).toEqual([{}]);
+    // Each item renders its own nested MatchExpr fields via SectionWidget.
+    await expect(page.getByRole("group", name("editor-match-expr-exact"))).toBeVisible();
+
+    await page.getByRole("button", name("editor-action-remove")).first().click();
+    await expect.poll(() => readModel(page)).toEqual([]);
+  });
+
+  test("section widget renders a fieldset/legend group of its sub-fields, created implicitly on first edit", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "SectionWidget",
+      props: { spec: profileFields.input, modelValue: undefined },
+    });
+    const group = page.getByRole("group", name("editor-profile-input"));
+    await expect(group).toBeVisible();
+    const pattern = group.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("^S");
+    await expect.poll(() => readModel(page)).toMatchObject({ pattern: "^S" });
+  });
+});
+
+// Task 11 (D45, wave-3 mount-harness amendment): the profile editor's
+// top-level rule grid (spec 8.2's "track-rule grid ... drag to reorder"),
+// mounted in isolation via `mount.ts` exactly like Task 10's widgets --
+// `EditorView` has no nav entry to reach via `page.goto("/")` until Task 13
+// wires it into App.vue. `EditorView` takes a `Profile` as its `modelValue`
+// and emits `update:modelValue` on reorder (the natural pre-IPC v-model
+// shape); that is the only behaviour under test here -- no sections, no
+// widget dispatch, no save (Tasks 12-13). The fixture's two rules differ by
+// `match.exact.type`, a REAL matchable property (`capability/mod.rs`'s
+// `TYPE_VALUES = ["audio", "buttons", "subtitles", "video"]`), not a
+// hand-rolled marker.
+test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
+  const twoRuleProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: {
+      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
+    },
+  };
+
+  test("renders tracks.rules in order; a drag-reorder swaps the rows and updates the held model", async ({
+    page,
+  }) => {
+    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
+
+    const rows = page.getByTestId("editor-rule-row");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("video");
+    await expect(rows.nth(1)).toContainText("audio");
+
+    // Reorder is a semantic model edit, not a DOM mutation (binding note):
+    // `EditorView`'s drag handlers never read `dataTransfer`, only a
+    // closure index (mirroring `ListWidget.vue`'s identical mechanics), so
+    // dispatching bare `dragstart`/`drop` suffices -- following Playwright's
+    // documented programmatic-DnD pattern (a shared DataTransfer JSHandle
+    // across both events) regardless, since it is the correct cross-browser
+    // way to fire these two event types synthetically.
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    await rows.nth(0).dispatchEvent("dragstart", { dataTransfer });
+    await rows.nth(1).dispatchEvent("drop", { dataTransfer });
+
+    await expect(rows.nth(0)).toContainText("audio");
+    await expect(rows.nth(1)).toContainText("video");
+
+    await expect
+      .poll(async () => {
+        const model = (await readModel(page)) as Profile;
+        return model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type);
+      })
+      .toEqual(["audio", "video"]);
+  });
+});
+
+// Task 12 (D45, amended 2026-07-16, owner-rulings routing): EditorView's
+// section composition (driven by the 13 registries, not hand-listed
+// fields -- adding a field to the model + registry surfaces it here with
+// no view edit) plus the two typed-value-cell anti-vacuity cases Ruling 2
+// requires (`gui-typed-scalar-needs-typed-input`): a settable Boolean
+// round-trips a real `true`, and a matchable Boolean/Float likewise. The
+// generic add/remove action captions ("Add"/"Remove", Ruling 1) are
+// asserted by the repointed Task-10 propertyMap/list specs above, not
+// re-asserted here.
+test.describe("editor view: section composition and typed value cells (Task 12, D45)", () => {
+  test("EditorView composes every profile section from the registries, dispatching each field to its widget", async ({
+    page,
+  }) => {
+    const profile: Profile = {
+      profile_version: 1,
+      meta: { name: "demo", description: "a note" },
+      input: { pattern: "^S", extensions: ["mkv"], recursive: true },
+      output: { directory: "/out", filename: "keep", on_collision: "error" },
+      tracks: { unmatched: "drop", rules: [] },
+      attachments: { unmatched: "keep", rules: [] },
+      chapters: "keep",
+      tags: { global: "keep", track: "keep" },
+      title: "keep",
+    };
+    await mountComponent(page, { component: "EditorView", props: { modelValue: profile } });
+
+    // Every top-level `section`-kind field renders as a labeled group,
+    // dispatched generically off `profileFields` -- `tracks` is the one
+    // hand-built exception (Task 11's own rule grid), asserted below.
+    for (const id of [
+      "editor-profile-meta",
+      "editor-profile-input",
+      "editor-profile-output",
+      "editor-profile-tracks",
+      "editor-profile-attachments",
+      "editor-profile-tags",
+    ]) {
+      await expect(page.getByRole("group", name(id))).toBeVisible();
+    }
+
+    // select -> combobox of its raw (untranslated) domain tokens (D45).
+    const collision = page.getByRole("combobox", name("editor-output-on-collision"));
+    await expect(collision).toHaveValue("error");
+    for (const token of COLLISION_POLICIES) {
+      await expect(collision.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+
+    // keywordOrBlock -> combobox of its keyword tokens (D45).
+    const chaptersCombo = page.getByRole("combobox", name("editor-profile-chapters"));
+    await expect(chaptersCombo).toHaveValue("keep");
+    for (const token of CHAPTERS_KEYWORDS) {
+      await expect(chaptersCombo.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+
+    // optionalFlag -> checkbox, reached through `chapters`' always-present
+    // nested ExternalBlock -> Locator (KeywordOrBlockWidget's own
+    // precedent) -- not a hand-listed lookup, just the registry recursing.
+    const matchToSource = page.getByRole("checkbox", name("editor-locator-match-to-source"));
+    await expect(matchToSource).not.toBeChecked();
+
+    // `tracks`: `unmatched` dispatches generically through the registry;
+    // `rules` keeps Task 11's own bespoke drag-reorder grid unchanged.
+    // Scoped to the "Tracks" group: `editor-tracks-unmatched` and
+    // `editor-attachments-unmatched` share the same en/de rendered text
+    // ("Unmatched"), a pre-existing catalog coincidence unrelated to this
+    // task, so an unscoped role+name lookup is ambiguous.
+    const tracksGroup = page.getByRole("group", name("editor-profile-tracks"));
+    const tracksUnmatched = tracksGroup.getByRole("combobox", name("editor-tracks-unmatched"));
+    await expect(tracksUnmatched).toHaveValue("drop");
+    await expect(tracksGroup.getByRole("heading", name("editor-tracks-rules"))).toBeVisible();
+  });
+
+  test("propertyMap typed value cells: the settable Boolean/String anti-vacuity round trip (Ruling 2)", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: trackRuleFields.changes, modelValue: { forced_track: false } },
+    });
+    const checkbox = page.getByRole("checkbox");
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    const afterCheck = (await readModel(page)) as Record<string, unknown>;
+    expect(afterCheck).toEqual({ forced_track: true });
+    expect(afterCheck.forced_track).toBe(true); // a real boolean, not the string "true"
+
+    await page.getByRole("button", name("editor-action-add")).click();
+    await page.getByTestId("property-map-key").nth(1).fill("language");
+    await page.getByTestId("property-map-value").nth(1).fill("eng");
+    await expect.poll(() => readModel(page)).toEqual({ forced_track: true, language: "eng" });
+  });
+
+  test("propertyMap typed value cells: the matchable Boolean/Float/Integer anti-vacuity round trip (Ruling 2)", async ({
+    page,
+  }) => {
+    // Boolean: matchable_type("forced_track") == Boolean.
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: matchExprFields.exact, modelValue: { forced_track: false } },
+    });
+    const checkbox = page.getByRole("checkbox");
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    const boolModel = (await readModel(page)) as Record<string, unknown>;
+    expect(boolModel).toEqual({ forced_track: true });
+    expect(boolModel.forced_track).toBe(true);
+
+    // Float: matchable_type("min_luminance") == Float, the one new input
+    // variant (step="any").
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: matchExprFields.exact, modelValue: { min_luminance: 1 } },
+    });
+    const floatCell = page.getByRole("spinbutton");
+    await expect(floatCell).toHaveAttribute("step", "any");
+    await floatCell.fill("1.5");
+    const floatModel = (await readModel(page)) as Record<string, unknown>;
+    expect(floatModel).toEqual({ min_luminance: 1.5 });
+    expect(floatModel.min_luminance).toBe(1.5);
+    expect(typeof floatModel.min_luminance).toBe("number");
+
+    // Integer: audio_channels rides the same <input type="number"> branch
+    // minus step="any" (the exhaustive switch's remaining arm; not a
+    // separately required fixture per the brief, added because it is cheap).
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: matchExprFields.exact, modelValue: { audio_channels: 2 } },
+    });
+    const intCell = page.getByRole("spinbutton");
+    await expect(intCell).not.toHaveAttribute("step", "any");
+    await intCell.fill("6");
+    const intModel = (await readModel(page)) as Record<string, unknown>;
+    expect(intModel).toEqual({ audio_channels: 6 });
+    expect(typeof intModel.audio_channels).toBe("number");
+  });
+});
+
+// Task 13 (D45, D41, D42): open/save wiring, the save-surface standing
+// note, the nav entry, and validate-on-edit -- through the real, served
+// app (`page.goto("/")`), unlike Tasks 10-12's mount-harness specs above:
+// the editor is reachable from the nav for the first time. `load_profile`'s
+// mocked response is `LoadProfileDocument`-shaped (`ReportDocument` plus
+// `profile`); `validate_profile_model`'s scripted queue covers both the
+// auto-revalidate right after Open (spec 7: "every profile edit" covers
+// the load itself, `EditorView.vue`'s own watcher fires on the model
+// assignment `pickAndOpen` makes) and the deliberate edits below --
+// `mocks.ts`'s own queue semantics repeat the last entry once exhausted,
+// so a single trailing "clean" entry covers every subsequent clean
+// re-validation without an exact call count.
+test.describe("editor view: open/save (Task 13, D45/D41)", () => {
+  const PROFILE_PATH = "/profiles/editor-demo.yaml";
+
+  // Two rules, not empty (wave item 1, whole-branch agenda-a): the served
+  // app never rendered the populated grid + row selection + detail panel
+  // before this fixture, the same gap the T13b mount-harness fixture below
+  // does not close -- a mount-only render is not a served-app render.
+  const editorProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: {
+      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
+    },
+  };
+
+  const loadedDoc: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: editorProfile,
+  };
+
+  const errorDiagnostic: Diagnostic = {
+    code: "unsupported-source",
+    severity: "error",
+    config_path: "tracks[0].match",
+    params: { kind: "primary" },
+    rendered: "unsupported-source",
+  };
+
+  const errorDoc: ReportDocument = {
+    config_diagnostics: [errorDiagnostic],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  const cleanDoc: ReportDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  test("the nav opens the editor; opening a profile shows the save note; Save is disabled while an error diagnostic exists and enabled when clean; saving calls save_profile", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        load_profile: [resolveWith(loadedDoc)],
+        validate_profile_model: [resolveWith(cleanDoc), resolveWith(errorDoc), resolveWith(cleanDoc)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    await page.goto("/");
+
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
+    await expect(editor.getByText(en("editor-save-note"))).toBeVisible();
+
+    const saveButton = editor.getByRole("button", name("settings-save"));
+    // The auto-revalidate right after Open resolved clean (first queued
+    // response) -- Save starts enabled.
+    await expect(saveButton).toBeEnabled();
+
+    // Wave item 1 (whole-branch agenda-a, `fixture-reachable-states-need-
+    // one-served-render`): selecting a row and opening the detail panel is
+    // a pure UI selection, not a model edit (`selectRule` only writes
+    // `selectedIndex`), so it consumes none of the scripted
+    // `validate_profile_model` queue above -- the error/clean sequence
+    // below is unaffected. This is the same fixture/selection/panel the
+    // T13b mount-harness proves further down, now exercised through the
+    // real served app and scanned for a11y with the grid, the selection
+    // button, and the panel all rendered at once -- states the mount
+    // harness alone never puts in front of an actual browser page.
+    await editor.getByTestId("editor-rule-select").first().click();
+    const rulePanel = editor.getByTestId("editor-rule-detail");
+    await expect(rulePanel).toBeVisible();
+    await expect(rulePanel.getByRole("combobox", name("editor-track-rule-source"))).toBeVisible();
+    await expect(rulePanel.getByRole("checkbox", name("editor-track-rule-optional"))).toBeVisible();
+    await expect(rulePanel.getByRole("group", name("editor-track-rule-changes"))).toBeVisible();
+    await expect(
+      rulePanel.getByRole("group", name("editor-track-rule-match-expr")),
+    ).toBeVisible();
+    await assertNoSeriousA11yViolations(page);
+
+    // An edit triggers the second queued (error) validate_profile_model
+    // response.
+    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
+    await patternField.fill("^S[0-9]+E[0-9]+");
+    await expect(saveButton).toBeDisabled();
+    await expect(
+      editor.getByText(
+        en("batch-diagnostic-line", {
+          severity: en("severity-error"),
+          message: en("unsupported-source", { kind: "primary" }),
+        }),
+      ),
+    ).toBeVisible();
+
+    await assertNoSeriousA11yViolations(page);
+
+    // A further edit triggers the third queued (clean) response, clearing
+    // the error.
+    await patternField.fill(".*");
+    await expect(saveButton).toBeEnabled();
+
+    await saveButton.click();
+    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+    expect(saveCalls).toHaveLength(1);
+    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+    expect(saveArgs.path).toBe(PROFILE_PATH);
+    expect(saveArgs.profile.input.pattern).toBe(".*");
+  });
+
+  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if)", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        load_profile: [resolveWith(loadedDoc)],
+        validate_profile_model: [resolveWith(cleanDoc)],
+      },
+    });
+
+    await page.goto("/");
+
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
+
+    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
+    await patternField.fill("kept-through-switch");
+    await expect(patternField).toHaveValue("kept-through-switch");
+
+    await page.getByTestId("nav-jobs").click();
+    await expect(page.getByTestId("view-jobs")).toBeVisible();
+    await expect(editor).toBeHidden();
+
+    await page.getByTestId("nav-editor").click();
+    await expect(editor).toBeVisible();
+    // Still mounted, not recreated: the field value and the open path
+    // survived the round trip through Jobs.
+    await expect(patternField).toHaveValue("kept-through-switch");
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
+  });
+});
+
+// Task 13b (D45, spec 8.2, amended 2026-07-16, detail-editor routing): the
+// per-rule detail panel beneath Task 11's read-only summary grid, closing
+// the confirmed plan-coverage gap (`registry-slot-capability-delta`,
+// `docs/decision-ledger.yaml`) between spec 8.2's "detail editor per rule"
+// promise and the read-only grid Task 11 built for it. Selection is a
+// native `<button data-testid="editor-rule-select">` with `:aria-current`
+// (the `RunHistory.vue:168-173` house precedent, not a hand-rolled
+// interactive `<tr>`); the panel renders the selected rule through
+// `SectionWidget` over the `trackRule` registry -- byte-for-byte the
+// machinery `ListWidget` already uses for AttachmentRule items
+// (`attachments.rules`), so track-rule editing becomes the same code path,
+// adding zero new catalog keys and zero new components. Mounted through
+// the Task-10 harness (`mount.ts`), not the served app, per Tasks 11-13's
+// own precedent above.
+test.describe("editor view: rule detail editor (Task 13b, D45 / spec 8.2)", () => {
+  const twoRuleProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: {
+      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
+    },
+  };
+
+  test("no selection renders no panel; selecting a row opens it with the four trackRule fields; editing optional writes a real boolean and the grid summary follows (anti-vacuity)", async ({
+    page,
+  }) => {
+    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
+
+    // 1. No selection, no panel. Made non-vacuous by assertion 2 below,
+    // which asserts the panel DOES appear on selection: the RED run
+    // exercises that presence branch, so this pair cannot both pass for a
+    // never-renders reason.
+    await expect(page.getByTestId("editor-rule-detail")).toHaveCount(0);
+
+    // 2. Select opens the panel with the four trackRule fields, dispatched
+    // through the real registry -- never a hand-typed literal.
+    await page.getByTestId("editor-rule-select").first().click();
+    const panel = page.getByTestId("editor-rule-detail");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("combobox", name("editor-track-rule-source"))).toBeVisible();
+    await expect(panel.getByRole("checkbox", name("editor-track-rule-optional"))).toBeVisible();
+    await expect(panel.getByRole("group", name("editor-track-rule-changes"))).toBeVisible();
+    await expect(panel.getByRole("group", name("editor-track-rule-match-expr"))).toBeVisible();
+
+    // 3. Edit `optional` (row 0 starts unset -- a real state change, not a
+    // vacuous re-assert): the model AND the grid's own summary checkbox
+    // both update from the same write, proving the panel and the grid
+    // share the one model (`setRuleValue`'s immutable rebuild feeding
+    // back into the same `rules` the grid renders).
+    const optionalCheckbox = panel.getByRole("checkbox", name("editor-track-rule-optional"));
+    await expect(optionalCheckbox).not.toBeChecked();
+    await optionalCheckbox.check();
+    const model = (await readModel(page)) as Profile;
+    expect(model.tracks.rules[0].optional).toBe(true); // a real boolean, not the string "true"
+    await expect(page.getByTestId("editor-rule-row").first().getByRole("checkbox")).toBeChecked();
+  });
+});
+
+// Task 13c (spec 8.2, amended 2026-07-16, recents routing): closes
+// whole-branch Finding 1 -- the editor as-built had only a pick button and
+// never fed or rendered the shared `AppSettings.recent_profiles` MRU
+// memory BatchView maintains. The fix extracts BatchView's
+// `rememberRecentProfile` round trip into `src/recentProfiles.ts` (a
+// behavior-identical refactor there) and routes the editor's pick button
+// and its new recents list through one `openPath` funnel, remembering the
+// opened profile the same never-clobber way. Served-app tests (nav to the
+// editor), not the mount harness, matching Task 13's own precedent above.
+// Two distinct fixture paths (`echo-mock-distinct-fixture-values`) so an
+// identity assertion cannot pass on a shared value: RECENT_PATH is
+// pre-seeded in the mocked `recent_profiles`, OPENED_PATH is what the
+// dialog returns.
+test.describe("editor view: recent profiles (Task 13c, spec 8.2 / recents routing)", () => {
+  const RECENT_PATH = "/profiles/seeded-recent.yaml";
+  const OPENED_PATH = "/profiles/freshly-opened.yaml";
+
+  const editorProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+
+  const loadedDoc: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: editorProfile,
+  };
+
+  function settingsWith(recentProfiles: string[]): AppSettings {
+    return {
+      mkvmerge_path: null,
+      default_jobs: 1,
+      locale: "en",
+      recent_profiles: recentProfiles,
+      dir_memory: {},
+    };
+  }
+
+  test("the pre-Open surface renders a seeded recent profile", async ({ page }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+
+    const recentButtons = editor.getByTestId("editor-recent-profile");
+    await expect(recentButtons).toHaveCount(1);
+    await expect(recentButtons.first()).toContainText(RECENT_PATH);
+  });
+
+  // Paired absence control (same selector, non-vacuous per assertion 1
+  // above): an empty memory renders no recent-profile buttons at all, so
+  // the "renders a seeded recent profile" test above cannot pass for a
+  // reason unrelated to the seeded fixture (e.g. a hard-coded literal).
+  test("the paired absence control: an empty recents memory renders no recent-profile buttons", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([]))],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+    await expect(editor.getByTestId("editor-recent-profile")).toHaveCount(0);
+  });
+
+  test("clicking a recent opens through the same load_profile funnel as pick", async ({ page }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
+        load_profile: [resolveWith(loadedDoc)],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await editor.getByTestId("editor-recent-profile").first().click();
+
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: RECENT_PATH })),
+    ).toBeVisible();
+
+    const loadCalls = recorded.filter((r) => r.cmd === "load_profile");
+    expect(loadCalls).toHaveLength(1);
+    expect((loadCalls[0].args as { path: string }).path).toBe(RECENT_PATH);
+  });
+
+  test("opening a profile writes it to the front of the shared recents memory (echo, distinct values)", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
+        "plugin:dialog|open": [resolveWith(OPENED_PATH)],
+        load_profile: [resolveWith(loadedDoc)],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    // Wait for the open to settle: `opening.value` only flips back to
+    // false in `openPath`'s `finally`, which runs after the awaited
+    // `rememberRecentProfile` round trip -- so the Open button re-enabling
+    // is the real "the recents write already happened" signal, unlike the
+    // `batch-profile-current` text (set earlier in the same try block).
+    await expect(editor.getByTestId("editor-open")).toBeEnabled();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: OPENED_PATH })),
+    ).toBeVisible();
+
+    const writes = recorded.filter((r) => r.cmd === "set_settings");
+    expect(writes).toHaveLength(1);
+    const written = (writes[0].args as { settings: AppSettings }).settings;
+    expect(written.recent_profiles[0]).toBe(OPENED_PATH);
+    expect(written.recent_profiles).toContain(RECENT_PATH);
   });
 });

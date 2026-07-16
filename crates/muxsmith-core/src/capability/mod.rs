@@ -47,6 +47,15 @@ pub fn matchable_type(name: &str) -> Option<PropType> {
         .map(|(_, t)| *t)
 }
 
+/// The build-time generated matchable-property table (`(name, type)` pairs,
+/// declaration order), exposed read-only so callers outside this crate (the
+/// `ts` feature's binding emitter) can enumerate it without `generated`
+/// itself becoming `pub`. Does not include the `codec_kind` virtual; see
+/// [`matchable_type`].
+pub fn matchable_properties() -> &'static [(&'static str, PropType)] {
+    generated::MATCHABLE_PROPERTIES
+}
+
 /// The closed set of `type` values mkvmerge reports for a track. Curated
 /// rather than generated: the upstream identification schema (v20) types
 /// `type` as a plain string with no enum, and mkvmerge's track types are
