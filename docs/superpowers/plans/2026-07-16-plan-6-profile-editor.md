@@ -30,6 +30,10 @@
 
 The design document is 2005 lines of settled, measured decisions, and it is what every reviewer grades against; D49 is its settled apply-seam amendment. Where either already states the implementation exactly - the 17-field table, the 43-field widget table, the predicates, the emitter, the `extend` shape, D49's applier and its seven guard tests - **this plan cites it by section and line range rather than copying it**. That is deliberate: a second copy of a normative block is a drift surface, and refusing to create one is this design's own most-repeated argument (D45's keyword arrays, D48's `extend` derivation, `capability::CODEC_KIND_NAMES`). Every task below names the exact lines its implementer must read. Everything the design and D49 do *not* already carry - task-authored test code, commands, file paths, task boundaries - is written out in full here.
 
+## Amendment 2026-07-16: test-mount harness for wave 3
+
+Tasks 10-12 mandate failing-first e2e assertions of the shape "opening the editor renders ...", but no editor mount point exists in the running app before Task 13: `src/main.ts` mounts only `App.vue` (view union `"batch" | "jobs"`), `EditorView.vue` is nav-wired only in Task 13, and Playwright's `webServer` serves the single-entry `dist/`, so those step-1 assertions are unexecutable as written (traced in `.superpowers/sdd/plan-6/task-10-report.md`). The controller ruled **Option A** (2026-07-16): Tasks 10-12 get real DOM red/green loops through a minimal test-mount harness that extends the established `e2e/vite.harness.config.ts` pattern - test-only, gitignored output under `e2e/.generated/`, never in `dist/`, never shipped - and Option B (compile-only proofs until Task 13) is rejected. The mechanism: a second Vite lib build (`e2e/vite.mount.config.ts`, Vue plugin) bundles `e2e/mount-entry.ts` - which builds a component registry via `import.meta.glob` over `src/editor/widgets/*.vue` and `src/views/EditorView.vue` and wires Fluent through the app's own `buildBundles` (real `gui-editor.ftl`, not a stub) - into `e2e/.generated/mount-harness.js`, injected via `page.setContent` + `page.addScriptTag` and driven by `window.__muxsmithMount__` from the `e2e/mount.ts` helper. Tasks 10-12 mount the widget/dispatcher/view under test with its model as a prop and assert on the rendered DOM, while Task 13's steps continue to run against the real nav-reachable app. The harness is set up once in Task 10 (its Step 1) and reused verbatim by Tasks 11-12.
+
 ---
 
 ## Wave 1
@@ -1098,6 +1102,8 @@ git -c commit.gpgsign=false commit -m "gui: the field registry, its catalogs, an
 
 **Files:**
 - Create: `src/editor/widgets/` - one component per `FieldWidget` variant (10)
+- Create (test-mount harness, one-time - Step 1, see the amendment subsection): `e2e/mount-entry.ts`, `e2e/vite.mount.config.ts`, `e2e/mount.ts`
+- Modify (test-mount harness, one-time - Step 1): `e2e/global.d.ts`, `e2e/tsconfig.json`, `package.json`
 - Test: `e2e/smoke.spec.ts` (extend)
 
 **Interfaces:**
@@ -1109,34 +1115,122 @@ Binding points:
 - **Sum types get an explicit `never` arm**: `const _exhaustive: never = x`. Both shapes fire, but only TS2322 **names** the unhandled variant, which is the same property that justifies the registry over the type. This is a deliberate, minimal improvement on the existing house shape (`src/jobRowState.ts:44-55`); `jobRowState.ts` is **not** required to change.
 - **Cross-field constraints stay in core** (spec 7). Two exist in this surface and neither gets a widget: `AttachmentRule` requires exactly one of `select`/`drop`/`add`, and `Locator.match_to_source` is mutually exclusive with `match_pattern`. Both are already validated core-side and surface as diagnostics. A component **may** present the one-of as a mode selector - that is a UX affordance, not frontend semantic validation.
 - The registry forces a label and widget to **exist** per field; it does **not** check the widget suits the field's type. That is accepted and recorded: a mismatched widget is a visible rendering bug caught the first time the panel opens, whereas a missing entry is silent absence. Do not add the mapped type `{ [K in keyof T]: FieldSpecFor<T[K]> }` - the brief settles the mechanism.
+- **The wave-3 e2e RED/GREEN runs through the test-mount harness, not the served app** (amendment 2026-07-16, mount-harness routing). No editor mount point exists in the running app before Task 13 (`src/main.ts` mounts only `App.vue`, whose `View` union is `"batch" | "jobs"`; `EditorView.vue` is nav-wired only in Task 13; Playwright's `webServer` serves the single-entry `dist/`), so the step-1 assertions of Tasks 10-12 cannot render editor UI through `page.goto("/")`. Step 1 below builds a harness (reused verbatim by Tasks 11-12) that mounts the component under test in isolation. It passes the component's `props` verbatim and round-trips the standard Vue `modelValue`/`update:modelValue` v-model, exposing the live model via `window.__muxsmithModel__()`; it installs **no** Tauri IPC mock, because the widgets here and `EditorView` through Task 12 are fed their model as a prop - IPC wiring is Task 13.
 
-- [ ] **Step 1: Write the failing e2e assertions**
+- [ ] **Step 1: Set up the test-mount harness (one-time) (amended 2026-07-16, mount-harness routing)**
 
-Extend `e2e/smoke.spec.ts` with per-widget rendering assertions using the harness's existing mock (`e2e/mocks.ts`) - read it first and extend its `load_profile` mock rather than adding a parallel mocking mechanism.
+This harness is created here because Task 10 is the first task that needs a DOM-level render of editor UI, and it is reused verbatim by Tasks 11 and 12. It extends the established `e2e/vite.harness.config.ts` precedent (a pre-test Vite build into gitignored `e2e/.generated/`, injected into a plain page; it never touches `dist/` and never ships). Create three files and modify three; every file and its contents are named here, with no latitude to substitute another mechanism.
 
-- [ ] **Step 2: Run to confirm they fail**
+1. `e2e/mount-entry.ts` (create) - the page-side bundle source, pure `.ts` (runtime `h()`, no template), no static `.vue` import. Build a component registry with
+
+   ```ts
+   const modules = import.meta.glob<{ default: Component }>(
+     ["../src/editor/widgets/*.vue", "../src/views/EditorView.vue"],
+     { eager: true },
+   );
+   ```
+
+   The `import.meta.glob` result is **path-keyed** (its keys are the full glob-relative paths, e.g. `"../src/editor/widgets/TextWidget.vue"`); do not build a separate basename-to-module map. The caller passes a bare basename (`TextWidget`, `FieldWidgetDispatcher`, `EditorView`, and the rest) and the mount driver reconstructs the path to index `modules` (see the `resolves` step below). `eager: true` is mandatory: an IIFE forbids code-splitting, which a lazy glob would introduce. Assign `window.__muxsmithMount__`, `window.__muxsmithModel__` and `window.__muxsmithEmitted__` as side effects (the window-global shape `e2e/tauri-mock-entry.ts` already uses). `__muxsmithMount__({ component, props, locale })`:
+   - unmounts any previous app and resets `window.__muxsmithEmitted__ = []`;
+   - resolves `modules["../src/editor/widgets/" + component + ".vue"]` (or the `EditorView` path), throwing `unknown mount component "<name>"` when absent - that throw is the Task-10/11/12 RED before the component exists;
+   - creates a wrapper root that holds `const model = ref(props?.modelValue)`, renders `h(Comp, { ...props, modelValue: model.value, "onUpdate:modelValue": (v) => { model.value = v; window.__muxsmithEmitted__.push({ event: "update:modelValue", payload: v }); } })`, and sets `window.__muxsmithModel__ = () => model.value`;
+   - `.use(createFluentVue({ bundles: buildBundles(locale ?? "en") }))`, importing `buildBundles` from `../src/i18n`. This is the load-bearing reuse: the real `locales/*/gui-editor.ftl` catalogs reach the page through the app's **own** `import.meta.glob` catalog loader (`src/i18n/index.ts`), so `$t` renders real messages, not stubs;
+   - `.mount("#mount")`.
+2. `e2e/vite.mount.config.ts` (create) - a second Vite build, parallel to `vite.harness.config.ts` but with the Vue plugin so `.vue` compiles and both `import.meta.glob` calls inline:
+
+   ```ts
+   import { resolve } from "node:path";
+   import { defineConfig } from "vite";
+   import vue from "@vitejs/plugin-vue";
+
+   const here = import.meta.dirname;
+
+   export default defineConfig({
+     plugins: [vue()],
+     build: {
+       outDir: resolve(here, ".generated"),
+       emptyOutDir: false, // must NOT wipe tauri-mock-harness.js, built by the step before
+       minify: false,
+       lib: {
+         entry: resolve(here, "mount-entry.ts"),
+         name: "MuxsmithMountHarness",
+         formats: ["iife"],
+         fileName: () => "mount-harness.js",
+       },
+     },
+   });
+   ```
+
+   `emptyOutDir: false` is ordering-load-bearing: the `test:e2e` chain runs the tauri-mock build (which cleans `.generated/`) first, then this one, which must land `mount-harness.js` beside `tauri-mock-harness.js`, not replace it. The IIFE bundles Vue, fluent-vue and `@fluent/bundle` into one self-contained file exactly as `vite.harness.config.ts` bundles `@tauri-apps/api` today (that config's own doc calls its output a "dependency-free IIFE").
+3. `e2e/mount.ts` (create) - the Playwright-side helper, parallel to `e2e/mocks.ts`:
+
+   ```ts
+   import { resolve } from "node:path";
+   import type { Page } from "@playwright/test";
+
+   const MOUNT_HARNESS_PATH = resolve(import.meta.dirname, ".generated/mount-harness.js");
+
+   export interface MountSpec {
+     component: string;
+     props?: Record<string, unknown>;
+     locale?: string;
+   }
+
+   export async function mountComponent(page: Page, spec: MountSpec): Promise<void> {
+     await page.setContent('<!doctype html><div id="mount"></div>');
+     await page.addScriptTag({ path: MOUNT_HARNESS_PATH });
+     await page.evaluate((s) => window.__muxsmithMount__(s), spec);
+   }
+
+   export function readModel(page: Page): Promise<unknown> {
+     return page.evaluate(() => window.__muxsmithModel__());
+   }
+
+   export function readEmitted(page: Page): Promise<Array<{ event: string; payload: unknown }>> {
+     return page.evaluate(() => window.__muxsmithEmitted__);
+   }
+   ```
+4. `e2e/global.d.ts` (modify) - add the three mount globals to the ambient `Window` interface, beside the existing `__muxsmithE2E__` block:
+
+   ```ts
+   __muxsmithMount__: (spec: { component: string; props?: Record<string, unknown>; locale?: string }) => void;
+   __muxsmithModel__: () => unknown;
+   __muxsmithEmitted__: Array<{ event: string; payload: unknown }>;
+   ```
+5. `e2e/tsconfig.json` (modify) - add `"vite/client"` to `compilerOptions.types`, making it `["node", "@playwright/test", "vite/client"]`, so the `tsc --noEmit -p e2e/tsconfig.json` gate types `import.meta.glob` in `mount-entry.ts` and in the transitively imported `src/i18n/index.ts`. **No `*.vue` module shim is added or needed**: components are reached only through `import.meta.glob` (whose result `vite/client` types), never through a static `import ... from "*.vue"` (which plain `tsc` cannot resolve in this tree - there is no `declare module "*.vue"` shim, and the app build relies on `vue-tsc` instead).
+6. `package.json` (modify) - insert the mount build into the `test:e2e` chain, after the existing tauri-mock build and before `playwright test`:
+
+   ```
+   "test:e2e": "tsc --noEmit -p e2e/tsconfig.json && vite build --config e2e/vite.harness.config.ts && vite build --config e2e/vite.mount.config.ts && playwright test"
+   ```
+
+- [ ] **Step 2: Write the failing mount-harness assertions (amended 2026-07-16, mount-harness routing)**
+
+Extend `e2e/smoke.spec.ts` with per-widget rendering assertions that mount each widget through `e2e/mount.ts` (`mountComponent(page, { component: "TextWidget", props: { spec: <FieldSpec>, modelValue: <value> } })`), not the served app - `page.goto("/")` reaches no widget (there is no editor mount point until Task 13). Assert each widget renders its expected control with `getByRole` (e.g. `text` -> a textbox, `bool`/`optionalFlag` -> a checkbox, `select`/`keywordOrBlock` -> a combobox of its domain tokens), and that editing updates the held model via `readModel(page)`. Assert user-facing text against `e2e/i18n-en.ts` (the real en catalog), never a hand-duplicated literal, exactly as the existing smoke tests do.
+
+- [ ] **Step 3: Run to confirm they fail (amended 2026-07-16, mount-harness routing)**
 
 ```bash
 pnpm test:e2e
 ```
-Expected: FAIL - no widgets exist.
+Expected: FAIL - `__muxsmithMount__` throws `unknown mount component "TextWidget"` because `src/editor/widgets/` is still empty, so the glob registry holds no widget. That throw is the genuine RED (the component does not exist yet).
 
-- [ ] **Step 3: Implement the 10 widgets**
+- [ ] **Step 4: Implement the 10 widgets (amended 2026-07-16, mount-harness routing)**
 
-One component per variant from `:806-819`. Follow the house component conventions - read two existing components first (`src/components/SuggestionCard.vue`, `src/components/JobRow.vue`) and match their prop/emit/`$t` style. Note the recorded `withDefaults` + `T | null` vue-tsc quirk in BUILDING.md's tooling section before fighting a type error.
+One component per variant from `:806-819`. Follow the house component conventions - read two existing components first (`src/components/SuggestionCard.vue`, `src/components/JobRow.vue`) and match their prop/emit/`$t` style. Each widget exposes its editable value through the standard Vue `modelValue`/`update:modelValue` v-model, which is both the idiomatic shape and what the harness round-trips. Note the recorded `withDefaults` + `T | null` vue-tsc quirk in BUILDING.md's tooling section before fighting a type error.
 
-- [ ] **Step 4: Run the e2e suite**
+- [ ] **Step 5: Run the e2e suite (amended 2026-07-16, mount-harness routing)**
 
 ```bash
 pnpm build && pnpm test:e2e
 ```
-Expected: PASS.
+Expected: PASS - `test:e2e` rebuilds `mount-harness.js` (the widgets are now in the glob) and the per-widget assertions render green. `pnpm build` still runs so Playwright's `vite preview` webServer has a `dist/` to boot, even though the mount assertions use `page.setContent`, not the served app.
 
-- [ ] **Step 5: Full gate, then commit**
+- [ ] **Step 6: Full gate, then commit (amended 2026-07-16, mount-harness routing)**
 
 ```bash
-git add src/editor/widgets e2e/smoke.spec.ts
-git -c commit.gpgsign=false commit -m "gui: the ten field widgets, exhaustive by never-arm (D45)"
+git add src/editor/widgets e2e/mount-entry.ts e2e/vite.mount.config.ts e2e/mount.ts e2e/global.d.ts e2e/tsconfig.json package.json e2e/smoke.spec.ts
+git -c commit.gpgsign=false commit -m "gui: the ten field widgets, exhaustive by never-arm, plus the wave-3 test-mount harness (D45)"
 ```
 
 ---
@@ -1155,27 +1249,27 @@ Binding points:
 - The view holds the model as data; drag-reorder emits a **reordered model**, not a mutation of the DOM. `tracks.rules` is output track order (`reorderable` in the registry), so reordering is a semantic edit the user makes deliberately.
 - No validation, no save, no widgets yet - those are Tasks 12 and 13. This task is the grid and its reordering only, so it stays reviewable as one unit.
 
-- [ ] **Step 1: Write the failing e2e test**
+- [ ] **Step 1: Write the failing e2e test (amended 2026-07-16, mount-harness routing)**
 
-Extend `e2e/smoke.spec.ts`: with a mocked `load_profile` returning a two-rule profile, opening the editor renders the rule grid with both rows in order; a drag-reorder swaps them and the component's emitted/held model reflects the new order.
+Extend `e2e/smoke.spec.ts`: mount `EditorView.vue` through the Task-10 harness (`e2e/mount.ts`), not the served app (which has no editor mount point until Task 13): `mountComponent(page, { component: "EditorView", props: { modelValue: <two-rule profile> } })`. Assert the rule grid renders both rows in order; perform a drag-reorder and assert both that the rendered rows swap and that `readModel(page)`'s `tracks.rules` reflects the new order (the harness round-trips `update:modelValue`). EditorView therefore takes the profile as its `modelValue` prop and emits `update:modelValue` on reorder - the natural pre-IPC shape; open/save IPC is Task 13.
 
-- [ ] **Step 2: Run to confirm it fails**
+- [ ] **Step 2: Run to confirm it fails (amended 2026-07-16, mount-harness routing)**
 
 ```bash
 pnpm test:e2e
 ```
-Expected: FAIL - `EditorView.vue` does not exist.
+Expected: FAIL - `__muxsmithMount__` throws `unknown mount component "EditorView"` because `src/views/EditorView.vue` does not exist yet (the glob registry has no `EditorView`). That throw is the RED.
 
 - [ ] **Step 3: Implement the rule grid and drag-reorder**
 
 Create `src/views/EditorView.vue` with the rule list and its reordering. Match the house component conventions (read `src/views/BatchView.vue` first for the view-level prop/emit/`$t` shape). No nav wiring yet - `App.vue` is untouched until Task 13.
 
-- [ ] **Step 4: Run the suite**
+- [ ] **Step 4: Run the suite (amended 2026-07-16, mount-harness routing)**
 
 ```bash
 pnpm build && pnpm lint && pnpm test:e2e
 ```
-Expected: PASS. `pnpm lint` includes the D27 `no-raw-text` rule - every string in the template comes from `$t`.
+Expected: PASS - the harness rebuild picks up the new `EditorView.vue` and the mount assertions render green. `pnpm lint` includes the D27 `no-raw-text` rule - every string in the template comes from `$t`.
 
 - [ ] **Step 5: Full gate, then commit**
 
@@ -1201,27 +1295,27 @@ Binding points:
 - **The frontend performs zero semantic validation** (spec 7). It renders the field, holds the value, and (in Task 13) sends the model. No per-field validity logic here.
 - The `FixedField` (`Profile.profile_version`) renders read-only; it has no `labelKey` and no widget (`FieldWidget` has no `fixed` variant).
 
-- [ ] **Step 1: Write the failing e2e test**
+- [ ] **Step 1: Write the failing e2e test (amended 2026-07-16, mount-harness routing)**
 
-Extend `e2e/smoke.spec.ts`: with a mocked full profile, opening the editor renders each section (input, tracks, output, attachments, tags, ...) with its fields dispatched to the expected widget types (e.g. `optionalFlag` renders a checkbox, `select` a dropdown of its domain tokens).
+Extend `e2e/smoke.spec.ts`: mount `EditorView.vue` through the Task-10 harness (`e2e/mount.ts`), not the served app: `mountComponent(page, { component: "EditorView", props: { modelValue: <full profile> } })`. Assert each section (input, tracks, output, attachments, tags, and the rest) renders with its fields dispatched to the expected widget types (e.g. `optionalFlag` -> a checkbox, `select` -> a combobox of its domain tokens).
 
-- [ ] **Step 2: Run to confirm it fails**
+- [ ] **Step 2: Run to confirm it fails (amended 2026-07-16, mount-harness routing)**
 
 ```bash
 pnpm test:e2e
 ```
-Expected: FAIL - sections/widgets are not composed yet.
+Expected: FAIL - `EditorView` is in the glob registry (Task 11) and mounts, but without composed sections, so the per-section/per-widget assertions find nothing. That is this task's RED (the composition work is missing, not the component).
 
 - [ ] **Step 3: Implement section composition and widget dispatch**
 
 Drive the sections from the 13 registries and dispatch each field through Task 10's widget dispatcher. Do not hand-list fields.
 
-- [ ] **Step 4: Run the suite**
+- [ ] **Step 4: Run the suite (amended 2026-07-16, mount-harness routing)**
 
 ```bash
 pnpm build && pnpm lint && pnpm check:i18n && pnpm test:e2e
 ```
-Expected: PASS.
+Expected: PASS - the composed sections render green through the mount harness.
 
 - [ ] **Step 5: Full gate, then commit**
 
@@ -1251,6 +1345,7 @@ Binding points:
 - Apply-suggestion lives in the **batch view**, not here (Task 14). D41 records why the plan-scope pairing of editor+apply is not a UI-location one: they share the in-memory model's ownership.
 - **The editor ships WITHOUT tooltips in Plan 6.** Spec 8.3's editor tooltip/inline-explanation baseline defers to Plan 7 (owner ruling 2026-07-16, folded into the design by Task 1, carried in `docs/ROADMAP.md:74-84`). Do **not** add tooltip keys; `gui-editor.ftl` stays 43 keys.
 - Follow `App.vue:98-104`'s recorded reason for `v-show` over `v-if` when adding the third view (both views stay mounted so JobsView's live run listeners survive tab switches) - do **not** switch the block to `v-if`.
+- **The Tasks 10-12 mount-harness specs (`e2e/mount.ts`) keep running and stay green alongside this task's real-app tests** (amendment 2026-07-16, mount-harness routing): they are neither deleted nor ported, so `EditorView` must stay mountable from an injected `modelValue`, and Task 13's `load_profile` wiring feeds that same model through the app's open flow rather than an unconditional on-mount fetch.
 
 - [ ] **Step 1: Write the failing e2e test**
 
@@ -1275,6 +1370,8 @@ pnpm build && pnpm lint && pnpm check:i18n && pnpm test:e2e
 Expected: PASS. `pnpm lint` includes the D27 `no-raw-text` rule - every string in the template comes from `$t`.
 
 - [ ] **Step 5: Full gate, then commit**
+
+- **Review-check (mount-harness coverage survives, amendment 2026-07-16, mount-harness routing):** confirm `git diff <task-12-commit> -- e2e/smoke.spec.ts` shows no mount-harness spec deleted, ported to the served app, or guarded/skipped, and that they pass in this task's `pnpm test:e2e`. Confirm `EditorView` mounts from `modelValue` alone (no unconditional `load_profile` in `onMounted`; `load_profile` feeds the model through the app's open flow). A mount spec made green by an on-mount fetch or an injected IPC mock is a wave-3 coverage regression, not a passing gate.
 
 ```bash
 git add src/views/EditorView.vue src/App.vue src/ipc.ts e2e/smoke.spec.ts
