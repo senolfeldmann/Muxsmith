@@ -46,6 +46,7 @@ import {
   trackRuleFields,
 } from "../src/editor/registries";
 import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
+import type { Profile } from "../src/bindings/profile";
 
 /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
  * default role-name matching is a case-insensitive SUBSTRING match, which
@@ -766,5 +767,56 @@ test.describe("editor widgets: mount-harness rendering", () => {
     const pattern = group.getByRole("textbox", name("editor-input-pattern"));
     await pattern.fill("^S");
     await expect.poll(() => readModel(page)).toMatchObject({ pattern: "^S" });
+  });
+});
+
+// Task 11 (D45, wave-3 mount-harness amendment): the profile editor's
+// top-level rule grid (spec 8.2's "track-rule grid ... drag to reorder"),
+// mounted in isolation via `mount.ts` exactly like Task 10's widgets --
+// `EditorView` has no nav entry to reach via `page.goto("/")` until Task 13
+// wires it into App.vue. `EditorView` takes a `Profile` as its `modelValue`
+// and emits `update:modelValue` on reorder (the natural pre-IPC v-model
+// shape); that is the only behaviour under test here -- no sections, no
+// widget dispatch, no save (Tasks 12-13). The fixture's two rules differ by
+// `match.exact.type`, a REAL matchable property (`capability/mod.rs`'s
+// `TYPE_VALUES = ["audio", "buttons", "subtitles", "video"]`), not a
+// hand-rolled marker.
+test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
+  const twoRuleProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: {
+      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
+    },
+  };
+
+  test("renders tracks.rules in order; a drag-reorder swaps the rows and updates the held model", async ({
+    page,
+  }) => {
+    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
+
+    const rows = page.getByTestId("editor-rule-row");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("video");
+    await expect(rows.nth(1)).toContainText("audio");
+
+    // Reorder is a semantic model edit, not a DOM mutation (binding note):
+    // `EditorView`'s drag handlers never read `dataTransfer`, only a
+    // closure index (mirroring `ListWidget.vue`'s identical mechanics), so
+    // dispatching bare `dragstart`/`drop` suffices -- following Playwright's
+    // documented programmatic-DnD pattern (a shared DataTransfer JSHandle
+    // across both events) regardless, since it is the correct cross-browser
+    // way to fire these two event types synthetically.
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    await rows.nth(0).dispatchEvent("dragstart", { dataTransfer });
+    await rows.nth(1).dispatchEvent("drop", { dataTransfer });
+
+    await expect(rows.nth(0)).toContainText("audio");
+    await expect(rows.nth(1)).toContainText("video");
+
+    const model = (await readModel(page)) as Profile;
+    expect(
+      model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type),
+    ).toEqual(["audio", "video"]);
   });
 });
