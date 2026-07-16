@@ -363,12 +363,13 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
     - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T2 report + review verdict Q1: the brief's verbatim test code carried an unused `use std::path::Path;` that trips the -D warnings gate; deleted (single mechanical fix, outside every test body), surfaced in the report, adjudicated correct keyboard-level resolution"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T6 report + review verdict Q1: the brief's prose import directive ('add the two imports D49 names') merged into the existing same-module use statement per local idiom rather than transcribed as a second line; disclosed, adjudicated correct - the verdict scopes the verbatim-copy obligation to fenced code blocks an ADR hands over, while prose directives implement idiomatically"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T9 report + review verdict Q1: the design table names TrackRule's field by its Rust identifier match_expr; the generated binding carries match (serde rename), the only type-correct registry key. Verified against the tree, adapted, disclosed with a source comment at the site; reviewer confirmed a match_expr key cannot compile against Record<keyof TrackRule, FieldSpec>"}
 - id: proc-verification-step-must-be-falsifiable
   kind: pattern
   tier: 2
