@@ -3544,20 +3544,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict Q1(b): the brief ordered generate (step 6) -> drift-proof (step 9) -> stage (step 10); the proof's drift-append run returned exit 0 against the untracked src/bindings/, the implementer caught the expected-vs-actual mismatch, staged first, re-ran correctly, and a silently-failing git checkout on the untracked path left stray text that was regenerated away; committed artifacts verified clean by the reviewer"}
-- id: latitude-carveout-zero-content-structural-forks
-  kind: non-decision
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "Open question for the owner: does proc-latitude-clause-boundary (human decree, tier 2) need an explicit carve-out for zero-decision-content structural choices that mechanically follow an unbroken local pattern (T8's case: private testable _body twins for new commands where the file is 4-for-4; no wire-format, API-surface, or test-surface effect; brief named only one twin)? As worded the rule requires routing such forks as NEEDS_CONTEXT; both of its violated-corrected occurrences involved genuine multi-answer forks with product/wire content, so the letter exceeds the violation history. Companion brief-authoring half: a Files/Interfaces line naming one deliverable reads as an enumeration boundary under the current rule - if narrower intent is meant, state it explicitly."
-  steelman: "The rule's absolutism is its value: every carve-out is a judgment call at the keyboard, and 'zero decision content' is itself a judgment the implementer makes alone - the exact self-assessment the rule exists to remove. T2's unused-import deletion shows the class exists; T8's twins show it scales; the next case may be less zero-content than it looks, and match-the-house-pattern plus disclosure already produced the right outcome without any rule change."
-  blocked_on: "owner ruling (escalated in the plan-6 wave-2 status report, 2026-07-16)"
-  status: blocked
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-16", kind: deferred, ref: "plan-6 T8 review verdict Q1 + harvest: extra _body twins ruled correct conformance on the merits, Minor process note under the rule's letter; carve-out proposed by the reviewer, escalated to the owner"}
 - id: brief-citations-drift-after-amendment
   kind: pattern
   tier: 1
