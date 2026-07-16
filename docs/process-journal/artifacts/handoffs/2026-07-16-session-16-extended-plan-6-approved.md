@@ -1,4 +1,4 @@
-<!-- Provenance: snapshot of HANDOFF.md at session 16 extended (2026-07-16), Plan 6 plan APPROVED, per SI-5. The HANDOFF itself is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at session 16 close (2026-07-16), Plan 6 plan APPROVED, per SI-5. Corrected to the final HEAD after the journal entry landed. The HANDOFF itself is git-ignored and superseded in place. -->
 
 # Handoff
 
@@ -104,9 +104,10 @@ the invariants.
 
 ## Current state (verified via git)
 
-- master = 12c002e, tree clean, and pushed (`git ls-remote origin
-  refs/heads/master` returns 12c002e). Everything this session produced is on
-  the public remote.
+- master = 437703f, tree clean, and pushed (`git ls-remote origin
+  refs/heads/master` returns 437703f). Everything this session produced is on
+  the public remote. (The approved Plan 6 plan is commit 12c002e; three later
+  commits are this HANDOFF's own snapshot and the session-close journal entry.)
 - **No product code touched this session** - crates/, src/, e2e/, src-tauri/
   are untouched since e107bd8. This was a spec/plan/ledger session; the
   nine-part gate never ran because there was nothing to gate. The next
