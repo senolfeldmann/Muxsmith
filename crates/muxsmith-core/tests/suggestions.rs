@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use muxsmith_core::identify::Identification;
-use muxsmith_core::planner::{Batch, RunInputs, StructuredEdit, plan_batch};
+use muxsmith_core::planner::{
+    ApplyError, Batch, RunInputs, StructuredEdit, apply_suggestion, plan_batch,
+};
 use muxsmith_core::profile::load::{Format, from_str};
 use muxsmith_core::profile::match_expr::{MatchExpr, Scalar};
+use muxsmith_core::profile::model::Profile;
 use muxsmith_core::report::{DiagCode, Diagnostic, Severity};
 
 mod support;
@@ -20,25 +23,6 @@ tracks:
   rules:
     - match: { exact: { type: subtitles, codec_kind: srt, language: en } }
 "#;
-
-fn plan(profile_yaml: &str) -> (Batch, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("Show.S01E01.mkv"), b"x").unwrap();
-    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
-    let run = RunInputs {
-        source: dir.path().to_path_buf(),
-        output: Some(dir.path().join("out")),
-        on_collision: None,
-    };
-    let mut by_name = HashMap::new();
-    by_name.insert(
-        "Show.S01E01.mkv".to_string(),
-        Identification::from_json(SERIES).unwrap(),
-    );
-    let mut ident = FakeIdent { by_name };
-    let batch = plan_batch(&profile, &run, &mut ident, &lang());
-    (batch, dir)
-}
 
 #[test]
 fn ambiguous_rule_gets_a_validated_suggestion() {
@@ -95,10 +79,12 @@ fn every_suggestion_survives_the_next_dry_run() {
 fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
     let inner = match edit {
         StructuredEdit::AddExact { property, value } => format!(
-            "exact: {{ type: subtitles, codec_kind: srt, language: en, {property}: {value} }}"
+            "exact: {{ type: subtitles, codec_kind: srt, language: en, {property}: {} }}",
+            yaml_scalar(value)
         ),
         StructuredEdit::AddNotExact { property, value } => format!(
-            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - exact: {{ {property}: {value} }}"
+            "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        not:\n          - exact: {{ {property}: {} }}",
+            yaml_scalar(value)
         ),
         StructuredEdit::AddSubstring { value } => format!(
             "exact: {{ type: subtitles, codec_kind: srt, language: en }}\n        substring: {{ track_name: {value} }}"
@@ -112,9 +98,10 @@ fn apply_edit_to_first_rule(edit: &StructuredEdit) -> String {
     )
 }
 
-// Plans an arbitrary set of named fixture files (name -> -J JSON), unlike
-// `plan()` which is wired to the single-file SERIES fixture.
-fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> (Batch, tempfile::TempDir) {
+// Plans an already-built model. The model-level entry point: G3 must re-plan
+// what `apply_suggestion` returned WITHOUT a YAML round-trip, since YAML
+// re-parse re-types scalars and would launder exactly the defect under test.
+fn plan_model(profile: &Profile, files: &[(&str, &str)]) -> (Batch, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let mut by_name = HashMap::new();
     for (name, json) in files {
@@ -124,15 +111,22 @@ fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> (Batch, tempfile::T
             Identification::from_json(json).unwrap(),
         );
     }
-    let profile = from_str(profile_yaml, Format::Yaml).unwrap();
     let run = RunInputs {
         source: dir.path().to_path_buf(),
         output: Some(dir.path().join("out")),
         on_collision: None,
     };
     let mut ident = FakeIdent { by_name };
-    let batch = plan_batch(&profile, &run, &mut ident, &lang());
+    let batch = plan_batch(profile, &run, &mut ident, &lang());
     (batch, dir)
+}
+
+fn plan_multi(profile_yaml: &str, files: &[(&str, &str)]) -> (Batch, tempfile::TempDir) {
+    plan_model(&from_str(profile_yaml, Format::Yaml).unwrap(), files)
+}
+
+fn plan(profile_yaml: &str) -> (Batch, tempfile::TempDir) {
+    plan_multi(profile_yaml, &[("Show.S01E01.mkv", SERIES)])
 }
 
 // --- (a) with_rule_match must not clobber an existing constraint (bug C) ---
@@ -201,10 +195,12 @@ const GUARDED_FOO: &str = r#"
 fn apply_edit_to_no_clobber_rule(edit: &StructuredEdit) -> String {
     let inner = match edit {
         StructuredEdit::AddExact { property, value } => format!(
-            "exact: {{ type: subtitles, {property}: {value} }}\n        substring: {{ track_name: Foo }}"
+            "exact: {{ type: subtitles, {property}: {} }}\n        substring: {{ track_name: Foo }}",
+            yaml_scalar(value)
         ),
         StructuredEdit::AddNotExact { property, value } => format!(
-            "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - exact: {{ {property}: {value} }}"
+            "exact: {{ type: subtitles }}\n        substring: {{ track_name: Foo }}\n        not:\n          - exact: {{ {property}: {} }}",
+            yaml_scalar(value)
         ),
         StructuredEdit::AddSubstring { value } => {
             format!("exact: {{ type: subtitles }}\n        substring: {{ track_name: {value} }}")
@@ -323,7 +319,7 @@ fn yaml_fragment_round_trips_a_value_containing_a_colon() {
             matches!(
                 &s.edit,
                 StructuredEdit::AddExact { property, value }
-                    if property == "track_name" && value == "Chapter 1: Intro"
+                    if property == "track_name" && value == &Scalar::Str("Chapter 1: Intro".to_string())
             )
         })
         .unwrap_or_else(|| {
@@ -720,7 +716,7 @@ fn tc_a_overlap_optional_rule_yields_not_narrowings_on_that_rule() {
         batch.suggestions.iter().any(|s| matches!(
             &s.edit,
             StructuredEdit::AddNotExact { property, value }
-                if property == "forced_track" && value == "true"
+                if property == "forced_track" && value == &Scalar::Bool(true)
         )),
         "expected AddNotExact{{forced_track,true}} on the optional rule, got {:?}",
         batch
@@ -888,7 +884,7 @@ fn tc_c_batch_unsafe_overlap_narrowing_is_rejected_by_the_multiset_guard() {
         !batch.suggestions.iter().any(|s| matches!(
             &s.edit,
             StructuredEdit::AddNotExact { property, value }
-                if property == "language" && value == "eng"
+                if property == "language" && value == &Scalar::Str("eng".to_string())
         )),
         "a batch-unsafe language narrowing must be rejected, got {:?}",
         batch
@@ -988,4 +984,245 @@ fn tc_d_three_claimant_overlap_yields_no_suggestion_and_names_all_three() {
             "claimant {expected} missing from the no-fix report: {rules:?}"
         );
     }
+}
+
+// ===========================================================================
+// D43 / D49: apply_suggestion splices the engine's own typed Scalar.
+//
+// core-03 must be mechanically enforced, not asserted. The pre-existing
+// `every_suggestion_survives_the_next_dry_run` applies through a YAML string
+// template (`apply_edit_to_first_rule`), and YAML re-parse re-types the
+// value, so that test cannot observe a type defect in `apply_suggestion`.
+// G1, G2, G3 below close that gap at the model level; the two ApplyError
+// argument-failure tests and G4 (+ control) cover apply_suggestion's other
+// two exits.
+// ===========================================================================
+
+// The value as the engine's own `display` string rendered it before D49 moved
+// the typed Scalar into the edit; mirrors planner.rs's private `scalar_display`.
+// Keeps these fixtures byte-identical to what they produced pre-D49.
+fn yaml_scalar(v: &Scalar) -> String {
+    match v {
+        Scalar::Bool(b) => b.to_string(),
+        Scalar::Int(i) => i.to_string(),
+        Scalar::Float(f) => f.to_string(),
+        Scalar::Str(s) => s.clone(),
+    }
+}
+
+// The scalar `apply_suggestion` spliced for `property`, read out of whichever
+// arm the edit's variant targets: AddExact -> `exact`, AddNotExact -> the first
+// `not` entry's `exact` (delta_for's two exact-bearing arms, planner.rs:1812,
+// :1817). Returns None if the key is absent, which is itself a guard failure.
+fn spliced_scalar<'a>(
+    applied: &'a Profile,
+    edit: &StructuredEdit,
+    property: &str,
+) -> Option<&'a Scalar> {
+    let m = &applied.tracks.rules[0].match_expr;
+    match edit {
+        StructuredEdit::AddExact { .. } => m.exact.as_ref()?.get(property),
+        StructuredEdit::AddNotExact { .. } => {
+            m.not.as_ref()?.first()?.exact.as_ref()?.get(property)
+        }
+        StructuredEdit::AddSubstring { .. } | StructuredEdit::AddNotSubstring { .. } => None,
+    }
+}
+
+// core-03, type dimension: the delta apply splices must be the delta the engine
+// simulated, for a Boolean property. Guards the D49 seam: a display-string edit
+// (`Scalar::Str("true")`) would make `scalar_eq` fall through to `false`
+// (matcher.rs:202-212 has no (Str, Bool) arm) and the rule would match nothing.
+#[test]
+fn apply_splices_the_simulated_scalar_for_a_bool_property() {
+    let (batch, _dir) = plan(P_AMBIGUOUS);
+    let profile = from_str(P_AMBIGUOUS, Format::Yaml).unwrap();
+
+    let mut checked = 0;
+    for s in &batch.suggestions {
+        let (property, value) = match &s.edit {
+            StructuredEdit::AddExact { property, value }
+            | StructuredEdit::AddNotExact { property, value } => (property, value),
+            _ => continue,
+        };
+        if !matches!(property.as_str(), "forced_track" | "flag_hearing_impaired") {
+            continue;
+        }
+        assert!(
+            matches!(value, Scalar::Bool(_)),
+            "engine emitted {value:?} for the Boolean property {property}; expected Scalar::Bool"
+        );
+        let applied = apply_suggestion(&profile, &s.config_path, &s.edit).unwrap();
+        let spliced = spliced_scalar(&applied, &s.edit, property);
+        assert_eq!(
+            spliced,
+            Some(value),
+            "apply spliced {spliced:?} for {property}; the engine simulated {value:?}"
+        );
+        checked += 1;
+    }
+    assert!(
+        checked > 0,
+        "no Boolean-property suggestion in the fixture; this guard would pass vacuously"
+    );
+}
+
+// core-03, type dimension, Integer property. `id` is PropType::Integer
+// (generated.rs:42); a `Scalar::Str("1")` would fall through `scalar_eq` exactly
+// as the Bool case does.
+#[test]
+fn apply_splices_the_simulated_scalar_for_an_int_property() {
+    let (batch, _dir) = plan_multi(P_SUBS_BY_LANGUAGE, &[("Show.S01E01.mkv", CODEC_ID_ONLY)]);
+    let profile = from_str(P_SUBS_BY_LANGUAGE, Format::Yaml).unwrap();
+
+    let mut checked = 0;
+    for s in &batch.suggestions {
+        let (property, value) = match &s.edit {
+            StructuredEdit::AddExact { property, value }
+            | StructuredEdit::AddNotExact { property, value } => (property, value),
+            _ => continue,
+        };
+        if property != "id" {
+            continue;
+        }
+        assert!(
+            matches!(value, Scalar::Int(_)),
+            "engine emitted {value:?} for the Integer property id; expected Scalar::Int"
+        );
+        let applied = apply_suggestion(&profile, &s.config_path, &s.edit).unwrap();
+        let spliced = spliced_scalar(&applied, &s.edit, property);
+        assert_eq!(
+            spliced,
+            Some(value),
+            "apply spliced {spliced:?} for id; the engine simulated {value:?}"
+        );
+        checked += 1;
+    }
+    assert!(
+        checked > 0,
+        "no id suggestion in the fixture; this guard would pass vacuously"
+    );
+}
+
+// core-03 proper ("an applied suggestion survives the next dry run"), applied
+// through the real `apply_suggestion` and re-planned as a MODEL. The sibling
+// `every_suggestion_survives_the_next_dry_run` re-plans through YAML text,
+// whose re-parse re-types scalars and therefore cannot observe a type defect in
+// the applier (D49 section 1.8). This one has no YAML in the loop.
+#[test]
+fn every_applied_suggestion_survives_the_next_dry_run_at_the_model_level() {
+    for (profile_yaml, files, resolved) in [
+        (
+            P_AMBIGUOUS,
+            &[("Show.S01E01.mkv", SERIES)][..],
+            DiagCode::AmbiguousRule,
+        ),
+        (
+            P_SUBS_BY_LANGUAGE,
+            &[("Show.S01E01.mkv", CODEC_ID_ONLY)][..],
+            DiagCode::AmbiguousRule,
+        ),
+    ] {
+        let (batch, _dir) = plan_multi(profile_yaml, files);
+        let profile = from_str(profile_yaml, Format::Yaml).unwrap();
+        assert!(
+            !batch.suggestions.is_empty(),
+            "fixture produced no suggestions"
+        );
+        for s in &batch.suggestions {
+            let applied = apply_suggestion(&profile, &s.config_path, &s.edit).unwrap();
+            let (re, _d) = plan_model(&applied, files);
+            assert!(
+                !re.files[0].diagnostics.iter().any(|d| d.code == resolved),
+                "applied suggestion {:?} did not resolve {resolved:?}",
+                s.edit
+            );
+            assert!(
+                !re.files[0]
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == DiagCode::MissingTrack),
+                "applied suggestion {:?} over-narrowed into MissingTrack",
+                s.edit
+            );
+        }
+    }
+}
+
+#[test]
+fn apply_rejects_an_unparsable_config_path() {
+    let profile = from_str(P_AMBIGUOUS, Format::Yaml).unwrap();
+    let edit = StructuredEdit::AddExact {
+        property: "forced_track".to_string(),
+        value: Scalar::Bool(true),
+    };
+    assert_eq!(
+        apply_suggestion(&profile, "not-a-rule-path", &edit),
+        Err(ApplyError::UnparsableConfigPath(
+            "not-a-rule-path".to_string()
+        ))
+    );
+}
+
+#[test]
+fn apply_rejects_a_rule_index_past_the_end() {
+    let profile = from_str(P_AMBIGUOUS, Format::Yaml).unwrap(); // exactly 1 rule
+    let edit = StructuredEdit::AddExact {
+        property: "forced_track".to_string(),
+        value: Scalar::Bool(true),
+    };
+    assert_eq!(
+        apply_suggestion(&profile, "tracks[7].match", &edit),
+        Err(ApplyError::RuleIndexOutOfRange { index: 7, rules: 1 })
+    );
+}
+
+// The rule already constrains `forced_track: true`. An AddExact carrying
+// `false` would widen it, so core-44's or_insert drops the delta and the model
+// comes back unchanged. apply_suggestion must NOTICE that (D49) rather than
+// return Ok. No re-plan, no batch, no validation - one model comparison.
+const P_ALREADY_CONSTRAINED: &str = r#"
+profile_version: 1
+input: { pattern: 'S(?<s>\d{2})E(?<e>\d{2})', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { type: subtitles, forced_track: true } }
+"#;
+
+#[test]
+fn apply_rejects_an_edit_the_no_clobber_merge_drops() {
+    let profile = from_str(P_ALREADY_CONSTRAINED, Format::Yaml).unwrap();
+    let edit = StructuredEdit::AddExact {
+        property: "forced_track".to_string(),
+        value: Scalar::Bool(false),
+    };
+    assert_eq!(
+        apply_suggestion(&profile, "tracks[0].match", &edit),
+        Err(ApplyError::EditChangedNothing {
+            index: 0,
+            property: "forced_track".to_string(),
+        })
+    );
+}
+
+// Control: the detection must not fire when the edit really lands. Without
+// this, G4 would pass against an `apply_suggestion` that returned
+// EditChangedNothing unconditionally.
+#[test]
+fn apply_returns_ok_when_the_edit_reaches_the_model() {
+    let profile = from_str(P_ALREADY_CONSTRAINED, Format::Yaml).unwrap();
+    let edit = StructuredEdit::AddExact {
+        property: "default_track".to_string(), // not yet constrained
+        value: Scalar::Bool(true),
+    };
+    let applied = apply_suggestion(&profile, "tracks[0].match", &edit).unwrap();
+    assert_eq!(
+        applied.tracks.rules[0]
+            .match_expr
+            .exact
+            .as_ref()
+            .unwrap()
+            .get("default_track"),
+        Some(&Scalar::Bool(true))
+    );
 }
