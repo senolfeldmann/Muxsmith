@@ -3541,9 +3541,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict Q1(b): the brief ordered generate (step 6) -> drift-proof (step 9) -> stage (step 10); the proof's drift-append run returned exit 0 against the untracked src/bindings/, the implementer caught the expected-vs-actual mismatch, staged first, re-ran correctly, and a silently-failing git checkout on the untracked path left stray text that was regenerated away; committed artifacts verified clean by the reviewer"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T12a report + review verdict: Amendment 2 baked the staging-before-proof precondition into the step, the implementer executed it as written (exit 0 -> 1 -> 0, fire read from the diff hunk), the reviewer verified the sequence - the rule applied at authoring time prevented the T5 hazard from recurring"}
 - id: brief-citations-drift-after-amendment
   kind: pattern
   tier: 1
@@ -3558,6 +3559,20 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T9 review verdict harvest: brief citations :1082-1091 and :694-706/:806-819 landed off their targets post-Task-1 amendment; content matched everywhere, LABEL_KEY_RE confirmed at the true location :1124"}
+- id: registry-slot-capability-delta
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a task is authorized to hand-build a bespoke component in the slot a registry-dispatched widget was designed for, the plan must explicitly account for the CAPABILITY DELTA (what the generic dispatch would have provided that the bespoke component does not - here: editability), or a later compose-from-the-registry task inherits a contradiction it cannot resolve without violating a protected test. The compile-time registry completeness check guarantees every field a widget SPEC; it cannot see whether the spec is ever DISPATCHED - coverage was checked at the wrong altitude."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T12 review verdict Q2 (task-12-verdict.md): T11's read-only rule grid occupies the tracks.rules slot D45 :925 assigns to list{item: trackRule}; spec 8.2 :374 'detail editor per rule' is built by NO task; as-built the editor edits attachment rules but not track rules. Confirmed plan-coverage gap (the four-eyes coverage review verified registry-level, not dispatch-level, completeness); routed for a plan amendment"}
 - id: parity-routing-same-component-defect
   kind: pattern
   tier: 1

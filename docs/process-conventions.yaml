@@ -325,7 +325,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 7
+  count: 8
   occurrences:
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
@@ -334,6 +334,7 @@ entries:
     - {date: "2026-07-16", kind: violated-corrected, ref: "Second omission instance in the SAME approved design document, found at plan-authoring after four review rounds: D41 fixed the save writer at Result<_, Diagnostic> (:132-133) but never named the DiagCode, and none exists in report/mod.rs's diag_codes! for a write/IO failure. The implementer would have had to invent a user-facing diagnostic code AND its en+de prose (catalog_completeness.rs matches DiagCode exhaustively). The document's own 'Every fork in this document is closed' (:11) and section 8's 'What the implementer must not decide' both passed it. Escalated per this entry's routing rule (user-visible -> the governing human); Şenol ruled SaveError -> IpcError (core-124-error-currency-split)"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "Statement sharpened (size and derivability are not exemptions) on evidence from the D49 review. D49 prescribed a fix for three test sites as 'the same shape as :325' rather than writing the three literals out; :722 guards on forced_track, which is PropType::Boolean, so the shape prescribed Scalar::Str(\"true\") where the engine emits Scalar::Bool(true) - it compiles and fails at runtime, and at :890 the same slip would have passed VACUOUSLY because that assertion is negative. The set had THREE members and each was derivable from the property's type; the document that wrote out four catalog lines 'so none is invented' declined to write out three literals, and that is exactly where its only functional defect landed. Also the third recorded instance of a document producing the defect class it had just diagnosed: D49 argues the display String is lossy because Bool(true) and Str(\"true\") both project to \"true\", then performs that reconstruction"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict: D44's citation range for the derive set (design :768-782) states cardinality ('13 structs ... 7 enums') without enumerating the struct names - an unenumerated set in a normative position, derivable-but-unlisted. The implementer derived and listed all 13/7 names from source and surfaced the citation gap; the reviewer counted 21/21 exported types against the enumeration"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T13 review Q2a: the design's blanket 'no new user-facing string outside the catalogs' plus the plan-mandated nav entry left the WHICH-KEY set unenumerated - a blanket prohibition over an unenumerated user-visible set is latitude just as an ellipsis is; the fork reached the implementer and was resolved at the keyboard (see the grant entry's occurrence for the proceed itself); rendered strings routed to the owner's plan-close rendered-surface pass"}
 - id: latitude-carveout-zero-content-structural-forks
   kind: pattern
   tier: 2
@@ -345,10 +346,11 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-16", kind: deferred, ref: "plan-6 T8 review verdict Q1 + harvest: extra _body twins ruled correct conformance on the merits, Minor process note under the rule's letter; carve-out proposed by the reviewer, escalated to the owner"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling over four refinement rounds (option 2 of the enumerated escalation; exemplary-list marking added by him; four-part outward-effect definition sharpened, test condition relaxed to never-weaken on his over-restriction objection; reviewer over-restriction watch added by him). Verbatim text approved; owner note on record: 'Wir werden sehen, ob das zu einschraenkend ist' - the boundary revises on evidence, and the watch is its collection mechanism"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T13 review Q2d: the implementer reused six existing catalog keys at NEW sites (nav tab, open/save buttons, diagnostics heading) and self-classified it grant-covered; condition 4 excludes catalog-key use at a new site, so this was a NEEDS_CONTEXT-that-was-skipped - disclosed, adjudicated acceptable-with-owner-sign-off (strings route to the plan-close rendered-surface pass). FIRST over-restriction-watch calibration data, both directions in one task: the boundary correctly gated 2 debatable reuses (nav tab 'Profile/Profil', 'Selected profile:' line) and needlessly gated 3 unambiguously generic ones (settings-save, batch-diagnostics-heading, batch-profile-filter-name); the reviewer's read: evidence for a NARROWER carve-out (generic-content key, no $param, no semantic-domain shift), not wholesale loosening"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2
@@ -397,12 +399,13 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "D49 review F7, and the reason the statement now names documents as well as plans: D49's 'no test asserts the wire change' rested on `grep -rn '\"edit\"'`, which cannot match an unquoted TS object key - e2e/smoke.spec.ts:177 carries `edit: null`. The conclusion happened to survive (that fixture is inert against `edit: unknown`), so the defect was in the METHOD while the result was right, which is precisely the state an absence-check cannot distinguish. The D49 reviewer's framing, adopted verbatim into the statement: nobody re-runs a negative"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T3 report + review verdict Q1: the implementer applied the rule to the plan's own step-7 snapshot proof (git diff --exit-code on the cli snapshots), broke ChaptersCfg::KEYWORDS deliberately, watched the check stay green, and exposed it as vacuous for the allowed-hint byte-identity claim - no pinned fixture exercises InvalidKeyword on the four keyword fields, and insta never rewrites tracked snapshots on mismatch (ledger: CI strict compare). The reviewer re-verified both premises independently. Consequence recorded here: D46's 'the existing snapshot tests prove it' (design :1226-1229) is KNOWN-FALSE for that claim; the real proof is the new unit tests (keyword_domains_project_as_closed_enums, misspelled-keyword InvalidKeyword test). Task 4's identical snapshot step inherits the same limitation"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T4 report + review verdict: both new D48 guards had their red state produced deliberately before being trusted - the briefed step-4 break (generic predicate on TracksCfg.unmatched, core-83 test red, revert) AND an un-briefed extend-mutation on guard 2 (red, revert), adjudicated within remit. Guard 2 firing settles the plan's design trigger 2 by measurement: the guard stays for good in its literal-expected form"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 amendment-3 delta verdict harvest: a count-0 absence assertion paired with a PRESENCE assertion on the SAME selector satisfies the fire-once discipline without a deliberate-break step - the presence branch is the known-present control proving the selector resolves, so count-0 cannot pass by misspelling. Reusable template for absence-unless-triggered e2e checks (Task 13b step 1.1/1.2)"}
 - id: proc-no-work-needed-check
   kind: pattern
   tier: 2
