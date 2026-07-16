@@ -597,13 +597,12 @@ test.describe("german locale", () => {
 // does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
 // values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
 // D45's own rule that widget option tokens render as profile-format
-// tokens, not via new Fluent keys. `editor-attachment-rule-add`/`-drop`
-// ("Add"/"Drop") are reused verbatim for the generic add/remove-row
-// affordance on `list`/`propertyMap`: both are already-existing,
-// already-translated (en+de) generic verbs -- "Drop" is the app's own
-// established exclude-this-item vocabulary (KEEP_DROP) -- so reusing them
-// keeps `gui-editor.ftl` at 43 keys, matching `browse-button`'s existing
-// reuse across FirstRun/SettingsDialog/BatchView.
+// tokens, not via new Fluent keys. `list`/`propertyMap`'s generic
+// add/remove-row buttons use the two dedicated `editor-action-add`/
+// `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
+// NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
+// the AttachmentRule fields they are the registry labels for. Catalog
+// budget is 45 (42 labels + 1 save-surface note + 2 generic action keys).
 test.describe("editor widgets: mount-harness rendering", () => {
   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
     await mountComponent(page, {
@@ -729,13 +728,13 @@ test.describe("editor widgets: mount-harness rendering", () => {
     await expect(page.getByTestId("property-map-key").first()).toHaveValue("forced");
     await expect(page.getByTestId("property-map-value").first()).toHaveValue("true");
 
-    await page.getByRole("button", name("editor-attachment-rule-add")).click();
+    await page.getByRole("button", name("editor-action-add")).click();
     await expect(page.getByTestId("property-map-key")).toHaveCount(2);
     await page.getByTestId("property-map-key").nth(1).fill("default");
     await page.getByTestId("property-map-value").nth(1).fill("true");
     await expect.poll(() => readModel(page)).toEqual({ forced: "true", default: "true" });
 
-    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
+    await page.getByRole("button", name("editor-action-remove")).first().click();
     await expect.poll(() => readModel(page)).toEqual({ default: "true" });
   });
 
@@ -746,12 +745,12 @@ test.describe("editor widgets: mount-harness rendering", () => {
     });
     await expect.poll(() => readModel(page)).toEqual([]);
 
-    await page.getByRole("button", name("editor-attachment-rule-add")).click();
+    await page.getByRole("button", name("editor-action-add")).click();
     await expect.poll(() => readModel(page)).toEqual([{}]);
     // Each item renders its own nested MatchExpr fields via SectionWidget.
     await expect(page.getByRole("group", name("editor-match-expr-exact"))).toBeVisible();
 
-    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
+    await page.getByRole("button", name("editor-action-remove")).first().click();
     await expect.poll(() => readModel(page)).toEqual([]);
   });
 
@@ -820,5 +819,142 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
         return model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type);
       })
       .toEqual(["audio", "video"]);
+  });
+});
+
+// Task 12 (D45, amended 2026-07-16, owner-rulings routing): EditorView's
+// section composition (driven by the 13 registries, not hand-listed
+// fields -- adding a field to the model + registry surfaces it here with
+// no view edit) plus the two typed-value-cell anti-vacuity cases Ruling 2
+// requires (`gui-typed-scalar-needs-typed-input`): a settable Boolean
+// round-trips a real `true`, and a matchable Boolean/Float likewise. The
+// generic add/remove action captions ("Add"/"Remove", Ruling 1) are
+// asserted by the repointed Task-10 propertyMap/list specs above, not
+// re-asserted here.
+test.describe("editor view: section composition and typed value cells (Task 12, D45)", () => {
+  test("EditorView composes every profile section from the registries, dispatching each field to its widget", async ({
+    page,
+  }) => {
+    const profile: Profile = {
+      profile_version: 1,
+      meta: { name: "demo", description: "a note" },
+      input: { pattern: "^S", extensions: ["mkv"], recursive: true },
+      output: { directory: "/out", filename: "keep", on_collision: "error" },
+      tracks: { unmatched: "drop", rules: [] },
+      attachments: { unmatched: "keep", rules: [] },
+      chapters: "keep",
+      tags: { global: "keep", track: "keep" },
+      title: "keep",
+    };
+    await mountComponent(page, { component: "EditorView", props: { modelValue: profile } });
+
+    // Every top-level `section`-kind field renders as a labeled group,
+    // dispatched generically off `profileFields` -- `tracks` is the one
+    // hand-built exception (Task 11's own rule grid), asserted below.
+    for (const id of [
+      "editor-profile-meta",
+      "editor-profile-input",
+      "editor-profile-output",
+      "editor-profile-tracks",
+      "editor-profile-attachments",
+      "editor-profile-tags",
+    ]) {
+      await expect(page.getByRole("group", name(id))).toBeVisible();
+    }
+
+    // select -> combobox of its raw (untranslated) domain tokens (D45).
+    const collision = page.getByRole("combobox", name("editor-output-on-collision"));
+    await expect(collision).toHaveValue("error");
+    for (const token of COLLISION_POLICIES) {
+      await expect(collision.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+
+    // keywordOrBlock -> combobox of its keyword tokens (D45).
+    const chaptersCombo = page.getByRole("combobox", name("editor-profile-chapters"));
+    await expect(chaptersCombo).toHaveValue("keep");
+    for (const token of CHAPTERS_KEYWORDS) {
+      await expect(chaptersCombo.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+
+    // optionalFlag -> checkbox, reached through `chapters`' always-present
+    // nested ExternalBlock -> Locator (KeywordOrBlockWidget's own
+    // precedent) -- not a hand-listed lookup, just the registry recursing.
+    const matchToSource = page.getByRole("checkbox", name("editor-locator-match-to-source"));
+    await expect(matchToSource).not.toBeChecked();
+
+    // `tracks`: `unmatched` dispatches generically through the registry;
+    // `rules` keeps Task 11's own bespoke drag-reorder grid unchanged.
+    // Scoped to the "Tracks" group: `editor-tracks-unmatched` and
+    // `editor-attachments-unmatched` share the same en/de rendered text
+    // ("Unmatched"), a pre-existing catalog coincidence unrelated to this
+    // task, so an unscoped role+name lookup is ambiguous.
+    const tracksGroup = page.getByRole("group", name("editor-profile-tracks"));
+    const tracksUnmatched = tracksGroup.getByRole("combobox", name("editor-tracks-unmatched"));
+    await expect(tracksUnmatched).toHaveValue("drop");
+    await expect(tracksGroup.getByRole("heading", name("editor-tracks-rules"))).toBeVisible();
+  });
+
+  test("propertyMap typed value cells: the settable Boolean/String anti-vacuity round trip (Ruling 2)", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: trackRuleFields.changes, modelValue: { forced_track: false } },
+    });
+    const checkbox = page.getByRole("checkbox");
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    const afterCheck = (await readModel(page)) as Record<string, unknown>;
+    expect(afterCheck).toEqual({ forced_track: true });
+    expect(afterCheck.forced_track).toBe(true); // a real boolean, not the string "true"
+
+    await page.getByRole("button", name("editor-action-add")).click();
+    await page.getByTestId("property-map-key").nth(1).fill("language");
+    await page.getByTestId("property-map-value").nth(1).fill("eng");
+    await expect.poll(() => readModel(page)).toEqual({ forced_track: true, language: "eng" });
+  });
+
+  test("propertyMap typed value cells: the matchable Boolean/Float/Integer anti-vacuity round trip (Ruling 2)", async ({
+    page,
+  }) => {
+    // Boolean: matchable_type("forced_track") == Boolean.
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: matchExprFields.exact, modelValue: { forced_track: false } },
+    });
+    const checkbox = page.getByRole("checkbox");
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    const boolModel = (await readModel(page)) as Record<string, unknown>;
+    expect(boolModel).toEqual({ forced_track: true });
+    expect(boolModel.forced_track).toBe(true);
+
+    // Float: matchable_type("min_luminance") == Float, the one new input
+    // variant (step="any").
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: matchExprFields.exact, modelValue: { min_luminance: 1 } },
+    });
+    const floatCell = page.getByRole("spinbutton");
+    await expect(floatCell).toHaveAttribute("step", "any");
+    await floatCell.fill("1.5");
+    const floatModel = (await readModel(page)) as Record<string, unknown>;
+    expect(floatModel).toEqual({ min_luminance: 1.5 });
+    expect(floatModel.min_luminance).toBe(1.5);
+    expect(typeof floatModel.min_luminance).toBe("number");
+
+    // Integer: audio_channels rides the same <input type="number"> branch
+    // minus step="any" (the exhaustive switch's remaining arm; not a
+    // separately required fixture per the brief, added because it is cheap).
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: matchExprFields.exact, modelValue: { audio_channels: 2 } },
+    });
+    const intCell = page.getByRole("spinbutton");
+    await expect(intCell).not.toHaveAttribute("step", "any");
+    await intCell.fill("6");
+    const intModel = (await readModel(page)) as Record<string, unknown>;
+    expect(intModel).toEqual({ audio_channels: 6 });
+    expect(typeof intModel.audio_channels).toBe("number");
   });
 });

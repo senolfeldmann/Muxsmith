@@ -89,3 +89,8 @@ editor-match-expr-not = Not
 ## Save surface (D41)
 
 editor-save-note = Saving rewrites the file from the model: comments, key order and formatting are not preserved, and fields left at their default are not written back.
+
+## Generic list/map actions
+
+editor-action-add = Add
+editor-action-remove = Remove

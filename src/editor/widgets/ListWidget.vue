@@ -2,17 +2,19 @@
 // D45 field widget: `{ kind: "list"; item; reorderable }`. Each item
 // renders through `SectionWidget` (synthesized against `item`'s own
 // registry), recursing via `FieldWidgetDispatcher`. This generic widget is
-// NOT the spec 8.2 top-level rule grid (`tracks.rules`/
-// `attachments.rules`): that is Task 11's own bespoke grid with drag
-// handles and per-rule summaries, built directly against `profile.ts`
-// types rather than through this dispatcher. The registry's only current
-// consumers of a generic `list` are `matchExpr.any`/`matchExpr.not`, both
-// `reorderable: false`; `reorderable: true` is still handled here (native
-// HTML5 drag-and-drop on the item itself, matching spec 8.2's own "drag to
-// reorder" wording, needs no translated chrome) so the widget stays
-// correct against the full `FieldWidget` contract, not just today's
-// registry contents. Add/remove reuse `editor-attachment-rule-add`/`-drop`
-// -- see `PropertyMapWidget.vue`'s doc for why that reuse is sound.
+// NOT the spec 8.2 top-level rule grid (`tracks.rules`): that is Task 11's
+// own bespoke grid with drag handles and per-rule summaries, built
+// directly against `profile.ts` types rather than through this
+// dispatcher. `attachments.rules` (`reorderable: true`) DOES render
+// through this generic widget -- its rows are not scalar summaries the
+// way TrackRule's are (two of its three fields are themselves nested
+// match expressions), so there is no compact grid to build, and native
+// HTML5 drag-and-drop on the item itself (matching spec 8.2's own "drag to
+// reorder" wording, needs no translated chrome) is already handled here.
+// Add/remove use the two generic `editor-action-add`/`-remove` keys
+// (owner Ruling 1, amended 2026-07-16; budget 45) -- not
+// `editor-attachment-rule-add`/`-drop`, which now caption only the
+// AttachmentRule fields they are the registry labels for.
 import { computed } from "vue";
 import type { EditableFieldOf } from "./shared";
 import SectionWidget from "./SectionWidget.vue";
@@ -83,17 +85,17 @@ function onDrop(index: number) {
       />
       <button
         type="button"
-        :aria-label="$t('editor-attachment-rule-drop')"
+        :aria-label="$t('editor-action-remove')"
         @click="removeItem(index)"
       >
-        {{ $t("editor-attachment-rule-drop") }}
+        {{ $t("editor-action-remove") }}
       </button>
     </div>
     <button
       type="button"
       @click="addItem"
     >
-      {{ $t("editor-attachment-rule-add") }}
+      {{ $t("editor-action-add") }}
     </button>
   </fieldset>
 </template>
