@@ -390,25 +390,37 @@ polish entry.
   adjudication verdict). Four re-deferrals below (v1.x + Triggers).
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
-## Ledger hygiene (owner disposition pending)
+## Ledger hygiene
 
-- **12 blocked ledger entries are stale; the owner disposes per entry.**
+- **RESOLVED 2026-07-16 (session 16, owner-disposed per entry; commit e24759b).**
   The 2026-07-15 blocked-pool audit (report:
   `docs/process-journal/artifacts/2026-07-15-ledger-blocked-pool-audit.md`,
-  commit ac5db2b) checked all 27 `status: blocked` entries against the real
-  tree: 12 ALREADY-DONE (condition cleared AND the work is visibly in the
-  tree), 12 STILL-BLOCKED, 3 UNCLEAR, 0 FIRED. The 12 need a per-entry
-  ruling before they are closed; the controller is the ledger's single
-  writer and does not self-dispose them. The 3 UNCLEAR entries name no
-  observable event at all, so no repo state can ever clear them - decide
-  whether they are re-triggered or dropped (all three are tracked for real
-  in v1.x below, so the ledger condition is decoration).
-  Structural question the audit raised, open: zero entries landed in FIRED,
-  i.e. there is no "condition cleared, work outstanding" state, because the
-  conditions do not drive the work - plans do, and they sweep up blocked
-  items incidentally while the ledger finds out afterwards or never. Whether
-  the plan-close gate gains a sweep step, or the mechanism itself is
-  misdesigned, is an owner call.
+  commit ac5db2b) checked all 27 `status: blocked` ledger entries against the
+  real tree: 12 ALREADY-DONE, 12 STILL-BLOCKED, 3 UNCLEAR, 0 FIRED. Each
+  ALREADY-DONE claim was re-verified against the tree at disposition time.
+  Dispositions: **12 closed** (settled + resolving occurrence); **2
+  re-pointed** (core-56, core-66: `blocked_on` was a non-event justification,
+  now `v1.x planning`); **1 reclassified** (exec-23: the one-shot watcher is
+  the deliberate v1 design -> settled restraint). The 12 STILL-BLOCKED stay
+  blocked (real future vehicles). Blocked pool in the ledger: 27 -> 14.
+  Also resolved: **gui-22 vs exec-44 recorded-statement collision** - gui-22
+  (keep all run logs) was superseded by D35 (exec-44, 14-day auto-prune,
+  shipped); gui-22's statement now records the supersession, exec-44 carries
+  the live rule.
+  **Structural fix (Şenol ruling 2026-07-16): the plan-close gate gains a
+  blocked-pool sweep step** (doctrine §3, plan-close step 1b). The audit's
+  finding was that zero entries FIRED - the `blocked_on` condition does not
+  drive the work, plans do, and the ledger learns late or never - so a
+  "watch the condition" mechanism is the wrong shape and a periodic sweep at
+  plan close is the right one. The deeper `blocked_on` redesign is not taken
+  now; the sweep addresses the symptom, and whether the condition mechanism
+  needs redesign can be revisited if the sweep keeps finding much stale.
+- **Open rider: the audit covered only `decision-ledger.yaml`.** The other
+  three house files carry 12 more `status: blocked` entries never swept
+  (product-boundaries 6, conventions 3, process-conventions 3). The new
+  plan-close sweep step covers all four going forward; a one-off sweep of
+  these 12 is a small owner-disposition task whenever convenient (not
+  blocking).
 
 - **`ledger-lint` script (v1.x, or a rider on the next plan that touches
   `scripts/`)**: the ledger's anti-fabrication rule -
