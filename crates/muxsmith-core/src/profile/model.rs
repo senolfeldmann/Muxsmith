@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ts")]
+use ts_rs::TS;
 
 use super::match_expr::{MatchExpr, Scalar};
 
@@ -41,6 +43,7 @@ fn is_default<T: Default + PartialEq>(v: &T) -> bool {
 /// unrecognized key is a config error, not a silently ignored typo (spec 4:
 /// "Unknown keys are errors, not warnings").
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     /// Format version; must equal `1` in v1 (`UnsupportedProfileVersion` if
@@ -81,6 +84,7 @@ pub struct Profile {
 
 /// Informational profile metadata; not used by matching or planning.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct Meta {
     /// Human-readable profile name (e.g. shown in the GUI's recent-profiles list).
@@ -94,6 +98,7 @@ pub struct Meta {
 
 /// Primary-file selection and directory-walk options (spec 4.2).
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct Input {
     /// Regex searched (not anchored) against each candidate file's
@@ -129,6 +134,7 @@ fn is_default_true(b: &bool) -> bool {
 
 /// Output naming and collision handling (spec 4.8).
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct OutputCfg {
     /// Output directory; profile default, usually overridden per run via
@@ -165,6 +171,7 @@ impl Default for OutputCfg {
 /// enum variant) because serde ignores `deny_unknown_fields` on struct
 /// variants of untagged enums.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct TemplateBlock {
     /// The template source text (spec 4.7); rendered in literal or regex
@@ -175,6 +182,7 @@ pub struct TemplateBlock {
 /// Shared `{ external: ... }` block; standalone for the same
 /// `deny_unknown_fields` reason as [`TemplateBlock`].
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct ExternalBlock {
     /// The external locator (spec 4.6) resolved to find the donor file(s).
@@ -186,6 +194,7 @@ pub struct ExternalBlock {
 /// deserializes first, so a bare string becomes `Keyword` and a
 /// `{ template: ... }` map becomes `Template`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(untagged)]
 pub enum FilenameCfg {
     /// Literal-mode template (spec 4.7); `.mkv` appended if missing, path
@@ -228,6 +237,7 @@ fn filename_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
 /// not override `SourceOverwrite` (output path equal to an input path),
 /// which is always a hard error regardless of this policy (spec 5.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(rename_all = "lowercase")]
 pub enum CollisionPolicy {
     /// Treat the collision as an error; the default policy.
@@ -243,6 +253,7 @@ pub enum CollisionPolicy {
 /// Binary keep-or-drop toggle shared by `attachments.unmatched`,
 /// `tags.global` and `tags.track` (spec 4.9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(rename_all = "lowercase")]
 pub enum KeepDrop {
     /// Copy the corresponding structure from the sources into the output
@@ -258,6 +269,7 @@ pub enum KeepDrop {
 /// strict independent uniqueness, spec 2) and optionally applies property
 /// changes to it.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct TrackRule {
     /// Where the rule resolves against: the primary file (default) or an
@@ -285,6 +297,7 @@ pub struct TrackRule {
 /// `track.source` value: the primary file, or an external donor (spec 4.5).
 /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`].
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(untagged)]
 pub enum SourceCfg {
     /// Resolve against an external donor file located by this locator
@@ -328,6 +341,7 @@ fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
 /// `AmbiguousExternal`, two or more matching tracks inside the file is
 /// `AmbiguousRule`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct Locator {
     /// Directory to search, relative to the primary file's directory, or
@@ -363,6 +377,7 @@ pub struct Locator {
 
 /// Attachment handling (spec 4.9).
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct AttachmentsCfg {
     /// Policy for attachments no `rules` entry selects. Defaults to `keep`:
@@ -386,6 +401,7 @@ pub struct AttachmentsCfg {
 /// defaults to `drop`: only rule-matched tracks survive unless the profile
 /// opts into `keep` (spec 4.9 asymmetry note).
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct TracksCfg {
     /// Policy for PRIMARY-file tracks no `rules` entry matches. Defaults to
@@ -420,6 +436,7 @@ fn is_drop_policy(k: &KeepDrop) -> bool {
 /// Exactly one of `select` / `drop` / `add` must be set; enforced in
 /// validate.rs (AttachmentRuleShape) so the parse error stays readable.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct AttachmentRule {
     /// Select (keep) attachments matching this expression over
@@ -439,6 +456,7 @@ pub struct AttachmentRule {
 /// `chapters` value: keep, drop, or an external locator (spec 4.9).
 /// `#[serde(untagged)]`, same variant-resolution rule as [`FilenameCfg`]/[`SourceCfg`].
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(untagged)]
 pub enum ChaptersCfg {
     /// Resolve exactly one chapters file (XML or simple format, as
@@ -470,6 +488,7 @@ fn chapters_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
 /// Global and per-track tag handling (spec 4.9), mapped to
 /// `--no-global-tags`/`--no-track-tags`.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct TagsCfg {
     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
@@ -486,6 +505,7 @@ pub struct TagsCfg {
 /// `#[serde(untagged)]`, same variant-resolution rule as the other
 /// keyword-or-block enums above.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(untagged)]
 pub enum TitleCfg {
     /// Literal-mode template rendering the output title (spec 4.7).

@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ts")]
+use ts_rs::TS;
 
 /// A scalar value inside `exact`/`changes` maps (spec 4.3/4.4).
 /// `#[serde(untagged)]`: deserialization tries each variant in the order
@@ -15,6 +17,7 @@ use serde::{Deserialize, Serialize};
 /// (a boolean node never deserializes as a string) but is kept explicit
 /// for clarity.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(untagged)]
 pub enum Scalar {
     /// A boolean value, e.g. `forced_track: true`.
@@ -47,6 +50,7 @@ impl Scalar {
 /// a resolved source; `any`/`not` recurse to arbitrary depth (typical
 /// profiles stay flat).
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(deny_unknown_fields)]
 pub struct MatchExpr {
     /// Property -> value equality after normalization; case-sensitive for

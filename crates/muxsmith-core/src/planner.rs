@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "ts")]
+use ts_rs::TS;
 
 use crate::capability::PINNED_IDENTIFICATION_FORMAT_VERSION;
 use crate::capability::runtime::LanguageIndex;
@@ -206,6 +208,7 @@ pub struct FileReport {
 /// the edit; carrying it is what makes the applied delta identical to the
 /// simulated one (`core-03`, D49).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export, export_to = "profile.ts"))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StructuredEdit {
     /// Add `property: value` to the rule's `exact` map.
