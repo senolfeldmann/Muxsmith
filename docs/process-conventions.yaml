@@ -325,7 +325,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 7
+  count: 8
   occurrences:
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
@@ -334,6 +334,7 @@ entries:
     - {date: "2026-07-16", kind: violated-corrected, ref: "Second omission instance in the SAME approved design document, found at plan-authoring after four review rounds: D41 fixed the save writer at Result<_, Diagnostic> (:132-133) but never named the DiagCode, and none exists in report/mod.rs's diag_codes! for a write/IO failure. The implementer would have had to invent a user-facing diagnostic code AND its en+de prose (catalog_completeness.rs matches DiagCode exhaustively). The document's own 'Every fork in this document is closed' (:11) and section 8's 'What the implementer must not decide' both passed it. Escalated per this entry's routing rule (user-visible -> the governing human); Şenol ruled SaveError -> IpcError (core-124-error-currency-split)"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "Statement sharpened (size and derivability are not exemptions) on evidence from the D49 review. D49 prescribed a fix for three test sites as 'the same shape as :325' rather than writing the three literals out; :722 guards on forced_track, which is PropType::Boolean, so the shape prescribed Scalar::Str(\"true\") where the engine emits Scalar::Bool(true) - it compiles and fails at runtime, and at :890 the same slip would have passed VACUOUSLY because that assertion is negative. The set had THREE members and each was derivable from the property's type; the document that wrote out four catalog lines 'so none is invented' declined to write out three literals, and that is exactly where its only functional defect landed. Also the third recorded instance of a document producing the defect class it had just diagnosed: D49 argues the display String is lossy because Bool(true) and Str(\"true\") both project to \"true\", then performs that reconstruction"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict: D44's citation range for the derive set (design :768-782) states cardinality ('13 structs ... 7 enums') without enumerating the struct names - an unenumerated set in a normative position, derivable-but-unlisted. The implementer derived and listed all 13/7 names from source and surfaced the citation gap; the reviewer counted 21/21 exported types against the enumeration"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T13 review Q2a: the design's blanket 'no new user-facing string outside the catalogs' plus the plan-mandated nav entry left the WHICH-KEY set unenumerated - a blanket prohibition over an unenumerated user-visible set is latitude just as an ellipsis is; the fork reached the implementer and was resolved at the keyboard (see the grant entry's occurrence for the proceed itself); rendered strings routed to the owner's plan-close rendered-surface pass"}
 - id: latitude-carveout-zero-content-structural-forks
   kind: pattern
   tier: 2
@@ -345,10 +346,11 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-16", kind: deferred, ref: "plan-6 T8 review verdict Q1 + harvest: extra _body twins ruled correct conformance on the merits, Minor process note under the rule's letter; carve-out proposed by the reviewer, escalated to the owner"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling over four refinement rounds (option 2 of the enumerated escalation; exemplary-list marking added by him; four-part outward-effect definition sharpened, test condition relaxed to never-weaken on his over-restriction objection; reviewer over-restriction watch added by him). Verbatim text approved; owner note on record: 'Wir werden sehen, ob das zu einschraenkend ist' - the boundary revises on evidence, and the watch is its collection mechanism"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T13 review Q2d: the implementer reused six existing catalog keys at NEW sites (nav tab, open/save buttons, diagnostics heading) and self-classified it grant-covered; condition 4 excludes catalog-key use at a new site, so this was a NEEDS_CONTEXT-that-was-skipped - disclosed, adjudicated acceptable-with-owner-sign-off (strings route to the plan-close rendered-surface pass). FIRST over-restriction-watch calibration data, both directions in one task: the boundary correctly gated 2 debatable reuses (nav tab 'Profile/Profil', 'Selected profile:' line) and needlessly gated 3 unambiguously generic ones (settings-save, batch-diagnostics-heading, batch-profile-filter-name); the reviewer's read: evidence for a NARROWER carve-out (generic-content key, no $param, no semantic-domain shift), not wholesale loosening"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2
