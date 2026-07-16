@@ -27,7 +27,14 @@ help-mode-in-the-same-plan half is superseded by this cut. The ledger
 entries that pointed at "Plan 6" were re-pointed in the same turn (exec-36,
 exec-37, cli-08, core-121 -> Plan 9; gui-26 -> Plan 7).
 
-## Plan 6 (next initiative): profile editor + apply-suggestion
+## Plan 6: profile editor + apply-suggestion - EXECUTED AND CLOSED 2026-07-17
+
+**Executed 2026-07-16/17** (16 tasks incl. 12a/13b/13c added by five four-eyes
+mid-run amendments; 9-item whole-branch fix wave; whole-branch verdict READY
+after the post-verdict delta re-review; merged 962005b, gate green, pushed).
+Salvage in docs/process-journal/artifacts/plan-6-sdd/. Owner surface pass
+(45 editor keys de, 7 reused keys, 2 apply keys, grid notation, nav-tab
+question) runs at the close. The anchor below is history.
 
 Scope: profile editor, one-click apply-suggestion, and the schema
 keyword-domain fix (owner call 2026-07-15, moved in with the
@@ -98,6 +105,9 @@ editor's controls get their help-ids in this pass instead of a retrofit.
   (whole-branch finding 2): the diagnostics panel IS the recorded Plan-6
   shape of spec 8.2's "inline validation markers"; the field anchoring is
   this comfort-layer item, natural sibling of the help-ids/tooltips pass.
+- Rule-grid ordinal column: spec 8.2 lists "order" among the grid columns;
+  Plan 6 carries order by row position only. Cosmetic comfort item.
+  (Plan-6 whole-branch verdict, spec-completeness walk.)
 
 ## Plan 8: packaging / release pipeline
 
@@ -184,6 +194,26 @@ action:
   single-parallel-run verification (falsify the ci.yml interleaving
   rationale empirically) and drop one of the two test runs per leg
   (routed-items item 11, re-deferred past plan 5.7's 2-line ci.yml touch).
+- A profile-model field gains a `#[serde(default)]` -> it joins D48's
+  17-row table with ALL THREE attributes naming the same function (serde
+  default, skip_serializing_if, schemars extend) - the one place where
+  getting it wrong loses user data silently. (Plan-6 close, plan trigger 1.)
+- tauri-specta publishes a stable non-RC Tauri-2 release -> re-evaluate
+  D44's rejection. (Plan-6 close, plan trigger 3.)
+- 1.0 is tagged, or a user asks for zero-config schema autocompletion ->
+  re-evaluate SchemaStore publication. (Plan-6 close, plan trigger 5.)
+- Next core/planner-touching plan -> run the D49 G1/G2 removal experiment
+  (mutate delta_for's AddExact arm to re-stringify, run the suite: G1+G2+G3
+  all fail -> they stay for good; only G3 fails -> G1/G2 are removal
+  candidates as localizers). Runnable since D49 landed (T6); guards stay
+  until the run per proc-proposed-safeguard-stays. Disposition of the other
+  plan-6 triggers at the close: trigger 2 SETTLED by measurement during T4
+  (guard 2 fires in its literal-expected form, stays for good; recorded in
+  the falsifiability entry); triggers 4 and 7 FIRED and were consumed
+  mid-plan (12a extended the ts export set; settables.ts = second
+  committed-generated-plus-drift-check instance, own ledger entry at count
+  2); trigger 6 needs no entry by design (drift check and registry fail by
+  construction).
 
 ## Pre-1.0 release gates
 

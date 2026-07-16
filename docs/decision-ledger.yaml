@@ -3559,6 +3559,21 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T9 review verdict harvest: brief citations :1082-1091 and :694-706/:806-819 landed off their targets post-Task-1 amendment; content matched everywhere, LABEL_KEY_RE confirmed at the true location :1124"}
+- id: committed-generated-plus-drift-check
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: ci
+  statement: "A generated artifact the frontend consumes is COMMITTED (not built) and gated by the CI drift step (regenerate + git diff --exit-code over src/bindings/): the gate catches a stale committed artifact from its first commit onward; the known untracked-first-generation hole is closed in-task by staging-before-proof (git-diff-proof-needs-tracked-target) and permanently once a consumer imports the file. Distinct from core-06 (the xtask schema extraction into generated.rs): this is the ts-rs/emitter binding pattern."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T5 (commit 1f02004, D44): profile.ts + keywords.ts committed, drift step added to ci.yml Linux leg, drift-fires proof 1->0"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T12a (commit 94a7d3d, amendment 2): settables.ts as the second instance under the same gate, zero ci.yml change needed (directory-gating verified); plan trigger 7 fired and consumed at the plan close"}
 - id: spec-clause-sweep-at-plan-close
   kind: pattern
   tier: 1
