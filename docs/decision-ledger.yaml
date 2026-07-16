@@ -3606,12 +3606,13 @@ entries:
   source: agent-emergent
   nature: technical-code
   domain: gui
-  statement: "A widget that edits a typed Scalar must offer a type-appropriate input: a string-only value cell can only ever produce Scalar::Str, so Bool/Int settables (forced, default) are unenterable as valid values and hit a permanent ValueTypeMismatch - the same Str(\"true\")-where-Boolean shape the D49 record already carries at the engine layer, reproduced at the GUI layer. T10's PropertyMapWidget ships string-only; core catches the mistype at error severity and the save-disable affordance (T12/13) blocks the frontend path, so nothing reaches a mux run silently through the GUI. Resolution: typed cells land in Plan 6 via the T12 amendment (owner ruling 2026-07-16)."
+  statement: "A widget that edits a typed Scalar must offer a type-appropriate input: a string-only value cell can only ever produce Scalar::Str, so Bool/Int settables (forced, default) are unenterable as valid values and hit a permanent ValueTypeMismatch - the same Str(\"true\")-where-Boolean shape the D49 record already carries at the engine layer, reproduced at the GUI layer. T10's PropertyMapWidget ships string-only; core catches the mistype at error severity and the save-disable affordance (T12/13) blocks the frontend path, so nothing reaches a mux run silently through the GUI. Resolution: typed cells land in Plan 6 via the T12 amendment for BOTH the settable and the matchable exact-map side (owner rulings 2026-07-16); the curated-domain dropdowns ride Plan 7 per gui-closed-domain-dropdowns."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T10 review verdict Q3 (end-to-end trace: PropertyMapWidget string cell -> Scalar::Str -> validate_changes/scalar_fits ValueTypeMismatch error; no silent GUI mux path); typed-input decision routed to the owner with the T12 scope question"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling (plan-6 owner escalation, option 2a of the enumerated options): typed value cells land IN PLAN 6 via a four-eyes T12 plan amendment (type-appropriate input per settable property type), not deferred to Plan 7"}
+    - {date: "2026-07-16", kind: decided, ref: "Şenol ruling (matchable-cell routing from the amendment delta review): the MATCHABLE exact-map cells are typed in Plan 6 too, scalar form (checkbox/number incl. a float variant/text from the generated matchable table - 63 props: 22 String, 9 Boolean, 27 Integer, 5 Float); the two curated-domain dropdowns (type, codec_kind) land in Plan 7. Same repair, same component, same generated source; forced_track/default_track make the gap a core-path defect"}

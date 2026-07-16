@@ -86,6 +86,12 @@ editor's controls get their help-ids in this pass instead of a retrofit.
   check-i18n parity). (2026-07-12, idiomacy review triage)
 - resolvedTrackLabel punctuation outside Fluent (locale-formatting
   revisit, S16). (2026-07-11, docs-tree sweep)
+- Curated-domain dropdowns in the editor's exact-match cells: `type`
+  (4 values) and `codec_kind` (17 aliases) render as selects instead of
+  typed text fields, per the standing decree gui-closed-domain-dropdowns
+  (product-boundaries.yaml). Scalar typing of those cells ships in Plan 6;
+  this is the comfort layer on top. (Owner ruling 2026-07-16, plan-6
+  matchable-cell routing.)
 
 ## Plan 8: packaging / release pipeline
 
