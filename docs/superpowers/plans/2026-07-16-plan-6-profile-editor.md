@@ -4,7 +4,7 @@
 
 **Goal:** implement ADRs D41-D48 (`docs/superpowers/specs/2026-07-15-plan-6-design.md`) and the apply-seam amendment D49 (`docs/superpowers/specs/2026-07-16-plan-6-apply-seam.md`): a hand-built profile editor over a canonical-save core writer, one-click apply-suggestion, ts-rs-generated wire types with a CI drift check, and the schema keyword-domain fix that makes `muxsmith schema` a supported user artifact.
 
-**Architecture:** four waves. Wave 1 runs three independent streams in parallel worktrees and then one join task. Stream A (`.worktrees/plan6-a`) is the core model + writer stream (Tasks 2, 3, 4). Stream B (`.worktrees/plan6-b`) is the planner-side applier and the `StructuredEdit` reshape (Task 6, D43/D49). Stream C (`.worktrees/plan6-c`) is docs (Task 7). Task 5 (D44, ts-rs bindings) is the wave-1 **join**: it needs stream A's model settled *and* stream B's final `StructuredEdit` shape, so it lands after both merge. Wave 2 is the Tauri shell's IPC surface (Task 8), which needs A's writer and B's applier. Wave 3 is the frontend (Tasks 9-13, plus the detail-editor Task 13b), which needs A's generated bindings (via Task 5) and wave 2's commands. Wave 4 is the batch view's apply button (Task 14), sequenced after Task 13b (amended 2026-07-16, detail-editor routing). Merge sequentially, nine-part gate after every merge.
+**Architecture:** four waves. Wave 1 runs three independent streams in parallel worktrees and then one join task. Stream A (`.worktrees/plan6-a`) is the core model + writer stream (Tasks 2, 3, 4). Stream B (`.worktrees/plan6-b`) is the planner-side applier and the `StructuredEdit` reshape (Task 6, D43/D49). Stream C (`.worktrees/plan6-c`) is docs (Task 7). Task 5 (D44, ts-rs bindings) is the wave-1 **join**: it needs stream A's model settled *and* stream B's final `StructuredEdit` shape, so it lands after both merge. Wave 2 is the Tauri shell's IPC surface (Task 8), which needs A's writer and B's applier. Wave 3 is the frontend (Tasks 9-13, plus the detail-editor Task 13b), which needs A's generated bindings (via Task 5) and wave 2's commands. Wave 4 is the batch view's apply button (Task 14), sequenced after Task 13b (amended 2026-07-16, detail-editor routing). Merge sequentially, nine-part gate after every merge. A post-verdict amendment (Task 13c, Amendment 5) closes spec 8.2's recents clause after the whole-branch fix wave; it is a delta against the merged branch, not a fifth build wave, so it leaves Task 14 the last wave-dependent task and does not alter the wave structure above.
 
 **Tech Stack:** Rust workspace (schemars 1.2.1, serde, yaml_serde 0.10.4, ts-rs 12.0.1 behind a `ts` feature), Tauri 2 shell, Vue 3 + TypeScript 6.0.3, Fluent (en+de), Playwright.
 
@@ -45,6 +45,10 @@ A third owner ruling (Şenol, 2026-07-16) closes a confirmed plan-coverage gap t
 ## Amendment 4 (2026-07-16): Task 14 apply-wiring routing
 
 Task 14's original Step 3 wired the apply flow as `SuggestionCard.vue -> DiagnosticsPanel.vue -> apply_suggestion`; the implementer refuted that premise on code contact (NEEDS_CONTEXT, held uncommitted) and controller verification against the trees confirmed the refutation. Verified facts: `DiagnosticsPanel` and `SuggestionCard` are **siblings** under `BatchView.vue` (`:405`/`:429`, since Plan 5), so nothing routes card emits through the panel; the profile FILE path lives in `BatchView`'s `selectedProfile` (`:27`); and a `Suggestion`'s `config_path` is a config-field LOCATOR (`tracks[<N>].match`, parsed by `rule_index_of`, `crates/muxsmith-core/src/planner.rs:2117`), never a file path - the uncommitted draft loaded and saved by `config_path`, a runtime-broken misuse that 27/27 e2e passed only because its echo mock is semantics-blind (the fixture set the suggestion's `config_path` equal to the picked path). Corrected wiring: `SuggestionCard` renders the apply control and emits `apply` carrying its two opaque fields (`config_path`, `edit`), and `BatchView` - the direct parent that owns the picked path and the IPC call sites - handles it as `loadProfile(picked) -> applySuggestion(model, config_path, edit) -> saveProfile(picked, updated)`, with `DiagnosticsPanel` out of the chain (documentation-only comment) and `BatchView.vue` added to the Files list. Steps changed by this routing carry the marker "(amended 2026-07-16, apply-wiring routing)".
+
+## Amendment 5 (2026-07-16): the shared recents memory and editor recents (post-verdict, recents routing)
+
+The whole-branch review (`.superpowers/sdd/plan-6/whole-branch-verdict.md`, Finding 1, HIGH) found spec 8.2's "recent profiles" clause built only in the batch view: the editor has a pick button but never feeds the shared `recent_profiles` memory and renders no recents list (`spec-clause-sweep-at-plan-close`, `docs/decision-ledger.yaml`). Owner ruling (Şenol, 2026-07-16, option 1a): a new **Task 13c** extracts BatchView's `rememberRecentProfile` round trip into a shared `src/recentProfiles.ts`, BatchView re-points to it as a behavior-identical refactor, and the editor remembers a profile on Open AND renders a recents list, reusing the existing `batch-recents-heading` Fluent key (the seventh reused rendered-surface string, joining the owner's pending string pass; zero new catalog keys). Task 13c is a **post-verdict delta**: it runs after the whole-branch fix wave lands in `.worktrees/plan6-e`, serial and same-worktree, so it does not alter the four-wave build structure or Task 14's standing as the last wave-dependent task, and the resumed whole-branch reviewer judges it against its own verdict rather than as a fresh task review. Its section sits after Task 14 (its chronological position); steps added by this routing carry the marker "(amended 2026-07-16, recents routing)".
 
 ---
 
@@ -1653,6 +1657,178 @@ Expected: PASS.
 ```bash
 git add src/components/SuggestionCard.vue src/views/BatchView.vue src/components/DiagnosticsPanel.vue locales/en/gui-batch.ftl locales/de/gui-batch.ftl e2e/smoke.spec.ts
 git -c commit.gpgsign=false commit -m "gui: one-click apply-suggestion in the batch view (D43, D49)"
+```
+
+---
+
+## Post-verdict amendment (2026-07-16, recents routing): Task 13c
+
+Task 13c is not part of the four-wave build. It closes the whole-branch review's Finding 1 (`.superpowers/sdd/plan-6/whole-branch-verdict.md`), so it runs **after** the eight-item fix wave lands in `.worktrees/plan6-e`, serial and in the same worktree (no concurrent writer). The resumed whole-branch reviewer judges it as a **post-verdict delta** against its own verdict, not as a fresh task review. Because it lands after Task 14 and the fix wave, it leaves Task 14 the last wave-dependent task and does not touch the wave structure.
+
+### Task 13c: spec 8.2 "recent profiles" - the shared recents memory, fed and rendered by the editor (amended 2026-07-16, recents routing)
+
+Closes **Finding 1 (HIGH)** of the whole-branch verdict and the owner's option-1a ruling recorded in `spec-clause-sweep-at-plan-close` (`docs/decision-ledger.yaml`): spec 8.2 (`docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md:374`) promises the editor "recent profiles", but as-built the editor has only a pick button and never feeds the shared `AppSettings.recent_profiles` MRU memory the batch view maintains, nor renders a recents list. The fix extracts BatchView's `rememberRecentProfile` round trip into a shared module, re-points BatchView to it as a behavior-identical refactor, and makes the editor remember a profile on Open and render a recents list - reusing the existing `batch-recents-heading` Fluent key, adding **zero** new catalog keys.
+
+**All content anchors below are re-verify-at-dispatch:** the fix wave writes `BatchView.vue` and `EditorView.vue` in the same worktree, so line numbers will have shifted from the values measured at `bf46932`; match the quoted text, not any number.
+
+**Files:**
+- Create: `src/recentProfiles.ts` - the shared recents module, flat in `src/` matching the house's existing flat shared modules (`jobRowState.ts`, `ipc.ts`).
+- Modify: `src/views/BatchView.vue` - re-point to the shared module (behavior-identical).
+- Modify: `src/views/EditorView.vue` - route pick and recents-click through one `openPath` funnel, remember on open, render the recents list pre-Open.
+- Test: `e2e/smoke.spec.ts` - extend with one additive real-app describe block; the Tasks 10-13b mount-harness specs stay untouched.
+
+**Interfaces:**
+- Consumes: Task 8's settings surface via `src/ipc.ts`'s `getSettings`/`setSettings` (`invoke<AppSettings>("get_settings")` / `invoke<void>("set_settings", { settings })`, the real mechanism at `src/ipc.ts:249-254`), and Task 13's open flow.
+- Produces: `rememberRecentProfile(path)`, the one round trip both views persist recents through. No API change, no new IPC command, no new catalog key.
+
+**Read first:** whole-branch verdict Finding 1 and its §c rendered-surface paragraph (`.superpowers/sdd/plan-6/whole-branch-verdict.md`); `spec-clause-sweep-at-plan-close` (`docs/decision-ledger.yaml`); BatchView's `rememberRecentProfile`/`updateSettings`/`RECENT_PROFILES_CAP` and its recents template; EditorView's `pickAndOpen` and its open surface; EditorView's existing `<h3 id="editor-diagnostics-heading">{{ $t("batch-diagnostics-heading") }}</h3>` (the reuse-key-with-distinct-id precedent this task copies).
+
+Binding points:
+
+- **The module and its surface.** `src/recentProfiles.ts` exports one function, `rememberRecentProfile(path: string): Promise<AppSettings | null>`. It re-fetches via `getSettings()`, moves `path` to the front of `recent_profiles` (de-duplicated, capped at a module-private `RECENT_PROFILES_CAP = 10` mirroring `src-tauri/src/settings.rs::RECENT_PROFILES_CAP`, D27), spreads the rest of `AppSettings` unchanged so it **never clobbers** `mkvmerge_path`/`default_jobs`/`locale`/`dir_memory`, persists via `setSettings(next)`, and returns `next`. On any IPC failure it swallows, `console.warn`s once, and returns `null` - recents are background bookkeeping and a failed write must never block the pick/open that triggered it. The MRU computation is a module-private helper `withRecentProfile(recents, path)`, not exported (no external caller - scale-appropriate, not a premature public surface). The full module body:
+
+```ts
+/**
+ * Shared recent-profiles memory (spec 8.2). The batch view (T10) and the
+ * editor (T13c) both feed and render the same `AppSettings.recent_profiles`
+ * MRU list. Extracted from BatchView's original `rememberRecentProfile` so
+ * the editor can remember a profile on Open through the identical
+ * never-clobber round trip -- closing the whole-branch review's Finding 1
+ * (spec 8.2 "recent profiles" was batch-only; spec-clause-sweep-at-plan-close).
+ */
+import { getSettings, setSettings } from "./ipc";
+import type { AppSettings } from "./ipc";
+
+/**
+ * Mirrors `src-tauri/src/settings.rs::RECENT_PROFILES_CAP` (D27). The Rust
+ * side truncates only inside `save()`, so without this client-side cap the
+ * rendered MRU list would grow past the limit within one session; capping in
+ * the mutation keeps the returned settings identical to what was persisted.
+ */
+const RECENT_PROFILES_CAP = 10;
+
+/** Pure MRU update: `path` to the front, de-duplicated, capped. */
+function withRecentProfile(recents: readonly string[], path: string): string[] {
+  return [path, ...recents.filter((p) => p !== path)].slice(0, RECENT_PROFILES_CAP);
+}
+
+/**
+ * Re-fetches settings, moves `path` to the front of `recent_profiles`
+ * (never touching `mkvmerge_path`/`default_jobs`/`locale`/`dir_memory`),
+ * persists via `set_settings`, and returns the saved settings. Returns
+ * `null` if the round trip fails: a failed recents write must never block the
+ * pick/open that triggered it.
+ */
+export async function rememberRecentProfile(path: string): Promise<AppSettings | null> {
+  try {
+    const current = await getSettings();
+    const next: AppSettings = {
+      ...current,
+      recent_profiles: withRecentProfile(current.recent_profiles, path),
+    };
+    await setSettings(next);
+    return next;
+  } catch (e) {
+    console.warn("[recents] failed to persist recent profile:", e);
+    return null;
+  }
+}
+```
+
+- **BatchView re-point (behavior-identical; what moves, what stays).**
+  - **Moves out** (deleted from `BatchView.vue`, now the shared module's): the `const RECENT_PROFILES_CAP = 10;` and its mirror comment; the whole `async function rememberRecentProfile(path: string): Promise<void> { ... }` including its `try/catch` swallow and the MRU+cap expression.
+  - **Stays** in `BatchView.vue`: the `updateSettings(mutate)` helper (still used by `persistDir` for `dir_memory` - NOT moved), `persistDir`, the `settings` ref, and BatchView's own recents **template** (it keeps rendering `settings.recent_profiles` unchanged).
+  - **Changes:** add `import { rememberRecentProfile } from "../recentProfiles";`; at the single call site inside `selectProfile` (the `await rememberRecentProfile(path);` line directly before `await runValidate();`), re-point to `settings.value = (await rememberRecentProfile(path)) ?? settings.value;`. The `?? settings.value` reproduces the old behavior exactly: on success `settings.value` becomes the freshly re-fetched-and-mutated settings (as `updateSettings` set it), on a swallowed failure it is left unchanged. The `dir_memory` read earlier in `selectProfile` still runs before this line, so ordering is preserved.
+  - **One benign consequence:** the swallow's `console.warn` tag moves from `"[batch] failed to persist recent profile:"` to the module's `"[recents] failed to persist recent profile:"`. No test asserts on console output; this is message-only, not a behavior change.
+
+- **Editor: one funnel, remember on open.** Split `pickAndOpen` so the file dialog and a recents click share one path. Extract the load/diagnostics/model body into `async function openPath(path: string)` (keeping the `if (opening.value || saving.value) return;` guard at its top, and the `opening`/`ipcErrorCode`/`try`/`finally` exactly as `pickAndOpen` has them today); `pickAndOpen` keeps its own guard, opens the dialog, and calls `openPath(picked)` when the dialog returns a string. Inside `openPath`'s `try`, **after** `model.value = doc.profile ?? undefined;`, remember the opened profile: `const persisted = await rememberRecentProfile(path); if (persisted) { recents.value = persisted.recent_profiles; }`. Because the shared function swallows and returns `null` on failure, a recents-write failure never reaches `openPath`'s `catch` and never surfaces as an open error - the same tolerance BatchView's watcher-comment already cites. This mirrors BatchView routing both its pick and its recents-click through `selectProfile` (one funnel).
+
+- **Editor: render the recents list pre-Open.** Add `const recents = ref<string[]>([])` and an `onMounted` that reads the current list tolerantly: `try { recents.value = (await getSettings()).recent_profiles; } catch { /* tolerant, mirrors BatchView's onMounted: recents start empty, the editor stays usable */ }`. Imports to add: `onMounted` from `vue` (into the existing vue import), `getSettings` from `../ipc` (into the existing ipc import), `rememberRecentProfile` from `../recentProfiles`. Render the list in the **pre-Open empty state** - directly after the `<p v-if="currentPath">...</p>` open-path line and before the `<section aria-labelledby="editor-diagnostics-heading">`:
+
+```html
+<section
+  v-if="!currentPath && recents.length"
+  aria-labelledby="editor-recents-heading"
+  data-testid="editor-recents"
+>
+  <h4 id="editor-recents-heading">
+    {{ $t("batch-recents-heading") }}
+  </h4>
+  <ul>
+    <li
+      v-for="path in recents"
+      :key="path"
+    >
+      <button
+        type="button"
+        data-testid="editor-recent-profile"
+        :disabled="opening || saving"
+        @click="openPath(path)"
+      >
+        {{ path }}
+      </button>
+    </li>
+  </ul>
+</section>
+```
+
+  - **Distinct element id, reused text key (the duplicate-id fork, closed).** The heading's element id is `editor-recents-heading`, **not** `batch-recents-heading`: `App.vue` keeps every view mounted with `v-show` (not `v-if`), so BatchView's own `<h4 id="batch-recents-heading">` is in the live DOM at all times, and a second element with that id would be a duplicate id (an axe violation and an ambiguous `aria-labelledby`). Only the Fluent **text key** `batch-recents-heading` is reused. This is byte-for-byte the pattern EditorView already uses for its diagnostics heading (`<h3 id="editor-diagnostics-heading">{{ $t("batch-diagnostics-heading") }}</h3>`).
+  - **Placement rationale (pre-Open).** `v-if="!currentPath && recents.length"`: recents matter in the empty state, before a model is loaded; once a profile is open (`currentPath` set) the editor shows the form, and a file opened with a `ParseError` (`currentPath` set, `model` undefined) shows diagnostics, not recents. When the memory is empty nothing renders - which is why no empty-state string is needed.
+  - **Reused-key scope (fork closed).** The editor reuses exactly one recents string, `batch-recents-heading`. It deliberately does **not** reuse `batch-recents-empty` or `batch-recents-select-tooltip`: adding them would expand the rendered-surface delta past the single key the owner scoped (verdict §c: "`batch-recents-heading` becomes a seventh reused key"). Each recent renders as a native `<button>` whose visible label is the model-derived `path` (lint-clean under D27 `no-raw-text`, exactly as BatchView's `{{ path }}` and Task 13b's select button). If an empty-state string or a per-entry tooltip is later wanted, that is a **NEEDS_CONTEXT** to the controller, not a keyboard decision (the `generic-action-keys` / 13b reuse discipline).
+
+- **Zero new catalog keys; the reused-key enumeration.** This task adds no key to `gui-editor.ftl` or `gui-batch.ftl`. `batch-recents-heading` already exists bilingual (`locales/en/gui-batch.ftl:21`, `locales/de/gui-batch.ftl:16`). It is the **seventh** rendered-surface string the editor surface reuses rather than mints, joining the owner's pending rendered-surface pass (verdict §c). The complete set:
+  1. `batch-profile-pick` - the editor Open button.
+  2. `batch-profile-current` - the open-path line.
+  3. `batch-profile-filter-name` - the file-dialog filter.
+  4. `settings-save` - the Save button.
+  5. `batch-diagnostics-heading` - the diagnostics heading (distinct element id `editor-diagnostics-heading`).
+  6. `batch-profile-heading` - the nav tab (`App.vue`).
+  7. `batch-recents-heading` - the recents heading (distinct element id `editor-recents-heading`) - **added by this task**.
+
+- **Cross-view staleness rides the existing deferral.** BatchView reads settings once at mount and re-fetches on every write; an editor open now writes `recent_profiles`, which BatchView picks up on its next settings re-fetch (its established pattern), but BatchView's already-rendered list is not live-refreshed until then. This is the same read-staleness family as Task 14's out-of-scope "Auto-refresh after apply" and "Apply-vs-editor concurrency" items; it is not a new fork and is not solved here.
+
+- [ ] **Step 1: Write the failing real-app assertions (amended 2026-07-16, recents routing)**
+
+Extend `e2e/smoke.spec.ts` with one additive describe block, `"editor view: recent profiles (Task 13c, spec 8.2 / recents routing)"`, driving the **served app** (nav to the editor), not the mount harness. Use the established `installTauriMocks(page, { commands: { ... } })` / `recorded` / `resolveWith` / `name` / `en` helpers (as the Task-13/14 served tests do). Two **distinct** fixture paths so an identity assertion cannot pass on a shared value (`echo-mock-distinct-fixture-values`): `RECENT_PATH = "/profiles/seeded-recent.yaml"` (pre-seeded in the mocked `recent_profiles`) and `OPENED_PATH = "/profiles/freshly-opened.yaml"` (what the dialog returns). Queue one `get_settings` response per expected call - the editor's mount read plus `rememberRecentProfile`'s re-fetch (re-verify the queue depth against the harness at dispatch). Assert:
+  1. **Recents render, and the paired absence control.** With `get_settings` seeded `recent_profiles: [RECENT_PATH]`, the editor's pre-Open surface shows `editor.getByTestId("editor-recent-profile")` containing `RECENT_PATH`. In a second test seeded `recent_profiles: []`, the **same selector** has count 0 - the present/absent pair on one selector makes each non-vacuous, and Step 2's RED run exercises the present branch before the list exists.
+  2. **Clicking a recent opens through the same funnel.** Click the recent button; assert `recorded.filter((r) => r.cmd === "load_profile")` has length 1 and its `(args as { path: string }).path === RECENT_PATH` (not `OPENED_PATH`) - proving the recents click drives the same `openPath` -> `load_profile` path as pick.
+  3. **Opening writes to the front of the memory (echo, distinct values).** In a test seeded `recent_profiles: [RECENT_PATH]` with the dialog (`plugin:dialog|open`) mocked to `OPENED_PATH`, click Open, wait for the open to settle, then assert against the recorded `set_settings` call (not a UI echo): `const writes = recorded.filter((r) => r.cmd === "set_settings"); expect(writes).toHaveLength(1);` and `(writes[0].args as { settings: AppSettings }).settings.recent_profiles[0]` equals `OPENED_PATH`, with `RECENT_PATH` still present after it. Because `OPENED_PATH !== RECENT_PATH`, using the wrong path as the write value fails the assertion.
+
+- [ ] **Step 2: Run to confirm they fail (amended 2026-07-16, recents routing)**
+
+```bash
+pnpm test:e2e
+```
+Expected: FAIL, named - `editor-recent-profile` matches nothing (no recents list yet), so assertion 1's presence check and assertion 2's click both fail, and no `set_settings` write carrying `OPENED_PATH` at the front is recorded (the editor does not yet call `rememberRecentProfile`).
+
+- [ ] **Step 3: Create the shared module (amended 2026-07-16, recents routing)**
+
+Create `src/recentProfiles.ts` with the body in the module binding point above.
+
+- [ ] **Step 4: Re-point BatchView, behavior-identical (amended 2026-07-16, recents routing)**
+
+Per the BatchView binding point: delete `RECENT_PROFILES_CAP` and the local `rememberRecentProfile`; import `rememberRecentProfile` from `../recentProfiles`; re-point the `selectProfile` call site to `settings.value = (await rememberRecentProfile(path)) ?? settings.value;`. Leave `updateSettings`, `persistDir`, the `settings` ref, and the recents template unchanged.
+
+- [ ] **Step 5: Wire the editor (amended 2026-07-16, recents routing)**
+
+Per the two editor binding points: split `pickAndOpen` into `openPath` + the dialog wrapper; remember on open; add the `recents` ref, the tolerant `onMounted` read, the three imports, and the recents `<section>` in the pre-Open state with the distinct `editor-recents-heading` id.
+
+- [ ] **Step 6: Run the suite (amended 2026-07-16, recents routing)**
+
+```bash
+pnpm build && pnpm lint && pnpm check:i18n && pnpm test:e2e
+```
+Expected: PASS. The new describe block goes green; `check:i18n` stays green (no new key; `batch-recents-heading` already exists bilingual); `pnpm lint`'s D27 `no-raw-text` passes (every added string is a `$t(...)` call or the model-derived `path`); BatchView's own recents e2e stays green (behavior-identical refactor); the Task-13 served test and the mount-harness specs stay green unmodified (EditorView's `onMounted` recents read is tolerant, so served tests that do not mock `get_settings` render recents empty and hide the section).
+
+- [ ] **Step 7: Full gate, then commit (amended 2026-07-16, recents routing)**
+
+- **Review-check (behavior-identical BatchView refactor + protected specs survive):** confirm `git diff` on `BatchView.vue` shows only the recents extraction (the const and the local function deleted, one import added, one call site re-pointed) and no change to `updateSettings`/`persistDir`/the recents template; confirm no mount-harness or Task-13 served spec was deleted, ported, guarded, or skipped - only the one additive Task-13c describe block added; confirm `EditorView` still mounts from `modelValue` alone (the new `onMounted` reads recents, it does not fetch a profile).
+
+Run the nine-part gate. Then:
+
+```bash
+git add src/recentProfiles.ts src/views/BatchView.vue src/views/EditorView.vue e2e/smoke.spec.ts
+git -c commit.gpgsign=false commit -m "gui: shared recent-profiles memory, fed and rendered by the editor (spec 8.2; whole-branch Finding 1)"
 ```
 
 ---
