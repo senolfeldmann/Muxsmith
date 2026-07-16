@@ -118,6 +118,24 @@ jobs:
           fi
       - run: pnpm lint
       - run: pnpm build
+      # D44: the committed ts-rs bindings (src/bindings/) must not drift from
+      # the Rust model that generates them. Linux-only, same guard as the
+      # mkvtoolnix/webkit2gtk steps above -- the bindings themselves are
+      # platform-independent, this just avoids running the same check three
+      # times. `git diff --exit-code` gates every tracked file under the
+      # directory (profile.ts and keywords.ts alike), so a stale
+      # already-committed artifact fails the leg from the first commit
+      # onward. Its one known hole: it does not see a NEW untracked file
+      # (measured, D44), so it cannot catch a never-committed
+      # first-generation artifact. That hole closes only in wave 3, when
+      # Task 9's src/editor/registries.ts imports keywords.ts and a missing
+      # file fails `pnpm build` above; between this merge and Task 9 nothing
+      # imports the bindings, so no gate closes it for two waves.
+      - name: TS bindings are not stale
+        if: runner.os == 'Linux'
+        run: |
+          cargo test -p muxsmith-core --features ts
+          git diff --exit-code src/bindings/
       # Task 12: i18n completeness gate + Playwright smoke. Linux-only,
       # same guard as the mkvtoolnix/webkit2gtk steps above (win/mac legs
       # still build+lint+test; they skip the browser install and the
