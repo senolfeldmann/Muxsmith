@@ -379,11 +379,12 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "D49 review F7, and the reason the statement now names documents as well as plans: D49's 'no test asserts the wire change' rested on `grep -rn '\"edit\"'`, which cannot match an unquoted TS object key - e2e/smoke.spec.ts:177 carries `edit: null`. The conclusion happened to survive (that fixture is inert against `edit: unknown`), so the defect was in the METHOD while the result was right, which is precisely the state an absence-check cannot distinguish. The D49 reviewer's framing, adopted verbatim into the statement: nobody re-runs a negative"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T3 report + review verdict Q1: the implementer applied the rule to the plan's own step-7 snapshot proof (git diff --exit-code on the cli snapshots), broke ChaptersCfg::KEYWORDS deliberately, watched the check stay green, and exposed it as vacuous for the allowed-hint byte-identity claim - no pinned fixture exercises InvalidKeyword on the four keyword fields, and insta never rewrites tracked snapshots on mismatch (ledger: CI strict compare). The reviewer re-verified both premises independently. Consequence recorded here: D46's 'the existing snapshot tests prove it' (design :1226-1229) is KNOWN-FALSE for that claim; the real proof is the new unit tests (keyword_domains_project_as_closed_enums, misspelled-keyword InvalidKeyword test). Task 4's identical snapshot step inherits the same limitation"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T4 report + review verdict: both new D48 guards had their red state produced deliberately before being trusted - the briefed step-4 break (generic predicate on TracksCfg.unmatched, core-83 test red, revert) AND an un-briefed extend-mutation on guard 2 (red, revert), adjudicated within remit. Guard 2 firing settles the plan's design trigger 2 by measurement: the guard stays for good in its literal-expected form"}
 - id: proc-no-work-needed-check
   kind: pattern
   tier: 2

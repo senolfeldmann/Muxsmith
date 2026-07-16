@@ -3502,3 +3502,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T6 review verdict Minor 1: edit_key and spliced_scalar comments carry D49's pre-edit planner.rs line refs, stale on arrival; plan-mandated by the copy-verbatim rule, flagged not fixed"}
+- id: core-serde-named-default-triple
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Any serde+schemars field whose serde default is a NAMED FUNCTION (not Default::default()) carries its skip_serializing_if predicate and its schemars(extend(\"default\" = ...)) calling that SAME function; a generic is_default on such a field is a silent-data-loss defect - it compiles when the types line up and omits a non-default value that reloads inverted or destroyed (TracksCfg.unmatched, Input.recursive are the live examples). D48's mechanism stated as a reusable rule; the plan's trigger 1 mirrors the per-field consequence into ROADMAP."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T4 review verdict harvest (review-7134bb6..443ce80.diff): all 17 D48 rows verified three-attributes-one-function; the two hazard rows' bespoke predicates confirmed against KeepDrop/Default source facts"}
+- id: guard-expected-side-independent-literals
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "A guard test's expected side is written as INDEPENDENT LITERALS, never derived from the same source the guard checks: to_value(F()) == to_value(F()) is a tautology that can never fail, while a hand-written literal table is the independent truth the checked annotation can still drift from. The falsifiability of D48's guard 2 rests entirely on this construction choice."
+  steelman: "Deriving the expected side from the default functions removes 17 hand-maintained literals and can never go stale. Rejected because never-stale here means never-failing: the guard's entire value is that the two sides can disagree."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T4 review verdict Q2(b): guard 2 built with hand-written json! literals per the house const-EXPECTED table shape; the extend-mutation experiment proved it fires, where the design's tautology analysis (D48 :1706-1710) applied only to the derived construction"}
