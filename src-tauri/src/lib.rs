@@ -3,13 +3,16 @@
 //! planning/execution engine the CLI uses; no muxing or planning logic
 //! lives here (D23: "commands + job event stream, no logic").
 //!
-//! Two tasks contribute to this shell, sharing one [`AppState`]: T7
+//! Three tasks contribute to this shell, sharing one [`AppState`]: T7
 //! (D23/D27/D28) adds the read-only IPC surface -- `validate_profile`,
 //! `dry_run`, `identify`, `detect_mkvmerge` -- plus app-settings
 //! persistence (`get_settings`/`set_settings`); T8 (D23/D31) adds the run
 //! lifecycle (`start_run`/`cancel_run`/`cancel_job`/`list_runs`/
 //! `get_job_log`, the `muxsmith://job-event`/`muxsmith://run-finished`
-//! window events, and the close-with-active-run confirmation dialog).
+//! window events, and the close-with-active-run confirmation dialog);
+//! Plan 6's editor task (D42/D43) adds `load_profile`/`save_profile`/
+//! `validate_profile_model`/`apply_suggestion`, none of which touch
+//! [`AppState`] -- the editor's model lives in the frontend, not the shell.
 //!
 //! Not `#![deny(missing_docs)]`: `src-tauri` is a bin-shaped crate (the
 //! `[lib]` target exists only so Tauri's mobile entry point can call into
@@ -26,8 +29,8 @@ use std::sync::atomic::AtomicBool;
 
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier};
-use muxsmith_core::planner::{RunInputs, plan_batch};
-use muxsmith_core::profile::{lint, load, validate};
+use muxsmith_core::planner::{self, RunInputs, StructuredEdit, plan_batch};
+use muxsmith_core::profile::{Profile, lint, load, save, validate};
 use muxsmith_core::report;
 use serde::Serialize;
 use tauri::State;
@@ -291,6 +294,72 @@ fn detect_mkvmerge_body(mkvmerge_override: Option<&Path>) -> Result<MkvmergeInfo
     })
 }
 
+/// `load_profile`'s command body (testable without a Tauri runtime, D42
+/// as amended by Task 1): returns **no bespoke struct**. Mirrors
+/// [`validate_profile_body`]'s [`report::json::config_only_document`]
+/// construction with one added key, `"profile"`: the parsed model on a
+/// successful [`load::from_file`], or `null` on a `ParseError`. Its
+/// `config_diagnostics` is therefore byte-identical in shape to
+/// `validate_profile_body`'s (`core-85-report-json-dry`: neither surface
+/// owns document logic, and no second document shape is invented) --
+/// pinned by `load_profile_body_matches_validate_profile_diagnostics_and_adds_the_model`
+/// below. One round trip, because the editor needs both the diagnostics
+/// and the model and a second call would let them disagree.
+fn load_profile_body(path: &Path) -> serde_json::Value {
+    match load::from_file(path) {
+        Ok(profile) => {
+            let diags = validate::config_diagnostics(&profile);
+            let mut doc = report::json::config_only_document(&diags, None, &ShellRenderer);
+            doc["profile"] = serde_json::to_value(&profile).expect("Profile always serializes");
+            doc
+        }
+        Err(d) => {
+            let mut doc = report::json::config_only_document(&[d], None, &ShellRenderer);
+            doc["profile"] = serde_json::Value::Null;
+            doc
+        }
+    }
+}
+
+/// `save_profile`'s command body (testable without a Tauri runtime, D42):
+/// writes `profile` to `path` via [`save::to_file`]. Unlike the read-only
+/// bodies above, a save failure is a genuine [`IpcError`]
+/// (`SaveError`, mapped in [`crate::error`]), not a folded diagnostic: a
+/// full disk or an unwritable path is an operational failure of the write
+/// itself, not a problem with the profile's content (`core-124-error-currency-split`).
+fn save_profile_body(profile: &Profile, path: &Path) -> Result<(), IpcError> {
+    save::to_file(profile, path).map_err(IpcError::from)
+}
+
+/// `validate_profile_model`'s command body (testable without a Tauri
+/// runtime, D42): wraps [`validate::config_diagnostics`] directly -- no
+/// filesystem access, the model already lives in memory on the frontend.
+/// Byte-identical envelope to [`validate_profile_body`]/[`load_profile_body`]
+/// (`core-85`): all three go through [`report::json::config_only_document`],
+/// so the frontend has exactly one document shape to render regardless of
+/// which of the three commands produced it.
+fn validate_profile_model_body(profile: &Profile) -> serde_json::Value {
+    let diags = validate::config_diagnostics(profile);
+    report::json::config_only_document(&diags, None, &ShellRenderer)
+}
+
+/// `apply_suggestion`'s command body (testable without a Tauri runtime,
+/// D43): forwards to [`planner::apply_suggestion`], core's narrow-only
+/// applier (D6, `core-33-suggestion-narrow-only`, `core-44-suggestion-no-clobber`).
+/// A genuine [`IpcError`] (`ApplyError`, mapped in [`crate::error`]) covers
+/// a frontend-side bug (an unparsable `config_path`, an index past the end
+/// of `tracks.rules`) or a suggestion computed against a since-edited model
+/// (`EditChangedNothing`). The caller re-validates the returned model
+/// through `validate_profile_model` (D43: no compound apply-and-validate
+/// command -- this function does not validate and does not re-plan).
+fn apply_suggestion_body(
+    profile: &Profile,
+    config_path: &str,
+    edit: &StructuredEdit,
+) -> Result<Profile, IpcError> {
+    planner::apply_suggestion(profile, config_path, edit).map_err(Into::into)
+}
+
 /// `validate_profile` IPC command (D23, this task's brief): static
 /// validation only, never touches mkvmerge. Runs on a blocking task
 /// (`tauri::async_runtime::spawn_blocking`) since [`validate_profile_body`]
@@ -376,6 +445,62 @@ async fn detect_mkvmerge(state: State<'_, AppState>) -> Result<MkvmergeInfo, Ipc
     .await
 }
 
+/// `load_profile` IPC command (D42, this task's brief): on a blocking task
+/// ([`load_profile_body`] touches the filesystem), the same reason
+/// `validate_profile` runs on `on_blocking`. No `state` parameter: unlike
+/// `dry_run`/`identify`/`detect_mkvmerge`, the editor never needs the
+/// mkvmerge override.
+#[tauri::command]
+async fn load_profile(path: String) -> Result<serde_json::Value, IpcError> {
+    on_blocking(move || Ok(load_profile_body(Path::new(&path)))).await
+}
+
+/// `save_profile` IPC command (D42): on a blocking task
+/// ([`save_profile_body`] touches the filesystem, same reason as
+/// `load_profile`). Unlike the read-only commands, this one can genuinely
+/// fail: a full disk or a bad path surfaces as [`IpcError`] via
+/// [`SaveError`]'s mapping in [`crate::error`], not folded into a document.
+///
+/// [`SaveError`]: muxsmith_core::profile::save::SaveError
+#[tauri::command]
+async fn save_profile(path: String, profile: Profile) -> Result<(), IpcError> {
+    on_blocking(move || save_profile_body(&profile, Path::new(&path))).await
+}
+
+/// `validate_profile_model` IPC command (D42): on a blocking task for a
+/// **different reason** than the disk-touching commands above --
+/// [`validate_profile_model_body`] never touches the filesystem, but
+/// [`validate::config_diagnostics`] compiles every regex and parses every
+/// template in the profile (`core-84-regex-recompile`), and this command
+/// runs on every keystroke in the editor (spec 7). Tauri 2 runs a
+/// non-`async` command on the application's main thread, so a plain `fn`
+/// here would stall the webview on each edit -- the same reasoning already
+/// recorded for `detect_mkvmerge` above. "Touches the disk" is not the
+/// criterion; "could stall the webview" is.
+#[tauri::command]
+async fn validate_profile_model(profile: Profile) -> Result<serde_json::Value, IpcError> {
+    on_blocking(move || Ok(validate_profile_model_body(&profile))).await
+}
+
+/// `apply_suggestion` IPC command (D43): on a blocking task for the same
+/// CPU-bound-on-every-edit reason as `validate_profile_model` --
+/// [`planner::apply_suggestion`] does not touch the filesystem either, but
+/// it is invoked from the same edit path. A genuine [`IpcError`] via
+/// [`ApplyError`]'s mapping in [`crate::error`] on a frontend-side bug or a
+/// suggestion computed against a since-edited model; the caller
+/// re-validates the returned profile through `validate_profile_model`
+/// (D43: no compound apply-and-validate command).
+///
+/// [`ApplyError`]: muxsmith_core::planner::ApplyError
+#[tauri::command]
+async fn apply_suggestion(
+    profile: Profile,
+    config_path: String,
+    edit: StructuredEdit,
+) -> Result<Profile, IpcError> {
+    on_blocking(move || apply_suggestion_body(&profile, &config_path, &edit)).await
+}
+
 /// `get_settings` IPC command (D27). Plain local JSON file I/O, no
 /// subprocess; kept a non-async, main-thread command like Tauri's own
 /// trivial-state-access examples.
@@ -397,10 +522,11 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
 /// `capabilities/default.json` gate what each grants to the *frontend*; the
 /// shell's own Rust-side dialog use in the private `run::on_close_requested`
 /// bypasses the IPC permission layer and needs no capability entry), manages the
-/// single unified [`AppState`], registers both tasks' IPC commands under
+/// single unified [`AppState`], registers every task's IPC commands under
 /// ONE `invoke_handler` (Tauri resolves `State<AppState>` once per managed
-/// type, so the read-only/settings commands and the run-lifecycle commands
-/// must share the same registration), wires the D31 close-with-active-run
+/// type, so the read-only/settings commands, the run-lifecycle commands,
+/// and the editor commands (D42/D43, none of which use `State`) must share
+/// the same registration), wires the D31 close-with-active-run
 /// confirmation, and launches the main window from `tauri.conf.json`.
 ///
 /// The `os` plugin (T9, D28) is here rather than in `@tauri-apps/api`
@@ -442,6 +568,10 @@ pub fn run() {
             dry_run,
             identify,
             detect_mkvmerge,
+            load_profile,
+            save_profile,
+            validate_profile_model,
+            apply_suggestion,
             get_settings,
             set_settings,
             run::start_run,
@@ -551,6 +681,13 @@ mod tests {
         "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules:\n    - match: { exact: { type: audio } }\n"
     }
 
+    // A loadable but invalid profile (zero track rules, yields the
+    // `no-track-rules` diagnostic): shared by `validate_profile_body`'s and
+    // `load_profile_body`'s tests below instead of forked as two inline
+    // literals (`testing-support-helpers`).
+    const LOADABLE_INVALID_PROFILE: &str =
+        "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules: []\n";
+
     // --- validate_profile_body ---
 
     #[test]
@@ -566,11 +703,7 @@ mod tests {
     fn validate_profile_body_reports_validate_diagnostics_for_a_loadable_invalid_profile() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("p.yaml");
-        std::fs::write(
-            &path,
-            "profile_version: 1\ninput: { pattern: '.*', extensions: [mkv] }\ntracks:\n  rules: []\n",
-        )
-        .unwrap();
+        std::fs::write(&path, LOADABLE_INVALID_PROFILE).unwrap();
 
         let doc = validate_profile_body(&path);
         let codes: Vec<&str> = doc["config_diagnostics"]
@@ -581,6 +714,50 @@ mod tests {
             .collect();
         assert!(codes.contains(&"no-track-rules"), "codes: {codes:?}");
         assert!(doc.get("mkvmerge_found").is_none());
+    }
+
+    // --- load_profile_body ---
+
+    #[test]
+    fn load_profile_body_matches_validate_profile_diagnostics_and_adds_the_model() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // A loadable but invalid profile: load_profile's diagnostics envelope is
+        // byte-identical to validate_profile's, plus the parsed model under "profile".
+        let invalid = dir.path().join("p.yaml");
+        std::fs::write(&invalid, LOADABLE_INVALID_PROFILE).unwrap();
+        let loaded = load_profile_body(&invalid);
+        let validated = validate_profile_body(&invalid);
+        assert_eq!(
+            loaded["config_diagnostics"], validated["config_diagnostics"],
+            "load_profile's config_diagnostics must be shape-identical to validate_profile's (core-85)"
+        );
+        assert_eq!(
+            loaded["files"], validated["files"],
+            "same envelope, not a second shape"
+        );
+        assert!(
+            !loaded["profile"].is_null(),
+            "a loadable profile is present under \"profile\""
+        );
+        assert!(
+            validated.get("profile").is_none(),
+            "validate_profile carries no model"
+        );
+
+        // A load failure (missing file, the same fixture shape as lib.rs:557-563):
+        // "profile" is null and the single diagnostic still matches validate's.
+        let missing = dir.path().join("missing.yaml"); // never written
+        let loaded_missing = load_profile_body(&missing);
+        let validated_missing = validate_profile_body(&missing);
+        assert_eq!(
+            loaded_missing["config_diagnostics"],
+            validated_missing["config_diagnostics"]
+        );
+        assert!(
+            loaded_missing["profile"].is_null(),
+            "a load failure yields profile: null"
+        );
     }
 
     // --- dry_run_body ---

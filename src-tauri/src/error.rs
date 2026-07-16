@@ -18,6 +18,8 @@ use std::collections::HashMap;
 
 use muxsmith_core::capability::runtime::RuntimeError;
 use muxsmith_core::identify::IdentifyError;
+use muxsmith_core::planner::ApplyError;
+use muxsmith_core::profile::save::SaveError;
 use serde::Serialize;
 
 use crate::settings::SettingsError;
@@ -131,6 +133,51 @@ impl From<SettingsError> for IpcError {
     }
 }
 
+/// Maps a profile-save failure ([`muxsmith_core::profile::save::to_file`])
+/// to an [`IpcError`] (D42). Same split as [`From<SettingsError>`] above,
+/// same reason: `Io` (permissions, full disk, bad path) and `Serialize`
+/// (the model could not be turned into text) are different failures, kept
+/// distinguishable rather than folded into one code (`core-124`, Şenol
+/// ruling 2026-07-16: `SaveError::{Io,Serialize}` maps to
+/// `profile-save-io-failed`/`profile-save-failed`, never `ParseError` --
+/// that catalog entry asserts a parse, which a write failure never had).
+impl From<SaveError> for IpcError {
+    fn from(e: SaveError) -> IpcError {
+        match e {
+            SaveError::Io(detail) => IpcError::new("profile-save-io-failed").with("detail", detail),
+            SaveError::Serialize(detail) => {
+                IpcError::new("profile-save-failed").with("detail", detail)
+            }
+        }
+    }
+}
+
+/// Maps an [`ApplyError`] ([`muxsmith_core::planner::apply_suggestion`]) to
+/// an [`IpcError`] (D43/D49 "The shell mapping", verbatim). Every variant
+/// here is a frontend-side bug surfaced as data rather than silently
+/// swallowed: an unparsable `config_path`, an index past the end of
+/// `tracks.rules`, or a suggestion computed against a since-edited model
+/// (`EditChangedNothing`) that would otherwise silently no-op.
+impl From<ApplyError> for IpcError {
+    fn from(e: ApplyError) -> IpcError {
+        match e {
+            ApplyError::UnparsableConfigPath(path) => {
+                IpcError::new("apply-unparsable-config-path").with("path", path)
+            }
+            ApplyError::RuleIndexOutOfRange { index, rules } => {
+                IpcError::new("apply-rule-index-out-of-range")
+                    .with("index", index.to_string())
+                    .with("rules", rules.to_string())
+            }
+            ApplyError::EditChangedNothing { index, property } => {
+                IpcError::new("apply-edit-changed-nothing")
+                    .with("index", index.to_string())
+                    .with("property", property)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,6 +263,41 @@ mod tests {
         assert_eq!(io.params["detail"], "permission denied");
         assert_eq!(parse.code, "settings-parse-failed");
         assert_ne!(io.code, parse.code);
+    }
+
+    #[test]
+    fn save_errors_map_to_distinct_codes() {
+        let io: IpcError = SaveError::Io("permission denied".into()).into();
+        let ser: IpcError = SaveError::Serialize("bad float".into()).into();
+        assert_eq!(io.code, "profile-save-io-failed");
+        assert_eq!(io.params["detail"], "permission denied");
+        assert_eq!(ser.code, "profile-save-failed");
+        assert_ne!(io.code, ser.code);
+    }
+
+    #[test]
+    fn apply_errors_map_to_distinct_codes() {
+        let unparsable: IpcError =
+            ApplyError::UnparsableConfigPath("not-a-rule-path".into()).into();
+        let oob: IpcError = ApplyError::RuleIndexOutOfRange { index: 7, rules: 1 }.into();
+        let noop: IpcError = ApplyError::EditChangedNothing {
+            index: 0,
+            property: "forced_track".into(),
+        }
+        .into();
+
+        assert_eq!(unparsable.code, "apply-unparsable-config-path");
+        assert_eq!(unparsable.params["path"], "not-a-rule-path");
+        assert_eq!(oob.code, "apply-rule-index-out-of-range");
+        assert_eq!(oob.params["index"], "7");
+        assert_eq!(oob.params["rules"], "1");
+        assert_eq!(noop.code, "apply-edit-changed-nothing");
+        assert_eq!(noop.params["index"], "0");
+        assert_eq!(noop.params["property"], "forced_track");
+
+        assert_ne!(unparsable.code, oob.code);
+        assert_ne!(oob.code, noop.code);
+        assert_ne!(unparsable.code, noop.code);
     }
 
     #[test]
