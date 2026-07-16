@@ -3558,3 +3558,59 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: deferred, ref: "plan-6 T8 review verdict Q1 + harvest: extra _body twins ruled correct conformance on the merits, Minor process note under the rule's letter; carve-out proposed by the reviewer, escalated to the owner"}
+- id: brief-citations-drift-after-amendment
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A brief's line-number citations into a design document drift when the design is amended after the brief was cut (plan-6: Task 1 shifted the design by ~35 lines; T9's brief cited :1082-1091 for content actually at :1117-1139). Content matched in every observed case, so cost was zero - but nothing re-verifies a brief's citations post-amendment. When dispatching after a document amendment, the dispatch says 'line positions may have shifted; the text is the anchor'; a citation-freshness check becomes worth building if this recurs where CONTENT, not just position, drifted."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T9 review verdict harvest: brief citations :1082-1091 and :694-706/:806-819 landed off their targets post-Task-1 amendment; content matched everywhere, LABEL_KEY_RE confirmed at the true location :1124"}
+- id: gui-editor-widget-test-mount-harness
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "Editor widget/view e2e verification before the nav exists (plan-6 tasks 10-12) runs against a minimal test-mount harness extending the established e2e harness pattern (test-only artifacts, gitignored e2e/.generated/, never dist/) - not deferred to the nav-wiring task as compile-only proofs. The harness imports the app's own buildBundles so the mounted components render the real catalogs. Amendment four-eyes authored and committed (add3ab9)."
+  steelman: "Deferring DOM assertions to task 13 (compile-only proofs for 10-12) adds zero test infrastructure and keeps the plan's file scope as drawn; rejected because a widget defect would surface two tasks late inside task 13's own diff, and three task reviews would grade UI components without behavioral evidence."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T10 NEEDS_CONTEXT decision memo (task-10-report.md, mount-chain trace) -> controller routing (claims verified against the tree) -> amendment authored four-eyes, two review rounds APPROVED, committed add3ab9 (amendment-mount-harness-report.md + delta verdicts in the plan-6 SDD scratch)"}
+- id: test-double-imports-production-seam
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "A test double that IMPORTS the production seam beats one that reconstructs it: the mount harness imports the app's own buildBundles (real catalogs, drift structurally impossible), the same way tauri-mock-entry.ts re-exports the real @tauri-apps/api instead of reimplementing the wire contract. Reconstruction polices drift; importing eliminates it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 amendment delta-review harvest (amendment-mount-harness.diff, buildBundles reuse verified at src/i18n/index.ts:17-20,:79 + the tauri-mock-entry.ts precedent)"}
+- id: cross-task-constraint-needs-review-check
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A binding point that constrains a LATER task's design is paired with an executed review-check line in that task's steps, not stated as prose only - a constraint a reviewer must notice under-fires; a diff/check they run does not. Instance: the mount-harness amendment's 'specs stay green after task 13, neither deleted nor ported' gained an explicit task-13 review-check bullet (git diff over e2e/smoke.spec.ts + the modelValue-only mount confirmation) in its fix round."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 amendment delta review Important 1 + fix round (review-check bullet at plan Task 13 step 5, commit add3ab9); reviewer framed it as the ausloeser-und-handgriff pattern at plan altitude"}
