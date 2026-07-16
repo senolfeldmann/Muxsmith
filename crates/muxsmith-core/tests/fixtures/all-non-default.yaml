@@ -1,0 +1,40 @@
+# D48 guard 1 fixture: every one of the 17 defaulted fields (design
+# :1517-1535) set to a value that is NOT its default. A predicate that
+# skips a non-default value silently destroys it on save; this fixture
+# exercises all 17 at once so no row can hide behind another.
+profile_version: 1
+
+input:
+  pattern: 'S(?<season>\d{2})E(?<episode>\d{2})'
+  extensions: [mkv]
+  recursive: false                     # default true
+
+output:
+  filename: { template: "{match}.mkv" }  # default keep
+  on_collision: skip                     # default error
+
+tracks:
+  unmatched: keep                      # default drop (the core-83 hazard)
+  rules:
+    - source:
+        external:                      # default primary
+          path: donors
+          recursive: true              # default false
+          extensions: [mkv]
+          match_pattern: '.*'
+          case_sensitive: true         # default false
+      match: { exact: { type: audio } }
+      optional: true                   # default false
+
+attachments:
+  unmatched: drop                      # default keep
+  rules:                               # default []
+    - drop: { substring: { file_name: tmp } }
+
+chapters: drop                         # default keep
+
+tags:
+  global: drop                         # default keep
+  track: drop                          # default keep
+
+title: clear                           # default keep

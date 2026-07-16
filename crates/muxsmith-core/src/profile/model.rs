@@ -4,10 +4,36 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use schemars::JsonSchema;
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use super::match_expr::{MatchExpr, Scalar};
+
+/// Shared schema shape for a keyword-domain projection (D46): a closed
+/// `enum` of the domain's values, not `oneOf` + per-value `const` (rejected;
+/// there is no per-value prose to attach, see D46). Used by the four
+/// `Keyword` arm `schema_with` overrides below; the doc comment on the
+/// variant itself still merges in as the branch's `description`, so this
+/// helper does not set one.
+fn keyword_domain_schema(domain: &'static [&'static str]) -> Schema {
+    json_schema!({
+        "type": "string",
+        "enum": domain,
+    })
+}
+
+/// D48: a canonical save omits a field sitting on its default. Generic
+/// predicate for 13 of the 17 defaulted fields, the ones whose serde
+/// default *is* `Default::default()`. Not usable for `FilenameCfg` or
+/// `SourceCfg` (neither implements `Default`, so instantiation is
+/// `E0277`), and wrong for `TracksCfg.unmatched` and `Input.recursive`
+/// (both compile against this generic bound but silently omit a
+/// non-default value, since their serde default is a named function, not
+/// `Default::default()`); those four use the bespoke predicates below
+/// instead, one per named default function.
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
 
 /// The top-level profile document (spec 4): input matching, output naming,
 /// track rules (in output order), and attachments/chapters/tags/title
@@ -27,24 +53,29 @@ pub struct Profile {
     /// Primary-file matching rule and directory-walk options (spec 4.2).
     pub input: Input,
     /// Output naming and collision policy (spec 4.8).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(OutputCfg::default()).unwrap()))]
     pub output: OutputCfg,
     /// Track selection/change rules plus the unmatched-track policy
     /// (spec 4.5). Restructured into a block so the policy lives with its
     /// rules, matching `attachments` and `output`/`tags`.
     pub tracks: TracksCfg,
     /// Attachment keep/drop/add rules (spec 4.9).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(AttachmentsCfg::default()).unwrap()))]
     pub attachments: AttachmentsCfg,
     /// Chapters handling: keep, drop, or an external locator (spec 4.9).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(ChaptersCfg::default()).unwrap()))]
     pub chapters: ChaptersCfg,
     /// Global and per-track tag handling (spec 4.9).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(TagsCfg::default()).unwrap()))]
     pub tags: TagsCfg,
     /// Output title handling: keep, clear, or a literal-mode template
     /// (spec 4.9).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(TitleCfg::default()).unwrap()))]
     pub title: TitleCfg,
 }
 
@@ -79,12 +110,21 @@ pub struct Input {
     pub extensions: Vec<String>,
     /// Whether the source directory walk descends into subdirectories.
     /// Defaults to `true`.
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_default_true")]
+    #[schemars(extend("default" = serde_json::to_value(default_true()).unwrap()))]
     pub recursive: bool,
 }
 
 fn default_true() -> bool {
     true
+}
+
+/// D48: `Input.recursive`'s serde default is `true`, not `bool::default()`
+/// (`false`), so the generic `is_default` would omit an explicit
+/// `recursive: false` and reload it inverted. Named after, and calling,
+/// the same `default_true` its own `#[serde(default = ...)]` names.
+fn is_default_true(b: &bool) -> bool {
+    *b == default_true()
 }
 
 /// Output naming and collision handling (spec 4.8).
@@ -97,12 +137,17 @@ pub struct OutputCfg {
     pub directory: Option<PathBuf>,
     /// `keep` (source basename, `.mkv` extension enforced) or a literal-mode
     /// template (spec 4.7); defaults to `keep`.
-    #[serde(default = "FilenameCfg::keep")]
+    #[serde(
+        default = "FilenameCfg::keep",
+        skip_serializing_if = "is_keep_filename"
+    )]
+    #[schemars(extend("default" = serde_json::to_value(FilenameCfg::keep()).unwrap()))]
     pub filename: FilenameCfg,
     /// Policy when the rendered output path already exists or two planned
     /// outputs collide. An output path equal to any input path is always a
     /// hard `SourceOverwrite` error regardless of this policy (spec 4.8, 5.2).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(CollisionPolicy::default()).unwrap()))]
     pub on_collision: CollisionPolicy,
 }
 
@@ -148,15 +193,34 @@ pub enum FilenameCfg {
     Template(TemplateBlock),
     /// Keyword form; the only accepted value is `"keep"` (`validate.rs`
     /// rejects anything else as `InvalidKeyword`).
+    #[schemars(schema_with = "filename_keyword_schema")]
     Keyword(String),
 }
 
 impl FilenameCfg {
+    /// Closed keyword domain for `output.filename` (spec 4.8): the single
+    /// source for the `validate.rs` guard, its `InvalidKeyword` `allowed`
+    /// hint, and this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["keep"];
+
     /// The `keep` keyword variant: reuse the source basename (`.mkv`
     /// extension enforced). Also the serde default for `output.filename`.
     pub fn keep() -> Self {
         FilenameCfg::Keyword("keep".into())
     }
+}
+
+/// D48: `FilenameCfg` has no `Default` impl (only [`FilenameCfg::keep`]),
+/// so the generic `is_default` cannot be instantiated for it (`E0277`).
+/// Named after, and calling, the same `FilenameCfg::keep` its own
+/// `#[serde(default = ...)]` names.
+fn is_keep_filename(f: &FilenameCfg) -> bool {
+    *f == FilenameCfg::keep()
+}
+
+/// Narrows `FilenameCfg::Keyword`'s schema to [`FilenameCfg::KEYWORDS`] (D46).
+fn filename_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(FilenameCfg::KEYWORDS)
 }
 
 /// `output.on_collision` policy (spec 4.8): applies to an existing rendered
@@ -198,7 +262,8 @@ pub enum KeepDrop {
 pub struct TrackRule {
     /// Where the rule resolves against: the primary file (default) or an
     /// external donor located via a [`Locator`] (spec 4.5, 4.6).
-    #[serde(default = "SourceCfg::primary")]
+    #[serde(default = "SourceCfg::primary", skip_serializing_if = "is_primary")]
+    #[schemars(extend("default" = serde_json::to_value(SourceCfg::primary()).unwrap()))]
     pub source: SourceCfg,
     /// The match expression a track of `source` must satisfy; serialized
     /// under the profile key `match` (renamed here because `match` is a
@@ -208,7 +273,8 @@ pub struct TrackRule {
     /// Tolerates zero matching tracks (spec 5.1). Two candidates on an
     /// optional rule remain an `AmbiguousRule` error; `optional` covers
     /// only the zero-candidate case, never widening uniqueness.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
     pub optional: bool,
     /// Settable-property changes to apply to the resolved track (spec 4.4
     /// table); `None` leaves the track's properties untouched.
@@ -226,15 +292,34 @@ pub enum SourceCfg {
     External(ExternalBlock),
     /// Keyword form; the only accepted value is `"primary"` (the rule's own
     /// primary file).
+    #[schemars(schema_with = "source_keyword_schema")]
     Keyword(String),
 }
 
 impl SourceCfg {
+    /// Closed keyword domain for `track.source` (spec 4.5): the single
+    /// source for the `validate.rs` guard, its `InvalidKeyword` `allowed`
+    /// hint, and this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["primary"];
+
     /// The `primary` keyword variant: resolve against the rule's own
     /// primary file. Also the serde default for `track.source`.
     pub fn primary() -> Self {
         SourceCfg::Keyword("primary".into())
     }
+}
+
+/// D48: `SourceCfg` has no `Default` impl (only [`SourceCfg::primary`]),
+/// so the generic `is_default` cannot be instantiated for it (`E0277`).
+/// Named after, and calling, the same `SourceCfg::primary` its own
+/// `#[serde(default = ...)]` names.
+fn is_primary(s: &SourceCfg) -> bool {
+    *s == SourceCfg::primary()
+}
+
+/// Narrows `SourceCfg::Keyword`'s schema to [`SourceCfg::KEYWORDS`] (D46).
+fn source_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(SourceCfg::KEYWORDS)
 }
 
 /// External file locator (spec 4.6): finds candidate donor files; the
@@ -253,7 +338,8 @@ pub struct Locator {
     /// Whether the search descends into subdirectories of `path`. Defaults
     /// to `false`, deliberately asymmetric with `input.recursive`
     /// (default `true`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
     pub recursive: bool,
     /// Candidate extensions, validated against `mkvmerge --list-types`
     /// like `input.extensions`.
@@ -270,7 +356,8 @@ pub struct Locator {
     pub match_pattern: Option<String>,
     /// Whether `match_pattern` matching is case-sensitive. Defaults to
     /// `false` (the rendered pattern is prefixed `(?i)`, spec 4.7).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(bool::default()).unwrap()))]
     pub case_sensitive: bool,
 }
 
@@ -282,13 +369,15 @@ pub struct AttachmentsCfg {
     /// deliberate asymmetry with tracks (unmatched tracks are always
     /// dropped), since dropping fonts silently breaks ASS subtitle
     /// rendering.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
     pub unmatched: KeepDrop,
     /// Ordered select/drop/add rules (spec 4.9). Unlike track rules, not
     /// uniqueness-constrained: a `select`/`drop` expression may match
     /// several attachments (fonts come in sets); rules apply in list order,
     /// first matching rule wins per attachment.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(<Vec<AttachmentRule>>::default()).unwrap()))]
     pub rules: Vec<AttachmentRule>,
 }
 
@@ -303,7 +392,8 @@ pub struct TracksCfg {
     /// `drop` (the declarative default). `keep` passes them through
     /// untouched; consumed by `command` (Task 2). Donor tracks are
     /// unaffected: a donor contributes only its rule-selected track.
-    #[serde(default = "drop_policy")]
+    #[serde(default = "drop_policy", skip_serializing_if = "is_drop_policy")]
+    #[schemars(extend("default" = serde_json::to_value(drop_policy()).unwrap()))]
     pub unmatched: KeepDrop,
     /// Ordered track rules; list order defines the output `--track-order`
     /// (spec 4.5). Uniqueness-constrained (spec 2): each rule resolves to
@@ -313,6 +403,18 @@ pub struct TracksCfg {
 
 fn drop_policy() -> KeepDrop {
     KeepDrop::Drop
+}
+
+/// D48: `tracks.unmatched`'s serde default is `drop` (`drop_policy`), the
+/// opposite of `KeepDrop::default()` (`keep`, spec 4.9's deliberate
+/// asymmetry with `attachments.unmatched`). The generic `is_default` would
+/// compile against this field (both sides are `KeepDrop`) but compare
+/// against the wrong default, silently omitting an explicit `unmatched:
+/// keep` and reloading it as `drop` - the owner-ruled-legal `core-83`
+/// pure-passthrough profile, destroyed. Named after, and calling, the same
+/// `drop_policy` its own `#[serde(default = ...)]` names.
+fn is_drop_policy(k: &KeepDrop) -> bool {
+    *k == drop_policy()
 }
 
 /// Exactly one of `select` / `drop` / `add` must be set; enforced in
@@ -343,7 +445,15 @@ pub enum ChaptersCfg {
     /// mkvmerge accepts) via this locator.
     External(ExternalBlock),
     /// Keyword form: `"keep"` or `"drop"`.
+    #[schemars(schema_with = "chapters_keyword_schema")]
     Keyword(String),
+}
+
+impl ChaptersCfg {
+    /// Closed keyword domain for `chapters` (spec 4.9): the single source
+    /// for the `validate.rs` guard, its `InvalidKeyword` `allowed` hint, and
+    /// this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["keep", "drop"];
 }
 
 impl Default for ChaptersCfg {
@@ -352,16 +462,23 @@ impl Default for ChaptersCfg {
     }
 }
 
+/// Narrows `ChaptersCfg::Keyword`'s schema to [`ChaptersCfg::KEYWORDS`] (D46).
+fn chapters_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(ChaptersCfg::KEYWORDS)
+}
+
 /// Global and per-track tag handling (spec 4.9), mapped to
 /// `--no-global-tags`/`--no-track-tags`.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TagsCfg {
     /// Global (container-level) tags: keep or drop. Defaults to `keep`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
     pub global: KeepDrop,
     /// Per-track tags: keep or drop. Defaults to `keep`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[schemars(extend("default" = serde_json::to_value(KeepDrop::default()).unwrap()))]
     pub track: KeepDrop,
 }
 
@@ -374,11 +491,24 @@ pub enum TitleCfg {
     /// Literal-mode template rendering the output title (spec 4.7).
     Template(TemplateBlock),
     /// Keyword form: `"keep"` or `"clear"`.
+    #[schemars(schema_with = "title_keyword_schema")]
     Keyword(String),
+}
+
+impl TitleCfg {
+    /// Closed keyword domain for `title` (spec 4.9): the single source for
+    /// the `validate.rs` guard, its `InvalidKeyword` `allowed` hint, and
+    /// this enum's schema projection (D46).
+    pub const KEYWORDS: &'static [&'static str] = &["keep", "clear"];
 }
 
 impl Default for TitleCfg {
     fn default() -> Self {
         TitleCfg::Keyword("keep".into())
     }
+}
+
+/// Narrows `TitleCfg::Keyword`'s schema to [`TitleCfg::KEYWORDS`] (D46).
+fn title_keyword_schema(_generator: &mut SchemaGenerator) -> Schema {
+    keyword_domain_schema(TitleCfg::KEYWORDS)
 }
