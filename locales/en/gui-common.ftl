@@ -46,6 +46,13 @@ settings-io-failed = Application settings could not be read or written: { $detai
 settings-parse-failed = The application settings file is corrupt: { $detail }
 internal-task-failed = An internal error occurred: { $detail }
 
+## D42/D43: the editor's IPC error codes (save_profile, apply_suggestion).
+profile-save-io-failed = The profile could not be written: { $detail }
+profile-save-failed = The profile could not be serialized for saving: { $detail }
+apply-unparsable-config-path = The suggestion could not be applied: "{ $path }" does not name a rule.
+apply-rule-index-out-of-range = The suggestion could not be applied: no rule at index { $index } (rule count: { $rules }).
+apply-edit-changed-nothing = The suggestion changed nothing: rule { $index } already constrains "{ $property }".
+
 ## T9: first-run mkvmerge detection (D28).
 firstrun-detecting = Looking for mkvmerge...
 firstrun-missing-heading = mkvmerge was not found
