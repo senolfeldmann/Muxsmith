@@ -575,6 +575,18 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   staleness (#1), double `--version` spawn (#6), dialog stacking (#9),
   missing NotFound test (#15) - loud/harmless GUI leftovers from the
   Plan-5 triage that never reached this tracker.
+- **Apply-vs-editor concurrency guard**: one-click apply (Plan 6 T14)
+  writes the profile file while the editor tab may hold an older model of
+  the same file; nothing detects the divergence (last-writer-wins on the
+  next save). A guard (mtime check, dirty-flag prompt, or shared model)
+  is a deliberate v1.x design question. (2026-07-16, T14 report concern +
+  amendment-4 routed note.)
+- **Batch view auto-refresh after apply**: whether a successful one-click
+  apply re-runs the dry run so the suggestion list reflects the new
+  profile is design-silent (core-03 guarantees survival of the NEXT
+  user-initiated dry run only); Plan 6 ships the null option. Adding
+  auto-refresh is a user-visible product decision. (2026-07-16,
+  amendment-4 routed note.)
 - **regex compile cache (matcher.rs:74, residue R4)**: patterns are
   recompiled per matches() evaluation (per track x rule x file in bulk
   runs); fix is compile-once at validate/plan setup. v1.x WITH promotion
