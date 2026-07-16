@@ -3559,6 +3559,36 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T9 review verdict harvest: brief citations :1082-1091 and :694-706/:806-819 landed off their targets post-Task-1 amendment; content matched everywhere, LABEL_KEY_RE confirmed at the true location :1124"}
+- id: spec-clause-sweep-at-plan-close
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A plan implementing a spec section carries a clause-by-clause checklist of that section: every clause gets a task, an amendment, or a recorded deferral. Plan 6 cited spec 8.2 selectively; of its three uncovered clauses the ONE with a ledger entry (registry-slot-capability-delta -> the 13b detail editor) got caught mid-run, while the two without entries (recent profiles, inline validation markers) survived thirteen task reviews unrouted and were found only by the whole-branch review. The ledger entry was the only difference - the checklist makes that difference deterministic."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 whole-branch verdict (whole-branch-verdict.md, findings 1+2 + harvest): spec 8.2 'recent profiles' absent and unrouted (HIGH), 'inline validation markers' panel-built without a recorded shape decision (MODERATE); both routed to the owner at plan close"}
+    - {date: "2026-07-16", kind: decided, ref: "Şenol rulings (options 1a + 2a of the enumerated routing): recents land in Plan 6 via amendment-5 task 13c (shared rememberRecentProfile module, editor feeds and renders the recents memory); the diagnostics panel is the RECORDED Plan-6 shape of the inline-markers clause, field anchoring a named Plan-7 ROADMAP item"}
+- id: fixture-reachable-states-need-one-served-render
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "When a view's populated states are covered only through a test-mount harness, the served-app path silently ships states no gate ever rendered: plan-6's grid-with-rows and detail panel existed exclusively behind the harness (the T13 served fixture had rules: []), which is also why the axe gap existed. Each composed state class gets at least one served-app render; extends a11y-claims-need-witnessed-scans from scans to rendering generally."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 whole-branch verdict (duality-gap analysis + agenda-a triage): fix-wave item 1 populates the served fixture, selects a row, and runs the axe scan on the composed state"}
+    - {date: "2026-07-16", kind: reinforced, ref: "fix-wave report (fix-wave-report.md): the rule's FIRST application caught a real shipped defect - PropertyMapWidget's key/value inputs unlabeled since T10/T12, critical axe finding, invisible until the composed state first rendered in a scanned path; the fixer stopped NEEDS_CONTEXT rather than scope-creep or a vacuous dodge. Disposition recorded at the fix's own landing (see the fix-wave commit and its re-review)"}
 - id: echo-mock-distinct-fixture-values
   kind: pattern
   tier: 1
