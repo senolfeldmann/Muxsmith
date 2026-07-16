@@ -1566,3 +1566,88 @@ but through a different failure mode than the one that motivated it.
 it (D44 before D49). The IpcError-vs-gui-common gate gap, the 12 unswept blocked
 entries in the other three house files, and the deeper blocked_on redesign are
 carried in the ROADMAP/HANDOFF. Framework-side follow-ups tracked agent-side.
+
+## 2026-07-17 | Plan 6 complete (profile editor + apply) | session 17 (Peter, Fable 5)
+
+Scope: Plan 6 executed end to end, master 0922df9..962005b. 16 tasks (14
+planned + 12a/13b/13c added mid-run), 5 four-eyes amendments, one 9-item
+whole-branch fix wave, whole-branch verdict READY after a post-verdict
+delta re-review. All merges gated nine-part, all pushes CI-green.
+
+Decisions and why (this session's, non-obvious):
+- Wave-3 e2e had no mount point before T13; ruled test-mount harness over
+  deferred DOM verification (per-task TDD beats big-bang at T13). Amendment 1.
+- Generic action keys over reusing AttachmentRule labels; budget 43 -> 45
+  revised by the owner (coupling + de register argument). Amendment 2.
+- Typed value cells extended from settable to matchable exact-map by owner
+  parity ruling; float input variant; curated-domain dropdowns decreed
+  (closed set -> select, always) but deferred to Plan 7. Amendment 2 + fix.
+- Rule detail editor: T11's read-only grid occupied the slot the design
+  gave an editable list; owner chose panel-beneath-grid (mkvtoolnix shape).
+  Amendment 3.
+- T14 apply wiring re-cut after the implementer refuted the plan's
+  topology premise; BatchView orchestrates, card emits. Amendment 4.
+- Spec-8.2 recents clause: owner chose build-it (shared module, editor
+  feeds+renders) over spec amendment. Amendment 5. Inline-markers clause:
+  panel recorded as the Plan-6 shape, field anchoring to Plan 7.
+- Latitude ruling (4 refinement rounds): rule stays absolute; a standing
+  structural-conformance grant lives in the brief wiring; exemplary lists
+  must be marked; reviewers carry an over-restriction watch.
+
+What the process caught (stage in parens, origin in brackets):
+- Mount-point gap for wave-3 e2e (T10 NEEDS_CONTEXT) [plan].
+- T14 wiring premise false + Files list excluded the only correct owner
+  (T14 NEEDS_CONTEXT) [plan]; the draft's locator-as-file-path misuse
+  (controller verification; the echo mock was semantics-blind) [implementer
+  draft, never committed].
+- Spec-8.2 coverage gaps: detail editor (T12 review), recents + inline
+  markers (whole-branch) [plan; the one clause WITH a ledger entry was the
+  one caught early].
+- Plan's snapshot-diff proof vacuous for keyword values (T3 implementer
+  broke a constant deliberately; reviewer re-verified) [plan/design].
+- PropertyMapWidget inputs unlabeled since T10 (fix-wave axe scan, first
+  served render of the composed state) [implementer, invisible to every
+  prior gate].
+- Caption missing on the one new table (T11 review; pattern existed 3x in
+  code, never in the ledger - promoted after) [implementer].
+Noise separated: two point-in-time report imprecisions, one forced
+let-vs-const, discarded with reason in the funnel.
+
+Mechanics: dispatches - 16 implementers + 16 task reviewers (Sonnet
+default; Opus for T4/T6/T10/T12/T13/T14 reviews), 5 amendment authors +
+5 delta reviewers (all Opus), whole-branch on the controller model
+(Fable 5; resumed across two 529 overloads and once more for the delta),
+1 fixer (9 items, Sonnet), 2 extraction agents (close bulk). Fix rounds:
+T11 one, amendments 2 and 4 one each. e2e 7 -> 31 specs; catalogs
+181 -> 233 ids (7th en catalog); ledger 389 -> 410 entries, 3 count-3
+promotions + 2 human promotions this session; ledger-lint caught two
+forgotten count bumps live.
+
+Friction: fable-tier 529s killed the whole-branch run twice (owner ruled:
+pause rather than model switch; resume sufficed). The permission
+classifier blocked three ledger writes - twice correctly (future-tense
+provenance for unratified rulings), once on command shape; the corrected
+sequence (verbatim owner approval, past-tense refs) passed. Controller
+initially failed verdicts-are-files and repaired it mid-plan by
+transcript extraction (all 13+ verdicts salvaged). T1's reviewer brief
+predates the harvest wiring - the only task without a HARVEST section.
+
+Moments: the T3 implementer proving the plan's own proof vacuous by
+breaking ChaptersCfg::KEYWORDS; the first served render of a populated
+property map immediately failing axe on inputs three gates had passed;
+one fixture value serving two concepts hiding a runtime bug behind 27/27
+green.
+
+Deltas: five amendments against a twice-reviewed plan. Root causes now in
+the ledger: coverage was checked at registry altitude, not dispatch
+altitude (registry-slot-capability-delta); no spec clause-by-clause
+checklist existed (spec-clause-sweep-at-plan-close); test-step
+executability was never walked (the mount gap). Trigger 2 settled by
+measurement mid-plan instead of deferral - the experiment beat the debate.
+
+Open threads: owner surface pass in flight (45 editor keys de, 7 reused
+keys, 2 apply keys, grid notation, nav-tab question - document delivered);
+Plan 7 anchor grew (dropdowns, field markers, ordinal column, tooltips);
+apply-vs-editor concurrency + post-apply auto-refresh as v1.x candidates;
+the D49 G1/G2 removal experiment as a trigger; framework-side follow-ups
+tracked agent-side.
