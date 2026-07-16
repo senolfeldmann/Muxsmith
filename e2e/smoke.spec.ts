@@ -29,7 +29,9 @@ import {
 } from "../src/ipc";
 import type {
   AppSettings,
+  Diagnostic,
   JobEvent,
+  LoadProfileDocument,
   MkvmergeInfo,
   ReportDocument,
   RunFinishedEvent,
@@ -956,5 +958,158 @@ test.describe("editor view: section composition and typed value cells (Task 12, 
     const intModel = (await readModel(page)) as Record<string, unknown>;
     expect(intModel).toEqual({ audio_channels: 6 });
     expect(typeof intModel.audio_channels).toBe("number");
+  });
+});
+
+// Task 13 (D45, D41, D42): open/save wiring, the save-surface standing
+// note, the nav entry, and validate-on-edit -- through the real, served
+// app (`page.goto("/")`), unlike Tasks 10-12's mount-harness specs above:
+// the editor is reachable from the nav for the first time. `load_profile`'s
+// mocked response is `LoadProfileDocument`-shaped (`ReportDocument` plus
+// `profile`); `validate_profile_model`'s scripted queue covers both the
+// auto-revalidate right after Open (spec 7: "every profile edit" covers
+// the load itself, `EditorView.vue`'s own watcher fires on the model
+// assignment `pickAndOpen` makes) and the deliberate edits below --
+// `mocks.ts`'s own queue semantics repeat the last entry once exhausted,
+// so a single trailing "clean" entry covers every subsequent clean
+// re-validation without an exact call count.
+test.describe("editor view: open/save (Task 13, D45/D41)", () => {
+  const PROFILE_PATH = "/profiles/editor-demo.yaml";
+
+  const editorProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+
+  const loadedDoc: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: editorProfile,
+  };
+
+  const errorDiagnostic: Diagnostic = {
+    code: "unsupported-source",
+    severity: "error",
+    config_path: "tracks[0].match",
+    params: { kind: "primary" },
+    rendered: "unsupported-source",
+  };
+
+  const errorDoc: ReportDocument = {
+    config_diagnostics: [errorDiagnostic],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  const cleanDoc: ReportDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  test("the nav opens the editor; opening a profile shows the save note; Save is disabled while an error diagnostic exists and enabled when clean; saving calls save_profile", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        load_profile: [resolveWith(loadedDoc)],
+        validate_profile_model: [resolveWith(cleanDoc), resolveWith(errorDoc), resolveWith(cleanDoc)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    await page.goto("/");
+
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
+    await expect(editor.getByText(en("editor-save-note"))).toBeVisible();
+
+    const saveButton = editor.getByRole("button", name("settings-save"));
+    // The auto-revalidate right after Open resolved clean (first queued
+    // response) -- Save starts enabled.
+    await expect(saveButton).toBeEnabled();
+
+    // An edit triggers the second queued (error) validate_profile_model
+    // response.
+    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
+    await patternField.fill("^S[0-9]+E[0-9]+");
+    await expect(saveButton).toBeDisabled();
+    await expect(
+      editor.getByText(
+        en("batch-diagnostic-line", {
+          severity: en("severity-error"),
+          message: en("unsupported-source", { kind: "primary" }),
+        }),
+      ),
+    ).toBeVisible();
+
+    await assertNoSeriousA11yViolations(page);
+
+    // A further edit triggers the third queued (clean) response, clearing
+    // the error.
+    await patternField.fill(".*");
+    await expect(saveButton).toBeEnabled();
+
+    await saveButton.click();
+    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+    expect(saveCalls).toHaveLength(1);
+    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+    expect(saveArgs.path).toBe(PROFILE_PATH);
+    expect(saveArgs.profile.input.pattern).toBe(".*");
+  });
+
+  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if)", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        load_profile: [resolveWith(loadedDoc)],
+        validate_profile_model: [resolveWith(cleanDoc)],
+      },
+    });
+
+    await page.goto("/");
+
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
+
+    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
+    await patternField.fill("kept-through-switch");
+    await expect(patternField).toHaveValue("kept-through-switch");
+
+    await page.getByTestId("nav-jobs").click();
+    await expect(page.getByTestId("view-jobs")).toBeVisible();
+    await expect(editor).toBeHidden();
+
+    await page.getByTestId("nav-editor").click();
+    await expect(editor).toBeVisible();
+    // Still mounted, not recreated: the field value and the open path
+    // survived the round trip through Jobs.
+    await expect(patternField).toHaveValue("kept-through-switch");
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
   });
 });

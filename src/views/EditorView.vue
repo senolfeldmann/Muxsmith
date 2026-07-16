@@ -39,14 +39,150 @@
 // `toContainText` assertions, which this task does not touch). `profile_
 // version` (`FixedField`) is skipped the same way `SectionWidget.vue`
 // skips one: filtered out, never dispatched, nothing rendered for it.
-import { computed } from "vue";
+//
+// Task 13 (D45, D41, D42): open/save wiring, the save-surface standing
+// note, and validate-on-edit. `EditorView` owns its own open/save/
+// validate state (`currentPath`, `diagnostics`, the ipc-error pair)
+// rather than App.vue, matching the brief's own "wire ... into
+// EditorView.vue" step: App.vue's only change is the nav entry and mount
+// block, no v-model, no shared editor state there. This keeps
+// `EditorView` mountable from an injected `modelValue` alone -- the Tasks
+// 10-12 mount-harness specs feed one directly, install no IPC mock, and
+// never click Open, so the validate-on-edit watcher below is gated on
+// `currentPath` (only Open's own IPC round trip ever sets it): a bare-
+// mounted `EditorView` edits its model plenty (drag-reorder, widget
+// input) but never triggers `validate_profile_model`, keeping those specs
+// green with no injected mock (mount-harness amendment's own review-
+// check).
+//
+// No new `gui-editor.ftl`/`gui-common.ftl` keys: D45's design-doc catalog
+// table enumerates every Fluent key the whole plan adds, and Task 13
+// carries none (`gui-editor.ftl` stays 45, the brief's own Files list
+// carries no `.ftl`). The Open button, the currently-open-path line, and
+// the file-dialog filter name reuse `batch-profile-pick`/`batch-profile-
+// current`/`batch-profile-filter-name` (BatchView's own "choose + show a
+// profile path" affordance -- their content is generic, not batch-
+// specific, and cross-view key reuse already has two precedents:
+// `browse-button`'s own documented reuse across BatchView/FirstRun/
+// SettingsDialog, and `JobsView.vue`'s `<h2>` reusing `nav-jobs`
+// internally rather than a bespoke `jobs-view-heading`). Save reuses
+// `settings-save` ("Save", `SettingsDialog.vue`) the same way. The
+// diagnostics heading reuses `batch-diagnostics-heading` ("Diagnostics").
+// `editor-save-note` is Task 9's own key, exactly as the brief names it.
+// Diagnostics render through the already-shared `DiagnosticsPanel.vue`
+// (its own doc comment: "no per-caller variant"), a third consumer beside
+// BatchView/ResolutionTable, contributing no new template `$t()` calls.
+import { computed, ref, watch } from "vue";
+import { useFluent } from "fluent-vue";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Profile, TrackRule } from "../bindings/profile";
 import { SOURCE_KEYWORDS } from "../bindings/keywords";
 import type { EditableField } from "../editor/fieldSpec";
 import { profileFields, tracksFields } from "../editor/registries";
 import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
+import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
+import { loadProfile, saveProfile, validateProfileModel } from "../ipc";
+import type { Diagnostic, IpcError } from "../ipc";
 
 const model = defineModel<Profile>();
+
+const fluent = useFluent();
+
+// --- Task 13: open/save/validate state ----------------------------------
+
+const currentPath = ref<string | null>(null);
+const diagnostics = ref<Diagnostic[]>([]);
+const opening = ref(false);
+const saving = ref(false);
+const ipcErrorCode = ref<string | null>(null);
+const ipcErrorParams = ref<Record<string, string>>({});
+
+const hasErrors = computed(() => diagnostics.value.some((d) => d.severity === "error"));
+
+// The one sanctioned frontend affordance (spec 7, D41 binding point):
+// Save is disabled while any error-severity diagnostic exists.
+const saveDisabled = computed(
+  () => !model.value || !currentPath.value || hasErrors.value || saving.value || opening.value,
+);
+
+let validationGeneration = 0;
+
+// Spec 7 ("every profile edit"): revalidates through `validate_profile_model`
+// whenever the held model changes. Gated on `currentPath` -- see the doc
+// comment above for why a bare mount-harness `EditorView` never reaches
+// this. Every top-level `model.value =` assignment throughout the widget
+// tree is a fresh object (`SectionWidget.vue`'s own `{ ...model.value,
+// [key]: value }`, mirrored at every level up to this component's own
+// `setFieldValue`/`setTracksUnmatched`/`onDrop` below), so a shallow watch
+// (no `deep: true`) reliably fires on every leaf edit. `validationGeneration`
+// discards a stale response: `validate_profile_model` runs on a Tauri
+// blocking-task thread pool (D42's own doc on why it is `async` at all),
+// so rapid edits can resolve out of order.
+watch(model, async (value) => {
+  if (!currentPath.value || !value) {
+    return;
+  }
+  const generation = ++validationGeneration;
+  try {
+    const result = await validateProfileModel(value);
+    if (generation === validationGeneration) {
+      diagnostics.value = result.config_diagnostics;
+    }
+  } catch (e) {
+    // Background, per-edit validation; a genuine failure here is an
+    // internal-task panic (D42's own doc on `validate_profile_model`), not
+    // a user action to react to -- mirrors BatchView's identical
+    // tolerance for its own background `rememberRecentProfile` write.
+    console.warn("[editor] background validation failed:", e);
+  }
+});
+
+async function pickAndOpen(): Promise<void> {
+  if (opening.value || saving.value) {
+    return;
+  }
+  const picked = await openDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
+  });
+  if (typeof picked !== "string") {
+    return;
+  }
+  opening.value = true;
+  ipcErrorCode.value = null;
+  try {
+    const doc = await loadProfile(picked);
+    currentPath.value = picked;
+    diagnostics.value = doc.config_diagnostics;
+    model.value = doc.profile ?? undefined;
+  } catch (e) {
+    const err = e as IpcError;
+    ipcErrorCode.value = err.code;
+    ipcErrorParams.value = err.params;
+  } finally {
+    opening.value = false;
+  }
+}
+
+async function doSave(): Promise<void> {
+  if (saveDisabled.value || !model.value || !currentPath.value) {
+    return;
+  }
+  saving.value = true;
+  ipcErrorCode.value = null;
+  try {
+    await saveProfile(currentPath.value, model.value);
+  } catch (e) {
+    const err = e as IpcError;
+    ipcErrorCode.value = err.code;
+    ipcErrorParams.value = err.params;
+  } finally {
+    saving.value = false;
+  }
+}
+
+// --- Tasks 11-12: section composition + the rule grid -------------------
 
 const rules = computed<TrackRule[]>(() => model.value?.tracks.rules ?? []);
 
@@ -144,66 +280,105 @@ function onDrop(index: number) {
 
 <template>
   <section data-testid="view-editor">
-    <FieldWidgetDispatcher
-      v-for="[key, spec] in topLevelFields"
-      :key="key"
-      :spec="spec"
-      :model-value="fieldValue(key)"
-      @update:model-value="setFieldValue(key, $event)"
-    />
+    <button
+      type="button"
+      data-testid="editor-open"
+      :disabled="opening || saving"
+      :aria-busy="opening"
+      @click="pickAndOpen"
+    >
+      {{ $t("batch-profile-pick") }}
+    </button>
+    <p v-if="currentPath">
+      {{ $t("batch-profile-current", { path: currentPath }) }}
+    </p>
+    <p
+      v-if="ipcErrorCode"
+      role="alert"
+    >
+      {{ $t(ipcErrorCode, ipcErrorParams) }}
+    </p>
 
-    <fieldset>
-      <legend>{{ $t("editor-profile-tracks") }}</legend>
+    <section aria-labelledby="editor-diagnostics-heading">
+      <h3 id="editor-diagnostics-heading">
+        {{ $t("batch-diagnostics-heading") }}
+      </h3>
+      <DiagnosticsPanel :diagnostics="diagnostics" />
+    </section>
+
+    <template v-if="model">
       <FieldWidgetDispatcher
-        :spec="tracksUnmatchedSpec"
-        :model-value="model?.tracks.unmatched"
-        @update:model-value="setTracksUnmatched"
+        v-for="[key, spec] in topLevelFields"
+        :key="key"
+        :spec="spec"
+        :model-value="fieldValue(key)"
+        @update:model-value="setFieldValue(key, $event)"
       />
-      <h2>{{ $t("editor-tracks-rules") }}</h2>
-      <table>
-        <caption>
-          {{ $t("editor-tracks-rules") }}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">
-              {{ $t("editor-track-rule-source") }}
-            </th>
-            <th scope="col">
-              {{ $t("editor-track-rule-match-expr") }}
-            </th>
-            <th scope="col">
-              {{ $t("editor-track-rule-optional") }}
-            </th>
-            <th scope="col">
-              {{ $t("editor-track-rule-changes") }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(rule, index) in rules"
-            :key="index"
-            data-testid="editor-rule-row"
-            draggable="true"
-            @dragstart="onDragStart(index)"
-            @dragover.prevent
-            @drop="onDrop(index)"
-          >
-            <td>{{ sourceSummary(rule) }}</td>
-            <td>{{ matchSummary(rule) }}</td>
-            <td>
-              <input
-                type="checkbox"
-                disabled
-                :checked="rule.optional === true"
-                :aria-label="$t('editor-track-rule-optional')"
-              >
-            </td>
-            <td>{{ changesSummary(rule) }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </fieldset>
+
+      <fieldset>
+        <legend>{{ $t("editor-profile-tracks") }}</legend>
+        <FieldWidgetDispatcher
+          :spec="tracksUnmatchedSpec"
+          :model-value="model?.tracks.unmatched"
+          @update:model-value="setTracksUnmatched"
+        />
+        <h2>{{ $t("editor-tracks-rules") }}</h2>
+        <table>
+          <caption>
+            {{ $t("editor-tracks-rules") }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">
+                {{ $t("editor-track-rule-source") }}
+              </th>
+              <th scope="col">
+                {{ $t("editor-track-rule-match-expr") }}
+              </th>
+              <th scope="col">
+                {{ $t("editor-track-rule-optional") }}
+              </th>
+              <th scope="col">
+                {{ $t("editor-track-rule-changes") }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(rule, index) in rules"
+              :key="index"
+              data-testid="editor-rule-row"
+              draggable="true"
+              @dragstart="onDragStart(index)"
+              @dragover.prevent
+              @drop="onDrop(index)"
+            >
+              <td>{{ sourceSummary(rule) }}</td>
+              <td>{{ matchSummary(rule) }}</td>
+              <td>
+                <input
+                  type="checkbox"
+                  disabled
+                  :checked="rule.optional === true"
+                  :aria-label="$t('editor-track-rule-optional')"
+                >
+              </td>
+              <td>{{ changesSummary(rule) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </fieldset>
+
+      <p>{{ $t("editor-save-note") }}</p>
+      <button
+        type="button"
+        data-testid="editor-save"
+        :disabled="saveDisabled"
+        :aria-busy="saving"
+        @click="doSave"
+      >
+        {{ $t("settings-save") }}
+      </button>
+    </template>
   </section>
 </template>
