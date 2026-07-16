@@ -421,6 +421,15 @@ polish entry.
   finding this session: replace "be careful" with a handle. Needs a dispatch
   (scripts/ is a product artifact), so it rides a plan rather than being
   written controller-side. (2026-07-15, session-15 extraction sweep)
+  **SCRIPT WRITTEN 2026-07-16** (`scripts/ledger-lint.py`, commit 18decfe),
+  ad-hoc without four-eyes on the owner's explicit authorization, overriding
+  the dispatch-a-plan default above for this one helper. Checks all FOUR files
+  (the three Tier-2 + the Tier-1 ledger, which the "three" above undercounted)
+  plus duplicate-id; proven to fire on a wrong count. **Still open: CI wiring.**
+  It is Python (a real YAML parse beats a fragile line parser for a linter that
+  must be trusted), so gating it in CI adds a Python leg to a Rust+Node matrix -
+  a deliberate deferral to the next CI-touching plan, so the gate is not just a
+  script someone must remember to run. Until then it is a manual/local check.
   **PREDICTION CONFIRMED 2026-07-16, and the entry is now evidence-backed
   rather than precautionary.** An ad-hoc validator of exactly this shape,
   written to check two new entries, found a real pre-existing defect on its
