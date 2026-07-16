@@ -3530,3 +3530,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T4 review verdict Q2(b): guard 2 built with hand-written json! literals per the house const-EXPECTED table shape; the extend-mutation experiment proved it fires, where the design's tautology analysis (D48 :1706-1710) applied only to the derived construction"}
+- id: git-diff-proof-needs-tracked-target
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A falsifiability proof built on `git diff --exit-code` requires its target path ALREADY TRACKED/STAGED: against an untracked path the diff exits 0 regardless of content, so the proof silently inverts (expected red reads green). Brief-authoring consequence: a step whose proof diffs a path generated in the same task states the staging precondition in the step text, or the staging step is ordered ahead of the proof. Distinct from the CI-gate untracked-file hole D44 records in ci.yml: that is an ongoing coverage gap closed by a downstream import; this is a one-time execution hazard inside the task's own step ordering."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict Q1(b): the brief ordered generate (step 6) -> drift-proof (step 9) -> stage (step 10); the proof's drift-append run returned exit 0 against the untracked src/bindings/, the implementer caught the expected-vs-actual mismatch, staged first, re-ran correctly, and a silently-failing git checkout on the untracked path left stray text that was regenerated away; committed artifacts verified clean by the reviewer"}

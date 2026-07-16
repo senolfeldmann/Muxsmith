@@ -325,7 +325,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 6
+  count: 7
   occurrences:
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
@@ -333,6 +333,7 @@ entries:
     - {date: "2026-07-15", kind: violated-corrected, ref: "Şenol ruling (session 15): the ban widened to every artifact an implementer reads and to LATITUDE BY OMISSION. Evidence: the plan-6 design document mandated 'one registry per edited struct' and never listed the structs, and the reviewer's keyword scan passed it clean; three controller fix-round dispatches carried 'push back rather than complying', which the implementer read as licence to decide-then-report. doctrine §3 amended"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "Second omission instance in the SAME approved design document, found at plan-authoring after four review rounds: D41 fixed the save writer at Result<_, Diagnostic> (:132-133) but never named the DiagCode, and none exists in report/mod.rs's diag_codes! for a write/IO failure. The implementer would have had to invent a user-facing diagnostic code AND its en+de prose (catalog_completeness.rs matches DiagCode exhaustively). The document's own 'Every fork in this document is closed' (:11) and section 8's 'What the implementer must not decide' both passed it. Escalated per this entry's routing rule (user-visible -> the governing human); Şenol ruled SaveError -> IpcError (core-124-error-currency-split)"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "Statement sharpened (size and derivability are not exemptions) on evidence from the D49 review. D49 prescribed a fix for three test sites as 'the same shape as :325' rather than writing the three literals out; :722 guards on forced_track, which is PropType::Boolean, so the shape prescribed Scalar::Str(\"true\") where the engine emits Scalar::Bool(true) - it compiles and fails at runtime, and at :890 the same slip would have passed VACUOUSLY because that assertion is negative. The set had THREE members and each was derivable from the property's type; the document that wrote out four catalog lines 'so none is invented' declined to write out three literals, and that is exactly where its only functional defect landed. Also the third recorded instance of a document producing the defect class it had just diagnosed: D49 argues the display String is lossy because Bool(true) and Str(\"true\") both project to \"true\", then performs that reconstruction"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict: D44's citation range for the derive set (design :768-782) states cardinality ('13 structs ... 7 enums') without enumerating the struct names - an unenumerated set in a normative position, derivable-but-unlisted. The implementer derived and listed all 13/7 names from source and surfaced the citation gap; the reviewer counted 21/21 exported types against the enumeration"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2
