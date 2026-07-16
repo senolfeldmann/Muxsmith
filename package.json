@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "check:i18n": "node scripts/check-i18n.mjs",
-    "test:e2e": "tsc --noEmit -p e2e/tsconfig.json && vite build --config e2e/vite.harness.config.ts && playwright test"
+    "test:e2e": "tsc --noEmit -p e2e/tsconfig.json && vite build --config e2e/vite.harness.config.ts && vite build --config e2e/vite.mount.config.ts && playwright test"
   },
   "dependencies": {
     "@fluent/bundle": "0.19.1",

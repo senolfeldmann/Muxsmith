@@ -20,6 +20,7 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
+import { mountComponent, readModel } from "./mount";
 import { en } from "./i18n-en";
 import type { FluentVariable } from "@fluent/bundle";
 import {
@@ -34,6 +35,17 @@ import type {
   RunFinishedEvent,
   StartedRun,
 } from "../src/ipc";
+import {
+  COLLISION_POLICIES,
+  inputFields,
+  locatorFields,
+  matchExprFields,
+  metaFields,
+  outputFields,
+  profileFields,
+  trackRuleFields,
+} from "../src/editor/registries";
+import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
 
 /** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
  * default role-name matching is a case-insensitive SUBSTRING match, which
@@ -570,5 +582,189 @@ test.describe("german locale", () => {
     await expect(reloadedDialog.getByRole("heading", { name: "Einstellungen", exact: true })).toBeVisible();
     const reloadedLocaleSelect = reloadedDialog.getByRole("combobox", { name: "Sprache", exact: true });
     await expect(reloadedLocaleSelect).toHaveValue("de");
+  });
+});
+
+// Task 10 (D45, wave-3 mount-harness amendment): per-widget rendering
+// assertions for the ten FieldWidget variants, mounted in isolation via
+// `mount.ts` -- `page.goto("/")` reaches no widget (no editor mount point
+// exists in the running app before Task 13). Every `spec` fixture below is
+// a REAL entry pulled from Task 9's registries (`src/editor/registries.ts`),
+// not a hand-rolled FieldSpec literal, so a test failure here can never be
+// "the fixture drifted from the real registry shape". Accessible names come
+// from `en(id)` over the real labelKey exactly as the rest of this file
+// does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
+// values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
+// D45's own rule that widget option tokens render as profile-format
+// tokens, not via new Fluent keys. `editor-attachment-rule-add`/`-drop`
+// ("Add"/"Drop") are reused verbatim for the generic add/remove-row
+// affordance on `list`/`propertyMap`: both are already-existing,
+// already-translated (en+de) generic verbs -- "Drop" is the app's own
+// established exclude-this-item vocabulary (KEEP_DROP) -- so reusing them
+// keeps `gui-editor.ftl` at 43 keys, matching `browse-button`'s existing
+// reuse across FirstRun/SettingsDialog/BatchView.
+test.describe("editor widgets: mount-harness rendering", () => {
+  test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
+    await mountComponent(page, {
+      component: "FieldWidgetDispatcher",
+      props: { spec: inputFields.recursive, modelValue: true },
+    });
+    const field = page.getByRole("checkbox", name("editor-input-recursive"));
+    await expect(field).toBeChecked();
+    await field.uncheck();
+    await expect.poll(() => readModel(page)).toBe(false);
+  });
+
+  test("text widget (single-line) renders a textbox and edits update the held model", async ({ page }) => {
+    await mountComponent(page, {
+      component: "TextWidget",
+      props: { spec: inputFields.pattern, modelValue: "^S[0-9]+E[0-9]+" },
+    });
+    const field = page.getByRole("textbox", name("editor-input-pattern"));
+    await expect(field).toHaveValue("^S[0-9]+E[0-9]+");
+    await field.fill(".*");
+    await expect.poll(() => readModel(page)).toBe(".*");
+  });
+
+  test("text widget (multiline) renders a textbox for a multiline field", async ({ page }) => {
+    await mountComponent(page, {
+      component: "TextWidget",
+      props: { spec: metaFields.description, modelValue: "note" },
+    });
+    const field = page.getByRole("textbox", name("editor-meta-description"));
+    await expect(field).toHaveValue("note");
+    await field.fill("longer note");
+    await expect.poll(() => readModel(page)).toBe("longer note");
+  });
+
+  test("bool widget renders a checkbox and toggling updates the held model", async ({ page }) => {
+    await mountComponent(page, {
+      component: "BoolWidget",
+      props: { spec: inputFields.recursive, modelValue: false },
+    });
+    const field = page.getByRole("checkbox", name("editor-input-recursive"));
+    await expect(field).not.toBeChecked();
+    await field.check();
+    await expect.poll(() => readModel(page)).toBe(true);
+  });
+
+  test("optionalFlag widget's off state is absence, not false (validate.rs rejects Some(false))", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "OptionalFlagWidget",
+      props: { spec: locatorFields.match_to_source, modelValue: undefined },
+    });
+    const field = page.getByRole("checkbox", name("editor-locator-match-to-source"));
+    await expect(field).not.toBeChecked();
+    await field.check();
+    await expect.poll(() => readModel(page)).toBe(true);
+    await field.uncheck();
+    await expect.poll(() => readModel(page)).toBeUndefined();
+  });
+
+  test("select widget renders a combobox of its raw (untranslated) domain tokens", async ({ page }) => {
+    await mountComponent(page, {
+      component: "SelectWidget",
+      props: { spec: outputFields.on_collision, modelValue: "error" },
+    });
+    const field = page.getByRole("combobox", name("editor-output-on-collision"));
+    await expect(field).toHaveValue("error");
+    for (const token of COLLISION_POLICIES) {
+      await expect(field.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+    await field.selectOption("overwrite");
+    await expect.poll(() => readModel(page)).toBe("overwrite");
+  });
+
+  test("keywordOrBlock widget offers its keyword tokens in a combobox plus a nested block section", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "KeywordOrBlockWidget",
+      props: { spec: profileFields.chapters, modelValue: "keep" },
+    });
+    const field = page.getByRole("combobox", name("editor-profile-chapters"));
+    for (const token of CHAPTERS_KEYWORDS) {
+      await expect(field.getByRole("option", { name: token, exact: true })).toBeAttached();
+    }
+    await field.selectOption("drop");
+    await expect.poll(() => readModel(page)).toBe("drop");
+
+    // The nested block section (ExternalBlock, per profileFields.chapters'
+    // `block: "externalBlock"`) is always present too -- AttachmentRule's
+    // one-of precedent: no mode toggle, core diagnoses an over-set model.
+    const blockGroup = page.getByRole("group", name("editor-external-block-external"));
+    await expect(blockGroup).toBeVisible();
+  });
+
+  test("directoryPath widget renders a plain path textbox (no IPC dialog -- Task 13's job)", async ({ page }) => {
+    await mountComponent(page, {
+      component: "DirectoryPathWidget",
+      props: { spec: outputFields.directory, modelValue: "/out" },
+    });
+    const field = page.getByRole("textbox", name("editor-output-directory"));
+    await expect(field).toHaveValue("/out");
+    await field.fill("/other");
+    await expect.poll(() => readModel(page)).toBe("/other");
+  });
+
+  test("stringList widget round-trips a comma-separated list of strings", async ({ page }) => {
+    await mountComponent(page, {
+      component: "StringListWidget",
+      props: { spec: inputFields.extensions, modelValue: ["mkv", "mp4"] },
+    });
+    const field = page.getByRole("textbox", name("editor-input-extensions"));
+    await expect(field).toHaveValue("mkv, mp4");
+    await field.fill("mkv, mp4, avi");
+    await expect.poll(() => readModel(page)).toEqual(["mkv", "mp4", "avi"]);
+  });
+
+  test("propertyMap widget: add/remove rows edit a key-value map", async ({ page }) => {
+    await mountComponent(page, {
+      component: "PropertyMapWidget",
+      props: { spec: trackRuleFields.changes, modelValue: { forced: "true" } },
+    });
+    await expect(page.getByTestId("property-map-key").first()).toHaveValue("forced");
+    await expect(page.getByTestId("property-map-value").first()).toHaveValue("true");
+
+    await page.getByRole("button", name("editor-attachment-rule-add")).click();
+    await expect(page.getByTestId("property-map-key")).toHaveCount(2);
+    await page.getByTestId("property-map-key").nth(1).fill("default");
+    await page.getByTestId("property-map-value").nth(1).fill("true");
+    await expect.poll(() => readModel(page)).toEqual({ forced: "true", default: "true" });
+
+    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
+    await expect.poll(() => readModel(page)).toEqual({ default: "true" });
+  });
+
+  test("list widget: add/remove nested items (matchExpr.any, item: matchExpr)", async ({ page }) => {
+    await mountComponent(page, {
+      component: "ListWidget",
+      props: { spec: matchExprFields.any, modelValue: [] },
+    });
+    await expect.poll(() => readModel(page)).toEqual([]);
+
+    await page.getByRole("button", name("editor-attachment-rule-add")).click();
+    await expect.poll(() => readModel(page)).toEqual([{}]);
+    // Each item renders its own nested MatchExpr fields via SectionWidget.
+    await expect(page.getByRole("group", name("editor-match-expr-exact"))).toBeVisible();
+
+    await page.getByRole("button", name("editor-attachment-rule-drop")).first().click();
+    await expect.poll(() => readModel(page)).toEqual([]);
+  });
+
+  test("section widget renders a fieldset/legend group of its sub-fields, created implicitly on first edit", async ({
+    page,
+  }) => {
+    await mountComponent(page, {
+      component: "SectionWidget",
+      props: { spec: profileFields.input, modelValue: undefined },
+    });
+    const group = page.getByRole("group", name("editor-profile-input"));
+    await expect(group).toBeVisible();
+    const pattern = group.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("^S");
+    await expect.poll(() => readModel(page)).toMatchObject({ pattern: "^S" });
   });
 });
