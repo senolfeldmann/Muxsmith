@@ -3558,6 +3558,20 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T9 review verdict harvest: brief citations :1082-1091 and :694-706/:806-819 landed off their targets post-Task-1 amendment; content matched everywhere, LABEL_KEY_RE confirmed at the true location :1124"}
+- id: parity-routing-same-component-defect
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When the owner rules on one instance of a defect class on a shared component, the IDENTICAL instance on the same component is owner-territory BY PARITY and not author-closeable: presenting it as a settled 'follow-up' is the die-as-noted failure, not a discharge of the surface-don't-resolve duty. Companion tell: an effort-economy rationale attached to the exclusion ('the far larger table') is the signal to escalate rather than close - effort economy coloring a scope reading is exactly what the mirroring rule warns against."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 owner-rulings amendment, delta review Important 1 (amendment-owner-rulings-verdict.md Q1): the author closed the matchable-cell disposition as a follow-up while the settable twin of the same widget had just been owner-ruled; routed, Şenol ruled scalar typing in Plan 6 + dropdowns Plan 7 (ledger commit 461dc5f)"}
 - id: gui-editor-widget-test-mount-harness
   kind: pattern
   tier: 1
