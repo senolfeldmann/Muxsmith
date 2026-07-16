@@ -92,6 +92,12 @@ editor's controls get their help-ids in this pass instead of a retrofit.
   (product-boundaries.yaml). Scalar typing of those cells ships in Plan 6;
   this is the comfort layer on top. (Owner ruling 2026-07-16, plan-6
   matchable-cell routing.)
+- Field-anchored inline validation markers in the editor: map each
+  diagnostic's `config_path` to its field via the registries and render
+  the marker at the control, alongside the panel. Owner ruling 2026-07-16
+  (whole-branch finding 2): the diagnostics panel IS the recorded Plan-6
+  shape of spec 8.2's "inline validation markers"; the field anchoring is
+  this comfort-layer item, natural sibling of the help-ids/tooltips pass.
 
 ## Plan 8: packaging / release pipeline
 

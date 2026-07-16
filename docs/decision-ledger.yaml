@@ -3570,9 +3570,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 whole-branch verdict (whole-branch-verdict.md, findings 1+2 + harvest): spec 8.2 'recent profiles' absent and unrouted (HIGH), 'inline validation markers' panel-built without a recorded shape decision (MODERATE); both routed to the owner at plan close"}
+    - {date: "2026-07-16", kind: decided, ref: "Şenol rulings (options 1a + 2a of the enumerated routing): recents land in Plan 6 via amendment-5 task 13c (shared rememberRecentProfile module, editor feeds and renders the recents memory); the diagnostics panel is the RECORDED Plan-6 shape of the inline-markers clause, field anchoring a named Plan-7 ROADMAP item"}
 - id: fixture-reachable-states-need-one-served-render
   kind: pattern
   tier: 1
