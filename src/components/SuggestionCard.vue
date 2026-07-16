@@ -27,7 +27,16 @@ import type { Suggestion } from "../ipc";
 // still shown/copied. `resolves` (the `DiagCode` this fixes) is likewise
 // left unshown, matching the CLI's own suggestion header
 // (`muxsmith-cli/src/commands/mod.rs`), which never prints it either.
-const props = defineProps<{ suggestion: Suggestion; applying?: boolean }>();
+// `applying` (this card's own round trip) drives `aria-busy` alone -- a
+// screen reader should only announce busy on the card the user actually
+// clicked. `busy` (any batch action in flight, `BatchView`'s own `busy`
+// computed) additionally disables the button on EVERY card, not just the
+// clicked one: the click handler was already guarded against this
+// (`onApplySuggestion`'s `busy.value` early return), but a non-clicked
+// card stayed visually enabled during someone else's in-flight apply,
+// violating the busy idiom every other action in this view already
+// follows.
+const props = defineProps<{ suggestion: Suggestion; applying?: boolean; busy?: boolean }>();
 
 const emit = defineEmits<{ apply: [payload: { config_path: string; edit: unknown }] }>();
 
@@ -83,7 +92,7 @@ function requestApply() {
       type="button"
       data-testid="batch-suggestion-apply"
       :title="$t('batch-suggestion-apply-tooltip')"
-      :disabled="applying"
+      :disabled="busy"
       :aria-busy="applying"
       @click="requestApply"
     >

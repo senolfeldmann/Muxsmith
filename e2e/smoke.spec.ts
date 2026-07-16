@@ -771,6 +771,11 @@ test.describe("editor widgets: mount-harness rendering", () => {
     });
     const field = page.getByRole("textbox", name("editor-meta-description"));
     await expect(field).toHaveValue("note");
+    // The "textbox" role alone doesn't discriminate: a single-line
+    // `<input type="text">` carries the same role as a `<textarea>`, so
+    // this test would pass unchanged even if `multiline: true` rendered
+    // the single-line branch. Pin the actual element too.
+    expect(await field.evaluate((el) => el.tagName)).toBe("TEXTAREA");
     await field.fill("longer note");
     await expect.poll(() => readModel(page)).toBe("longer note");
   });
@@ -1112,10 +1117,16 @@ test.describe("editor view: section composition and typed value cells (Task 12, 
 test.describe("editor view: open/save (Task 13, D45/D41)", () => {
   const PROFILE_PATH = "/profiles/editor-demo.yaml";
 
+  // Two rules, not empty (wave item 1, whole-branch agenda-a): the served
+  // app never rendered the populated grid + row selection + detail panel
+  // before this fixture, the same gap the T13b mount-harness fixture below
+  // does not close -- a mount-only render is not a served-app render.
   const editorProfile: Profile = {
     profile_version: 1,
     input: { pattern: ".*", extensions: ["mkv"] },
-    tracks: { rules: [] },
+    tracks: {
+      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
+    },
   };
 
   const loadedDoc: LoadProfileDocument = {
@@ -1180,6 +1191,27 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
     // The auto-revalidate right after Open resolved clean (first queued
     // response) -- Save starts enabled.
     await expect(saveButton).toBeEnabled();
+
+    // Wave item 1 (whole-branch agenda-a, `fixture-reachable-states-need-
+    // one-served-render`): selecting a row and opening the detail panel is
+    // a pure UI selection, not a model edit (`selectRule` only writes
+    // `selectedIndex`), so it consumes none of the scripted
+    // `validate_profile_model` queue above -- the error/clean sequence
+    // below is unaffected. This is the same fixture/selection/panel the
+    // T13b mount-harness proves further down, now exercised through the
+    // real served app and scanned for a11y with the grid, the selection
+    // button, and the panel all rendered at once -- states the mount
+    // harness alone never puts in front of an actual browser page.
+    await editor.getByTestId("editor-rule-select").first().click();
+    const rulePanel = editor.getByTestId("editor-rule-detail");
+    await expect(rulePanel).toBeVisible();
+    await expect(rulePanel.getByRole("combobox", name("editor-track-rule-source"))).toBeVisible();
+    await expect(rulePanel.getByRole("checkbox", name("editor-track-rule-optional"))).toBeVisible();
+    await expect(rulePanel.getByRole("group", name("editor-track-rule-changes"))).toBeVisible();
+    await expect(
+      rulePanel.getByRole("group", name("editor-track-rule-match-expr")),
+    ).toBeVisible();
+    await assertNoSeriousA11yViolations(page);
 
     // An edit triggers the second queued (error) validate_profile_model
     // response.

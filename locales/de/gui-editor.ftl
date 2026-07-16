@@ -1,11 +1,11 @@
-## German (de) translation of locales/en/gui-editor.ftl. The en catalog is
-## the source of truth; keys mirror it (id parity enforced by
-## scripts/check-i18n.mjs). Match -> Match (Match-Ausdruck, Match-Muster,
-## established loanword, not "Übereinstimmung"), external locator ->
-## externer Verweis, template -> Vorlage, property -> Eigenschaft. Straight
-## ASCII quotes as in en; declarative register throughout (the save note is
-## a statement, not a command, so it stays declarative rather than
-## du-imperative).
+# German (de) translation of locales/en/gui-editor.ftl. The en catalog is
+# the source of truth; keys mirror it (id parity enforced by
+# scripts/check-i18n.mjs). Match -> Match (Match-Ausdruck, Match-Muster,
+# established loanword, not "Übereinstimmung"), external locator ->
+# externer Verweis, template -> Vorlage, property -> Eigenschaft. Straight
+# ASCII quotes as in en; declarative register throughout (the save note is
+# a statement, not a command, so it stays declarative rather than
+# du-imperative).
 
 ## Profile (top-level sections)
 

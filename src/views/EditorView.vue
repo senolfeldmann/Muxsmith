@@ -344,6 +344,14 @@ function onDrop(index: number) {
   // go through a fresh, explicit re-selection.
   selectedIndex.value = null;
 }
+
+// Same rationale as `ListWidget.vue`'s own `onDragEnd`: a drag that leaves
+// the grid or is cancelled fires no `drop`, and `dragend` is the one event
+// that always fires regardless, so it is the reliable place to clear a
+// stale `dragIndex` before it can pair with an unrelated later drop.
+function onDragEnd() {
+  dragIndex = null;
+}
 </script>
 
 <template>
@@ -421,6 +429,7 @@ function onDrop(index: number) {
               @dragstart="onDragStart(index)"
               @dragover.prevent
               @drop="onDrop(index)"
+              @dragend="onDragEnd"
             >
               <td>
                 <button

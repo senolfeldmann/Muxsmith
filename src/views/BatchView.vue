@@ -248,6 +248,17 @@ async function onApplySuggestion(
       if (parseDiagnostic) {
         ipcErrorCode.value = parseDiagnostic.code;
         ipcErrorParams.value = parseDiagnostic.params;
+      } else {
+        // Contract violation (D42's `load_profile` envelope): `profile:
+        // null` is documented to always pair with a lead diagnostic
+        // explaining why. An empty `config_diagnostics` here means core
+        // broke that contract -- there is no diagnostic to surface through
+        // the shared alert line, so at minimum this stops being a silent
+        // no-op.
+        console.error(
+          "[batch] load_profile returned profile: null with no diagnostics",
+          selectedProfile.value,
+        );
       }
       return;
     }
@@ -504,6 +515,7 @@ function emitStartRun(): void {
           :data-index="i"
           :suggestion="s"
           :applying="applyingIndex === i"
+          :busy="busy"
           @apply="onApplySuggestion($event, i)"
         />
       </section>

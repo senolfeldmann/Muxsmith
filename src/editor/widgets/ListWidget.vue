@@ -57,12 +57,22 @@ function onDragStart(index: number) {
 
 function onDrop(index: number) {
   if (dragIndex === null || dragIndex === index) {
+    dragIndex = null;
     return;
   }
   const next = [...items.value];
   const [moved] = next.splice(dragIndex, 1);
   next.splice(index, 0, moved);
   model.value = next;
+  dragIndex = null;
+}
+
+// A drag that leaves the list (or is cancelled with Escape) fires no `drop`
+// at all, leaving `dragIndex` stale for the NEXT unrelated drag-and-drop --
+// a stray drop could then pair with a stale index instead of the drag that
+// actually produced it. `dragend` fires unconditionally on every drag,
+// dropped or not, so it is the one event that always resets it.
+function onDragEnd() {
   dragIndex = null;
 }
 </script>
@@ -77,6 +87,7 @@ function onDrop(index: number) {
       @dragstart="onDragStart(index)"
       @dragover.prevent
       @drop="onDrop(index)"
+      @dragend="onDragEnd"
     >
       <SectionWidget
         :spec="itemSpec"

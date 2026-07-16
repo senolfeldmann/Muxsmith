@@ -29,17 +29,23 @@
 // `../../bindings/profile`): a Boolean settable/matchable must reload as a
 // real `true`, not the string `"true"`.
 //
-// Row `key` inputs use `data-testid` (no distinct accessible role/name
-// exists for a free-text property name, matching the house fallback
-// convention); the value cell keeps the SAME `data-testid` across every
-// typed variant so a row stays locatable regardless of its resolved type,
-// while its accessible role (checkbox/spinbutton/textbox) carries the
-// type-specific test assertions. Add/remove use the two generic
+// Row `key` inputs use `data-testid` for TEST LOCATION (no distinct
+// accessible role/name exists for a free-text property name to assert
+// against, matching the house fallback convention for locators); the value
+// cell keeps the SAME `data-testid` across every typed variant so a row
+// stays locatable regardless of its resolved type, while its accessible
+// role (checkbox/spinbutton/textbox) carries the type-specific test
+// assertions. Accessible NAMING (a different concern from test location)
+// is wired below via `useId`/`aria-labelledby`, the same primitive
+// `TextWidget.vue`'s `useId`+`<label :for>` pattern is built on, adapted
+// for a one-legend-many-rows widget: a single `<label for>` can't serve
+// every row, so both inputs reference IDs by `aria-labelledby` instead of
+// owning a `<label>` each. Add/remove use the two generic
 // `editor-action-add`/`-remove` keys (owner Ruling 1, amended 2026-07-16;
 // catalog budget 45) -- not `editor-attachment-rule-add`/`-drop`, which
 // now caption only the AttachmentRule fields they are the registry labels
 // for (`registries.ts:185-189`).
-import { computed } from "vue";
+import { computed, useId } from "vue";
 import type { EditableFieldOf } from "./shared";
 import { MATCHABLE_TYPES, SETTABLE_TYPES } from "../../bindings/settables";
 import type { PropScalarType } from "../../bindings/settables";
@@ -49,6 +55,29 @@ const props = defineProps<{ spec: EditableFieldOf<"propertyMap"> }>();
 const model = defineModel<Record<string, Scalar> | null>();
 
 const rows = computed(() => Object.entries(model.value ?? {}));
+
+// Wave item 9 (whole-branch a11y finding, `PropertyMapWidget.vue`'s
+// key/value inputs had no accessible name at all -- axe `label`/critical):
+// zero new catalog keys, zero new strings. `legendId` labels the KEY input
+// by the widget's own EXISTING legend text (`$t(spec.labelKey)`, e.g.
+// "Changes"/"Match expression") -- the same text sighted users already
+// read as this widget's heading, now also wired as the accessible name
+// source via `aria-labelledby` instead of a 1:1 `<label for>` (the
+// fieldset can only be legended once, but `aria-labelledby` lets every
+// row's input point at that one id). The VALUE input's name additionally
+// references the row's OWN key input id: the accessible-name computation
+// (WAI-ARIA `aria-labelledby`) includes a referenced textbox's live VALUE,
+// so a row with key "forced" reads as "Changes forced" for its value
+// control -- distinguishing rows by data the user already typed, not by
+// any new copy. `useId()` (not a hand-rolled prefix) matches the
+// established per-instance-unique-id primitive `TextWidget.vue` already
+// uses; `-${index}` extends it per row within this one widget instance.
+const legendId = useId();
+const keyIdBase = useId();
+
+function keyInputId(index: number): string {
+  return `${keyIdBase}-${index}`;
+}
 
 /** Which value-cell control a row's property name resolves to. Not one of
  *  the 10 `FieldWidget` kinds -- this is the typed switch INSIDE the
@@ -83,6 +112,13 @@ function cellKindFor(key: string): ValueCellKind {
   }
 }
 
+// `Object.fromEntries` collapses a duplicate key to its LAST occurrence
+// (last-write-wins): if `setKey` renames a row's key to match another
+// existing row, or two rows already share a key from a loaded profile, the
+// earlier row's value silently disappears here rather than erroring. Left
+// uncaught deliberately (spec 7, zero frontend semantic validation) --
+// core's own validator diagnoses a duplicate/missing property against the
+// saved YAML, the same way it catches an unknown property name.
 function setKey(index: number, key: string) {
   const next = [...rows.value];
   next[index] = [key, next[index][1]];
@@ -120,14 +156,18 @@ function removeRow(index: number) {
 
 <template>
   <fieldset>
-    <legend>{{ $t(spec.labelKey) }}</legend>
+    <legend :id="legendId">
+      {{ $t(spec.labelKey) }}
+    </legend>
     <div
       v-for="([key, value], index) in rows"
       :key="index"
     >
       <input
+        :id="keyInputId(index)"
         data-testid="property-map-key"
         type="text"
+        :aria-labelledby="legendId"
         :value="key"
         @input="setKey(index, ($event.target as HTMLInputElement).value)"
       >
@@ -135,6 +175,7 @@ function removeRow(index: number) {
         v-if="cellKindFor(key) === 'checkbox'"
         data-testid="property-map-value"
         type="checkbox"
+        :aria-labelledby="`${legendId} ${keyInputId(index)}`"
         :checked="value === true"
         @change="onCheckboxInput(index, $event)"
       >
@@ -142,6 +183,7 @@ function removeRow(index: number) {
         v-else-if="cellKindFor(key) === 'integer'"
         data-testid="property-map-value"
         type="number"
+        :aria-labelledby="`${legendId} ${keyInputId(index)}`"
         :value="value"
         @input="onNumberInput(index, $event)"
       >
@@ -150,6 +192,7 @@ function removeRow(index: number) {
         data-testid="property-map-value"
         type="number"
         step="any"
+        :aria-labelledby="`${legendId} ${keyInputId(index)}`"
         :value="value"
         @input="onNumberInput(index, $event)"
       >
@@ -157,6 +200,7 @@ function removeRow(index: number) {
         v-else
         data-testid="property-map-value"
         type="text"
+        :aria-labelledby="`${legendId} ${keyInputId(index)}`"
         :value="value"
         @input="onTextInput(index, $event)"
       >
