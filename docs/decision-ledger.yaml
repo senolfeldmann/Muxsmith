@@ -3614,3 +3614,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 amendment delta review Important 1 + fix round (review-check bullet at plan Task 13 step 5, commit add3ab9); reviewer framed it as the ausloeser-und-handgriff pattern at plan altitude"}
+- id: gui-typed-scalar-needs-typed-input
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "A widget that edits a typed Scalar must offer a type-appropriate input: a string-only value cell can only ever produce Scalar::Str, so Bool/Int settables (forced, default) are unenterable as valid values and hit a permanent ValueTypeMismatch - the same Str(\"true\")-where-Boolean shape the D49 record already carries at the engine layer, reproduced at the GUI layer. T10's PropertyMapWidget ships string-only; core catches the mistype at error severity and the save-disable affordance (T12/13) blocks the frontend path, so nothing reaches a mux run silently through the GUI."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T10 review verdict Q3 (end-to-end trace: PropertyMapWidget string cell -> Scalar::Str -> validate_changes/scalar_fits ValueTypeMismatch error; no silent GUI mux path); typed-input decision routed to the owner with the T12 scope question"}
+- id: editor-generic-action-keys
+  kind: non-decision
+  tier: 1
+  source: agent-emergent
+  nature: product-scope
+  domain: gui
+  statement: "Open question for the owner: the frozen 43-key gui-editor.ftl budget leaves generic list/map add-remove buttons no generic catalog key, so T10 reuses editor-attachment-rule-add/-drop (en Add/Drop, de Hinzufuegen/Verwerfen) as generic captions - domain-scoped keys now captioning trackRule.changes and matchExpr list controls (latent coupling: an AttachmentRule-specific rewording later silently changes every list/map button; de Verwerfen carries a discard-my-changes connotation where Entfernen is conventional). Keep the reuse, or amend gui-editor.ftl once with 2-4 genuinely generic action keys? Task 12 scales the pattern across every list/propertyMap site, so the decision is due before T12."
+  steelman: "Reuse adds zero keys against a closed owner budget, and cross-view key reuse is an established house pattern (browse-button); the strings are defensible in both locales and the code is reversible in one string per site."
+  blocked_on: "owner ruling (routed in the plan-6 wave-3 status report, 2026-07-16; due before Task 12)"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: deferred, ref: "plan-6 T10 review verdict Q2: reuse judged acceptable-on-merits, routing to the governing human required (user-visible wording, proc-latitude routing rule); controller routes before T12"}
