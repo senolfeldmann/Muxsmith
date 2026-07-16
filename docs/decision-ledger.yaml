@@ -3559,6 +3559,34 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T9 review verdict harvest: brief citations :1082-1091 and :694-706/:806-819 landed off their targets post-Task-1 amendment; content matched everywhere, LABEL_KEY_RE confirmed at the true location :1124"}
+- id: echo-mock-distinct-fixture-values
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "An echo/identity assertion over a mocked call proves nothing about WHICH value the code used when two distinct concepts share one fixture value: the T14 draft set the suggestion's config_path (a rule locator) equal to the profile FILE path, so load/save-by-locator passed 27/27 against the echo mock. The control is one distinct fixture value per concept, asserted in both directions (the path assertion fails on locator misuse, the locator assertion fails on path misuse) - the fire-once discipline's sibling for identity checks."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T14 draft + amendment-4 delta verdict (amendment-apply-wiring-verdict.md): the draft's fixture collapsed path and locator onto one value; amendment 4 mandates PROFILE_PATH vs tracks[0].match with assertions in both directions"}
+- id: a11y-claims-need-witnessed-scans
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "When a binding point invokes an accessibility property as design rationale ('the native button keeps the axe pass green'), that property needs a scan that actually EXERCISES the new markup, not an argument from the chosen primitive - the verified-vs-borrowed-claim scrutiny extended to a11y-safety assertions. Plan-6 instance: no axe-scanned fixture renders a populated tracks.rules grid, so the detail panel and selection button (the branch's one new interactive ARIA-bearing surface) were never scanned; the brief's 'keeps axe green' was asserted by argument."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "plan-6 T13b review verdict Q3 (task-13b-verdict.md): the enumeration-discipline call adjudicated correct for the task, the axe gap confirmed empirically (5 scan sites, only :1062 in the editor block, its fixture rules:[]) and routed to the whole-branch review agenda"}
 - id: registry-slot-capability-delta
   kind: pattern
   tier: 1

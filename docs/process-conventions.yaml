@@ -362,13 +362,14 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 4
-  count: 5
+  count: 6
   occurrences:
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict: the brief's anchor list summed 19, stated 20, real 21 - untagged arithmetic over the tree"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1: the brief asserted rust-toolchain.toml components apply on a bare rustup toolchain install (false, rustup #4216); untagged, only the reviewer caught it; fix 308effc"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief premise 'the apply logic exists as a test helper, hoist it' refuted by the design implementer: tests/suggestions.rs:95 is a fixture generator that takes no Profile and mutates nothing; untagged"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15): the duty binds on ROLE - a load-bearing premise of a decision, tagged or not - and not on every incidental fact; contested scoping question closed"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T7 report + review verdict: the step-5 premise (self-contradiction sweep already run; spec 4.1 example consistent with canonical save) verified at the source; the memo gloss 'omits source/optional on every rule' found imprecise (2 of 7 rules legitimately carry one key), the operative conclusion held"}
+    - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T14 NEEDS_CONTEXT: the plan's wiring sentence ('SuggestionCard -> DiagnosticsPanel -> the command') rested on a false topology premise - the cards are BatchView's siblings of the panel since plan 5, and the profile FILE path lives in BatchView, which the Files list excluded. The implementer refuted the premise and stopped; controller verification also exposed that the candidate self-contained resolution misused config_path (a rule locator per rule_index_of, planner.rs:1897) as a file path - 27/27 e2e green because the echo mock is semantics-blind. Routed to amendment 4"}
 - id: brief-drafts-verified-against-tree
   kind: pattern
   tier: 2
