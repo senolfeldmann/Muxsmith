@@ -280,12 +280,13 @@ entries:
   domain: core
   statement: "Optionally folding settable-language validation into walk_exact_languages (to catch the all-optional-unmatched invalid-language case) left for v1 - low value since the uncaught case is inert."
   steelman: null
-  blocked_on: "optional refinement, not required for v1 correctness"
+  blocked_on: "v1.x planning"
   status: blocked
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "whole-branch verdict (Recommendations) + progress roll-up"}
+    - {date: "2026-07-16", kind: decided, ref: "owner re-pointed blocked_on to a real event (v1.x planning), replacing a non-event justification; blocked-pool audit 2026-07-15"}
 - id: core-57-argv-construction
   kind: pattern
   tier: 1
@@ -341,24 +342,26 @@ entries:
   domain: core
   statement: "With a donor whose assignments mix None/Some, its group position is set by its first Some (can differ from a literal first-appearance reading); no golden arbitrates it, left as a conscious choice into Task 12."
   steelman: null
-  blocked_on: "no golden arbitrates the ordering; pinning left pending"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "task-9 verdict round-2 (Minor) + progress roll-up"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 543259b"}
 - id: core-66-eager-resolution-discarded-plan
   kind: non-decision
   tier: 1
   domain: core
   statement: "On a render_output failure, resolve_chapters/resolve_attachments still run (wasted I/O + stray diagnostics on plans that will be discarded); consistent with the deliberate pre-finalize design (detect_source_overwrites needs pre-drop plans), left as-is."
   steelman: null
-  blocked_on: "tied to detect_source_overwrites pre-finalize design; low priority"
+  blocked_on: "v1.x planning"
   status: blocked
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "whole-branch verdict Minor 6 + progress roll-up"}
+    - {date: "2026-07-16", kind: decided, ref: "owner re-pointed blocked_on to a real event (v1.x planning), replacing a non-event justification; blocked-pool audit 2026-07-15"}
 - id: core-68-bcp47-accept-well-formedness
   kind: pattern
   tier: 1
@@ -680,13 +683,14 @@ entries:
   domain: core
   statement: "A fixless affected file is silently dropped from the partition (best=None skip, unreachable under v1 id-uniqueness); hardening with an invariant comment or an explicit 'unresolvable' group deferred."
   steelman: null
-  blocked_on: "idiomacy review (internal)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-11", kind: deferred, ref: "task-13 verdict m1"}
     - {date: "2026-07-11", kind: deferred, ref: "whole-branch funnel T13-m1"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 403e573"}
 - id: core-116-known-extensions-delivery
   kind: pattern
   tier: 1
@@ -915,17 +919,18 @@ entries:
     - {date: "2026-07-11", kind: deferred, ref: "plan-4 whole-branch-review-verdict.md (recommendation #3)"}
     - {date: "2026-07-11", kind: decided, ref: "plan-5 T5 step1.3"}
 - id: exec-23-loop-resweep-watcher
-  kind: non-decision
+  kind: restraint
   tier: 1
   domain: executor
   statement: "A loop-and-re-sweep watcher that would narrow the register-after-sweep window further (a design change to the one-shot watcher) is deferred; today a job registering its killer after the sweep runs to natural completion under cancel, bounded to one job per worker and recorded honestly."
-  steelman: null
-  blocked_on: "internal: design change if stronger cancel ever wanted"
-  status: blocked
+  steelman: "a stronger cancel would want a re-sweep watcher instead of the one-shot; not built - no such need surfaced in v1"
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-11", kind: deferred, ref: "plan-4 task-3-review-verdict.md (named-risk 2)"}
+    - {date: "2026-07-16", kind: decided, ref: "owner reclassified blocked non-decision -> settled restraint; the one-shot watcher is the deliberate v1 design (blocked-pool audit 2026-07-15)"}
 - id: exec-24-midspawn-cancel-not-lost
   kind: pattern
   tier: 1
@@ -1164,12 +1169,13 @@ entries:
   domain: cross
   statement: "The whole-branch review's 6 Minor items (double-report, render-fail donor gap, IdentifyError English, TempDir leaks, double file print, mkvmerge_found JSON asymmetry) were recorded for a follow-up rather than blocking the fix-pass merge."
   steelman: null
-  blocked_on: "internal: pending dev work / owner disposition"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-09", kind: deferred, ref: "plan-2-fixes-sdd/FINAL-review.md MINOR section + journal fix-pass Open threads"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 3081fc6/99b2e34/65eef3c/0bce722 (+2 accepted-as-designed)"}
 - id: cross-09-plan-wire-format-extension
   kind: pattern
   tier: 1
@@ -1748,24 +1754,26 @@ entries:
   domain: process
   statement: "The 11 correctness/security/perf findings routed out of the idiomacy pass are deferred to a dedicated normal-review gate, deliberately not blended into the complexity hunt (a complexity hunt and a bug hunt want different mindsets)."
   steelman: null
-  blocked_on: "internal: the dedicated correctness/security/perf review not yet run"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "ROADMAP c38a197 + idiomacy-review-findings.md routed-out section (E8[99])"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): Plan 5.7 close af00947"}
 - id: proc-56-idiomacy-fix-wave-deferred
   kind: non-decision
   tier: 1
   domain: process
   statement: "The 70 confirmed idiomacy findings await triage with Şenol; the accepted set becomes its own SDD-executed fix-wave plan (mechanical + low-risk), with the review scratch salvaged at that close."
   steelman: null
-  blocked_on: "internal: triage of the 70 confirmed findings with Şenol"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "journal session 10 open threads + ROADMAP L220 (E8[100])"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): Plan 5.6 close 831fc5c"}
 - id: i18n-01-fluent-choice
   kind: pattern
   tier: 1
@@ -1898,12 +1906,13 @@ entries:
   domain: i18n
   statement: "The dry-run-summary cli.ftl key serves both run and dry-run (a latent catalog-skimming trap); renaming it to batch-summary was deferred (touches en+de+allowlist+2 snapshots)."
   steelman: null
-  blocked_on: "idiomacy review (internal)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "task-8-verdict.md m2 / whole-branch funnel T8-m2"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): c877e4f"}
 - id: i18n-14-locale-picker-endonyms
   kind: pattern
   tier: 1
@@ -2302,12 +2311,13 @@ entries:
   domain: ci
   statement: "The skip-marker string is an unenforced cross-file contract (19 call sites + 1 CI grep, no shared const), so a future reword silently reintroduces the false-negative that ci-08's assertion exists to catch; hardening with a shared const was deferred."
   steelman: null
-  blocked_on: "internal - idiomacy review"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-11", kind: deferred, ref: "task-2-verdict.md m1 / whole-branch funnel T2-m1"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 616778d"}
 - id: ci-11-newest-over-lts
   kind: pattern
   tier: 1
@@ -2648,24 +2658,26 @@ entries:
   domain: testing
   statement: "The exit-1 warning path lacks an output-kept assertion and WarningLine/ErrorLine on_progress surfacing is untested; deferred to v1.x."
   steelman: null
-  blocked_on: "internal: v1.x test work"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: deferred, ref: "task-2-review-verdict.md (ledger #4 whole-branch)"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 543259b + d6725c8"}
 - id: testing-concurrencytracker-hygiene
   kind: non-decision
   tier: 1
   domain: testing
   statement: "ConcurrencyTracker is pure test instrumentation in the public lib surface; doc-hiding (#[doc(hidden)]) or relocating it is deferred until before go-public."
   steelman: null
-  blocked_on: "internal: before go-public"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: deferred, ref: "whole-branch-review-verdict.md (Minor)"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 7a2bc15"}
 - id: testing-cli-helper-dedup
   kind: non-decision
   tier: 1
@@ -2696,12 +2708,13 @@ entries:
   domain: testing
   statement: "D6 property guards use prop_assume where prop_assert would localize a future generator regression (which currently dies opaquely as 'too many global rejects'); the switch was deferred."
   steelman: null
-  blocked_on: "idiomacy review (internal)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-11", kind: deferred, ref: "task-14-verdict.md m1 / whole-branch funnel T14-m1"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): cc49337"}
 - id: testing-check-i18n-self-test
   kind: non-decision
   tier: 1
@@ -2859,12 +2872,13 @@ entries:
   domain: cli
   statement: "ctrlc is pinned to major only ('3') unlike siblings' full-patch pins (clap=4.6.1, serde_json=1.0.150); folding it to a full pin is deferred to the next Cargo.toml touch. Cargo.lock pins 3.5.2; a brief-literal style inconsistency."
   steelman: null
-  blocked_on: "internal: next Cargo.toml edit"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "E5", kind: deferred, ref: "task-10-review-verdict.md + whole-branch ledger #12"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 45e941a"}
 - id: cli-17-render-ownership
   kind: pattern
   tier: 1
@@ -2909,12 +2923,13 @@ entries:
   domain: cli
   statement: "jobs[].index indexes the queue, not files; correlating a job to its file requires joining on the output path. One doc sentence in run_json_document (or a source field later) prevents consumer misreads in Plan 5; deferred until Plan 5 consumes it."
   steelman: null
-  blocked_on: "internal: before Plan 5 consumption"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "E5", kind: deferred, ref: "whole-branch-review-verdict.md (Minor) + progress backlog"}
+    - {date: "2026-07-16", kind: decided, ref: "resolved (blocked-pool audit 2026-07-15, re-verified in tree 2026-07-16): 42ecc34"}
 - id: cli-23-identifyerror-passthrough
   kind: restraint
   tier: 1

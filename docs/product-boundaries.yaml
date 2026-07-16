@@ -246,14 +246,15 @@ entries:
   source: human
   nature: product-scope
   domain: gui
-  statement: "Justified divergence: no automatic 'remove completed jobs after N days' setting in v1; v1 keeps all run logs, pruning is v1.x."
-  steelman: "mkvtoolnix-gui ships an auto-cleanup setting that bounds disk growth without user effort."
+  statement: "SUPERSEDED by D35 (exec-44): v1 auto-prunes run logs after 14 days (RunLogger, Plan 5.5 T4.5, commit d18f1b7). This entry's original boundary - no auto-cleanup setting, keep all run logs, pruning deferred to v1.x (memo D30, a justified divergence from mkvtoolnix-gui's auto-cleanup) - was reversed pre-1.0. The live rule is exec-44."
+  steelman: "mkvtoolnix-gui ships an auto-cleanup setting that bounds disk growth without user effort. (This argument won: D35 adopted exactly it, superseding the keep-all boundary above.)"
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: decided, ref: "memo D30 (justified divergence)"}
+    - {date: "2026-07-12", kind: decided, ref: "superseded by D35 (exec-44): 14-day auto-prune shipped, Plan 5.5 T4.5, commit d18f1b7; keep-all boundary reversed. Recorded 2026-07-16 via blocked-pool audit follow-up"}
 - id: core-19-sync-delay-stretch
   kind: non-decision
   tier: 2
