@@ -1368,3 +1368,129 @@ Left open deliberately. The project's base rate (see the correction above)
 argues for suspicion of the agent's report; the verbatim text argues for
 suspicion of the channel. Neither is established. If this recurs, the verbatim
 above is what makes it matchable.
+
+## 2026-07-16 | Plan 6 planned + D49; execution plans join four-eyes | session 16 (Peter, Opus 4.8 1M)
+
+**Scope.** 2ca5b34..71d564a. No product code. Wrote the Plan 6 execution plan
+(12 tasks, four waves), had it independently reviewed, and closed a design gap
+the review exposed as ADR D49. All dispatches on the controller model (Opus 4.8
+1M) - no overrides.
+
+**Decisions and their why.**
+- **Execution plans are now authored four-eyes, like design documents** (Şenol,
+  mid-session, after asking whether plan writing used the mechanism). The
+  doctrine had carved plans out explicitly: "their errors are caught
+  structurally downstream". That carve-out was evidenced - proc-57 records
+  three cases where an implementer refuted a plan/brief claim against the tree,
+  three for three - but it only covers one class. All three were false CLAIMS,
+  which an implementer is looking at. It cannot catch the characteristic plan
+  error, a MISSING task: an implementer sees only its own task and cannot
+  notice work that was never planned. Reviewer plan briefs gained a coverage
+  dimension (walk the design section by section, name the task implementing
+  each). Briefs stay controller-authored: a brief is the INPUT to four-eyes, so
+  briefing the brief-writer is infinite regress.
+- **D49: apply carries the typed Scalar on the wire** rather than
+  reconstructing it from the display String. The display String is a lossy
+  projection of the Scalar; you cannot derive an original from a lossy
+  projection, so reconstruction inverts the house's derive-over-guard
+  preference instead of following it. Rejected alternative (reconstruct via
+  capability::matchable_type) turned out to be not merely worse but
+  unavailable: matchable_type returns PropType, and scalar_fits admits both
+  (Int,Float) and (Float,Float), so it is not a function onto Scalar.
+- **Save failures are a SaveError enum mapped to an IpcError, not a
+  Diagnostic** (Şenol). A Diagnostic describes a profile/plan problem; a write
+  failure leaves a valid model and a full disk. The boundary was already
+  written in src-tauri/src/error.rs:8-15 and nowhere a reviewer checks, which
+  is how an approved design contradicted it through four rounds. Now Tier 2
+  (core-124).
+- **The silent apply no-op is detected, not documented** (Şenol). with_rule_match
+  merges via or_insert (core-44, never clobber), so a suggestion against a
+  since-edited model silently returned Ok(unchanged). Third ApplyError variant;
+  a before/after comparison, no re-plan, no batch - D43's boundary untouched.
+- **The editor's tooltips ride Plan 7** (Şenol), so gui-editor.ftl stays at 43
+  keys in Plan 6 and the 42 controls get tooltips in the same pass as their
+  help-ids rather than as a retrofit.
+
+**What the process caught.**
+- Plan review, Critical: the plan mandated "reuse rule_index_of and
+  with_rule_match" - but with_rule_match takes a MatchExpr, not a
+  StructuredEdit, and the bridge needs a Scalar only batch identification has.
+  Originated in the plan (controller). Would have sent an implementer into an
+  unclosed fork whose obvious wrong answer compiles and silently voids core-03.
+- Two forks in the APPROVED design, found at plan-authoring after four review
+  rounds: a mandated error currency whose DiagCode was never named and does not
+  exist, and a key count contradicting its own catalog table. Originated
+  upstream (the design). Both escalated and ruled.
+- D49 review, Important: D49 argued the display String is lossy because
+  Bool(true) and Str("true") both project to "true", then prescribed exactly
+  that reconstruction for a Boolean test site, on a three-member set it
+  declined to enumerate. Caught by the independent reviewer.
+- D49 review, Important: D49's decisive sentence against the rejected
+  alternative was false. The reviewer ran it - Scalar::Float(400.0) DOES match
+  an Int(400) track. Cut; the rejection stands on its other legs.
+- Controller verification, pre-existing: core-47-with-severity-builder carried
+  count 3 against 4 occurrences, breaking the ledger's one anti-fabrication
+  invariant. Found by an ad-hoc validator on its first run; it had survived
+  every hand-check since 2026-07-13. The ROADMAP's ledger-lint candidate had
+  predicted this verbatim ("exactly the state that ends badly once").
+
+**Process mechanics and metrics.** 5 subagent dispatches, all on the controller
+model (Opus 4.8 1M), no overrides: 1 plan reviewer, 1 design author (D49), 1
+design reviewer, plus 2 resumptions each of the author and reviewer for the fix
+rounds. ~1.4M subagent tokens total; the controller's own context stayed small
+because every expensive read ran in a subagent. Plan review: 18 findings (1
+Critical, 7 Important, 10 Minor). D49: round 1 NEEDS FIXES (4 Important, 3
+Minor), round 2 APPROVED with 2 Minor. The D49 reviewer re-ran all 37 of the
+author's measurements; all reproduced, ts-rs byte-for-byte after it found the
+crate in the local cargo cache rather than marking it unverified.
+
+**Friction and failure.**
+- The controller authored the plan, which the rule it wrote hours later
+  forbids. Sent it to an independent reviewer rather than exempting the first
+  case; the fix round goes to a fresh implementer.
+- The four-eyes rule change took four passes to get right: it contradicted the
+  SDD bullet in the same file, then the bright line's list of
+  controller-touchable artifacts, then it was scoped so loosely it banned
+  legitimate mechanical work, then its central claim ("the plan is read-only
+  for the whole run") turned out FALSE - git log showed plan 5.5 took four
+  amendment commits adding seven tasks. Every one of the four was surfaced by
+  an owner question or a measurement; none by re-reading the rule.
+- Controller greps failed twice by the same mechanism recorded in this
+  session's own new rule: a string wrapping a line break, and an alternation
+  pattern this machine's grep does not take. Both returned nothing and looked
+  identical to success.
+- Two ledger edits were written with escaped quotes inside YAML and broke the
+  parse; caught by validating instead of assuming.
+
+**Moments.**
+- The plan's own verification step for its Critical finding could not fire: a
+  grep piped through `sed -n '/apply_suggestion/,$p'`, a range that never opens.
+  It passed for any implementation, including a clobbering one (plan review F9).
+- D49's author added a control test beside its new error guard unprompted,
+  because the guard would otherwise pass against an implementation that throws
+  unconditionally. Nobody asked for it. Now a ledger entry
+  (proc-guard-needs-its-control).
+- The count rule written at 0900 could not fire on the count defect found at
+  2300: adding a variant propagated into the enum, mapping, catalog, tests and
+  three counts, and missed the sentence directly above the block that grew.
+  Nobody was typing a number, so the trigger was silent. Second trigger added.
+
+**Deltas.** The plan's coverage dimension - the justification for the whole
+four-eyes extension - came back clean: every design section had a task, no scope
+creep. The rule was vindicated by a Critical in a different dimension entirely.
+The reviewer's own summary: every defect it found was in prose written around
+the measurements, never in a measurement.
+
+**Open threads.**
+- Plan 6 is planned but its plan is NOT approved: 18 findings plus D49 to apply,
+  by a fresh implementer, then a resumed re-review. No task may dispatch first.
+- D49 cannot land before D44 (the derive needs Scalar: TS).
+- Ledger hygiene: 12 stale blocked entries + 3 naming no observable event, owner
+  disposition pending. Unchanged from session 15.
+- gui-22 vs exec-44-runlog-14day-autoprune is a recorded-statement collision in
+  product-boundaries.yaml (v1 keeps all run logs vs D35's shipped 14-day prune;
+  gui-22 still settled, no supersession marker). Owner call.
+- Nothing gates IpcError codes against gui-common.ftl (DiagCode is gated
+  exhaustively; IpcError codes are plain strings). Tracked in ROADMAP with a
+  trigger.
+- Framework-side follow-ups tracked agent-side.
