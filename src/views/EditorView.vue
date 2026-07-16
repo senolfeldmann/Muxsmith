@@ -4,9 +4,14 @@
 // nav entry exists until Task 13's App.vue wiring). Bespoke against
 // `profile.ts` types directly, NOT through the field-widget dispatcher --
 // see `ListWidget.vue`'s own doc on why the generic `list` widget is not
-// this grid. `tracks.rules` stays this bespoke, read-only-summary grid
-// unchanged by Task 12 (its own test is untouched); `tracks.unmatched`
-// joins it as a normal registry-dispatched field, below.
+// this grid. `tracks.rules` stays this bespoke, read-only summary OF THE
+// ROW VALUES, unchanged by Task 12 (its own test is untouched); but the
+// grid now also carries row SELECTION, and a detail panel below it (Task
+// 13b) edits the selected rule through `SectionWidget` over `trackRule` --
+// the same registry path `attachments.rules` uses through `ListWidget`,
+// closing the spec-8.2 "detail editor per rule" gap
+// (`registry-slot-capability-delta`, `docs/decision-ledger.yaml`).
+// `tracks.unmatched` joins it as a normal registry-dispatched field, below.
 //
 // Reorder is a SEMANTIC MODEL EDIT (binding note), not a DOM mutation: a
 // drop rebuilds `tracks.rules` immutably and re-emits the whole profile,
@@ -72,6 +77,22 @@
 // Diagnostics render through the already-shared `DiagnosticsPanel.vue`
 // (its own doc comment: "no per-caller variant"), a third consumer beside
 // BatchView/ResolutionTable, contributing no new template `$t()` calls.
+//
+// Task 13b (D45, spec 8.2, amended 2026-07-16, detail-editor routing): row
+// selection on the grid (a native `<button data-testid="editor-rule-
+// select">` with `:aria-current`, the `RunHistory.vue:168-173` house
+// precedent -- keyboard-reachable for free, no hand-rolled interactive
+// `<tr>`) plus the per-rule detail panel beneath the grid. The panel is
+// pure registry composition, byte-for-byte the machinery `ListWidget.vue`
+// already uses for AttachmentRule items: it synthesizes a `{ kind:
+// "section", of: "trackRule" }` spec, mounts `SectionWidget`, and writes
+// the selected rule back immutably (`setRuleValue`). No new component, no
+// new registry, no new catalog key: the panel is labelled via
+// `aria-labelledby` pointing at the selected grid row's own id
+// (`editor-rule-row-${index}`), and `SectionWidget`'s legend reuses
+// `editor-tracks-rules` ("Rules"), already the grid heading/caption.
+// Selection is cleared on reorder (`onDrop`) so a post-reorder edit can
+// never land on a rule the user did not re-select.
 import { computed, ref, watch } from "vue";
 import { useFluent } from "fluent-vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -80,6 +101,8 @@ import { SOURCE_KEYWORDS } from "../bindings/keywords";
 import type { EditableField } from "../editor/fieldSpec";
 import { profileFields, tracksFields } from "../editor/registries";
 import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
+import SectionWidget from "../editor/widgets/SectionWidget.vue";
+import type { EditableFieldOf } from "../editor/widgets/shared";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
 import { loadProfile, saveProfile, validateProfileModel } from "../ipc";
 import type { Diagnostic, IpcError } from "../ipc";
@@ -256,6 +279,47 @@ function changesSummary(rule: TrackRule): string {
   return Object.keys(rule.changes ?? {}).join(", ");
 }
 
+// --- Task 13b: row selection + the per-rule detail panel -----------------
+//
+// The grid stays Task 11's read-only summary of the row VALUES, but a row
+// is now selectable, and the panel below the grid edits the selected rule
+// through the existing registry composition: `SectionWidget` over the
+// `trackRule` registry, byte-for-byte the machinery `ListWidget.vue` already
+// uses for AttachmentRule items (`attachments.rules`) -- the same code path,
+// closing the spec-8.2 "detail editor per rule" gap
+// (`registry-slot-capability-delta`) with zero new components and zero new
+// catalog keys.
+
+const selectedIndex = ref<number | null>(null);
+
+function selectRule(index: number) {
+  selectedIndex.value = index;
+}
+
+const ruleDetailSpec: EditableFieldOf<"section"> = {
+  labelKey: "editor-tracks-rules",
+  widget: { kind: "section", of: "trackRule", optional: false },
+};
+
+// Mirrors `ListWidget.vue`'s `itemValue`/`setItemValue` and this file's own
+// `onDrop` immutable rebuild -- the `Record<string, unknown>` cast on the
+// way in and the `TrackRule` cast on the way out are the same asymmetry
+// `ListWidget` closes.
+const selectedRule = computed<Record<string, unknown> | null>(() =>
+  selectedIndex.value === null
+    ? null
+    : ((rules.value[selectedIndex.value] as Record<string, unknown> | undefined) ?? null),
+);
+
+function setRuleValue(value: unknown) {
+  if (selectedIndex.value === null || !model.value) {
+    return;
+  }
+  const next = [...rules.value];
+  next[selectedIndex.value] = value as TrackRule;
+  model.value = { ...model.value, tracks: { ...model.value.tracks, rules: next } };
+}
+
 let dragIndex: number | null = null;
 
 function onDragStart(index: number) {
@@ -275,6 +339,10 @@ function onDrop(index: number) {
     tracks: { ...model.value.tracks, rules: nextRules },
   };
   dragIndex = null;
+  // A reorder invalidates any prior selection index mapping to a rule
+  // identity, not a position -- clearing it forces a post-reorder edit to
+  // go through a fresh, explicit re-selection.
+  selectedIndex.value = null;
 }
 </script>
 
@@ -346,6 +414,7 @@ function onDrop(index: number) {
           <tbody>
             <tr
               v-for="(rule, index) in rules"
+              :id="`editor-rule-row-${index}`"
               :key="index"
               data-testid="editor-rule-row"
               draggable="true"
@@ -353,7 +422,16 @@ function onDrop(index: number) {
               @dragover.prevent
               @drop="onDrop(index)"
             >
-              <td>{{ sourceSummary(rule) }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="editor-rule-select"
+                  :aria-current="selectedIndex === index ? 'true' : undefined"
+                  @click="selectRule(index)"
+                >
+                  {{ sourceSummary(rule) }}
+                </button>
+              </td>
               <td>{{ matchSummary(rule) }}</td>
               <td>
                 <input
@@ -368,6 +446,18 @@ function onDrop(index: number) {
           </tbody>
         </table>
       </fieldset>
+
+      <section
+        v-if="selectedRule"
+        data-testid="editor-rule-detail"
+        :aria-labelledby="`editor-rule-row-${selectedIndex}`"
+      >
+        <SectionWidget
+          :spec="ruleDetailSpec"
+          :model-value="selectedRule"
+          @update:model-value="setRuleValue"
+        />
+      </section>
 
       <p>{{ $t("editor-save-note") }}</p>
       <button

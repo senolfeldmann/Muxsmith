@@ -700,7 +700,7 @@ test.describe("editor widgets: mount-harness rendering", () => {
     await expect(blockGroup).toBeVisible();
   });
 
-  test("directoryPath widget renders a plain path textbox (no IPC dialog -- Task 13's job)", async ({ page }) => {
+  test("directoryPath widget renders a plain path textbox (text-entry only; directory picker out of scope for Plan 6, D45 widgets are prop-fed/zero-IPC)", async ({ page }) => {
     await mountComponent(page, {
       component: "DirectoryPathWidget",
       props: { spec: outputFields.directory, modelValue: "/out" },
@@ -1111,5 +1111,63 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
     await expect(
       editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
     ).toBeVisible();
+  });
+});
+
+// Task 13b (D45, spec 8.2, amended 2026-07-16, detail-editor routing): the
+// per-rule detail panel beneath Task 11's read-only summary grid, closing
+// the confirmed plan-coverage gap (`registry-slot-capability-delta`,
+// `docs/decision-ledger.yaml`) between spec 8.2's "detail editor per rule"
+// promise and the read-only grid Task 11 built for it. Selection is a
+// native `<button data-testid="editor-rule-select">` with `:aria-current`
+// (the `RunHistory.vue:168-173` house precedent, not a hand-rolled
+// interactive `<tr>`); the panel renders the selected rule through
+// `SectionWidget` over the `trackRule` registry -- byte-for-byte the
+// machinery `ListWidget` already uses for AttachmentRule items
+// (`attachments.rules`), so track-rule editing becomes the same code path,
+// adding zero new catalog keys and zero new components. Mounted through
+// the Task-10 harness (`mount.ts`), not the served app, per Tasks 11-13's
+// own precedent above.
+test.describe("editor view: rule detail editor (Task 13b, D45 / spec 8.2)", () => {
+  const twoRuleProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: {
+      rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
+    },
+  };
+
+  test("no selection renders no panel; selecting a row opens it with the four trackRule fields; editing optional writes a real boolean and the grid summary follows (anti-vacuity)", async ({
+    page,
+  }) => {
+    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
+
+    // 1. No selection, no panel. Made non-vacuous by assertion 2 below,
+    // which asserts the panel DOES appear on selection: the RED run
+    // exercises that presence branch, so this pair cannot both pass for a
+    // never-renders reason.
+    await expect(page.getByTestId("editor-rule-detail")).toHaveCount(0);
+
+    // 2. Select opens the panel with the four trackRule fields, dispatched
+    // through the real registry -- never a hand-typed literal.
+    await page.getByTestId("editor-rule-select").first().click();
+    const panel = page.getByTestId("editor-rule-detail");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("combobox", name("editor-track-rule-source"))).toBeVisible();
+    await expect(panel.getByRole("checkbox", name("editor-track-rule-optional"))).toBeVisible();
+    await expect(panel.getByRole("group", name("editor-track-rule-changes"))).toBeVisible();
+    await expect(panel.getByRole("group", name("editor-track-rule-match-expr"))).toBeVisible();
+
+    // 3. Edit `optional` (row 0 starts unset -- a real state change, not a
+    // vacuous re-assert): the model AND the grid's own summary checkbox
+    // both update from the same write, proving the panel and the grid
+    // share the one model (`setRuleValue`'s immutable rebuild feeding
+    // back into the same `rules` the grid renders).
+    const optionalCheckbox = panel.getByRole("checkbox", name("editor-track-rule-optional"));
+    await expect(optionalCheckbox).not.toBeChecked();
+    await optionalCheckbox.check();
+    const model = (await readModel(page)) as Profile;
+    expect(model.tracks.rules[0].optional).toBe(true); // a real boolean, not the string "true"
+    await expect(page.getByTestId("editor-rule-row").first().getByRole("checkbox")).toBeChecked();
   });
 });
