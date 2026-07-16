@@ -1494,3 +1494,75 @@ the measurements, never in a measurement.
   exhaustively; IpcError codes are plain strings). Tracked in ROADMAP with a
   trigger.
 - Framework-side follow-ups tracked agent-side.
+
+## 2026-07-16 | Plan 6 plan APPROVED + ledger hygiene + sweep gate | session 16 continued (Peter, Opus 4.8 1M)
+
+**Scope.** Continuation of the session-16 entry above, which closed with "Plan 6
+is planned but NOT approved". 71d564a..7dd3a69. Still no product code. This span
+took the DRAFT plan through its four-eyes fix round to APPROVED, resolved the
+ledger blocked-pool hygiene, and added a gate step.
+
+**Decisions and their why.**
+- **The plan fix round ran the rule the session had just written.** The DRAFT
+  plan (controller-authored before the four-eyes-for-plans rule existed) went to
+  a fresh implementer to author the corrections and an independent reviewer to
+  grade - because the first plan the rule touches is not the one to exempt. The
+  controller briefed and routed only; it did not touch the plan.
+- **Ledger blocked-pool dispositions** (owner-decided per entry): 12 stale
+  entries closed, 2 re-pointed to a real event (v1.x planning, replacing a
+  non-event justification), 1 reclassified (a "deferred design change" that was
+  really the shipped design -> settled restraint), gui-22 superseded by D35.
+- **The plan-close gate gained a blocked-pool sweep** (§3 step 1b). The audit's
+  structural finding decided the shape: zero of 27 entries had FIRED their
+  condition, so blocked_on does not drive the work - plans do, and the ledger
+  learns late or never. A "watch the condition" mechanism is therefore wrong;
+  a periodic sweep at the boundary that creates staleness (plan close) is right.
+
+**What the process caught.** The four-eyes chain caught a defect at every link,
+which is the entry's headline receipt:
+- The controller's own DRAFT plan carried a Critical: Task 6 mandated reuse of a
+  StructuredEdit->MatchExpr seam that does not exist in reusable form (the bridge
+  needs a typed Scalar that only batch identification supplies; apply has none,
+  and D43 forbids re-planning). Caught by the plan review. Originated in the plan.
+- D49, the ADR written to close that Critical, itself had 4 Important on its
+  first review round - including the document performing the very String->Scalar
+  reconstruction it argues is lossy, on a three-member set it declined to
+  enumerate. Caught by D49's independent reviewer.
+- The corrected plan still had two Minor on the re-review, one a test fixture
+  reference that would not compile. Caught by the resumed plan reviewer.
+- A pre-existing ledger defect (core-47 count 3 vs 4 occurrences, a reinforced
+  occurrence appended without bumping the derived count) had survived every
+  hand-check since 2026-07-13; found by an ad-hoc validator on its first run,
+  which became scripts/ledger-lint.py.
+
+**Process mechanics.** All dispatches on the controller model (Opus 4.8 1M), no
+overrides. Plan fix round: 1 fresh implementer (2 resume follow-ups for the
+:1739 amendment and the N1/N2 minors), the original plan reviewer resumed once
+for round 2. D49 round: covered in the entry above. The reviewer re-verified
+~20 of D49's line-range citations by hand and re-ran D49's ground-truth greps.
+
+**Friction and failure.** The controller's own greps failed by the falsifiability
+class it had just written into the ledger - a `-B1` too narrow, an awk `\b` that
+is not a word boundary, a grep piped through a sed range that never opens - each
+returning empty and looking identical to success. Every one was caught by
+re-checking rather than trusting the empty result. Two ledger edits with escaped
+quotes inside YAML broke the parse; caught by validating.
+
+**Moments.**
+- The plan review's finding F9 was that one of the DRAFT plan's own verification
+  steps (the grep guarding the core-44 no-clobber invariant) could never fire -
+  its sed range never opens. The plan's check on its most important invariant was
+  vacuous. Now a ledger rule (proc-verification-step-must-be-falsifiable).
+- The blocked-pool audit had flagged, in its own text, that the pool has no sweep
+  step - and it sat unaddressed for a day until the owner asked whether the audit
+  method was persisted anywhere. It was not. Now it is (§3 step 1b).
+
+**Deltas.** The four-eyes-for-plans rule was justified by a coverage argument (a
+plan's characteristic defect is a missing task). Both review rounds found the
+coverage clean and the defects in the seams instead - the rule was vindicated,
+but through a different failure mode than the one that motivated it.
+
+**Open threads.** Plan 6 is approved and unexecuted - the next session executes
+it (D44 before D49). The IpcError-vs-gui-common gate gap, the 12 unswept blocked
+entries in the other three house files, and the deeper blocked_on redesign are
+carried in the ROADMAP/HANDOFF. Framework-side follow-ups tracked agent-side.
