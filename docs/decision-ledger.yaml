@@ -3541,9 +3541,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T5 report + review verdict Q1(b): the brief ordered generate (step 6) -> drift-proof (step 9) -> stage (step 10); the proof's drift-append run returned exit 0 against the untracked src/bindings/, the implementer caught the expected-vs-actual mismatch, staged first, re-ran correctly, and a silently-failing git checkout on the untracked path left stray text that was regenerated away; committed artifacts verified clean by the reviewer"}
+    - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T12a report + review verdict: Amendment 2 baked the staging-before-proof precondition into the step, the implementer executed it as written (exit 0 -> 1 -> 0, fire read from the diff hunk), the reviewer verified the sequence - the rule applied at authoring time prevented the T5 hazard from recurring"}
 - id: brief-citations-drift-after-amendment
   kind: pattern
   tier: 1
