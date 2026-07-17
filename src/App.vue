@@ -86,19 +86,23 @@ onMounted(checkMkvmerge);
       >
         {{ $t("nav-jobs") }}
       </button>
-      <!-- Task 13 (D45): no new nav-* Fluent key (D45's catalog table adds
-           none for this task) -- reuses `batch-profile-heading` ("Profile"),
-           BatchView's own heading for its profile-picking section, the same
-           cross-view key reuse `JobsView.vue`'s own `<h2>` already relies on
-           for `nav-jobs`. See `EditorView.vue`'s doc comment for the fuller
-           reuse rationale. -->
+      <!-- Post-close fix (owner ruling 2026-07-17, plan-6 surface pass):
+           dedicated `nav-editor` key ("Editor"/"Editor"). Task 13's
+           original reuse of `batch-profile-heading` ("Profile"/"Profil")
+           sat beside the other two tabs' activity labels ("Batch"/"Jobs")
+           while naming an object instead, and doubled a string already on
+           screen as BatchView's own profile-picking section heading (see
+           `gui-common.ftl`'s `nav-*` comment for the fuller rationale).
+           `batch-profile-heading` itself is untouched -- it still captions
+           BatchView's own heading, per `EditorView.vue`'s doc comment on
+           the editor's other, still-current key reuses. -->
       <button
         type="button"
         data-testid="nav-editor"
         :aria-current="activeView === 'editor' ? 'page' : undefined"
         @click="activeView = 'editor'"
       >
-        {{ $t("batch-profile-heading") }}
+        {{ $t("nav-editor") }}
       </button>
       <button
         type="button"

@@ -12,12 +12,18 @@ close-abort-message = There is currently a job running. Do you really want to ab
 close-abort-confirm = Abort jobs and quit
 close-abort-dismiss = Cancel
 
-## T9: app shell navigation (single window, two views + first-run + settings,
-## spec 8.2). aria-current="page" on the active tab is set in the template,
-## not encoded here.
+## T9: app shell navigation (single window, three views + first-run +
+## settings, spec 8.2). aria-current="page" on the active tab is set in
+## the template, not encoded here. `nav-editor` added post-close (owner
+## ruling 2026-07-17, plan-6 surface pass): a dedicated key for the editor
+## tab instead of Task 13's original reuse of `batch-profile-heading`
+## ("Profile"), which sat beside the other two tabs' activity labels
+## while naming an object, and doubled a string already on screen as
+## BatchView's own section heading.
 nav-label = Main navigation
 nav-batch = Batch
 nav-jobs = Jobs
+nav-editor = Editor
 settings-open-label = Settings
 settings-open-tooltip = Open application settings (mkvmerge path, default jobs, language).
 browse-button = Browse...

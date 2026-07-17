@@ -1177,7 +1177,13 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
 
     await page.goto("/");
 
-    await page.getByTestId("nav-editor").click();
+    // Post-close fix (owner ruling 2026-07-17, plan-6 surface pass):
+    // dedicated `nav-editor` key, not the reused `batch-profile-heading`
+    // Task 13 originally rendered here -- pin the tab's accessible name so
+    // a regression back to the reused key fails loudly.
+    const editorTab = page.getByTestId("nav-editor");
+    await expect(editorTab).toHaveAccessibleName(en("nav-editor"));
+    await editorTab.click();
     const editor = page.getByTestId("view-editor");
     await expect(editor).toBeVisible();
 

@@ -17,6 +17,7 @@ close-abort-dismiss = Abbrechen
 nav-label = Hauptnavigation
 nav-batch = Stapel
 nav-jobs = Jobs
+nav-editor = Editor
 settings-open-label = Einstellungen
 settings-open-tooltip = Anwendungseinstellungen öffnen (mkvmerge-Pfad, Standard-Jobs, Sprache).
 browse-button = Durchsuchen...
