@@ -1651,3 +1651,32 @@ Plan 7 anchor grew (dropdowns, field markers, ordinal column, tooltips);
 apply-vs-editor concurrency + post-apply auto-refresh as v1.x candidates;
 the D49 G1/G2 removal experiment as a trigger; framework-side follow-ups
 tracked agent-side.
+
+## 2026-07-17 | Session 17 close (post-plan-6) | session 17 (Peter, Fable 5)
+
+Scope: post-close events after the plan-6 entry, master 962005b..2591cd4+.
+
+Decisions: the owner surface pass resolved same-day - all shipped strings
+approved; the nav tab got a dedicated `nav-editor` key ("Editor",
+gui-common beside its nav siblings, NOT the 45-key editor catalog) via a
+four-eyes post-close fix (2591cd4). The fixer refuted the brief's premise
+(no prior tab-name assertion existed; verified, added additively) - the
+brief-vs-tree pattern's next instance, this time against a controller
+brief.
+
+Process findings at close: subagent transcripts live in the harness's
+session-scoped temp store; the first half of this session's store
+(~50 subagents of the plan-6 execution) was already purged at a
+compaction boundary before archiving - surviving layers: implementer
+report files (the report contract forces load-bearing commands+outputs
+into them), extracted verdict files, the main session log (every dispatch
+prompt + every final agent answer), the 93-file salvage. Owner directive:
+the next session opens with transcript archiving + session sweeps before
+any new plan; sweep specifics tracked agent-side.
+
+Mechanics addendum: the whole session ran on one controller context to
+~92% of the window; post-close fix dispatches on Sonnet, review on Sonnet.
+
+Open threads: next-plan kickoff (7/8/9) follows the sweep session;
+the D49 removal experiment and the other mirrored triggers sit in the
+ROADMAP; framework-side follow-ups tracked agent-side.
