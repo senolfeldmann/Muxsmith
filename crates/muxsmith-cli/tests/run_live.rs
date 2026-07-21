@@ -22,11 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use assert_cmd::cargo::CommandCargoExt;
-
-fn muxsmith() -> Command {
-    Command::cargo_bin("muxsmith").unwrap()
-}
+mod support;
 
 fn have_mkvmerge() -> bool {
     Command::new("mkvmerge")
@@ -100,19 +96,20 @@ fn live_run_muxes_two_sources_and_reports_exit_zero() {
     fs::write(&profile, PROFILE).unwrap();
     let output_dir = dir.path().join("out");
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(&source_dir)
-        .args(["--output"])
-        .arg(&output_dir)
-        // Task 6 (D26): a real mux reaches the queue and would otherwise
-        // persist job logs into the real platform data dir; point it at a
-        // tempdir instead.
-        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        source_dir.to_str().unwrap(),
+        "--output",
+        output_dir.to_str().unwrap(),
+    ])
+    // Task 6 (D26): a real mux reaches the queue and would otherwise
+    // persist job logs into the real platform data dir; point it at a
+    // tempdir instead.
+    .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
+    .output()
+    .unwrap();
 
     assert!(
         out.status.success(),
@@ -191,16 +188,17 @@ fn zero_rule_keep_profile_is_a_pure_passthrough() {
     let output_dir = dir.path().join("out");
 
     // Dry run: exit 0, passthrough announced, no NoTrackRules.
-    let dry = muxsmith()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(&output_dir)
-        .arg("--json")
-        .output()
-        .unwrap();
+    let dry = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        output_dir.to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
     assert!(
         dry.status.success(),
         "dry-run must accept the passthrough profile, stdout: {}, stderr: {}",
@@ -233,19 +231,20 @@ fn zero_rule_keep_profile_is_a_pure_passthrough() {
     );
 
     // Run: output exists and identifies with both tracks intact.
-    let run = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(&output_dir)
-        // Task 6 (D26): a real mux reaches the queue and would otherwise
-        // persist job logs into the real platform data dir; point it at a
-        // tempdir instead (same idiom as the two live-run tests above).
-        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
-        .output()
-        .unwrap();
+    let run = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        output_dir.to_str().unwrap(),
+    ])
+    // Task 6 (D26): a real mux reaches the queue and would otherwise
+    // persist job logs into the real platform data dir; point it at a
+    // tempdir instead (same idiom as the two live-run tests above).
+    .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
+    .output()
+    .unwrap();
     assert!(
         run.status.success(),
         "run must succeed on the passthrough profile, stdout: {}, stderr: {}",
@@ -326,16 +325,17 @@ fn readme_passthrough_recipe_with_title_template_survives_dry_run_and_run() {
     // `dry-run --json`: exit 0, exactly one valid JSON document on stdout
     // (pre-fix: panics at report/json.rs:44 building the `Set` plan value,
     // per README.md:91 "every command takes --json").
-    let dry = muxsmith()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(&output_dir)
-        .arg("--json")
-        .output()
-        .unwrap();
+    let dry = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        output_dir.to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
     assert!(
         dry.status.success(),
         "dry-run --json must exit 0, stdout: {}, stderr: {}",
@@ -359,16 +359,17 @@ fn readme_passthrough_recipe_with_title_template_survives_dry_run_and_run() {
     // `run`: exit 0 (pre-fix: exit 101 -- the mux itself already succeeded,
     // but `run.rs`'s unconditional run-document build then panicked on the
     // same `Set` value, run.rs:274-275).
-    let run = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(&output_dir)
-        .env("MUXSMITH_RUNS_ROOT", &runs_root)
-        .output()
-        .unwrap();
+    let run = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        output_dir.to_str().unwrap(),
+    ])
+    .env("MUXSMITH_RUNS_ROOT", &runs_root)
+    .output()
+    .unwrap();
     assert!(
         run.status.success(),
         "run must exit 0 (pre-fix: panicked after a successful mux), stdout: {}, stderr: {}",
@@ -452,17 +453,19 @@ fn live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched(
     // otherwise persist job logs into the real platform data dir; point
     // both invocations at a tempdir instead.
     let run_args = |on_collision: Option<&str>| {
-        let mut cmd = muxsmith();
-        cmd.args(["run"])
-            .arg(&profile)
-            .args(["--source"])
-            .arg(&source_dir)
-            .args(["--output"])
-            .arg(&output_dir)
-            .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"));
+        let mut args = vec![
+            "run",
+            profile.to_str().unwrap(),
+            "--source",
+            source_dir.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+        ];
         if let Some(policy) = on_collision {
-            cmd.args(["--on-collision", policy]);
+            args.extend(["--on-collision", policy]);
         }
+        let mut cmd = support::muxsmith(&args);
+        cmd.env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"));
         cmd
     };
 

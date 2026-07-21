@@ -8,6 +8,7 @@
 
 use std::path::Path;
 
+use assert_cmd::Command;
 use insta::Settings;
 
 /// Baseline `insta` filters shared by every CLI snapshot test (spec 10):
@@ -32,6 +33,7 @@ use insta::Settings;
 /// [`insta_settings_with_tmp`] -- an exact, escaped literal match, not a
 /// generic "looks like an absolute path" regex that could also swallow
 /// unrelated content (e.g. a `config_path` value) and mask a real bug.
+#[allow(dead_code)]
 pub fn insta_settings() -> Settings {
     let mut settings = Settings::clone_current();
     settings.add_filter(r"mkvmerge v\d+(?:\.\d+){1,3}[^\n]*", "mkvmerge v[VERSION]");
@@ -43,6 +45,7 @@ pub fn insta_settings() -> Settings {
 /// (escaped via [`regex::escape`], not a pattern -- `path` is a real
 /// `TempDir` root, e.g. containing a literal `.` on Unix, which would
 /// otherwise be interpreted as "any character").
+#[allow(dead_code)]
 pub fn insta_settings_with_tmp(path: &Path) -> Settings {
     let mut settings = insta_settings();
     settings.add_filter(&regex::escape(&path.display().to_string()), "[TMPDIR]");
@@ -57,6 +60,7 @@ pub fn insta_settings_with_tmp(path: &Path) -> Settings {
 /// equivalent, and `Command::new("mkvmerge")` would look for
 /// `mkvmerge.exe`/`.cmd`/`.bat` there instead. Shared by `run_cli.rs` and
 /// `dry_run_cli.rs`.
+#[allow(dead_code)]
 #[cfg(unix)]
 pub fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
     use std::os::unix::fs::PermissionsExt;
@@ -71,4 +75,37 @@ pub fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
     perms.set_mode(0o755);
     std::fs::set_permissions(&script, perms).unwrap();
     dir
+}
+
+/// The one CLI-invocation funnel (D64, `cli-multilang-rendering`'s
+/// companion constraint): every integration test that runs the muxsmith
+/// binary builds its `Command` here. The funnel appends `--locale en`
+/// AFTER the caller's args: `--locale` is a per-subcommand argument
+/// (`cli.rs`), so it must follow the subcommand, which appending
+/// guarantees. Pinning rides the CLI's own contractual surface, never
+/// environment variables: `sys_locale` reads OS APIs, not env vars, on
+/// Windows and macOS (D64's rejected alternative). Post-sweep invariant:
+/// `cargo_bin("muxsmith")` appears nowhere outside this function.
+pub fn muxsmith(args: &[&str]) -> Command {
+    let mut cmd = Command::cargo_bin("muxsmith").unwrap();
+    cmd.args(args);
+    cmd.args(["--locale", "en"]);
+    cmd
+}
+
+/// The closed TWO-caller funnel exception (round-5-amended D64):
+/// (1) `no_args_shows_usage_and_fails` verifies that a BARE `muxsmith`
+/// invocation - a real user scenario - prints usage and fails; through
+/// the funnel it would verify a different behavior (unexpected
+/// top-level argument). (2) `cli_schema.rs::schema_json`: `Schema` is
+/// an argument-less unit variant, so `muxsmith schema --locale en`
+/// exits 2 on clap's unexpected-argument error, and the `Schema` arm
+/// constructs no `Renderer` - schema output is locale-independent
+/// permanently (English-only `description` fields, spec 8.4/D47). Both
+/// callers are locale-moot by construction: no `Renderer` exists on
+/// either path. The exception set is closed: exactly these two
+/// callers; a third reopens D64 rather than riding the helper.
+#[allow(dead_code)]
+pub fn muxsmith_bare() -> Command {
+    Command::cargo_bin("muxsmith").unwrap()
 }

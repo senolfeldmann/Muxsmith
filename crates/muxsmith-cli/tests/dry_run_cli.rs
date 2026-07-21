@@ -4,8 +4,6 @@
 
 use std::process::Command;
 
-use assert_cmd::cargo::CommandCargoExt;
-
 mod support;
 
 fn have_mkvmerge() -> bool {
@@ -51,17 +49,17 @@ fn dry_run_plans_a_single_file() {
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(dir.path().join("out"))
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        dir.path().join("out").to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
 
     assert!(
         out.status.success(),
@@ -93,15 +91,15 @@ fn dry_run_surfaces_config_time_invalid_regex() {
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -162,17 +160,17 @@ fn dry_run_json_diagnostics_all_carry_rendered_text() {
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(dir.path().join("out"))
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        dir.path().join("out").to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
 
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
         panic!(
@@ -223,14 +221,14 @@ fn dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() 
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .output()
+    .unwrap();
 
     assert!(
         out.status.success(),
@@ -278,16 +276,16 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
     .unwrap();
 
     let no_mkvmerge_path = empty_path_dir();
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .env("PATH", no_mkvmerge_path.path())
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .env("PATH", no_mkvmerge_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -376,17 +374,17 @@ fn dry_run_on_collision_flag_overrides_default_error_policy() {
     std::fs::write(out_dir.path().join("Show.S01E01.mkv"), b"pre-existing").unwrap();
 
     // Default policy (error): exits 2.
-    let default_out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(src_dir.path())
-        .args(["--output"])
-        .arg(out_dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let default_out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        src_dir.path().to_str().unwrap(),
+        "--output",
+        out_dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
     assert_eq!(
         default_out.status.code(),
         Some(2),
@@ -396,18 +394,19 @@ fn dry_run_on_collision_flag_overrides_default_error_policy() {
     );
 
     // --on-collision skip: downgrades to a warning, exits 1.
-    let skip_out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(src_dir.path())
-        .args(["--output"])
-        .arg(out_dir.path())
-        .args(["--on-collision", "skip"])
-        .arg("--json")
-        .output()
-        .unwrap();
+    let skip_out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        src_dir.path().to_str().unwrap(),
+        "--output",
+        out_dir.path().to_str().unwrap(),
+        "--on-collision",
+        "skip",
+        "--json",
+    ])
+    .output()
+    .unwrap();
     assert_eq!(
         skip_out.status.code(),
         Some(1),
@@ -433,18 +432,19 @@ fn dry_run_on_collision_flag_overrides_default_error_policy() {
     // `diag_exit_code` default-branch case (gap T-iii): neither the `Error`
     // nor the `Warning` arm fires, so the worst-of fold must fall through to
     // its `_ => 0` arm rather than defaulting to a nonzero exit by omission.
-    let overwrite_out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(src_dir.path())
-        .args(["--output"])
-        .arg(out_dir.path())
-        .args(["--on-collision", "overwrite"])
-        .arg("--json")
-        .output()
-        .unwrap();
+    let overwrite_out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        src_dir.path().to_str().unwrap(),
+        "--output",
+        out_dir.path().to_str().unwrap(),
+        "--on-collision",
+        "overwrite",
+        "--json",
+    ])
+    .output()
+    .unwrap();
     assert_eq!(
         overwrite_out.status.code(),
         Some(0),
@@ -483,15 +483,15 @@ fn dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing() {
     .unwrap();
 
     let no_mkvmerge_path = empty_path_dir();
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .env("PATH", no_mkvmerge_path.path())
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .env("PATH", no_mkvmerge_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8(out.stdout).unwrap();
@@ -514,11 +514,7 @@ fn dry_run_json_emits_a_document_on_profile_load_failure() {
     let dir = tempfile::tempdir().unwrap();
     let missing_profile = dir.path().join("nonexistent.yaml");
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&missing_profile)
-        .arg("--json")
+    let out = support::muxsmith(&["dry-run", missing_profile.to_str().unwrap(), "--json"])
         .output()
         .unwrap();
 
@@ -581,16 +577,16 @@ fn dry_run_json_emits_a_document_when_the_language_query_fails() {
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .env("PATH", fake_path.path())
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .env("PATH", fake_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -641,15 +637,15 @@ fn dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() 
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .env("PATH", fake_path.path())
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .env("PATH", fake_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -704,17 +700,17 @@ fn dry_run_json_surfaces_empty_plan_batch_report() {
     )
     .unwrap();
 
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
-        .args(["dry-run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(dir.path().join("out"))
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        dir.path().join("out").to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
