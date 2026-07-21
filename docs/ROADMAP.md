@@ -220,6 +220,30 @@ action:
   D44's rejection. (Plan-6 close, plan trigger 3.)
 - 1.0 is tagged, or a user asks for zero-config schema autocompletion ->
   re-evaluate SchemaStore publication. (Plan-6 close, plan trigger 5.)
+- A third locale directory is added -> D62's lockstep gate and D55's
+  parity rules fire by construction; one manual check: if the locale's
+  CLDR plural categories exceed {one, other}, verify D55 rule 5's
+  category carve-out passes its catalogs before blaming them. (Plan-7
+  design trigger 2.)
+- A labelKey is renamed -> D51's coupling renames the help-id and both
+  topic files; D62 is the tracker (red until they agree). (Plan-7 design
+  trigger 3.)
+- fluent-vue or @fluent/bundle is bumped -> re-verify the `bundles`
+  setter contract and the `$ta` global (D56/D55 rest on installed
+  3.8.2's verified behavior). (Plan-7 design trigger 4.)
+- marked major release arrives -> re-check D50's "0 dependencies, no
+  sanitizer needed for first-party input" premises before merging.
+  (Plan-7 design trigger 5.)
+- A second `v-html` site is proposed anywhere -> reopens D50's
+  single-site license as a design decision, never a per-case judgment
+  call. (Plan-7 design trigger 6.)
+- The attachment-context propertyMap type lookup is fixed properly
+  (pre-existing flaw: track type tables used for attachment
+  select/drop maps; Plan-9 capability/registry neighborhood) -> revisit
+  D58's path gate in the same change. (Plan-7 design trigger 7.)
+- A user asks for quieter UI / tooltip suppression -> the mkvtoolnix
+  `uiDisableToolTips` parity gap becomes a v1.x candidate with precedent
+  cited (plan-7 design section 3). (Plan-7 design trigger 8.)
 - Next core/planner-touching plan -> run the D49 G1/G2 removal experiment
   (mutate delta_for's AddExact arm to re-stringify, run the suite: G1+G2+G3
   all fail -> they stay for good; only G3 fails -> G1/G2 are removal
@@ -698,16 +722,18 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   guard and check-i18n parity work = CI/gate structural work): FOLDED INTO
   PLAN 7 by owner scope call (S20; see the Plan 7 anchor). (2026-07-16,
   D49 review harvest item 5)
-- **Gate part that Fluent-parses ALL catalogs**: today no gate
-  Fluent-parses the de CLI/diagnostics catalogs (check:i18n covers the
-  frontend; catalog_completeness checks keys, not grammar) - the plan-5.7
-  T4 reviewer had to build an empirical render to verify selector arms.
-  Add a parse-all-catalogs gate part. Sharper variant from the plan-5.8
-  design review (2026-07-14): extend scripts/check-i18n.mjs to assert
-  placeable-set and selector-structure parity per message id across
-  locales (the de catalog header currently declares that parity
-  manually reviewed, not machine-checked); would have auto-guarded the
-  D39 selector change. Trigger FIRED and consumed 2026-07-21, same call
-  as the IpcError entry above: FOLDED INTO PLAN 7 (S20 owner scope call;
-  see the Plan 7 anchor; ledger i18n-12). (T4 verdict harvest H1,
-  2026-07-14; plan-5.8 design-review harvest, 2026-07-14)
+- **Gate part that Fluent-parses ALL catalogs**: the parse-all half is
+  ALREADY BUILT - e2e/catalogs.spec.ts real-Fluent-parses every catalog
+  of every locale incl. cli.ftl (the i18n-10 closure; this entry's
+  original premise "today no gate Fluent-parses the de CLI/diagnostics
+  catalogs" was refuted by plan-7 design correction #5, 2026-07-21, and
+  the sentence is corrected here in place per design trigger 9). The
+  remaining live content is the sharper plan-5.8 design-review variant:
+  extend scripts/check-i18n.mjs to assert placeable-set and
+  selector-structure parity per message id across locales (the de catalog
+  header currently declares that parity manually reviewed, not
+  machine-checked); would have auto-guarded the D39 selector change.
+  Trigger FIRED and consumed 2026-07-21, same call as the IpcError entry
+  above: FOLDED INTO PLAN 7 (S20 owner scope call; see the Plan 7 anchor;
+  ledger i18n-12; design D55 rule 5). (T4 verdict harvest H1, 2026-07-14;
+  plan-5.8 design-review harvest, 2026-07-14)
