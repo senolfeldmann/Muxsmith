@@ -433,9 +433,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15), applied retroactively to the already-approved plan-6 design document: its own proposed schema-annotation guard had been dropped as 'a tautology' (reviewer proposed, implementer complied, neither able to check it) in the same round where that rationale shape had already produced three false claims. Guard restored; the tautology analysis re-aimed onto a falsifiable trigger. doctrine §3 amended"}
+    - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design (approved): D62's URL-ban scan kept despite its recorded plain-text over-breadth (round-1 review harvest, calibration data), and check 1(c)'s partially-redundant scan branch kept with the redundancy recorded in place (round-3 harvest) - both retained for build-and-measure per this rule"}
 - id: proc-normative-count-recomputed
   kind: pattern
   tier: 2

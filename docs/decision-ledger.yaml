@@ -3431,21 +3431,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "plan-5.8 task-4 fix round 1 + review verdict (plan_value debug_assert, D40 rejected-alternatives addendum)"}
-- id: core-derive-dont-restate
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: technical-code
-  domain: core
-  statement: "Where the same knowledge must exist twice, derive the second copy from the first so the two can never drift; where the tooling cannot derive it, the fallback is a guard test that fails the build when the copies disagree, NEVER an accepted gap. Candidate parent of the single-source-of-truth instances already recorded piecemeal; harvested from the plan-6 design review, which observed it at three sites and named the keyword-array case as its negative instance."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-13", kind: decided, ref: "capability/mod.rs:125-129 - CODEC_KIND_NAMES derived from CODEC_KINDS, the rationale in its own doc comment: 'Derived from CODEC_KINDS rather than hand-re-listed, so the two can never drift'"}
-    - {date: "2026-07-15", kind: decided, ref: "plan-6 design (approved): D45 rules the four keyword arrays GENERATED into keywords.ts over a guard test ('a guard detects drift; derivation makes it unrepresentable'), and D48 applies the same rule to its schemars extend annotation after an earlier draft's excuse ('extend needs a literal in an attribute position') was measured false. ONE decision round applying the principle at two sites, counted as one event, not two"}
 - id: proc-reuse-mandate-names-the-signature
   kind: pattern
   tier: 1
@@ -3719,3 +3704,88 @@ entries:
     - {date: "2026-07-16", kind: decided, ref: "plan-6 T10 review verdict Q3 (end-to-end trace: PropertyMapWidget string cell -> Scalar::Str -> validate_changes/scalar_fits ValueTypeMismatch error; no silent GUI mux path); typed-input decision routed to the owner with the T12 scope question"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling (plan-6 owner escalation, option 2a of the enumerated options): typed value cells land IN PLAN 6 via a four-eyes T12 plan amendment (type-appropriate input per settable property type), not deferred to Plan 7"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling (matchable-cell routing from the amendment delta review): the MATCHABLE exact-map cells are typed in Plan 6 too, scalar form (checkbox/number incl. a float variant/text from the generated matchable table - 63 props: 22 String, 9 Boolean, 27 Integer, 5 Float); the two curated-domain dropdowns (type, codec_kind) land in Plan 7. Same repair, same component, same generated source; forced_track/default_track make the gap a core-path defect"}
+- id: proc-enumeration-fired-by-execution
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A corrected or newly-derived normative enumeration whose members are OBSERVABLE (emitted strings, rendered output, produced diagnostics) is verified by making each member appear once through the real binary - a reproducible probe - not only by citing the source lines it was derived from. Positive-direction sibling of proc-verification-step-must-be-falsifiable (that entry proves absence-checks can fire; this one proves claimed presences occur) and distinct from proc-07-verify-against-source (which confirms tooling behavior, not enumeration membership). Trigger is readable: you are writing a normative member list whose members the running system can be made to produce. Handle: construct the input that produces each member, run it, record the probe beside the list."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 design fix round, D57 grammar blocker: the author re-derived the config_path enumeration from validate.rs/lint.rs AND demonstrated every previously-wrong member live via a probe profile through muxsmith validate --json; the round-2 reviewer independently re-fired the probe (one event, two artifacts: fix report + design-review-round-2.md)"}
+- id: proc-supersede-never-overwrite
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a recorded decision is reversed, the old entry is never rewritten into its opposite or deleted: the superseded entry keeps its statement and rationale with a supersession pointer, the successor entry carries the live rule plus the loser's steelman, and both events sit in the occurrence logs - the reversal stays reconstructible from the files alone (who ruled what, when, and why the first ruling lost)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-16", kind: decided, ref: "gui-22 vs exec-44 collision resolution (S16, commit e24759b): gui-22's statement records the D35 supersession, exec-44 carries the live rule"}
+    - {date: "2026-07-21", kind: reinforced, ref: "cli-english-only -> cli-multilang-rendering same-day reversal (S20, commit 05e5f9b): superseded entry keeps decree + rationale, successor carries the losing steelman; named as a pattern by the plan-7 round-3 review harvest"}
+- id: proc-post-sweep-invariant-framing
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A greppable invariant that a planned sweep will ESTABLISH is written as an explicit post-sweep target with the current (false) state acknowledged beside it - never phrased as a description of the present tree. Phrased as present fact it is a false claim a no-work-needed check must flag; phrased as a target it doubles as the sweep's completion check."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 design D64: 'cargo_bin only in tests/support/mod.rs' stated as post-sweep invariant with the measured current count (5 files) beside it; round-3 review harvest named the framing"}
+- id: gui-single-vhtml-site
+  kind: restraint
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "v-html is licensed at exactly ONE site in the frontend (the help sidebar rendering first-party markdown, D50); any proposed second site reopens D50 as a design decision rather than being judged per-case (design trigger 6, mirrored to the ROADMAP)."
+  steelman: "A per-case judgment scales better than reopening a design decision for every future rich-text need; rejected because v-html's risk profile is exactly the class where an accumulating set of individually-reasonable exceptions is the failure mode."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 design D50 (owner-approved); round-1 review harvest named it a convention candidate"}
+- id: i18n-closed-attribute-name-set
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: i18n
+  statement: "Fluent message attributes come from a CLOSED name set (.tooltip, .hint, .tooltip-<state> per the D55 migration table); a new attribute name is a design-level addition to the set (with check-i18n parity coverage), never an ad-hoc per-message invention."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 design D55 (owner-approved); round-1 review harvest named it a convention candidate"}
+- id: gui-helpid-equals-labelkey
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "A registry control's help-id IS its labelKey, written out literally (never derived at runtime); the identity is what lets the D62 completeness gate and the D51 topic files key on one name, and a labelKey rename renames the help-id and both topic files in the same change (design trigger 3)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 design D51/D53 (owner-approved); round-1 review harvest named it a convention candidate"}

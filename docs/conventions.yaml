@@ -993,3 +993,19 @@ entries:
     - {date: "2026-07-10", kind: decided, ref: "1b76fd6 (plan-5 batch view): ResolutionTable.vue ships the first captioned table"}
     - {date: "2026-07-10", kind: reinforced, ref: "6e763a7 (plan-5 jobs view): JobsView.vue and RunHistory.vue tables captioned in one landing (one event, two artifacts)"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T11 review Important: EditorView.vue's rule grid shipped caption-less, the codebase's only exception; fixed 35d844d reusing editor-tracks-rules; the pattern had recurred without ever being written down - the unrecorded recurrence is what let the miss happen (T11 verdict harvest)"}
+- id: core-derive-dont-restate
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "Where the same knowledge must exist twice, derive the second copy from the first so the two can never drift; where the tooling cannot derive it, the fallback is a guard test that fails the build when the copies disagree, NEVER an accepted gap. Candidate parent of the single-source-of-truth instances already recorded piecemeal; harvested from the plan-6 design review, which observed it at three sites and named the keyword-array case as its negative instance."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-13", kind: decided, ref: "capability/mod.rs:125-129 - CODEC_KIND_NAMES derived from CODEC_KINDS, the rationale in its own doc comment: 'Derived from CODEC_KINDS rather than hand-re-listed, so the two can never drift'"}
+    - {date: "2026-07-15", kind: decided, ref: "plan-6 design (approved): D45 rules the four keyword arrays GENERATED into keywords.ts over a guard test ('a guard detects drift; derivation makes it unrepresentable'), and D48 applies the same rule to its schemars extend annotation after an earlier draft's excuse ('extend needs a literal in an attribute position') was measured false. ONE decision round applying the principle at two sites, counted as one event, not two"}
+    - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design (approved), D58: TYPE_VALUES/CODEC_KIND_NAMES derived into settables.ts through the existing ts_export drift gate rather than hand-listed frontend-side - the strict-fit third event that promotes the entry at count 3; the round-1 review harvest observed the same truth-once principle as the round's recurring rejection shape across D53/D57/D62 (corroboration within the same round, not separate events)"}

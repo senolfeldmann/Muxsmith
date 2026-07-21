@@ -223,8 +223,10 @@ action:
 - A third locale directory is added -> D62's lockstep gate and D55's
   parity rules fire by construction; one manual check: if the locale's
   CLDR plural categories exceed {one, other}, verify D55 rule 5's
-  category carve-out passes its catalogs before blaming them. (Plan-7
-  design trigger 2.)
+  category carve-out passes its catalogs before blaming them. CLI-side,
+  the renderer's embed table gains the locale's row (D63) and D64's
+  pinned suite stays green by construction. (Plan-7 design triggers
+  2 + 11.)
 - A labelKey is renamed -> D51's coupling renames the help-id and both
   topic files; D62 is the tracker (red until they agree). (Plan-7 design
   trigger 3.)
