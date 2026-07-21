@@ -169,6 +169,12 @@ than in sequence.
   re-pointed here from the Plan-6 anchor by owner call 2026-07-16 - the
   plan-6 design review established it is run-path only, JobsView.vue:150-200,
   touching nothing Plan 6 builds.)
+- One error-display funnel for IpcError rendering in the frontend: the
+  plan-7 design review counted 8 scattered render sites each hand-rendering
+  `$t(err.code, err.params)` (enumeration in its verdict file, salvaged
+  with the plan-7 archive); a shared component/composable is the hoist.
+  Discussion anchor, not a commitment. (2026-07-21, plan-7 design review
+  round 1 harvest.)
 
 ## Triggers
 
