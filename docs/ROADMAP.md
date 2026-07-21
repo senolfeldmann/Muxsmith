@@ -108,6 +108,18 @@ editor's controls get their help-ids in this pass instead of a retrofit.
 - Rule-grid ordinal column: spec 8.2 lists "order" among the grid columns;
   Plan 6 carries order by row position only. Cosmetic comfort item.
   (Plan-6 whole-branch verdict, spec-completeness walk.)
+- IpcError-code presence gate + number promotion - both separable pieces
+  of the "Nothing gates IpcError codes against gui-common.ftl" entry under
+  v1.x candidates (full context there). Folded in by owner scope call
+  2026-07-21 (S20 session-start trigger check): its trigger "next CI/gate
+  structural work" fired with this plan's help-id guard and check-i18n
+  work. (2026-07-16, D49 review harvest item 5)
+- check-i18n placeable-set and selector-structure parity per message id
+  across locales - the sharper variant of the "Gate part that
+  Fluent-parses ALL catalogs" entry under v1.x candidates (full context
+  there; ledger i18n-12). Same fired trigger and owner scope call as the
+  IpcError item above. (T4 verdict harvest H1 + plan-5.8 design-review
+  harvest, 2026-07-14)
 
 ## Plan 8: packaging / release pipeline
 
@@ -670,8 +682,10 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   code, so `[one]` would always fall to `*[other]`. The house pluralizes
   everywhere else (`i18n-05-plural-selectors`). Two separable pieces: a
   presence gate for IpcError codes, and number promotion for IpcError params.
-  Trigger: next CI/gate structural work, or the first IpcError message that
-  needs a plural. (2026-07-16, D49 review harvest item 5)
+  Trigger FIRED and consumed 2026-07-21 (Plan 7 carries the help-id CI
+  guard and check-i18n parity work = CI/gate structural work): FOLDED INTO
+  PLAN 7 by owner scope call (S20; see the Plan 7 anchor). (2026-07-16,
+  D49 review harvest item 5)
 - **Gate part that Fluent-parses ALL catalogs**: today no gate
   Fluent-parses the de CLI/diagnostics catalogs (check:i18n covers the
   frontend; catalog_completeness checks keys, not grammar) - the plan-5.7
@@ -681,6 +695,7 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   placeable-set and selector-structure parity per message id across
   locales (the de catalog header currently declares that parity
   manually reviewed, not machine-checked); would have auto-guarded the
-  D39 selector change. Trigger: next CI/gate structural work. (T4
-  verdict harvest H1, 2026-07-14; plan-5.8 design-review harvest,
-  2026-07-14)
+  D39 selector change. Trigger FIRED and consumed 2026-07-21, same call
+  as the IpcError entry above: FOLDED INTO PLAN 7 (S20 owner scope call;
+  see the Plan 7 anchor; ledger i18n-12). (T4 verdict harvest H1,
+  2026-07-14; plan-5.8 design-review harvest, 2026-07-14)

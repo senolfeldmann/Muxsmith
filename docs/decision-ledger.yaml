@@ -1894,12 +1894,13 @@ entries:
   domain: i18n
   statement: "Placeable-name and selector-structure drift in the German catalogs is not machine-checked (check:i18n enforces id parity only); a check:i18n extension to cover placeable/selector structure was deferred, no actual drift found at close."
   steelman: null
-  blocked_on: "future check:i18n extension (internal)"
+  blocked_on: "Plan 7 execution (check-i18n placeable/selector-structure parity part)"
   status: blocked
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "task-21-verdict.md residual / whole-branch-verdict.md M1"}
+    - {date: "2026-07-21", kind: decided, ref: "ROADMAP Plan-7 anchor fold (S20 session-start trigger check, owner scope call)"}
 - id: i18n-13-cli-key-rename-deferred
   kind: non-decision
   tier: 1
