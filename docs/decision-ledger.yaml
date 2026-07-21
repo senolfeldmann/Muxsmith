@@ -3831,9 +3831,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 plan review round 1, finding 1: Task 5's 24-name completion grep can never pass - three folded Fluent ids double as DOM id=/aria-describedby= values the same task preserves, plus a gitignored generated file sits in scope; every absence step in the plan was dutifully fire-verified red, which is exactly why the unreachable green survived (reviewer harvest process note)"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T2 review (task-02-verdict.md harvest), novel flavor: Step 4's stale-doc grep is permanently red because it collides with the plan's OWN Step-1 test fixture strings (self-collision within one task); the implementer's sharper substitute pattern was upheld as verification-instrumentation fix (fire-verified against HEAD~1), and the reviewer notes the mirror risk - the tuned pattern must not become a standing guard, it would under-fire on differently-worded survivors"}
 - id: content-claims-anchor-bound
   kind: pattern
   tier: 1
