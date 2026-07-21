@@ -12,7 +12,7 @@ Rules resolve in list order, and for every attachment the first rule whose expre
 
 ## Sets, not single picks
 
-Unlike track rules, attachment rules are not uniqueness-constrained: one rule may match many attachments - fonts come in sets, and one `Select` can keep them all. Zero matches is not an error either; a rule that matches nothing simply does nothing.
+Unlike track rules, attachment rules are not uniqueness-constrained: one rule may match many attachments - fonts come in sets, and one `Select` can keep them all. Zero matches is not an error either: a `Select` or `Drop` that matches nothing simply does nothing, and an `Add` whose locator finds no file emits a warning but does not fail the plan.
 
 ## Matching
 

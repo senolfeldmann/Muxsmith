@@ -8,7 +8,7 @@ The row order defines the output track order. Drag a row to reorder; the new gri
 
 ## Editing a rule
 
-Click a row to select it; the detail panel below the grid edits the selected rule - its source (the primary file or an external donor), its match expression, the optional flag, and the property changes. `Add` appends a new rule, `Remove` deletes the selected one.
+Click a row to select it; the detail panel below the grid edits the selected rule - its source (the primary file or an external donor), its match expression, the optional flag, and the property changes.
 
 ## Exactly one track per rule
 

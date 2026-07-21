@@ -12,7 +12,7 @@ Beispiel: die Quelldatei `Show S03E01.mkv` wurde als `S03E01` gematcht; in einem
 
 - Schließt sich mit `Match-Muster` gegenseitig aus: setze das eine oder das andere. Schreiben die Spender den Bezeichner anders als die Quelldateien (etwa `staffel3episode1` statt `S03E01`), wähle das Flag ab und schreibe stattdessen ein Muster - siehe das Thema Match-Muster.
 - Die Dateizuordnung ist nur die erste Stufe: der Match-Ausdruck der Regel wählt danach genau eine Spur innerhalb der zugeordneten Spender-Datei aus.
-- Eindeutigkeit gilt auf Dateiebene: passen zwei Spender-Dateien zu einer Quelldatei, ist das ein Mehrdeutigkeitsfehler; passt keine, ein Fehler wegen fehlender externer Datei - außer die Regel ist `Optional`.
+- Eindeutigkeit gilt auf Dateiebene: passen zwei Spender-Dateien zu einer Quelldatei, ist das ein Mehrdeutigkeitsfehler; passt keine, ein Fehler wegen fehlender externer Datei - außer die Regel ist `Optional`. Diesen Ausweg gibt es nur bei Spurregeln (externe Kapitel und `Hinzufügen`-Verweise bei Anhängen haben keinen).
 
 ## Wann einsetzen
 

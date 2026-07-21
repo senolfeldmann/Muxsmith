@@ -12,7 +12,7 @@ Example: the primary `Show S03E01.mkv` was matched as `S03E01`; in a directory o
 
 - Mutually exclusive with `Match pattern`: set one or the other. When donor names spell the identifier differently than the primaries do (say `staffel3episode1` against `S03E01`), clear this flag and write a pattern instead - see the Match pattern topic.
 - File pairing is only the first stage: the rule's match expression then selects exactly one track inside the paired donor.
-- Uniqueness holds at the file stage: two donor files pairing with one primary is an ambiguity error; zero is a missing-external error, unless the rule is `Optional`.
+- Uniqueness holds at the file stage: two donor files pairing with one primary is an ambiguity error; zero is a missing-external error, unless the rule is `Optional` - an escape that exists only on track rules (external chapters and attachment `Add` locators have none).
 
 ## When to use it
 

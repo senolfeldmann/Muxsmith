@@ -12,7 +12,7 @@ Regeln werden in Listenreihenfolge ausgewertet, und für jeden Anhang entscheide
 
 ## Mengen statt Einzeltreffer
 
-Anders als Spurregeln sind Anhangsregeln nicht auf Eindeutigkeit beschränkt: eine Regel darf viele Anhänge matchen - Schriftarten kommen im Satz, und ein `Auswählen` kann sie alle behalten. Auch null Treffer sind kein Fehler; eine Regel, die nichts matcht, tut schlicht nichts.
+Anders als Spurregeln sind Anhangsregeln nicht auf Eindeutigkeit beschränkt: eine Regel darf viele Anhänge matchen - Schriftarten kommen im Satz, und ein `Auswählen` kann sie alle behalten. Auch null Treffer sind kein Fehler: ein `Auswählen` oder `Verwerfen`, das nichts matcht, tut schlicht nichts, und ein `Hinzufügen`, dessen Verweis keine Datei findet, meldet eine Warnung, lässt den Plan aber bestehen.
 
 ## Matching
 

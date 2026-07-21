@@ -8,7 +8,7 @@ Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeil
 
 ## Eine Regel bearbeiten
 
-Klicke eine Zeile an, um sie auszuwählen; das Detailpanel unter dem Raster bearbeitet die ausgewählte Regel - ihre Quelle (die Quelldatei oder ein externer Spender), ihren Match-Ausdruck, das Optional-Flag und die Eigenschaftsänderungen. `Hinzufügen` hängt eine neue Regel an, `Entfernen` löscht die ausgewählte.
+Klicke eine Zeile an, um sie auszuwählen; das Detailpanel unter dem Raster bearbeitet die ausgewählte Regel - ihre Quelle (die Quelldatei oder ein externer Spender), ihren Match-Ausdruck, das Optional-Flag und die Eigenschaftsänderungen.
 
 ## Genau eine Spur pro Regel
 

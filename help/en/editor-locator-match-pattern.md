@@ -21,4 +21,4 @@ The braces are template fields, not regex syntax, and interpolated values can ne
 ## Interactions
 
 - Mutually exclusive with `Match to source`, which is exactly the shorthand for a pattern of `{match}` - prefer the flag when donors and primaries share one naming scheme.
-- After a file is paired, the rule's match expression selects exactly one track inside it. Two pairing files is an ambiguity error; zero is a missing-external error, unless the rule is `Optional`.
+- After a file is paired, the rule's match expression selects exactly one track inside it. Two pairing files is an ambiguity error; zero is a missing-external error, unless the rule is `Optional` - an escape that exists only on track rules (external chapters and attachment `Add` locators have none).

@@ -21,4 +21,4 @@ Die geschweiften Klammern sind Vorlagenfelder, keine Regex-Syntax, und eingesetz
 ## Wechselwirkungen
 
 - Schließt sich mit `Match zur Quelle` gegenseitig aus; das Flag ist exakt die Kurzform für ein Muster `{match}` - bevorzuge es, wenn Spender und Quelldateien dasselbe Namensschema teilen.
-- Nach der Dateizuordnung wählt der Match-Ausdruck der Regel genau eine Spur innerhalb der Datei aus. Zwei passende Dateien sind ein Mehrdeutigkeitsfehler; keine ist ein Fehler wegen fehlender externer Datei - außer die Regel ist `Optional`.
+- Nach der Dateizuordnung wählt der Match-Ausdruck der Regel genau eine Spur innerhalb der Datei aus. Zwei passende Dateien sind ein Mehrdeutigkeitsfehler; keine ist ein Fehler wegen fehlender externer Datei - außer die Regel ist `Optional`. Diesen Ausweg gibt es nur bei Spurregeln (externe Kapitel und `Hinzufügen`-Verweise bei Anhängen haben keinen).
