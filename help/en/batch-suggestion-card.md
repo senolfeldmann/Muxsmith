@@ -1,6 +1,6 @@
 # Suggestion card
 
-A dry run can find a conflict that narrowing one rule's match would fix: a rule matches several tracks where it must match exactly one, or several rules claim the same track. The report then proposes the fix as a suggestion card. The card names the affected rule by its config path (for example `tracks[2].match`) and shows the proposed rule fragment as YAML, exactly the text that would land in the profile.
+A dry run can find a conflict that narrowing one rule's match would fix: a rule matches several tracks where it must match exactly one, or several rules claim the same track. The report then proposes the fix as a suggestion card. The card names the affected rule by its config path (for example `tracks[2].match`) and shows, as YAML, the match constraint the suggestion would add to that rule: the same text the CLI prints for this suggestion, whose leading comment line marks it as an addition. The fragment is a preview of that addition, not the rule's future content; Apply merges the constraint into the rule's existing match.
 
 ## Copy or apply
 
@@ -10,7 +10,7 @@ A dry run can find a conflict that narrowing one rule's match would fix: a rule 
 
 ## What apply will never do
 
-An applied suggestion only ever narrows the match of the one conflicted rule. It never reorders rules, never touches any other rule, and never loosens a match. Applying suggestions repeatedly therefore converges on a resolved profile instead of oscillating.
+An applied suggestion only ever narrows the match of the one conflicted rule. It never reorders rules, never touches any other rule, and never loosens a match. Applying suggestions repeatedly is therefore guaranteed to terminate instead of oscillating; conflicts the report offers no suggestion for remain and need a manual edit.
 
 ## After applying
 
