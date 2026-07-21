@@ -1,10 +1,10 @@
-use assert_cmd::Command;
+#[allow(dead_code)]
+mod support;
 
 /// The one legal way to invoke `muxsmith schema` and parse its stdout; every
 /// test in this file shares it rather than re-inlining the invocation.
 fn schema_json() -> serde_json::Value {
-    let out = Command::cargo_bin("muxsmith")
-        .unwrap()
+    let out = support::muxsmith_bare()
         .arg("schema")
         .assert()
         .success()
@@ -24,7 +24,7 @@ fn schema_prints_json_schema_and_exits_zero() {
 
 #[test]
 fn no_args_shows_usage_and_fails() {
-    Command::cargo_bin("muxsmith").unwrap().assert().failure();
+    support::muxsmith_bare().assert().failure();
 }
 
 #[test]

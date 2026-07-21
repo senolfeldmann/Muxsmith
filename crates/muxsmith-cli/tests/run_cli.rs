@@ -8,13 +8,7 @@
 
 use std::process::Command;
 
-use assert_cmd::cargo::CommandCargoExt;
-
 mod support;
-
-fn muxsmith() -> Command {
-    Command::cargo_bin("muxsmith").unwrap()
-}
 
 fn have_mkvmerge() -> bool {
     Command::new("mkvmerge")
@@ -40,8 +34,7 @@ fn asserts_no_job_ran(stdout: &str) {
 /// mkvmerge is installed on the machine running the test.
 #[test]
 fn missing_profile_file_exits_two_before_any_planning() {
-    let out = muxsmith()
-        .args(["run", "/nonexistent/profile.yaml"])
+    let out = support::muxsmith(&["run", "/nonexistent/profile.yaml"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
@@ -64,13 +57,14 @@ fn bad_regex_profile_exits_two_without_executing_a_job() {
     )
     .unwrap();
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -102,14 +96,15 @@ fn bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job() {
     .unwrap();
     let no_mkvmerge_path = tempfile::tempdir().unwrap();
 
-    let out = muxsmith()
-        .env("PATH", no_mkvmerge_path.path())
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .env("PATH", no_mkvmerge_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8(out.stdout).unwrap();
@@ -162,20 +157,21 @@ fn run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary() {
     .unwrap();
     let output_dir = dir.path().join("out");
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .args(["--output"])
-        .arg(&output_dir)
-        .arg("--json")
-        // Task 6 (D26): a real mux reaches the queue and would otherwise
-        // persist job logs into the real platform data dir; point it at a
-        // tempdir instead.
-        .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--output",
+        output_dir.to_str().unwrap(),
+        "--json",
+    ])
+    // Task 6 (D26): a real mux reaches the queue and would otherwise
+    // persist job logs into the real platform data dir; point it at a
+    // tempdir instead.
+    .env("MUXSMITH_RUNS_ROOT", dir.path().join("runs"))
+    .output()
+    .unwrap();
 
     assert!(
         out.status.success(),
@@ -235,14 +231,15 @@ fn run_json_on_specs_empty_from_a_bad_regex_still_emits_a_document_with_empty_jo
     )
     .unwrap();
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -292,14 +289,15 @@ fn run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_su
     )
     .unwrap();
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
 
     assert!(
         out.status.success(),
@@ -339,13 +337,14 @@ fn run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent() {
     )
     .unwrap();
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .output()
+    .unwrap();
 
     assert!(
         out.status.success(),
@@ -382,15 +381,16 @@ fn run_json_surfaces_the_mkvmerge_not_found_document() {
     .unwrap();
     let no_mkvmerge_path = tempfile::tempdir().unwrap();
 
-    let out = muxsmith()
-        .env("PATH", no_mkvmerge_path.path())
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .env("PATH", no_mkvmerge_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -434,10 +434,7 @@ fn run_json_emits_a_document_on_profile_load_failure() {
     let dir = tempfile::tempdir().unwrap();
     let missing_profile = dir.path().join("nonexistent.yaml");
 
-    let out = muxsmith()
-        .args(["run"])
-        .arg(&missing_profile)
-        .arg("--json")
+    let out = support::muxsmith(&["run", missing_profile.to_str().unwrap(), "--json"])
         .output()
         .unwrap();
 
@@ -504,15 +501,16 @@ fn run_json_emits_a_document_when_the_language_query_fails() {
     )
     .unwrap();
 
-    let out = muxsmith()
-        .env("PATH", fake_path.path())
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .arg("--json")
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .env("PATH", fake_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(
         out.status.code(),
@@ -566,14 +564,15 @@ fn run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure() {
     )
     .unwrap();
 
-    let out = muxsmith()
-        .env("PATH", fake_path.path())
-        .args(["run"])
-        .arg(&profile)
-        .args(["--source"])
-        .arg(dir.path())
-        .output()
-        .unwrap();
+    let out = support::muxsmith(&[
+        "run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+    ])
+    .env("PATH", fake_path.path())
+    .output()
+    .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
     let stdout = String::from_utf8_lossy(&out.stdout);

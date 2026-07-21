@@ -1,8 +1,4 @@
-use assert_cmd::Command;
-
-fn muxsmith() -> Command {
-    Command::cargo_bin("muxsmith").unwrap()
-}
+mod support;
 
 fn fixture(name: &str) -> String {
     format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
@@ -17,8 +13,7 @@ fn fixture(name: &str) -> String {
 /// filesystem location.
 #[test]
 fn valid_profile_exits_zero_with_ok_message() {
-    let out = muxsmith()
-        .args(["validate", &fixture("good.yaml")])
+    let out = support::muxsmith(&["validate", &fixture("good.yaml")])
         .assert()
         .success()
         .get_output()
@@ -29,8 +24,7 @@ fn valid_profile_exits_zero_with_ok_message() {
 
 #[test]
 fn invalid_profile_exits_two_and_renders_messages() {
-    let out = muxsmith()
-        .args(["validate", &fixture("bad.yaml")])
+    let out = support::muxsmith(&["validate", &fixture("bad.yaml")])
         .assert()
         .code(2)
         .get_output()
@@ -53,8 +47,7 @@ tracks:
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("warn.yaml");
     std::fs::write(&path, y).unwrap();
-    let out = muxsmith()
-        .args(["validate", path.to_str().unwrap()])
+    let out = support::muxsmith(&["validate", path.to_str().unwrap()])
         .assert()
         .code(1)
         .get_output()
@@ -65,8 +58,7 @@ tracks:
 
 #[test]
 fn json_output_is_machine_readable() {
-    let out = muxsmith()
-        .args(["validate", &fixture("bad.yaml"), "--json"])
+    let out = support::muxsmith(&["validate", &fixture("bad.yaml"), "--json"])
         .assert()
         .code(2)
         .get_output()
@@ -86,8 +78,7 @@ fn json_output_is_machine_readable() {
 
 #[test]
 fn missing_file_is_parse_error_exit_two() {
-    muxsmith()
-        .args(["validate", "/nonexistent/profile.yaml"])
+    support::muxsmith(&["validate", "/nonexistent/profile.yaml"])
         .assert()
         .code(2);
 }
