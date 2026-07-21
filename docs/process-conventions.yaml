@@ -61,16 +61,17 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Model strength goes where judgment is, cheaper capacity where transcription is: strongest model for the final review and the decision memos, mid-tier for judgment implementers and every task reviewer, cheapest for tasks whose code the plan already carries."
+  statement: "Model strength goes where judgment is, cheaper capacity where transcription is: strongest model for the final review and the decision memos (incl. design/plan four-eyes rounds), mid-tier for judgment implementers and every task reviewer, cheapest for tasks whose code the plan already carries. DISPATCH-TIME HANDLE (added 2026-07-21 after the tiering silently failed): the trigger is writing an Agent dispatch; the handle is an EXPLICIT model parameter on every dispatch, chosen by this tiering - an omitted parameter inherits the session default, which is not an assignment but the absence of one, and silently defeats the tiering whenever the default is the top model. The doctrine (section 0 skill-loading line, section 4 dispatch duty) carries the same handle framework-side."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-08", kind: decided, ref: "journal 2026-07-08 model-split bullet (E0[6])"}
     - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 2 Decisions (E2[19])"}
     - {date: "2026-07-09", kind: decided, ref: "journal 2026-07-09 Plan 3 complete metrics (E3[28])"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "S20 plan-7: the controller hand-rolled every design/plan/wave-1 dispatch without loading the subagent-driven-development skill (whose Model Selection section carries the always-specify rule) and passed no model parameter on ~20 dispatches; all inherited the session default - the top model, newly Fable 5 - at xhigh, and the account session limit killed five agents mid-wave (PAUSE-STATE.md). Owner directive: the tiering is binding; statement gained the dispatch-time handle; doctrine sections 0 and 4 amended; current-era mapping in the PAUSE-STATE resume policy"}
 - id: proc-04-spec-wins
   kind: pattern
   tier: 2
