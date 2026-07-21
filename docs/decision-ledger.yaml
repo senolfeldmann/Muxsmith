@@ -3833,3 +3833,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 plan review round 1, finding 1: Task 5's 24-name completion grep can never pass - three folded Fluent ids double as DOM id=/aria-describedby= values the same task preserves, plus a gitignored generated file sits in scope; every absence step in the plan was dutifully fire-verified red, which is exactly why the unreachable green survived (reviewer harvest process note)"}
+- id: content-claims-anchor-bound
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: docs
+  statement: "In authored user-facing content (help topics, guides, READMEs), behavioral claims are anchor-bound: every sentence asserting product behavior traces to a written source (spec section, code line, ledger entry) verified at authoring, and the defect locus is precisely the sentences that extrapolate PAST their anchor - plausible-sounding completions of a verified claim. Review heuristic: grade the extrapolations, not the transcriptions."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 task-8 review (task-08-verdict.md): the topics' only two wrong sentences were extrapolations past their anchors (yaml_fragment claimed verbatim-landing where planner.rs renders a merged delta; core-33 termination overstated as resolution) while every transcribed claim held; reviewer named the heuristic for tasks 9/10"}
