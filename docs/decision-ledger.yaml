@@ -3789,3 +3789,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 design D51/D53 (owner-approved); round-1 review harvest named it a convention candidate"}
+- id: proc-closed-exception-shape
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a sweep invariant or blanket rule meets a legitimate outlier, the resolution is an ENUMERATED CLOSED exception, never a waiver: the justification is a measured behavior difference (not convenience), the exception lives where the invariant's mechanical check still passes unwaived (same module, same grep), the carrier names its exactly-one user, and a second user REOPENS the rule as a design decision instead of riding the exception. The reopening trigger is what keeps the exception from becoming a hole."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 D64 amendment (controller ruling): muxsmith_bare() for the no-args test - measured funnel-vs-bare behavior difference on the built binary, helper in tests/support/mod.rs so the cargo_bin grep invariant holds verbatim, one named caller, second caller reopens D64; round-4 review harvest named the shape"}
+- id: proc-paraphrase-names-authority
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a document restates a rule whose normative home is another section or document, the restatement names its authority inline and subordinates itself ('X is the authority; this sentence follows its mechanics') - a bare paraphrase drifts into a competing variant that later readers cannot rank. Trigger is readable: you are describing behavior that another passage defines. Handle: cite the defining passage and mark the sentence as derived."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 design: D54's hover sentence AND spec amendment 6(a) both paraphrased D52's mechanics loosely and both diverged ('keeps its topic' vs hoverId-null fallback); surfaced by plan-authoring as defect 4, fixed by the three-amendment round with the authority named inline (round-4 verdict)"}

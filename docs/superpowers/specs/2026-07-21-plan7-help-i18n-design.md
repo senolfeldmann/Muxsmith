@@ -633,9 +633,14 @@ Recount: 18 + 24 = 42 = the registry's editable set. ✓
 | `editor-action-add`/`-remove` buttons, grid ordinal column | - | generic list actions / presentation column; no per-instance content |
 
 **Totals: 22 help-ids** (3 view + 18 editor + 1 batch), **44 topic files**
-(en+de). In help mode, hovering anything not in this table does nothing and
-the sidebar keeps its topic (owner decision B, folded into D52's
-mechanics). Topic *content* wording is authored at implementation and goes
+(en+de). In help mode, hovering anything not in this table sets no hover
+topic (D52: `hoverId` becomes null); the sidebar then shows the pinned
+topic if one is pinned, else the active view's topic - a visible
+fallback when an annotated element's topic was showing unpinned. D52 is
+the interaction authority; this sentence follows its mechanics exactly
+(aligned at plan-authoring - the earlier "does nothing and keeps its
+topic" paraphrase contradicted them). Topic *content* wording is
+authored at implementation and goes
 through the owner's plan-close rendered-surface pass (the standing route
 for user-visible strings, `latitude-carveout` occurrence 2026-07-16); the
 id set, file set and host elements above are closed here.
@@ -1260,10 +1265,15 @@ checks, all four:
    is a proposed safeguard and per the standing rule is not argued back
    out during design.
 
-The empty-state note, recorded so the gate's first run is understood: with
-`help/` absent (today's tree), check 1 fails on the first annotated
-control the moment D53/D54 land, which is the intended forcing order -
-annotation and topics land together or CI is red.
+The empty-state note, recorded so the gate's first run is understood
+(corrected at plan-authoring): with `help/` absent (today's tree), **two**
+checks hard-fail, not one - check 1 on the first annotated control the
+moment D53/D54 land, and check 3 unconditionally (an absent `help/` tree
+has no locale-directory set to equal `locales/`' `{en, de}`). The gate
+therefore cannot land green before `help/en/` and `help/de/` exist: the
+gate, the annotations and the topic tree land together or CI is red -
+which is the intended forcing order, now stated without implying the
+gate could precede the tree.
 
 **Rejected: a separate `check-help.mjs` + own CI step.** Steelman:
 check-i18n's name and charter say catalogs; a second script is
@@ -1383,12 +1393,29 @@ machine - the exact failure the entry names). Therefore:
   `cli_validate.rs` (1 constructor, 3 snapshots), `dry_run_cli.rs` (13
   invocation sites, 3 snapshots), `run_cli.rs` (1 constructor, 4
   snapshots), `run_live.rs` (1 constructor, 1 snapshot),
-  `cli_schema.rs` (2 sites; schema output is locale-independent JSON
-  Schema, pinned anyway because the funnel is unconditional). That
+  `cli_schema.rs` (2 sites: `schema_json()` routes through the funnel -
+  schema output is locale-independent JSON Schema, pinned regardless -
+  and `no_args_shows_usage_and_fails` uses the bare helper below). That
   covers all **11 insta snapshots** (`tests/snapshots/`, counted) and
   every non-snapshot stdout/stderr assertion in those files - including
   `--json` assertions, whose envelope carries the locale-rendered
   `rendered` field and is therefore locale-sensitive too.
+- **One enumerated exception, closed** (controller ruling at
+  plan-authoring, internal technical fork, recorded here):
+  `no_args_shows_usage_and_fails` (`cli_schema.rs:26-27`) verifies that a
+  **bare** `muxsmith` invocation - a real user scenario - prints usage
+  and fails. Routing it through the funnel would run
+  `muxsmith --locale en` instead, which fails as an unexpected top-level
+  argument (`--locale` is per-subcommand): same assertion result,
+  different verified behavior - a silent test-meaning change, which is
+  never acceptable. It therefore uses `support::muxsmith_bare() ->
+  assert_cmd::Command` (a no-args `cargo_bin` constructor, also in
+  `tests/support/mod.rs`, so the grep invariant below holds verbatim).
+  Locale pinning is moot for it by construction: clap rejects the
+  invocation before any `Renderer` exists, so no locale-dependent text
+  is rendered. The exception is **closed**: `muxsmith_bare` has exactly
+  this one caller, and a second caller reopens D64 rather than riding
+  the helper.
 - **Post-sweep invariant, greppable**: `cargo_bin("muxsmith")` appears in
   exactly one file, `tests/support/mod.rs`. A future test that bypasses
   the funnel is a review defect findable by that grep; a future test
@@ -1565,8 +1592,10 @@ plus the E3 ruling; no variant wording remains.
    was checked, not skipped.
 6. **Spec 8.3, help-mode bullets** - two parts (fix round 1, review
    finding 3): **(a) additions** the spec left unstated and this design
-   closed: hovering an element without a help-id leaves the sidebar topic
-   unchanged; clicking an annotated element pins without activating it.
+   closed: hovering an element without a help-id sets no hover topic -
+   the sidebar shows the pinned topic if one is pinned, else the current
+   view's topic; clicking an annotated element pins without activating
+   it.
    **(b) modifications of stated mechanics** - the spec is authoritative,
    so each D52 deviation is amended, not silently narrowed: the pin
    release enumeration ("until another element is clicked or help mode
@@ -1764,7 +1793,9 @@ keyboard (`proc-latitude-clause-boundary`).
 - The CLI embed set is exactly D63's two-row table; the chain is
   per-locale bundles (never one merged bundle); resolution order and
   per-message fallback are the boundary entry's, verbatim (D63).
-- Every CLI test invocation goes through D64's en-pinned support funnel;
+- Every CLI test invocation goes through D64's en-pinned support funnel,
+  except the one enumerated `muxsmith_bare()` caller
+  (`no_args_shows_usage_and_fails`; a second caller reopens D64);
   `cargo_bin("muxsmith")` ends up in exactly one file
   (`tests/support/mod.rs`), and the pinning is `--locale en`, never
   environment variables (D64).
