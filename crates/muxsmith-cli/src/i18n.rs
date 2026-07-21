@@ -6,18 +6,36 @@ use unic_langid::LanguageIdentifier;
 
 const EN_DIAGNOSTICS: &str = include_str!("../../../locales/en/diagnostics.ftl");
 const EN_CLI: &str = include_str!("../../../locales/en/cli.ftl");
+const DE_DIAGNOSTICS: &str = include_str!("../../../locales/de/diagnostics.ftl");
+const DE_CLI: &str = include_str!("../../../locales/de/cli.ftl");
+
+/// The embedded locale table (D63): one row per CLI locale, `(primary
+/// subtag, cli.ftl, diagnostics.ftl)`. Adding a CLI locale is one row
+/// plus content (`include_str!` is compile-time and has no glob form -
+/// the accepted asymmetry with the frontend's zero-code glob).
+const LOCALES: &[(&str, &str, &str)] = &[
+    ("en", EN_CLI, EN_DIAGNOSTICS),
+    ("de", DE_CLI, DE_DIAGNOSTICS),
+];
 
 /// Fluent-based renderer: the only place on the CLI side where diagnostic
-/// codes and params become human text (spec 8.4). Embeds the English
-/// catalogs at build time; v1 ships English content only, but the
-/// mechanism is locale-generic.
+/// codes and params become human text (spec 8.4). Embeds the en and de
+/// catalogs at build time and renders through a per-message fallback
+/// chain: the requested locale's bundle, then en, then the raw message id
+/// (`cli-multilang-rendering`, D63). Locale resolution is `--locale`,
+/// then the system locale, then en.
 pub struct Renderer {
-    bundle: FluentBundle<FluentResource>,
+    bundles: Vec<FluentBundle<FluentResource>>,
 }
 
 impl Renderer {
-    /// v1 ships English only; `locale` is accepted for interface stability
-    /// and falls back to en for any unknown tag (spec 8.4).
+    /// Resolves the requested tag (`--locale` > system locale > en),
+    /// collapses it to its primary language subtag ("de-AT" resolves the
+    /// "de" row), and builds the fallback chain `[requested, en]`,
+    /// deduplicated - one bundle when the request is en or unknown, two
+    /// when it is de. Each bundle carries its own langid so CLDR plural
+    /// rules stay per-locale correct (the reason this is a chain, not one
+    /// merged bundle).
     pub fn new(locale: Option<&str>) -> Renderer {
         let requested = locale
             .map(str::to_owned)
@@ -25,16 +43,31 @@ impl Renderer {
             .unwrap_or_else(|| "en".into());
         let langid: LanguageIdentifier =
             requested.parse().unwrap_or_else(|_| "en".parse().unwrap());
-        let mut bundle = FluentBundle::new(vec![langid]);
-        // No Unicode isolation marks around placeables: CLI output must be
-        // plain grep-able text.
-        bundle.set_use_isolating(false);
-        for source in [EN_DIAGNOSTICS, EN_CLI] {
-            let res =
-                FluentResource::try_new(source.to_owned()).expect("embedded catalog must parse");
-            bundle.add_resource_overriding(res);
+        let primary = langid.language.as_str().to_owned();
+        let mut tags: Vec<&str> = vec![primary.as_str(), "en"];
+        tags.dedup(); // adjacent dedup suffices: the only duplicate case is ["en", "en"]
+        let mut bundles = Vec::new();
+        for tag in tags {
+            let Some(&(row_tag, cli, diagnostics)) = LOCALES.iter().find(|(t, _, _)| *t == tag)
+            else {
+                // Unknown primary subtag: no row; the chain falls through
+                // to the en row appended above.
+                continue;
+            };
+            let row_langid: LanguageIdentifier =
+                row_tag.parse().expect("embedded locale tag must parse");
+            let mut bundle = FluentBundle::new(vec![row_langid]);
+            // No Unicode isolation marks around placeables: CLI output
+            // must be plain grep-able text.
+            bundle.set_use_isolating(false);
+            for source in [diagnostics, cli] {
+                let res = FluentResource::try_new(source.to_owned())
+                    .expect("embedded catalog must parse");
+                bundle.add_resource_overriding(res);
+            }
+            bundles.push(bundle);
         }
-        Renderer { bundle }
+        Renderer { bundles }
     }
 
     /// Renders one Fluent message by id, interpolating `args`. Falls back
@@ -73,18 +106,21 @@ impl Renderer {
     }
 
     fn render(&self, id: &str, fargs: FluentArgs) -> String {
-        let Some(message) = self.bundle.get_message(id) else {
-            // Missing catalog entry: fall back to the raw id so the
-            // problem is visible instead of hidden. CI guards this case.
-            return id.to_string();
-        };
-        let Some(pattern) = message.value() else {
-            return id.to_string();
-        };
-        let mut errors = Vec::new();
-        self.bundle
-            .format_pattern(pattern, Some(&fargs), &mut errors)
-            .into_owned()
+        for bundle in &self.bundles {
+            let Some(message) = bundle.get_message(id) else {
+                continue;
+            };
+            let Some(pattern) = message.value() else {
+                continue;
+            };
+            let mut errors = Vec::new();
+            return bundle
+                .format_pattern(pattern, Some(&fargs), &mut errors)
+                .into_owned();
+        }
+        // Missing everywhere: fall back to the raw id so the problem is
+        // visible instead of hidden. CI guards this case.
+        id.to_string()
     }
 
     /// Renders one core [`Diagnostic`](muxsmith_core::report::Diagnostic)
@@ -210,6 +246,48 @@ mod tests {
     #[test]
     fn invalid_locale_falls_back_to_en_and_renders() {
         let renderer = Renderer::new(Some("zz-ZZ-invalid!"));
+        assert_eq!(renderer.msg("validate-ok", &[]), "Profile is valid.");
+    }
+
+    /// Builds one single-locale bundle from an inline FTL source, for
+    /// chain-mechanism tests that cannot use the embedded catalogs:
+    /// check-i18n's cross-locale id parity forbids an en-only id in the
+    /// real catalogs, so per-message fallback is exercised on synthetic
+    /// resources through the private field instead.
+    fn bundle_from(tag: &str, ftl: &str) -> FluentBundle<FluentResource> {
+        let langid: LanguageIdentifier = tag.parse().unwrap();
+        let mut bundle = FluentBundle::new(vec![langid]);
+        bundle.set_use_isolating(false);
+        bundle.add_resource_overriding(FluentResource::try_new(ftl.to_owned()).unwrap());
+        bundle
+    }
+
+    #[test]
+    fn de_request_renders_de_message() {
+        let renderer = Renderer::new(Some("de"));
+        assert_eq!(renderer.msg("validate-ok", &[]), "Das Profil ist gültig.");
+    }
+
+    #[test]
+    fn message_missing_in_requested_locale_falls_back_per_message() {
+        let de = bundle_from("de", "greeting = Hallo");
+        let en = bundle_from("en", "greeting = Hello\nonly-en = English only");
+        let renderer = Renderer {
+            bundles: vec![de, en],
+        };
+        assert_eq!(renderer.msg("greeting", &[]), "Hallo");
+        assert_eq!(renderer.msg("only-en", &[]), "English only");
+    }
+
+    #[test]
+    fn region_qualified_de_resolves_de_row() {
+        let renderer = Renderer::new(Some("de-DE"));
+        assert_eq!(renderer.msg("validate-ok", &[]), "Das Profil ist gültig.");
+    }
+
+    #[test]
+    fn unknown_tag_renders_en_chain() {
+        let renderer = Renderer::new(Some("fr"));
         assert_eq!(renderer.msg("validate-ok", &[]), "Profile is valid.");
     }
 
