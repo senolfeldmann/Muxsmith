@@ -36,7 +36,7 @@ function setFieldValue(key: string, value: unknown) {
 </script>
 
 <template>
-  <fieldset>
+  <fieldset :title="$ta(spec.labelKey).tooltip">
     <legend>{{ $t(spec.labelKey) }}</legend>
     <FieldWidgetDispatcher
       v-for="[key, fieldSpec] in fields"

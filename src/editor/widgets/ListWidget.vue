@@ -78,7 +78,7 @@ function onDragEnd() {
 </script>
 
 <template>
-  <fieldset>
+  <fieldset :title="$ta(spec.labelKey).tooltip">
     <legend>{{ $t(spec.labelKey) }}</legend>
     <div
       v-for="(_, index) in items"

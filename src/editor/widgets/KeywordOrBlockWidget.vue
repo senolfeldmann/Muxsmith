@@ -40,6 +40,7 @@ const blockModel = computed<Record<string, unknown> | null | undefined>({
     <select
       :id="id"
       :value="isKeyword ? model : ''"
+      :title="$ta(spec.labelKey).tooltip"
       @change="model = ($event.target as HTMLSelectElement).value"
     >
       <option

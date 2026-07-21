@@ -16,6 +16,7 @@ const id = useId();
       :id="id"
       v-model="model"
       type="checkbox"
+      :title="$ta(spec.labelKey).tooltip"
     >
   </div>
 </template>

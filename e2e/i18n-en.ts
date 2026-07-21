@@ -157,3 +157,13 @@ export function en(id: string, args?: Record<string, FluentVariable>): string {
   }
   return text;
 }
+
+/** Renders one attribute of one en message; throws (test defect surfaced
+ *  loudly) if the message or attribute is absent. */
+export function enAttr(id: string, attr: string): string {
+  const message = bundle.getMessage(id);
+  if (!message) throw new Error(`en catalog has no message "${id}"`);
+  const pattern = message.attributes[attr];
+  if (pattern === undefined) throw new Error(`en message "${id}" has no .${attr}`);
+  return bundle.formatPattern(pattern, {});
+}
