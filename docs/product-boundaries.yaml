@@ -430,3 +430,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-16", kind: decided, ref: "Şenol decree (plan-6 matchable-cell ruling): dropdowns wherever a clearly defined selection set exists; type/codec_kind dropdowns explicitly assigned to Plan 7"}
+- id: cli-english-only
+  kind: restraint
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: cli
+  statement: "The CLI renders English only: multilingual rendering is a GUI feature, by decree ('multilang ist nur fuer GUI' - owner, 2026-07-21). The de catalogs stay GUI-scoped; the CLI embeds en only and grows no locale rendering path. Spec 8.4's CLI-locale wording is amended by the Plan 7 design accordingly."
+  steelman: "The de catalogs already exist and the GUI ships bilingual, so an English-only CLI is a user-visible asymmetry; the embedding is cheap (fluent-rs already embeds en at build time); and spec 8.4 promised --locale on the CLI. Overruled 2026-07-21: multilingual rendering is GUI product shape by decree, no further rationale recorded."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "S20 owner ruling on plan-7 design escalation E1 (design doc section 7); folded into the design fix round"}

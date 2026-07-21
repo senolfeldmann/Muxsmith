@@ -543,6 +543,12 @@ polish entry.
 Deferred with reasons; source: Plan-5 whole-branch triage (ledger, archived
 at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
 
+- **UI polish pass ("schick machen") - deliberate 1.x item (owner ruling
+  2026-07-21, S20)**: v1's visual bar is a reasonably good, usable layout;
+  visual refinement beyond the existing design language is deferred
+  wholesale to 1.x. Companion of the presentation-token carve-out
+  (process-conventions latitude-carveout-presentation-tokens).
+
 - **Remove mise from CI (post-1.0, Şenol 2026-07-12)**: mise is a
   dev-machine runtime manager, not a CI tool; CI should install node/pnpm
   directly (pinned setup action) rather than fetch a floating mise binary

@@ -453,3 +453,17 @@ entries:
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design D45 labelled its FieldWidget union '11 variants' while the union it sat above defined 10; self-caught during the review rounds and recounted mechanically (design :798-800), which the document itself notes happened 'forty lines from where it raised' the same defect against the ROADMAP"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 design D41 :278 said the save-surface note is 'Two new Fluent keys' while section 2's table (:1736) and its arithmetic (:1749, 'gui-editor.ftl carries 43: the 42 registry labels plus the save-surface note') both said one; the cross-reference beside it ('D47's catalog table') was dangling - D47 has no catalog table. Found at plan-authoring after four review rounds; Şenol ruled one key (session 16, plan-6 fork 2). Design amended by plan-6 task 1"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "Trigger 2 added on evidence from the D49 fix round, where the rule as first written could not have fired. Adding a third ApplyError variant propagated correctly into the enum, the IpcError mapping, the catalog, the tests and three separate counts - and missed the one sentence directly above the block that grew (:624-625, 'Two codes x two locales = four lines', over a block now carrying three codes and six lines, counted by the re-reviewer). The substance propagated, the prose describing its size did not. Nobody was typing a number at that moment, so trigger 1 was silent; the act that needed the sweep was the ADDITION. Same round: a 'Three ApplyError tests' heading (:1026) sat over two bodies. Third instance across three rounds"}
+- id: latitude-carveout-presentation-tokens
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "Ruled: visual presentation tokens - exact colors, widths, spacing, minor styling - within the app's existing design language are implementer-owned and need no enumeration in designs, plans or briefs; a design saying 'the implementer writes the CSS' for such tokens is NOT a banned latitude clause. The boundary: anything semantic-carrying stays enumeration-bound - which severity maps to which color, what an icon means, layout structure, anything whose variation changes meaning rather than looks. Companion owner bar (same ruling): v1's visual standard is a reasonably good, usable layout the owner reviews on the shipped surface; deliberate visual refinement ('schick machen') is a 1.x ROADMAP item, not a per-design enumeration duty."
+  steelman: "The latitude ban exists precisely because user-visible details are product decisions, and CSS is user-visible; ratifying implementer-owned styling hands a user-perceivable surface to the keyboard. Accepted anyway by owner ruling: implementers have de facto owned presentation CSS since Plan 5/6 within the existing component patterns with no defect from it, the owner reviews the visible result at the end regardless, and pre-enumerating pixel tokens would write down a detail level the owner never wanted to see."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "S20 owner ruling on plan-7 design-review finding 5 + round-1 harvest presentation-token question; D52's CSS clause legalized retroactively, PENDING marker removed in the fix round"}
