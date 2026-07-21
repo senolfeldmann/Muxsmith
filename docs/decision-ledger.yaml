@@ -3845,6 +3845,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 task-8 review (task-08-verdict.md): the topics' only two wrong sentences were extrapolations past their anchors (yaml_fragment claimed verbatim-landing where planner.rs renders a merged delta; core-33 termination overstated as resolution) while every transcribed claim held; reviewer named the heuristic for tasks 9/10"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 task-10 review (task-10-verdict.md finding 1): the extreme form - a FABRICATED affordance with no anchor at all (Add/Remove buttons on the rule grid that do not exist in EditorView.vue and that no task adds), in both locales; findings 2-3 are the ordinary extrapolation form (MissingExternal nuance, unconditional Optional-escape promise). Same heuristic, third and fourth instances in one wave"}
