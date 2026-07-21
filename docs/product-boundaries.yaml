@@ -436,11 +436,26 @@ entries:
   source: human
   nature: product-scope
   domain: cli
-  statement: "The CLI renders English only: multilingual rendering is a GUI feature, by decree ('multilang ist nur fuer GUI' - owner, 2026-07-21). The de catalogs stay GUI-scoped; the CLI embeds en only and grows no locale rendering path. Spec 8.4's CLI-locale wording is amended by the Plan 7 design accordingly."
+  statement: "SUPERSEDED same day by owner re-ruling: cli-multilang-rendering carries the live rule (the CLI renders multilingually, de embedded via Plan 7). Original decree (2026-07-21, earlier that day): the CLI renders English only, multilingual rendering a GUI feature. Reversed after the controller's steelman review measured the real delta at the code (de content already exists parity-gated and owner-reviewed, renderer locale-generic, --locale already parsed per subcommand) against English-only's standing cost (a perpetually maintained, never-rendered de/cli.ftl under the bilingual-messages convention)."
   steelman: "The de catalogs already exist and the GUI ships bilingual, so an English-only CLI is a user-visible asymmetry; the embedding is cheap (fluent-rs already embeds en at build time); and spec 8.4 promised --locale on the CLI. Overruled 2026-07-21: multilingual rendering is GUI product shape by decree, no further rationale recorded."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 2
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "S20 owner ruling on plan-7 design escalation E1 (design doc section 7); folded into the design fix round"}
+    - {date: "2026-07-21", kind: decided, ref: "S20 owner re-ruling after controller steelman review: superseded by cli-multilang-rendering, same day"}
+- id: cli-multilang-rendering
+  kind: pattern
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: cli
+  statement: "The CLI renders multilingually with the same locale content as the GUI (en+de for v1): both locales' cli.ftl and diagnostics.ftl are embedded at build time; locale resolution stays explicit --locale, then system locale, then en; missing-message fallback is per message to en, then the raw id. Lands via Plan 7 (design E1 re-fold). Supersedes cli-english-only (same-day reversal). Companion constraint from the re-ruling analysis: every test asserting CLI output (insta snapshots, e2e) pins its locale explicitly, so the suite renders identically regardless of the host machine's locale."
+  steelman: "English-only kept the CLI's grep-able human output locale-stable and the test matrix one-dimensional (no locale-pinning audit needed); rejected because the de content already exists owner-reviewed under the parity gate (English-only pays for translations it never renders, indefinitely), the renderer is locale-generic with --locale already parsed, and mkvtoolnix localizes its CLI tools too (SI-3)."
   blocked_on: null
   status: settled
   promoted_at: 1
   count: 1
   occurrences:
-    - {date: "2026-07-21", kind: decided, ref: "S20 owner ruling on plan-7 design escalation E1 (design doc section 7); folded into the design fix round"}
+    - {date: "2026-07-21", kind: decided, ref: "S20 owner re-ruling on E1 after controller steelman review (measured effort delta at muxsmith-cli i18n.rs); reverses cli-english-only"}
