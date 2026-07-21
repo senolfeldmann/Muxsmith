@@ -3710,14 +3710,15 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "A corrected or newly-derived normative enumeration whose members are OBSERVABLE (emitted strings, rendered output, produced diagnostics) is verified by making each member appear once through the real binary - a reproducible probe - not only by citing the source lines it was derived from. Positive-direction sibling of proc-verification-step-must-be-falsifiable (that entry proves absence-checks can fire; this one proves claimed presences occur) and distinct from proc-07-verify-against-source (which confirms tooling behavior, not enumeration membership). Trigger is readable: you are writing a normative member list whose members the running system can be made to produce. Handle: construct the input that produces each member, run it, record the probe beside the list."
+  statement: "A corrected or newly-derived normative enumeration whose members are OBSERVABLE (emitted strings, rendered output, produced diagnostics) is verified by making each member appear once through the real binary - a reproducible probe - not only by citing the source lines it was derived from. Positive-direction sibling of proc-verification-step-must-be-falsifiable (that entry proves absence-checks can fire; this one proves claimed presences occur) and distinct from proc-07-verify-against-source (which confirms tooling behavior, not enumeration membership). Trigger is readable: you are writing a normative member list whose members the running system can be made to produce. Handle: construct the input that produces each member, run it, record the probe beside the list. The membership discipline extends to behavioral GENERALIZATIONS: a claim over a heterogeneous surface (subcommands, variants, states) is probed once per SHAPE CLASS, not once per convenient representative - the unprobed class is where the defect lives."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 design fix round, D57 grammar blocker: the author re-derived the config_path enumeration from validate.rs/lint.rs AND demonstrated every previously-wrong member live via a probe profile through muxsmith validate --json; the round-2 reviewer independently re-fired the probe (one event, two artifacts: fix report + design-review-round-2.md)"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "D64's schema premise: design rounds 3-4 probed flag-after-positional on the flag-bearing validate subcommand only and let the generalization ride; the unit-variant class (Schema) went unprobed and carried the defect, caught by the Task-1 implementer's live run. Round-5 reviewer self-critique names the lesson: probe per shape class, not per representative - the statement's generalization sentence was added on this event"}
 - id: proc-supersede-never-overwrite
   kind: pattern
   tier: 1
@@ -3800,9 +3801,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 D64 amendment (controller ruling): muxsmith_bare() for the no-args test - measured funnel-vs-bare behavior difference on the built binary, helper in tests/support/mod.rs so the cargo_bin grep invariant holds verbatim, one named caller, second caller reopens D64; round-4 review harvest named the shape"}
+    - {date: "2026-07-21", kind: reinforced, ref: "first live traversal of the reopening rule, same day: Task-1 NEEDS_CONTEXT refuted the schema-through-the-funnel premise, the second caller REOPENED D64 as a design decision (controller ruling, amendment, round-5 delta review) instead of quietly riding the helper - the shape functioned exactly as written (round-5 harvest)"}
 - id: proc-paraphrase-names-authority
   kind: pattern
   tier: 1

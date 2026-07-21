@@ -1384,38 +1384,61 @@ machine - the exact failure the entry names). Therefore:
   `pub fn muxsmith(args: &[&str]) -> assert_cmd::Command` building
   `Command::cargo_bin("muxsmith")` with `args` plus a trailing
   `"--locale", "en"` (clap accepts the flag after positionals; `--locale`
-  is a per-subcommand arg, `cli.rs:31,55,66,93`, so it must follow the
-  subcommand - which appending guarantees). Every existing per-file
-  `muxsmith()` helper (e.g. `cli_validate.rs:3-5`) and direct
-  `cargo_bin` call is replaced by it.
+  is a per-subcommand arg of the four flag-bearing subcommands
+  Validate/DryRun/Identify/Run, `cli.rs:31,55,66,93`, so it must follow
+  the subcommand - which appending guarantees. `Schema` is a **unit
+  variant with no arguments at all**, `cli.rs:34` - the fact exception 2
+  below rests on). Every existing per-file `muxsmith()` helper (e.g.
+  `cli_validate.rs:3-5`) and direct `cargo_bin` call is replaced by it
+  or by the enumerated bare helper.
 - **Where it applies, enumerated - the complete CLI-invoking test
   surface** (measured: `cargo_bin` grep, 2026-07-21):
   `cli_validate.rs` (1 constructor, 3 snapshots), `dry_run_cli.rs` (13
   invocation sites, 3 snapshots), `run_cli.rs` (1 constructor, 4
   snapshots), `run_live.rs` (1 constructor, 1 snapshot),
-  `cli_schema.rs` (2 sites: `schema_json()` routes through the funnel -
-  schema output is locale-independent JSON Schema, pinned regardless -
-  and `no_args_shows_usage_and_fails` uses the bare helper below). That
+  `cli_schema.rs` (2 sites, **both via the bare helper below - zero
+  funnel sites in this file**; corrected at execution via the Task-1
+  NEEDS_CONTEXT: the earlier "`schema_json()` routes through the funnel
+  ... pinned regardless" premise was refuted by the tree). The funnel
   covers all **11 insta snapshots** (`tests/snapshots/`, counted) and
-  every non-snapshot stdout/stderr assertion in those files - including
-  `--json` assertions, whose envelope carries the locale-rendered
-  `rendered` field and is therefore locale-sensitive too.
-- **One enumerated exception, closed** (controller ruling at
-  plan-authoring, internal technical fork, recorded here):
-  `no_args_shows_usage_and_fails` (`cli_schema.rs:26-27`) verifies that a
-  **bare** `muxsmith` invocation - a real user scenario - prints usage
-  and fails. Routing it through the funnel would run
-  `muxsmith --locale en` instead, which fails as an unexpected top-level
-  argument (`--locale` is per-subcommand): same assertion result,
-  different verified behavior - a silent test-meaning change, which is
-  never acceptable. It therefore uses `support::muxsmith_bare() ->
-  assert_cmd::Command` (a no-args `cargo_bin` constructor, also in
-  `tests/support/mod.rs`, so the grep invariant below holds verbatim).
-  Locale pinning is moot for it by construction: clap rejects the
-  invocation before any `Renderer` exists, so no locale-dependent text
-  is rendered. The exception is **closed**: `muxsmith_bare` has exactly
-  this one caller, and a second caller reopens D64 rather than riding
-  the helper.
+  every locale-sensitive stdout/stderr assertion - including `--json`
+  assertions, whose envelope carries the locale-rendered `rendered`
+  field; `cli_schema.rs`'s two tests are locale-independent by
+  construction (no `Renderer` exists on either path - the exception
+  block below).
+- **Two enumerated exceptions, closed** (controller rulings, internal
+  technical forks - test-support surface only, no product code, no
+  user-visible change; the first ruled at plan-authoring, the second at
+  execution via the Task-1 NEEDS_CONTEXT, which refuted the design's
+  schema-through-the-funnel premise). Both callers use
+  `support::muxsmith_bare() -> assert_cmd::Command` (a no-args
+  `cargo_bin` constructor, also in `tests/support/mod.rs`, so the grep
+  invariant below holds verbatim), and both are locale-moot by
+  construction: no `Renderer` is ever constructed on either path, so no
+  locale-dependent text can render.
+  1. `no_args_shows_usage_and_fails` (`cli_schema.rs:26-27`): verifies
+     that a **bare** `muxsmith` invocation - a real user scenario -
+     prints usage and fails. Through the funnel it would run
+     `muxsmith --locale en`, failing as an unexpected top-level
+     argument: same assertion result, different verified behavior - a
+     silent test-meaning change, never acceptable. clap rejects the
+     invocation before any `Renderer` exists.
+  2. `schema_json()` (`cli_schema.rs:5-15`, the file's shared
+     invocation): `Schema` is a unit variant with no arguments
+     (`cli.rs:34`), so `muxsmith schema --locale en` exits 2 with
+     clap's unexpected-argument error - the funnel conversion turned
+     both schema tests red (measured by the Task-1 implementer). The
+     `Schema` arm prints `schema_for!(Profile)` with no `Renderer`
+     (`main.rs:11-15`), and the schema's `description` fields are
+     English-only by design (spec 8.4's accepted exception, D47), so
+     its output is locale-independent permanently, not incidentally.
+     Adding `--locale` to `Schema` was rejected: user-visible syntax
+     widening for zero pinning gain - D64's own argument against a
+     clap-global flag - and it would contradict the spec's
+     English-only-schema position.
+  The exception set is **closed**: `muxsmith_bare` has exactly these
+  two callers, and a third caller reopens D64 rather than riding the
+  helper.
 - **Post-sweep invariant, greppable**: `cargo_bin("muxsmith")` appears in
   exactly one file, `tests/support/mod.rs`. A future test that bypasses
   the funnel is a review defect findable by that grep; a future test
@@ -1794,9 +1817,9 @@ keyboard (`proc-latitude-clause-boundary`).
   per-locale bundles (never one merged bundle); resolution order and
   per-message fallback are the boundary entry's, verbatim (D63).
 - Every CLI test invocation goes through D64's en-pinned support funnel,
-  except the one enumerated `muxsmith_bare()` caller
-  (`no_args_shows_usage_and_fails`; a second caller reopens D64);
-  `cargo_bin("muxsmith")` ends up in exactly one file
+  except the two enumerated `muxsmith_bare()` callers
+  (`no_args_shows_usage_and_fails` and `schema_json()`; a third caller
+  reopens D64); `cargo_bin("muxsmith")` ends up in exactly one file
   (`tests/support/mod.rs`), and the pinning is `--locale en`, never
   environment variables (D64).
 - The four D63 renderer unit tests are the enumerated set; no de
