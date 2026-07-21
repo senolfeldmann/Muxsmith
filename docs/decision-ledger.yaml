@@ -3816,9 +3816,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 design: D54's hover sentence AND spec amendment 6(a) both paraphrased D52's mechanics loosely and both diverged ('keeps its topic' vs hoverId-null fallback); surfaced by plan-authoring as defect 4, fixed by the three-amendment round with the authority named inline (round-4 verdict)"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T3 review (task-03-verdict.md harvest): the same shape twice in one task - D54's exclusion parenthetical ('profile's own directory') contradicts the source it summarizes (planner.rs:285 source-dir fallback), and the plan's 'du-imperative' gloss contradicts the catalog header it delegates to; reviewer's formulation: cite without summarizing, or recompute the gloss from source. Fix routes: owner-pass wording + a batched design one-liner at plan close"}
 - id: proc-check-green-state-reachable
   kind: pattern
   tier: 1
