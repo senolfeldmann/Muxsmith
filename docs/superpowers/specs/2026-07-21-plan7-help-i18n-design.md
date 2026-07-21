@@ -14,11 +14,13 @@ annotation (option B), both gate items in scope, the rider in scope, all new
 content bilingual en+de.
 
 **Three forks were escalated to the governing human and are RULED
-(2026-07-21)**: E1 CLI rendering (English-only, standing product shape),
-E2 view-topic set (the three spec-8.2 views), E3 help-mode activation
-blocking (global suppression with allowlist). Section 7 records each
-ruling with its analysis; the rulings are folded into the ADRs and
-amendments below. **Every fork in this document is closed.** No
+(2026-07-21)**: E1 CLI rendering (first ruled English-only, **REVERSED
+same day to multilingual** - `cli-multilang-rendering`, folded in as
+D63/D64), E2 view-topic set (the three spec-8.2 views), E3 help-mode
+activation blocking (global suppression with allowlist). Section 7
+records each ruling - both E1 events - with its analysis; the rulings
+are folded into the ADRs and amendments below. **Every fork in this
+document is closed.** No
 design-latitude clause appears anywhere in it, in either form (explicit
 permission or omission); the one implementer-owned surface (highlight
 presentation tokens, D52) is covered by the owner-ratified
@@ -27,9 +29,11 @@ presentation tokens, D52) is covered by the owner-ratified
 Grounding: v1 design spec §8.2/§8.3/§8.4/§10/§11 (authoritative; §8.3's
 mechanics are binding); Tier-2 `docs/conventions.yaml`,
 `docs/product-boundaries.yaml` (`gui-closed-domain-dropdowns` :419,
-`editor-generic-action-keys` :404, `cli-english-only` :433),
+`editor-generic-action-keys` :404, `cli-multilang-rendering` :448
+superseding `cli-english-only` :433),
 `docs/process-conventions.yaml` (incl.
-`latitude-carveout-presentation-tokens` :456); ledger
+`latitude-carveout-presentation-tokens` :456,
+`proc-proposed-safeguard-stays` :425); ledger
 `gui-26`, `i18n-10`, `i18n-12`, `i18n-16`; D41/D45/D48/D49; mkvtoolnix
 source and binary at v100.0 (`~/Downloads/mkvtoolnix`; `mkvmerge --version`
 -> `mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit`, run 2026-07-21).
@@ -80,11 +84,18 @@ embeds `locales/en/{diagnostics,cli}.ftl` via `include_str!` and `:32-37`
 loads exactly those two constants; `--locale de` today negotiates a `de`
 langid over English-only resources. The rustdoc claims "v1 ships English
 content only" (`:12`, `:19`) - stale as a repo statement (de shipped in
-Plan 5.5), accurate as a description of this renderer. Escalated as E1
-and **RULED (owner, 2026-07-21): the CLI stays English-only as standing
-product shape** - `cli-english-only` (`product-boundaries.yaml:433`); the
-CLI embeds en only and grows no locale rendering path. Amendments 1-3
-and 5 align the spec and rustdoc to that decree.
+Plan 5.5), accurate as a description of this renderer today. Escalated
+as E1; ruled English-only, then **RE-RULED the same day: the CLI renders
+multilingually** (`cli-multilang-rendering`,
+`product-boundaries.yaml:448`, superseding `cli-english-only` :433).
+D63 designs the embed + fallback chain, D64 the locale-pinning audit
+its `sys_locale` fallback forces on the test suite; amendments 1-3 and 5
+align spec and rustdoc. A related test-surface fact, measured for D64:
+**no CLI test pins a locale today** (grep `locale` over
+`crates/muxsmith-cli/tests/`: only `catalog_completeness.rs`'s
+catalog-file references; every `cargo_bin("muxsmith")` invocation runs
+unpinned), harmless while only en is embedded, host-locale-dependent the
+moment de lands.
 
 **Frontend i18n mechanics.** Bootstrap-once: `src/main.ts:24-30` builds
 bundles pre-mount from `getSettings().locale ?? navigator.language`
@@ -840,9 +851,11 @@ today) rather than duplicated.
 - Diagnostics/IpcError text re-renders (all through `$t`).
 - **Not** re-rendered, all pre-existing and recorded: the native
   close-abort dialog (en-only `include_str!`, `run.rs:543`; the de catalog
-  header documents the residual), the CLI (English-only by decree,
-  `cli-english-only`), the static `index.html` window title, native OS
-  chrome (file pickers).
+  header documents the residual), the CLI (locale is resolved
+  **per invocation** - D63's `--locale`/system/en order at process start;
+  a GUI live switch neither reaches nor needs to reach a separate
+  process), the static `index.html` window title, native OS chrome (file
+  pickers).
 - `settings-locale-label.hint` (post-D55 fold) drops its "takes effect
   after restarting Muxsmith" sentence - now false. Replacement wording is
   evergreen (no locale enumeration, `i18n-15-settings-hint-evergreen`),
@@ -1272,6 +1285,144 @@ two regexes that follow the house's established literal-scan pattern
 
 ---
 
+## D63: The CLI renders multilingually: both locales embedded, a two-bundle fallback chain, resolution --locale > system > en
+
+**Decision** (owner re-ruling 2026-07-21, `cli-multilang-rendering`,
+`product-boundaries.yaml:448`, superseding `cli-english-only` :433; this
+ADR is the E1 re-fold). `crates/muxsmith-cli/src/i18n.rs` embeds **both**
+locales at build time and renders through a **fallback chain of
+per-locale `FluentBundle`s**, mirroring the frontend's `buildBundles`
+mechanism (`src/i18n/index.ts`) on the Rust side:
+
+- **Embed table** - the one place a CLI locale exists, four `include_str!`
+  constants in a static table:
+  `[("en", EN_CLI, EN_DIAGNOSTICS), ("de", DE_CLI, DE_DIAGNOSTICS)]`,
+  the de pair being `locales/de/{cli,diagnostics}.ftl`. Adding a CLI
+  locale is one row plus content; the code-row-per-locale asymmetry with
+  the frontend's zero-code glob is accepted because `include_str!` is
+  compile-time and has no glob form (trigger 11 records the duty).
+- **Chain construction.** `Renderer::new` resolves the requested tag
+  exactly as today (explicit `--locale` > `sys_locale::get_locale()` >
+  `"en"`, `i18n.rs:21-27` - the boundary entry's binding order), collapses
+  it to its primary language subtag (`LanguageIdentifier::language`, the
+  Rust mirror of the frontend's `primarySubtag`: "de-AT" resolves the
+  "de" row), and builds `bundles: Vec<FluentBundle>` as
+  `[requested, "en"]` deduplicated - one bundle when the request is en or
+  unknown, two when it is de. Each bundle gets its own locale's two
+  resources and its own langid (so CLDR plural rules are per-locale
+  correct - the reason this is a chain and not one merged bundle),
+  and keeps `set_use_isolating(false)` (`i18n.rs:30-31`: grep-able
+  output).
+- **Per-message fallback**: `render` walks the chain and uses the first
+  bundle that has the message id with a value; a message missing
+  everywhere falls back to the raw id exactly as today
+  (`i18n.rs:79-83`) - so the order is de -> en -> raw id, the boundary
+  entry verbatim. `msg`, `msg_with_counts`, `diagnostic`,
+  `diagnostic_no_file` and the numeric-param promotion are untouched
+  above the lookup.
+- **Gate coverage, stated so nothing new is invented**:
+  `catalog_completeness.rs` stays en-scoped by design (en is the
+  reference locale); de structural correctness is already gated by
+  check-i18n id parity, D55 rule 4/5 attribute + placeable/selector
+  parity, and the e2e all-locales real-parse guard - a de message with a
+  wrong placeable name is a hard CI failure there, so no de twin of
+  `catalog_completeness.rs` is added.
+- **New renderer unit tests, enumerated** (in `i18n.rs`'s existing test
+  module, beside the `zz-ZZ-invalid` case at `:212`): (1) a de request
+  renders a de message; (2) a message present only in en renders the en
+  value under a de chain (per-message fallback); (3) a region-qualified
+  "de-DE" resolves the de row; (4) an unknown tag renders the en chain.
+  No new snapshot files: the 11 insta snapshots stay en-pinned (D64) and
+  de rendering is covered here plus by the parity gates.
+
+**Rejected: single bundle, en resources overridden by de
+(`add_resource_overriding`).** Steelman: one bundle, no chain walk, and
+per-message fallback falls out for free (a message missing in de keeps
+its en value). Rejected: a `FluentBundle` carries one locale set for
+CLDR plural-rule selection, so en fallback messages would pluralize
+under de rules - harmless for the de/en pair (identical
+one/other categories) and silently wrong for any locale with a richer
+category set (`ru`), which is exactly the class D55 rule 5's carve-out
+already anticipates. The chain is the mechanism the frontend already
+uses; matching it keeps one mental model (spec 8.4: "falls back to
+English per message").
+
+**Rejected: runtime catalog loading from disk.** Steelman: no embed
+table, locales droppable beside the binary. Rejected: the CLI's catalogs
+have been build-time-embedded since Plan 2 (`i18n.rs:7-8`), a
+self-contained binary is the product shape, and
+`core-07-runtime-fetching-rejected` records the house posture for
+build-consumed data.
+
+**Interface changes:** none on the wire; CLI rendering behavior (de
+output for de users - the user-visible point of the ruling);
+`Renderer::new` keeps its signature; amendment 3 rewrites the rustdoc.
+
+---
+
+## D64: Locale-pinning audit: every CLI-output-asserting test invokes through one en-pinned funnel
+
+**Decision** (the re-ruling's companion constraint, binding via
+`cli-multilang-rendering`'s statement; a proposed safeguard under
+`proc-proposed-safeguard-stays`, `process-conventions.yaml:425` - not to
+be argued back out before it is built and measured). Once de is embedded,
+`Renderer::new`'s `sys_locale` fallback makes every unpinned CLI
+invocation host-locale-dependent (green on en CI, red on a German dev
+machine - the exact failure the entry names). Therefore:
+
+- **Mechanism: a shared harness funnel.** `tests/support/mod.rs` gains
+  `pub fn muxsmith(args: &[&str]) -> assert_cmd::Command` building
+  `Command::cargo_bin("muxsmith")` with `args` plus a trailing
+  `"--locale", "en"` (clap accepts the flag after positionals; `--locale`
+  is a per-subcommand arg, `cli.rs:31,55,66,93`, so it must follow the
+  subcommand - which appending guarantees). Every existing per-file
+  `muxsmith()` helper (e.g. `cli_validate.rs:3-5`) and direct
+  `cargo_bin` call is replaced by it.
+- **Where it applies, enumerated - the complete CLI-invoking test
+  surface** (measured: `cargo_bin` grep, 2026-07-21):
+  `cli_validate.rs` (1 constructor, 3 snapshots), `dry_run_cli.rs` (13
+  invocation sites, 3 snapshots), `run_cli.rs` (1 constructor, 4
+  snapshots), `run_live.rs` (1 constructor, 1 snapshot),
+  `cli_schema.rs` (2 sites; schema output is locale-independent JSON
+  Schema, pinned anyway because the funnel is unconditional). That
+  covers all **11 insta snapshots** (`tests/snapshots/`, counted) and
+  every non-snapshot stdout/stderr assertion in those files - including
+  `--json` assertions, whose envelope carries the locale-rendered
+  `rendered` field and is therefore locale-sensitive too.
+- **Post-sweep invariant, greppable**: `cargo_bin("muxsmith")` appears in
+  exactly one file, `tests/support/mod.rs`. A future test that bypasses
+  the funnel is a review defect findable by that grep; a future test
+  using the funnel is pinned by construction.
+- **The e2e (Playwright) suite invokes no CLI binary** - verified
+  (grep over `e2e/*.ts` for muxsmith/cargo_bin invocations: zero hits;
+  the suite drives `dist/` with mocked Tauri IPC). The constraint binds
+  it prospectively through the boundary entry should that ever change.
+- **What is deliberately NOT pinned**: the four renderer unit tests in
+  `i18n.rs` construct `Renderer::new(Some(...))` in-process with
+  explicit tags (`:206-275` today) - they are the locale-behavior tests
+  themselves and never consult `sys_locale`.
+
+**Rejected: pinning via environment (`LC_ALL`/`LANG` on the child
+`Command`).** Steelman: one env line in the funnel, no argument-order
+concern, and it also pins any future locale-sensitive libc behavior.
+Rejected on portability: `sys_locale` reads OS APIs, not environment
+variables, on Windows and macOS - the pin would hold on exactly the CI
+legs that never break and miss the developer machines the audit exists
+for. `--locale en` uses the CLI's own contractual surface on every
+platform.
+
+**Rejected: making `--locale` a clap global argument so the funnel can
+prepend it.** Steelman: one flag definition instead of four
+per-subcommand copies, and `muxsmith --locale de validate` reads
+naturally. Rejected for this plan: it widens the accepted CLI syntax (a
+user-visible interface change) for zero pinning benefit - appending
+after the subcommand works today with the existing four flags. Recorded
+as an idea, not a defect.
+
+**Interface changes:** test-support surface only; no product code.
+
+---
+
 ## 2. Fluent catalog changes (en + de, both, in the same change - i18n-16)
 
 Exact id-count deltas per file. "attrs" are attribute definitions added
@@ -1323,6 +1474,7 @@ rendered-surface pass).
 | Long-form documentation reachability | Help menu opens external URLs (`main_window.cpp:230-244,328-337,654-660`; URLs `common/common_urls.h:3-12`); the mkvmerge manual is a **bundled offline per-locale HTML copy with online fallback** (`main_window.cpp:662-696`) | **MATCH in offline-first posture**: D51 embeds topics in the binary; mkvtoolnix bundles its manual. The "links out to online docs" framing in the brief is only half their story - recorded so the divergence claim stays honest |
 | Per-control long-form explanations | none - tooltips are the ceiling (some are multi-sentence, e.g. `merge/output.cpp:201-203` telling the user to read the documentation) | **Divergence in kind**: where their deep content overflows a tooltip they point at the manual; Muxsmith's overflow goes to the help topic (D54's inclusion criterion is exactly this overflow) |
 | First-run / onboarding guidance | none (searched: no wizard/welcome/tour; ground truth) | Muxsmith's FirstRun predates this plan (D28); no parity surface here |
+| CLI output localization (D63, E1 re-fold) | the CLI tools are gettext-localized from the same catalogs as the GUI: one `"mkvtoolnix"` textdomain (`common/translation.cpp:435-437`), 28 `po/*.po` locales incl. `de.po` serve mkvmerge and the GUI alike | **MATCH after D63**: one catalog source per locale rendered on both surfaces (spec 8.4's own architecture); cited in the re-ruling's steelman and verified at source here |
 
 ---
 
@@ -1345,10 +1497,10 @@ rendered-surface pass).
 
 ## 5. Deliberately out of scope
 
-- **CLI German rendering** - ruled OUT as standing product shape
-  (`cli-english-only`, owner 2026-07-21, via E1): the CLI embeds en only
-  and grows no locale rendering path; this is a decree, not a v1.x
-  deferral. The rider amendments state it precisely (section 6).
+- **CLI live locale switching** - the CLI resolves its locale once per
+  invocation (D63); there is no long-running CLI process to re-render.
+  CLI German *rendering* itself is IN scope since the E1 re-ruling
+  (D63/D64, `cli-multilang-rendering`) and is no longer listed here.
 - **Shell native-dialog i18n** (`close-abort-*` en-only, `run.rs:543`) -
   recorded residual since Task 21 (the de catalog header documents it);
   untouched, and D55 explicitly protects its line-parser constraint.
@@ -1375,31 +1527,27 @@ rendered-surface pass).
 ## 6. Spec amendments proposed
 
 Per `proc-04-spec-wins`, with the self-contradiction sweep at the end.
-Amendments 1-3 and 5 fold in the E1 ruling (`cli-english-only`) and
-amendment 6 the finding-3 modifications plus the E3 ruling; no variant
-wording remains.
+Amendments 1-3 and 5 fold in the E1 **re-ruling**
+(`cli-multilang-rendering`) and amendment 6 the finding-3 modifications
+plus the E3 ruling; no variant wording remains.
 
 1. **Spec 8.4, last bullet** ("v1 ships English content only (non-goal
    11); the mechanism ships complete"): replace with "v1 ships English
-   and German content for the GUI (catalogs and help topics); the CLI
-   renders English only - multilingual rendering is a GUI feature by
-   standing product shape (`cli-english-only`) - and further locales are
-   GUI content work (non-goal 11)."
+   and German content on both surfaces - GUI catalogs and help topics,
+   and the CLI's embedded catalogs (`cli-multilang-rendering`, D63);
+   further locales are content work (non-goal 11)."
 2. **Non-goal 11** (spec §11, "UI localization content: only English
-   catalogs and help topics ship in v1..."): replace with "GUI locales
-   beyond English and German, and any CLI localization
-   (`cli-english-only`: the CLI renders English only as standing product
-   shape, not deferred content work). The mechanism (8.4) ships complete
-   for the GUI; adding a GUI locale is content work (catalogs + help
-   topics land together, enforced by CI), not a refactor."
+   catalogs and help topics ship in v1..."): replace with "Locales
+   beyond English and German. The mechanism (8.4) ships complete on both
+   surfaces; adding a locale is content work (catalogs + help topics
+   land together, enforced by CI) plus one row in the CLI embed table
+   (D63), not a refactor."
 3. **Renderer rustdoc** (`crates/muxsmith-cli/src/i18n.rs:11-13` and
    `:19-20`): the stale "v1 ships English content only" claim is
-   replaced by the ruled shape: the renderer embeds the English catalogs
-   and renders English only by standing product decree
-   (`cli-english-only`); the de catalogs in `locales/` are GUI-scoped.
-   `Renderer::new`'s `locale` parameter keeps existing for interface
-   stability, and its doc says so in those terms rather than as a
-   pending-content note.
+   replaced by the D63 reality: the renderer embeds the en and de
+   catalogs and renders through a per-message fallback chain
+   (requested locale, then en, then the raw id), locale resolution
+   `--locale` > system locale > en (`cli-multilang-rendering`).
 4. **Spec 10, i18n sentence**: "eslint (no-literal-string rule) keeps
    hardcoded strings out of the frontend" becomes "the
    `@intlify/vue-i18n/no-raw-text` eslint rule (D27) keeps hardcoded
@@ -1409,12 +1557,12 @@ wording remains.
    instead" (matches `eslint.config.js:53-68` reality).
 5. **Spec 8.4, locale selection bullet** ("Locale selection: system
    locale with manual override in app settings and `--locale` on the
-   CLI; falls back to English per message"): two changes in one bullet -
-   the GUI override "takes effect live, without restart" (gui-26
-   closure, D56), and the CLI half loses its dangling promise per
-   `cli-english-only`: "`--locale` on the CLI is accepted for interface
-   stability but the CLI renders English only (multilingual rendering is
-   a GUI feature)."
+   CLI; falls back to English per message"): one change - the GUI
+   override "takes effect live, without restart" (gui-26 closure, D56).
+   The CLI half of the sentence **becomes true as written** under D63
+   (the promise was dangling only while the renderer embedded en alone)
+   and needs no amendment - recorded here so the sweep shows the claim
+   was checked, not skipped.
 6. **Spec 8.3, help-mode bullets** - two parts (fix round 1, review
    finding 3): **(a) additions** the spec left unstated and this design
    closed: hovering an element without a help-id leaves the sidebar topic
@@ -1440,12 +1588,16 @@ the reverse direction; the spec sentence states the minimum, not a
 ceiling - no conflict). Spec 8.2's grid column list already names "order"
 (D59 closes a gap, no amendment). Spec 8.4's catalog-source-of-truth
 bullet stays true under D55 (attributes are catalog content). Non-goal
-list's other items untouched. **Re-run after the E1/E3 fold-in (fix
-round 1)**: amendments 1, 2 and 5 each carry the `cli-english-only`
-statement and must land together - landing a subset would leave spec 8.4
-asserting both halves of the old promise; amendment 6's parts (b)/(c)
-modify the same 8.3 bullet list that part (a) extends, one edit; no
-amendment contradicts another.
+list's other items untouched. **Re-run after the E1 re-fold**:
+amendments 1 and 2 both carry the multilang claim
+(`cli-multilang-rendering`) and must land together with D63's code -
+amending the spec before the embed lands would make 8.4 assert
+rendering the CLI cannot do yet, so the amendments ride the same plan
+that builds D63, per the existing one-change bilingual discipline;
+amendment 3 (rustdoc) rides the D63 code change itself; amendment 5 now
+touches only the GUI half of its bullet, and its CLI half is a recorded
+no-change; amendment 6's parts (b)/(c) modify the same 8.3 bullet list
+that part (a) extends, one edit; no amendment contradicts another.
 
 ---
 
@@ -1457,18 +1609,35 @@ ruling's delta each; **all three are ruled** (plus the review's finding-5
 fork, ruled in the same batch). The analysis is kept as the record of
 what was decided between; the losing variants' consequences are moot.
 
-**E1 - CLI German rendering. RULED: English-only, standing product
-shape** (`cli-english-only`, `product-boundaries.yaml:433`). The fork:
-the de catalogs for cli/diagnostics exist and are parity-gated, but the
-CLI embeds en only (`muxsmith-cli/src/i18n.rs:7-8,32-37`), while spec
-8.4 promised `--locale` selection. The recommendation had been (a) fold
-de embedding into Plan 7 (mechanism locale-generic, content ships,
-i18n-cluster plan); the alternative (b) defer to v1.x. **The ruling is
-stronger than (b)**: multilingual rendering is a GUI feature by decree -
-not deferred content work, no locale rendering path grows in the CLI.
-Folded into amendments 1-3 and 5, section 1's ground truth, section 5's
-out-of-scope list; variant wording removed. The (a)-side costs (de
-embed, langid selection, tests) are moot.
+**E1 - CLI German rendering. Two same-day rulings; the second stands.**
+The fork: the de catalogs for cli/diagnostics exist and are
+parity-gated, but the CLI embeds en only
+(`muxsmith-cli/src/i18n.rs:7-8,32-37`), while spec 8.4 promised
+`--locale` selection. The design recommended (a) fold de embedding into
+Plan 7 (mechanism locale-generic, content ships, i18n-cluster plan);
+alternative (b) defer to v1.x.
+
+- **Ruling 1 (2026-07-21): English-only as standing product shape** -
+  stronger than (b): multilingual rendering declared a GUI feature by
+  decree (`cli-english-only`, `product-boundaries.yaml:433`). Briefly
+  folded into amendments 1-3/5 and the out-of-scope list.
+- **Ruling 2 (same day, after the controller's steelman review with a
+  measured effort delta at `i18n.rs`): REVERSED - the CLI renders
+  multilingually** (`cli-multilang-rendering`,
+  `product-boundaries.yaml:448`, which marks `cli-english-only`
+  superseded). This is the design's original (a) recommendation, now
+  binding, with two additions from the re-ruling analysis: the locale
+  resolution order and per-message fallback are fixed in the boundary
+  entry's own statement, and the **locale-pinning audit** is a companion
+  constraint (every CLI-output-asserting test pins its locale).
+
+Folded in as **D63** (embed table, two-bundle fallback chain,
+resolution order) and **D64** (the pinning audit as a proposed
+safeguard); amendments 1-3 rewritten to the multilang form, amendment
+5's CLI half withdrawn as no-longer-needed (the spec sentence becomes
+true), section 1/5/D56/section 9 swept. Both analyses are kept above and
+in D63/D64's rejected-alternatives; the English-only steelman survives
+in `cli-multilang-rendering`'s own steelman field.
 
 **E2 - the view-topic set. RULED: the three spec-8.2 views only**
 (editor, batch, jobs); FirstRun and the settings dialog are not
@@ -1507,9 +1676,11 @@ machen") is a 1.x ROADMAP item.
 
 ## 8. Triggers created (for the controller to mirror into the ROADMAP)
 
-1. **CONSUMED 2026-07-21**: the E1/E2/E3 and finding-5 rulings landed in
-   this fix round and are folded in (sections 6 and 7, D52, D54; header).
-   Kept numbered so later cross-references to triggers 2-10 stay stable.
+1. **CONSUMED 2026-07-21** (twice): the E1/E2/E3 and finding-5 rulings
+   landed in the fix round and were folded in; the same-day E1
+   **re-ruling** (`cli-multilang-rendering`) landed after and re-folded
+   as D63/D64 (sections 6 and 7, D52, D54, header). Kept numbered so
+   later cross-references to triggers 2-11 stay stable.
 2. **A third locale directory is added** -> D62's lockstep gate and
    D55's parity rules fire by construction; the one manual check: if the
    locale's CLDR plural categories exceed {one, other}, verify D55 rule
@@ -1545,6 +1716,11 @@ machen") is a 1.x ROADMAP item.
    the tooltip pass landed as attributes (zero ids) and the 46th id is
    the ordinal column's header key, when consuming this design -
    mirroring the recorded 43 -> 45 owner-ruling precedent.
+11. **A locale beyond en/de ships** -> beside trigger 2's GUI duties, the
+   CLI needs its embed-table row (D63's one-row-per-locale asymmetry
+   with the frontend's zero-code glob), and D64's pinned suite stays
+   green by construction (`--locale en` is locale-set-independent).
+   Created by the E1 re-fold.
 
 ---
 
@@ -1585,9 +1761,15 @@ keyboard (`proc-latitude-clause-boundary`).
 - Marker anchoring is exact string equality against section 1's
   re-derived, probe-verified emission table - never normalized, never
   parsed, and no member added or dropped at the keyboard (D57).
-- The CLI grows no de embedding and no locale rendering path - decree
-  `cli-english-only`, not a deferral; nothing in this plan touches
-  `muxsmith-cli/src/i18n.rs` beyond amendment 3's rustdoc wording.
+- The CLI embed set is exactly D63's two-row table; the chain is
+  per-locale bundles (never one merged bundle); resolution order and
+  per-message fallback are the boundary entry's, verbatim (D63).
+- Every CLI test invocation goes through D64's en-pinned support funnel;
+  `cargo_bin("muxsmith")` ends up in exactly one file
+  (`tests/support/mod.rs`), and the pinning is `--locale en`, never
+  environment variables (D64).
+- The four D63 renderer unit tests are the enumerated set; no de
+  snapshot files are added (D63/D64).
 - Unanchored paths are panel-only; the panel is never filtered (D57).
 - Marker severity is worst-of; the three severities are the whole set
   (D57).
