@@ -442,11 +442,23 @@ scan reads.
 
 **Topic resolution**, in priority order: `pinnedId` else `hoverId` else
 the active view's topic (`view-batch`/`view-jobs`/`view-editor` keyed off
-`App.vue`'s `activeView`). Switching views clears `pinnedId` (a pin
-highlights a visible element; a hidden `v-show` view's pin would be a
-highlight nobody can see) and the sidebar falls to the new view's topic.
-Exiting help mode (toggle or Esc) clears both refs and removes the
-listeners.
+`App.vue`'s `activeView`). Switching views clears **both `pinnedId` and
+`hoverId`** (amended at execution, T13 self-consistency finding: with
+only the pin cleared, the asserted fall-to-new-view-topic did not happen
+- every view root is annotated so `hoverId` is never null after the
+first hover, and the nav sits outside `<main>` so no hover event fires
+on the way to the tab; the sidebar kept the OLD view's last hover topic
+until the pointer re-entered the new view. Reproduced on the running
+app: hover the suggestion card, click `nav-jobs` without crossing
+`<main>` - the sidebar stayed on `batch-suggestion-card`). With both
+refs cleared, the pin > hover > view-topic chain lands on the new view's
+topic instantly, which is what this paragraph asserted all along. The
+pin-clear rationale stands (a hidden `v-show` view's pin would be a
+highlight nobody can see). **Deliberately narrow**: the hover clear
+triggers ONLY on a view switch - hovering an unannotated element still
+merely sets `hoverId` to null via the delegation (never an eager clear),
+preserving amended D54's pinned-branch fallback semantics. Exiting help
+mode (toggle or Esc) clears both refs and removes the listeners.
 
 **Toggle button**: in the `App.vue` nav, after the settings button - the
 one bar every spec-8.2 view shares, satisfying "prominent, always visible
@@ -1622,7 +1634,11 @@ plus the E3 ruling; no variant wording remains.
    **(b) modifications of stated mechanics** - the spec is authoritative,
    so each D52 deviation is amended, not silently narrowed: the pin
    release enumeration ("until another element is clicked or help mode
-   exits") gains a third condition, "or the active view is switched"; and
+   exits") gains a third condition, "or the active view is switched, in
+   which case the hover state resets too and the sidebar shows the new
+   view's topic" (the hover-reset half added at execution, T13
+   self-consistency amendment; lands together with the rest of this
+   amendment via Task 21, unchanged); and
    the Esc rule ("clicking again (or Esc) exits") gains the qualifier
    "except while the settings dialog is open, whose native cancel
    consumes Esc". **(c) the ruled activation semantic** (owner
@@ -1790,8 +1806,9 @@ keyboard (`proc-latitude-clause-boundary`).
   derived (D51/D53).
 - Annotation is `data-help-id`; no directive, no props threading;
   dispatcher fallthrough for registry controls (D52).
-- The pin is cleared on view switch; Esc yields to an open settings
-  dialog; hover and focusin are equivalent (D52).
+- A view switch clears both `pinnedId` and `hoverId` - and nothing else
+  clears `hoverId` eagerly; Esc yields to an open settings dialog; hover
+  and focusin are equivalent (D52).
 - `EditableField` gains optional `helpId` only; no `tooltipKey`, no new
   `FieldSpec` variant (D53).
 - The annotated set is D54's tables, verbatim - 22 ids, 44 files; adding
