@@ -3864,3 +3864,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T5 (task-05-verdict.md harvest): D55's sanctioned value-less batch-recents-select hit the T4-era parseOrThrow discriminator (?.value == null conflated dropped with value-less-with-attributes) - permanently red on correct work; surfaced as NEEDS_CONTEXT, controller-ruled Option A (discriminator corrected to documented intent), three-way verification both directions"}
+- id: proc-no-session-relocation-in-subagents
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: process
+  statement: "SDD implementer/reviewer dispatches BAN session-relocation tools (EnterWorktree/ExitWorktree and kin): relocating the permission root to a model-supplied path is a security boundary no auto-mode approves, the resulting human prompt sits invisibly under a background agent, and the run stalls for hours. A git worktree is a plain directory - subagents operate with absolute paths (git -C, paths under the worktree); the implementer preamble carries the ban verbatim. Wall-clock note: any duration metric from a run that hit the prompt is stall-polluted and unusable as process timing."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: violated-corrected, ref: "S20/S22 plan-7 wave 1-2: three background runs stalled hours each on the EnterWorktree permission-root prompt despite auto mode (owner report; T4/T5/T11 durations 3.2h/6.6h/3.6h are prompt-wait, not compute). New harness generation exposed the tool; plans 1-6 predate it. Fix: preamble ban + live correction to the running T13 agent"}
