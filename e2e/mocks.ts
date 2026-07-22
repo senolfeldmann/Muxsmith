@@ -70,9 +70,14 @@ export interface RecordedInvoke {
  * `mockIPC` reassigns `window.__TAURI_INTERNALS__.invoke` outright (last
  * registration wins), so a script added after the first navigation has no
  * effect until the next one -- exactly what a "settings change takes
- * effect after the app restarts" case needs (there is no live in-session
- * catalog swap; `main.ts` resolves the locale once, before mount). Calling
- * `installTauriMocks` a second time on the same page cannot do this: its
+ * effect after the app restarts" case needs. This models the RESTART path
+ * specifically: `main.ts` resolves the locale once, before mount, so
+ * swapping the mock and reloading stands in for a restart with the new
+ * locale. The app DOES also swap the live `FluentBundle`s in place when
+ * settings are saved (D56, `SettingsDialog.save()` -> `applyLocale`); that
+ * live path is a separate scenario, covered in `e2e/locale-switch.spec.ts`.
+ * Calling `installTauriMocks` a second time on the same page cannot do this:
+ * its
  * own `page.exposeFunction("__muxsmithRecordInvoke__", ...)` throws on a
  * second registration for the same name.
  */

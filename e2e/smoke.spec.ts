@@ -670,10 +670,13 @@ test.describe("german locale", () => {
 
   // T21.5 (settings gate follow-up): German reachable from the settings UI
   // itself, not just via a pre-seeded settings value (the de-AT case
-  // above). `main.ts` resolves the locale exactly once, before mount, and
-  // nothing in the app swaps the live `FluentBundle`s afterwards -- a
-  // saved locale change takes effect on the next start, same as a
-  // restart. This is simulated here rather than invented: `set_settings`
+  // above). This case covers the RESTART path: `main.ts` resolves the locale
+  // exactly once, before mount, so a saved locale change is guaranteed to
+  // take effect on the next start, same as a restart. (The app ALSO swaps the
+  // live `FluentBundle`s in place when settings are saved -- D56,
+  // `SettingsDialog.save()` -> `applyLocale`; that live in-session path is
+  // covered separately in `e2e/locale-switch.spec.ts`.) This is simulated
+  // here rather than invented: `set_settings`
   // is asserted as the real, load-bearing evidence that the UI action
   // saved "de" (not a UI echo), and `page.reload()` plus a second,
   // layered `installMockIPC` registration (see that function's own doc in

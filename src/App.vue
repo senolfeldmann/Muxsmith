@@ -67,6 +67,16 @@ function onHelpClick(event: Event) {
     pinnedId.value = id;
   }
 }
+function onHelpDragstart(event: Event) {
+  // Drag-reorder (the rule grid's rows, reorderable ListWidget items) is a
+  // non-click mutation channel the E3 click suppression never covered: an
+  // HTML5 drag never passes through onHelpClick, so a drag in help mode would
+  // silently reorder the in-memory profile and a later Save would persist it.
+  // preventDefault on dragstart aborts the drag before any drop fires, closing
+  // that leak. Only dragstart is suppressed -- focus and text entry stay live
+  // (the owner-ruled residual, spec 8.3).
+  event.preventDefault();
+}
 function onHelpKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     // The native modal's own cancel semantics win while the dialog is
@@ -91,11 +101,13 @@ watch(helpMode, (on) => {
     main.addEventListener("mouseover", onHelpHover, true);
     main.addEventListener("focusin", onHelpHover, true);
     main.addEventListener("click", onHelpClick, true);
+    main.addEventListener("dragstart", onHelpDragstart, true);
     document.addEventListener("keydown", onHelpKeydown, true);
   } else {
     main.removeEventListener("mouseover", onHelpHover, true);
     main.removeEventListener("focusin", onHelpHover, true);
     main.removeEventListener("click", onHelpClick, true);
+    main.removeEventListener("dragstart", onHelpDragstart, true);
     document.removeEventListener("keydown", onHelpKeydown, true);
     pinnedId.value = null;
     hoverId.value = null;

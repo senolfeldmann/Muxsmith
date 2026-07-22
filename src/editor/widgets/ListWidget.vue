@@ -12,9 +12,10 @@
 // HTML5 drag-and-drop on the item itself (matching spec 8.2's own "drag to
 // reorder" wording, needs no translated chrome) is already handled here.
 // Add/remove use the two generic `editor-action-add`/`-remove` keys
-// (owner Ruling 1, amended 2026-07-16; budget 45) -- not
-// `editor-attachment-rule-add`/`-drop`, which now caption only the
-// AttachmentRule fields they are the registry labels for.
+// (owner Ruling 1, amended 2026-07-16; the closed editor catalog budget,
+// `editor-generic-action-keys`) -- not `editor-attachment-rule-add`/`-drop`,
+// which now caption only the AttachmentRule fields they are the registry
+// labels for.
 import { computed } from "vue";
 import type { EditableFieldOf } from "./shared";
 import { useDiagAnchor } from "../diagAnchor";

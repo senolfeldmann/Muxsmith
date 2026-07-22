@@ -46,6 +46,52 @@ function normalizeInPage(page: Page, html: string): Promise<string> {
   }, html);
 }
 
+/** The rule grid's source-cell summaries in row order -- the observable a
+ *  drag-reorder permutes (`sourceSummary`, EditorView.vue). */
+function readRuleOrder(page: Page): Promise<string[]> {
+  return page
+    .getByTestId("editor-rule-select")
+    .evaluateAll((els) => els.map((el) => (el.textContent ?? "").trim()));
+}
+
+/**
+ * Fires a synthetic HTML5 drag of rule row `from` onto row `to` and reports
+ * what the app did with it. Real pointer-driven drag is unreliable headless
+ * (the whole-branch review's own note), so the drag is dispatched as events
+ * and the browser's drag state machine is modelled faithfully: a `dragstart`
+ * whose default the app prevents ABORTS the drag -- no `drop` follows, so
+ * `onDrop` never reorders. The drop is therefore dispatched only when the app
+ * left `dragstart` un-prevented, exactly as a real webview would. Two rAFs
+ * flush Vue's scheduler so the caller reads the settled grid, not a
+ * pre-render snapshot.
+ */
+function attemptDrag(
+  page: Page,
+  from: number,
+  to: number,
+): Promise<{ dragstartPrevented: boolean; dropDispatched: boolean }> {
+  return page.evaluate(
+    async ({ from, to }) => {
+      const rows = document.querySelectorAll('[data-testid="editor-rule-row"]');
+      const source = rows[from];
+      const target = rows[to];
+      const dt = new DataTransfer();
+      const dragstart = new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt });
+      source.dispatchEvent(dragstart);
+      let dropDispatched = false;
+      if (!dragstart.defaultPrevented) {
+        target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        source.dispatchEvent(new DragEvent("dragend", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        dropDispatched = true;
+      }
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(undefined))));
+      return { dragstartPrevented: dragstart.defaultPrevented, dropDispatched };
+    },
+    { from, to },
+  );
+}
+
 test.describe("help mode (D52)", () => {
   test("toggle opens the sidebar on the active view's topic; the nav stays live and swaps it; a click in <main> is suppressed; Esc exits", async ({
     page,
@@ -334,5 +380,74 @@ test.describe("help mode annotations (D54)", () => {
     // dispatcher's :data-help-id fallthrough onto the widget root.
     await patternWidget.hover();
     await expectSidebarTopic(page, "editor-input-pattern");
+  });
+});
+
+/**
+ * I1 (whole-branch review): help mode is a "safe inspection overlay" (E3),
+ * but the click-capture suppression never covered HTML5 drag -- a
+ * drag-reorder of the rule grid mutated the in-memory profile silently, and a
+ * later legitimate Save would persist it. The fix suppresses `dragstart` in
+ * the same capture set. This case pins both halves: the drag machinery is
+ * live (control, help OFF -> the grid reorders) and help mode aborts it
+ * (help ON -> the grid is untouched).
+ */
+test.describe("help mode drag suppression (I1)", () => {
+  test("a drag-reorder mutates the rule grid outside help mode but is suppressed inside it", async ({
+    page,
+  }) => {
+    const EDITOR_PROFILE_PATH = "/profiles/reorder-me.yaml";
+    const report: ReportDocument = {
+      config_diagnostics: [],
+      batch_diagnostics: [],
+      files: [],
+      suggestions: [],
+      mkvmerge_found: true,
+    };
+    const threeRuleProfile: Profile = {
+      profile_version: 1,
+      input: { pattern: ".*", extensions: ["mkv"] },
+      tracks: {
+        rules: [
+          { source: "alpha", match: { exact: { type: "video" } } },
+          { source: "beta", match: { exact: { type: "audio" } } },
+          { source: "gamma", match: { exact: { type: "subtitles" } } },
+        ],
+      },
+    };
+
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(EDITOR_PROFILE_PATH)],
+        load_profile: [resolveWith({ ...report, profile: threeRuleProfile } satisfies LoadProfileDocument)],
+        validate_profile_model: [resolveWith(report)],
+      },
+    });
+    await page.goto("/");
+
+    await page.getByTestId("nav-editor").click();
+    await page.getByTestId("editor-open").click();
+    await expect(page.getByTestId("editor-rule-row")).toHaveCount(3);
+    expect(await readRuleOrder(page)).toEqual(["alpha", "beta", "gamma"]);
+
+    // Control (help mode OFF): the synthetic drag genuinely reorders, so the
+    // help-mode assertion below is not a vacuous pass. Row 0 onto row 2 ->
+    // [beta, gamma, alpha] (onDrop splices the moved rule into the target slot).
+    const outside = await attemptDrag(page, 0, 2);
+    expect(outside.dragstartPrevented).toBe(false);
+    expect(outside.dropDispatched).toBe(true);
+    expect(await readRuleOrder(page)).toEqual(["beta", "gamma", "alpha"]);
+
+    // Help mode ON: the capture-phase dragstart listener preventDefaults, so
+    // the browser aborts the drag before any drop and the grid stays put --
+    // the E3 overlay guarantee, closing the silent-reorder-then-save leak.
+    await page.getByTestId("help-toggle").click();
+    await expect(page.getByTestId("help-sidebar")).toBeVisible();
+
+    const inside = await attemptDrag(page, 0, 2);
+    expect(inside.dragstartPrevented).toBe(true);
+    expect(inside.dropDispatched).toBe(false);
+    expect(await readRuleOrder(page)).toEqual(["beta", "gamma", "alpha"]);
   });
 });

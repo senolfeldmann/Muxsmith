@@ -52,9 +52,11 @@
 //         src-tauri's own `include_str!` lookup in run.rs, never by the
 //         frontend)
 //     Shell IpcError codes (gui-common.ftl's mkvmerge-spawn-failed etc.,
-//     gui-jobs.ftl's run-already-active etc.) are reached only via a
-//     generic `$t(err.code, err.params)` pattern and never spelled out
-//     literally in src/. D61's presence gate now extracts every
+//     gui-jobs.ftl's run-already-active etc.) are reached via the generic
+//     `$t(err.code, err.params)` pattern; most never appear as literals
+//     (FirstRun's two detect codes, mkvmerge-not-found/mkvmerge-too-old, are
+//     the exception -- spelled out as switch cases in FirstRun.vue). D61's
+//     presence gate now extracts every
 //     `IpcError::new("code")` from src-tauri/src and both hard-gates it
 //     (a code with no en message fails) and adds it to this check's
 //     usedIds union, so those codes are counted as used here instead of
@@ -94,11 +96,12 @@
 //     from checks 1/2, whose exclusion reason ("the frontend never calls
 //     $t() for it") is unrelated and still holds.
 //
-//     With only `locales/en/` present (current tree), the comparison loop
-//     below has no other locale directory to iterate and passes trivially
-//     by construction, not by a special case; it activates the moment a
-//     second `locales/<tag>/` directory (e.g. `locales/de/`, Task 21)
-//     exists.
+//     The comparison loop below iterates every `locales/<tag>/` other than
+//     en. With `locales/de/` now present (this run reports "1 other
+//     locale(s) checked"), de is validated against en's key, attribute and
+//     pattern sets. Before any second locale landed the loop had nothing to
+//     iterate and passed trivially by construction, not by a special case;
+//     it activated the moment `locales/de/` (Task 21) landed.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";

@@ -42,7 +42,8 @@
 // every row, so both inputs reference IDs by `aria-labelledby` instead of
 // owning a `<label>` each. Add/remove use the two generic
 // `editor-action-add`/`-remove` keys (owner Ruling 1, amended 2026-07-16;
-// catalog budget 45) -- not `editor-attachment-rule-add`/`-drop`, which
+// the closed editor catalog budget, `editor-generic-action-keys`) -- not
+// `editor-attachment-rule-add`/`-drop`, which
 // now caption only the AttachmentRule fields they are the registry labels
 // for (`registries.ts:185-189`).
 import { computed, inject, useId } from "vue";
