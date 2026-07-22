@@ -12,5 +12,5 @@ The output contains only the attachments a `Select` rule matched, plus files add
 
 ## Interactions
 
-- The rules run first, in list order, first matching rule wins per attachment; only attachments no rule touched fall through to this policy. See the Attachment rules topic.
+- The rules run first, in list order, first matching rule wins per attachment; only attachments no rule touched fall through to this policy. See the Rules (attachments) topic.
 - Same control shape as `Unmatched` under Tracks, different domain semantics: tracks default to `drop` because the output lineup is usually meant to be defined; attachments default to `keep` because they are auxiliary and dropping them fails silently.

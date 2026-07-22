@@ -12,5 +12,5 @@ Die Ausgabe enthält nur die Anhänge, die eine `Auswählen`-Regel gematcht hat,
 
 ## Wechselwirkungen
 
-- Zuerst laufen die Regeln, in Listenreihenfolge, die erste passende Regel gewinnt pro Anhang; nur Anhänge, die keine Regel berührt hat, fallen auf diese Einstellung zurück. Siehe das Thema Regeln für Anhänge.
+- Zuerst laufen die Regeln, in Listenreihenfolge, die erste passende Regel gewinnt pro Anhang; nur Anhänge, die keine Regel berührt hat, fallen auf diese Einstellung zurück. Siehe das Thema Regeln (Anhänge).
 - Dasselbe Bedienelement wie `Nicht zugeordnet` bei den Spuren, aber andere Domänensemantik: Spuren stehen standardmäßig auf `drop`, weil die Ausgabebesetzung meist definiert sein soll; Anhänge auf `keep`, weil sie Begleitmaterial sind und ihr Verlust still scheitert.

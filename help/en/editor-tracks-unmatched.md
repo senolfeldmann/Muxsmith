@@ -12,7 +12,7 @@ Every primary track passes through; rules then edit properties or add donor trac
 
 ## Ordering interaction
 
-Rule order defines the output track order - but under `keep` only partially: the output lists all primary tracks first, in the primary's own order, then donor tracks in rule order. Kept-but-unmatched primary tracks count as matched for this ordering, and a rule matching a primary track does not reposition it. Reordering primary tracks therefore requires `drop`, where the rule list alone defines the order. See the Track rules topic.
+Rule order defines the output track order - but under `keep` only partially: the output lists all primary tracks first, in the primary's own order, then donor tracks in rule order. Kept-but-unmatched primary tracks count as matched for this ordering, and a rule matching a primary track does not reposition it. Reordering primary tracks therefore requires `drop`, where the rule list alone defines the order. See the Rules (tracks) topic.
 
 ## Choosing
 

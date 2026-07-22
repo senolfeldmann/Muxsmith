@@ -12,7 +12,7 @@ Jede Spur der Quelldatei läuft durch; Regeln ändern darüber hinaus Eigenschaf
 
 ## Wechselwirkung mit der Reihenfolge
 
-Die Regelreihenfolge definiert die Spurreihenfolge der Ausgabe - unter `keep` aber nur teilweise: die Ausgabe listet zuerst alle Spuren der Quelldatei in deren eigener Reihenfolge, danach die Spender-Spuren in Regelreihenfolge. Behaltene, aber nicht zugeordnete Quellspuren zählen für diese Reihenfolge als zugeordnet, und eine Regel, die eine Quellspur matcht, verschiebt sie nicht. Quellspuren umzuordnen erfordert deshalb `drop`; dort definiert allein die Regelliste die Reihenfolge. Siehe das Thema Spurregeln.
+Die Regelreihenfolge definiert die Spurreihenfolge der Ausgabe - unter `keep` aber nur teilweise: die Ausgabe listet zuerst alle Spuren der Quelldatei in deren eigener Reihenfolge, danach die Spender-Spuren in Regelreihenfolge. Behaltene, aber nicht zugeordnete Quellspuren zählen für diese Reihenfolge als zugeordnet, und eine Regel, die eine Quellspur matcht, verschiebt sie nicht. Quellspuren umzuordnen erfordert deshalb `drop`; dort definiert allein die Regelliste die Reihenfolge. Siehe das Thema Regeln (Spuren).
 
 ## Wahl
 

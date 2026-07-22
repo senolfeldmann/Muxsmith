@@ -4,7 +4,7 @@ The rules grid is the heart of a profile: an ordered list of rules, each selecti
 
 ## Order is output order
 
-The row order defines the output track order. Drag a row to reorder; the new grid order is the new output order. One caveat: under `Unmatched: keep`, primary tracks keep their source order at the front of the output and only donor tracks follow in rule order - see the Unmatched tracks topic.
+The row order defines the output track order. Drag a row to reorder; the new grid order is the new output order. One caveat: under `Unmatched: keep`, primary tracks keep their source order at the front of the output and only donor tracks follow in rule order - see the Unmatched (tracks) topic.
 
 ## Editing a rule
 

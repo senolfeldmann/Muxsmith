@@ -4,7 +4,7 @@ Das Regelraster ist das Herz eines Profils: eine geordnete Liste von Regeln, von
 
 ## Reihenfolge ist Ausgabereihenfolge
 
-Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeile, um sie umzuordnen; die neue Rasterreihenfolge ist die neue Ausgabereihenfolge. Eine Einschränkung: unter `Nicht zugeordnet: keep` behalten die Quellspuren ihre Quellreihenfolge am Anfang der Ausgabe, nur Spender-Spuren folgen in Regelreihenfolge - siehe das Thema Nicht zugeordnete Spuren.
+Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeile, um sie umzuordnen; die neue Rasterreihenfolge ist die neue Ausgabereihenfolge. Eine Einschränkung: unter `Nicht zugeordnet: keep` behalten die Quellspuren ihre Quellreihenfolge am Anfang der Ausgabe, nur Spender-Spuren folgen in Regelreihenfolge - siehe das Thema Nicht zugeordnet (Spuren).
 
 ## Eine Regel bearbeiten
 
