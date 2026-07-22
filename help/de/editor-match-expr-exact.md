@@ -1,4 +1,4 @@
-# Exakter Match
+# Exakt (Match)
 
 Der `exact`-Teil eines Match-Ausdrucks vergleicht Spureigenschaften auf Gleichheit. Er ist eine Zuordnung von Eigenschaftsnamen zu Werten; eine Spur kommt infrage, wenn jeder Eintrag zutrifft. Alle Einträge sind UND-verknüpft, zusammen mit allen weiteren Teilen des Ausdrucks - die vollständige Algebra beschreibt das Thema Match.
 

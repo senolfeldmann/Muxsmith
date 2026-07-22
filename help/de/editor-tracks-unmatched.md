@@ -1,4 +1,4 @@
-# Nicht zugeordnete Spuren
+# Nicht zugeordnet (Spuren)
 
 `Nicht zugeordnet` entscheidet, was mit Spuren der Quelldatei geschieht, die keine Spurregel matcht: `keep` oder `drop`. Der Standard ist `drop`. Auf Spender-Spuren wirkt die Einstellung nie - externe Spuren gelangen nur über eine Regel in die Ausgabe.
 

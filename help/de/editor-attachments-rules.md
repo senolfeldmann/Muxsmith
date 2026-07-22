@@ -1,4 +1,4 @@
-# Regeln für Anhänge
+# Regeln (Anhänge)
 
 Eine geordnete Liste von Regeln über die Anhänge der Quelldatei. Jede Regel tut genau eines von drei Dingen:
 

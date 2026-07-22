@@ -1,4 +1,4 @@
-# Exact match
+# Exact (match)
 
 The `exact` part of a match expression compares track properties for equality. It is a map of property names to values; a track qualifies when every entry holds. All entries are AND-combined, together with any other parts of the expression - the Match topic describes the full algebra.
 

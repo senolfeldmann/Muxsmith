@@ -1,4 +1,4 @@
-# Nicht zugeordnete Anhänge
+# Nicht zugeordnet (Anhänge)
 
 `Nicht zugeordnet` entscheidet, was mit Anhängen geschieht, die keine Anhangsregel matcht: `keep` oder `drop`. Der Standard ist `keep` - bewusst das Gegenteil des Spuren-Standards.
 

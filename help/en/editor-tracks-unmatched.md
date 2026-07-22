@@ -1,4 +1,4 @@
-# Unmatched tracks
+# Unmatched (tracks)
 
 `Unmatched` decides what happens to tracks of the primary file that no track rule matches: `keep` or `drop`. The default is `drop`. The policy never applies to donor tracks - external tracks enter the output only through a rule.
 

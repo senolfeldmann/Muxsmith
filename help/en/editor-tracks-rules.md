@@ -1,4 +1,4 @@
-# Track rules
+# Rules (tracks)
 
 The rules grid is the heart of a profile: an ordered list of rules, each selecting exactly one track per source file and optionally changing its properties. Each grid row summarizes one rule - source, match expression, optional flag, changes.
 

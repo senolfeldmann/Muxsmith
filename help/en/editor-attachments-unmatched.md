@@ -1,4 +1,4 @@
-# Unmatched attachments
+# Unmatched (attachments)
 
 `Unmatched` decides what happens to attachments that no attachment rule matches: `keep` or `drop`. The default is `keep` - deliberately the opposite of the tracks default.
 

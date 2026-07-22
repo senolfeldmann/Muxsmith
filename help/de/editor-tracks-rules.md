@@ -1,4 +1,4 @@
-# Spurregeln
+# Regeln (Spuren)
 
 Das Regelraster ist das Herz eines Profils: eine geordnete Liste von Regeln, von denen jede genau eine Spur pro Quelldatei auswählt und optional deren Eigenschaften ändert. Jede Rasterzeile fasst eine Regel zusammen - Quelle, Match-Ausdruck, Optional-Flag, Änderungen.
 

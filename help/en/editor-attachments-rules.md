@@ -1,4 +1,4 @@
-# Attachment rules
+# Rules (attachments)
 
 An ordered list of rules over the source file's attachments. Each rule does exactly one of three things:
 
