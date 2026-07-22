@@ -1,4 +1,4 @@
-# Match-Muster
+# Match-Muster (Externer Verweis)
 
 `Match-Muster` ordnet externe Spender-Dateien einer Quelldatei per Vorlage zu - für den Fall, dass die Spender den Bezeichner anders schreiben als die Quelldateien. Es ist die dritte Textsyntax des Profils: kein reiner Regex wie das Eingabemuster, keine wörtliche Vorlage wie der Ausgabedateiname, sondern eine Vorlage im Regex-Modus. Beides wird leicht verwechselt; die Render-Regel unten ist der Unterschied.
 

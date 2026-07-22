@@ -1,4 +1,4 @@
-# Match to source
+# Match to source (external locator)
 
 `Match to source` pairs external donor files with the primary file they belong to. The control is a flag that is either set or absent from the profile - there is no explicit `false`; clearing it removes it.
 

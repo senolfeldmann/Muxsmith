@@ -1,4 +1,4 @@
-# Match zur Quelle
+# Match zur Quelle (Externer Verweis)
 
 `Match zur Quelle` ordnet externe Spender-Dateien der Quelldatei zu, zu der sie gehören. Das Bedienelement ist ein Flag, das entweder gesetzt ist oder im Profil fehlt - ein explizites `false` gibt es nicht; abwählen entfernt es.
 

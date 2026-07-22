@@ -1,4 +1,4 @@
-# Match pattern
+# Match pattern (external locator)
 
 `Match pattern` pairs external donor files with a primary by template - for when the donors spell the identifier differently than the primaries do. It is the profile's third text syntax: not a plain regex like the input pattern, not a literal template like the output filename, but a template rendered in regex mode. The two are easy to conflate; the render rule below is the difference.
 
