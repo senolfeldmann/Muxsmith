@@ -4061,9 +4061,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 M1 (design-review-round-1.md): checklist R5's updater-glob observable had no producing step in the section-2 workflow that section 11 freezes - unexecutable as written; the reviewer's over-restriction analysis names the one-line authoring check; fix round resolves"}
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-8 fix round (author report): applying the walk to all ten checklist items caught a SECOND emitter-less observable the review had not flagged (R1's 'pick assertion visibly ran'), fixed in the same round via pick's stderr log - the handle catches beyond the instance that motivated it"}
 - id: deps-first-party-pinned-over-convenience
   kind: pattern
   tier: 1

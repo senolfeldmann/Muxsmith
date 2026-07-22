@@ -1,8 +1,10 @@
 # Plan 8 design: packaging / release pipeline
 
-Status: DRAFT 2026-07-22. Numbering starts at **D75** per the ROADMAP Plan-8
-kickoff block; Plan 7.5's parallel design owns D65-D74. Last pre-existing ADR
-is D64 (`2026-07-21-plan7-help-i18n-design.md`).
+Status: DRAFT 2026-07-22, fix round 1 applied 2026-07-23. Numbering starts
+at **D75** per the ROADMAP Plan-8 kickoff block; D65-D74 is Plan 7.5's
+parallel reservation (its design uses D65-D72 - counted from its spec's
+`^## D` headings; no collision either way). Last pre-existing ADR is D64
+(`2026-07-21-plan7-help-i18n-design.md`).
 
 Scope per the ROADMAP Plan-8 anchor and the S22 kickoff rulings
 (`docs/ROADMAP.md`, Plan-8 section, commits 85c0da6 + b5678bd): the seven
@@ -107,9 +109,13 @@ it (`proc-57-briefs-not-ground-truth`).
   `wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip`).
   The WiX template (`main.wxs`) has an explicit
   `<?elseif $(sys.BUILDARCH)="arm64"?>` branch mapping to
-  `ProgramFiles64Folder`. Two stale comments in that file still say
-  "only supported platform is Windows x64"; the code beneath them says
-  otherwise. Corroborating docs (v2.tauri.app/distribute/windows-installer,
+  `ProgramFiles64Folder`. Two stale comments in **`mod.rs`** (not the
+  template) still contradict the arm64-handling code beneath them: the
+  doc line above `pub fn build_wix_app_installer`, "For now the only
+  supported platform is Windows x64.", and the later
+  "// target only supports x64." inside that function - both re-copied
+  verbatim from the tag-pinned file 2026-07-23 (grep "only support" over
+  it: exactly these two hits; `main.wxs` has none). Corroborating docs (v2.tauri.app/distribute/windows-installer,
   fetched 2026-07-22): ".msi installers can only be created on Windows",
   ARM64 build instructions via `--target aarch64-pc-windows-msvc`; the
   page's x86-emulation caveat concerns the NSIS **installer stub**, not
@@ -339,9 +345,13 @@ HTML comment so the file names its own obsolescence condition.
 purpose is "Produce updaters and their signatures or not"). No
 `plugins.updater` config, no `TAURI_SIGNING_PRIVATE_KEY` secret exists
 anywhere in the workflow, and D77's release job attaches exactly D89's
-enumerated asset set - no `.sig`, no `latest.json`. The rehearsal
-checklist asserts the built bundle directories contain no updater
-artifacts (section 8, step R5, with its enumerated glob).
+enumerated asset set - no `.sig`, no `latest.json`. A dedicated step in
+every bundle leg ("Assert no updater artifacts were produced", section
+2) fails the leg if the bundle output tree contains a file matching the
+two enumerated patterns `*.sig` / `latest.json`, with a built-in
+positive control (it first asserts the tree exists and is non-empty);
+rehearsal checklist step R5 reads that step's log, and its red and
+control-red states are fire-verified pre-merge (section 8, G4).
 
 **Rationale.** The ruling; and structurally, updater keys are exactly the
 kind of long-lived secret the unsigned-at-1.0 posture avoids holding.
@@ -381,9 +391,13 @@ compare link) without any hand-rolled git-log formatting; the owner
 rewrites prose freely in the draft.
 
 **Rationale.** `gh` is first-party, preinstalled on every GitHub-hosted
-runner, and the draft flow is GitHub's own recommendation for asset-heavy
-releases (gh help, immutable-releases section: "create releases as drafts
-first, attach all assets, and then publish"). Composing the body
+runner, and draft-first is the create command's own native flow when
+assets are attached - its help: "When using the `create` command to
+attach assets to a release, separate API calls are made to create the
+release as a draft, upload the assets, and then publish the release."
+(re-copied verbatim from `gh release create --help`, gh 2.94.0,
+2026-07-23); the same help's immutable-releases section confirms drafts
+stay modifiable and deletable until publish (paraphrase). Composing the body
 workflow-side (template + API call) instead of via `--generate-notes`
 keeps one deterministic mechanism: the help text documents prepending
 only for `--notes`, not `--notes-file`, and a two-flag interaction we
@@ -477,7 +491,9 @@ directs); the only conditional points are:
    path (`github.ref_type == 'tag'`);
 2. assemble: the release-creation step runs when
    `github.ref_type == 'tag'` **or** `inputs.rehearse-draft-release`;
-   otherwise the dispatch run ends at workflow artifacts + SHA256SUMS.
+   otherwise the dispatch run ends at workflow artifacts - the assemble
+   job still generates and logs SHA256SUMS, but it is persisted (as a
+   release asset) only on the draft path.
 
 The rehearsal draft is named `rehearsal-<run_id>` (deliberately **not**
 matching `v*`, so no tooling that keys on the tag scheme can confuse it),
@@ -1340,6 +1356,22 @@ jobs:
       - name: Build bundles (D84)
         shell: bash
         run: pnpm exec tauri build --ci -c src-tauri/tauri.bundle.conf.json --bundles "${{ matrix.bundles }}"
+      - name: Assert no updater artifacts were produced (D76)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Positive control first: the bundle output tree must exist and
+          # be non-empty, else the absence check below proves nothing.
+          [ -d target/release/bundle ] || { echo "::error::positive control failed: no bundle output dir" >&2; exit 1; }
+          bundles_found="$(find target/release/bundle -type f | wc -l)"
+          [ "$bundles_found" -gt 0 ] || { echo "::error::positive control failed: bundle output dir is empty" >&2; exit 1; }
+          find target/release/bundle -type f \( -name '*.sig' -o -name 'latest.json' \) -print >&2
+          updater_hits="$(find target/release/bundle -type f \( -name '*.sig' -o -name 'latest.json' \) | wc -l)"
+          if [ "$updater_hits" -ne 0 ]; then
+            echo "::error::$updater_hits updater artifact(s) found - D76 bans updater output" >&2
+            exit 1
+          fi
+          echo "updater-artifact check: 0 hits across $bundles_found bundle output files"
       - name: Rename artifacts to the release scheme; pack tar.gz on Linux (D88/D89)
         shell: bash
         run: |
@@ -1347,10 +1379,15 @@ jobs:
           version="$(awk '/^\[workspace.package\]/{f=1;next} /^\[/{f=0} f && /^version = /{gsub(/version = |"/,""); print; exit}' Cargo.toml)"
           leg="${{ matrix.leg }}"
           out="release-assets"; mkdir -p "$out"
-          pick() { # pick <glob...> -> asserts exactly one match, echoes it
+          pick() { # pick <glob...> -> asserts exactly one existing match;
+                   # path on stdout (the return value), log on stderr so it
+                   # survives the command substitution at the call sites
             local matches=("$@")
-            [ "${#matches[@]}" -eq 1 ] && [ -e "${matches[0]}" ] \
-              || { echo "::error::expected exactly one artifact, got: ${matches[*]}"; exit 1; }
+            if [ "${#matches[@]}" -ne 1 ] || [ ! -e "${matches[0]}" ]; then
+              echo "::error::expected exactly one artifact, got: ${matches[*]}" >&2
+              exit 1
+            fi
+            echo "pick: ${matches[0]}" >&2
             echo "${matches[0]}"
           }
           # Bundle output sits under the WORKSPACE target dir (src-tauri is
@@ -1797,17 +1834,20 @@ Each with its reason and, where one exists, its registered revisit hook:
   plan's release legs simply never adopt mise (D85), which neither
   absorbs nor deepens it. The ROADMAP trigger "the v1.x mise-out-of-CI
   structural work starts" is NOT fired by this plan.
-- **ledger-lint CI wiring** - the ROADMAP defers it to "the next
-  CI-touching plan"; whether Plan 8 is that plan is a controller scope
-  call outside this brief, routed to the controller as NEEDS_CONTEXT
-  alongside this design's delivery. Not designed here; nothing in this
-  document depends on either answer.
+- **ledger-lint CI wiring** - the deferral trigger fired with this plan
+  (release.yml makes Plan 8 the next CI-touching plan; surfaced via this
+  design's delivery). Controller ruling, since recorded in the ROADMAP
+  ledger-hygiene entries (2026-07-22 S22): Plan 8 absorbs the wiring as
+  a rider task, bundled with the duplicate-key extension; the rider
+  enters the plan brief at plan authoring and is explicitly "not a
+  design amendment (nothing in the plan-8 design depends on it)"
+  (ROADMAP wording, re-read 2026-07-23).
 
 ---
 
 ## 8. Test / verification plan: the workflow_dispatch rehearsal is the acceptance test
 
-Two pre-merge local fire-tests (falsifiability duty,
+Five pre-merge local fire-tests (falsifiability duty,
 `proc-verification-step-must-be-falsifiable`; each is
 break-observe-restore):
 
@@ -1819,31 +1859,47 @@ break-observe-restore):
   revert.
 - **G3**: temporarily set `package.json` version to `0.1.1` -> plain run
   must exit 1 (equality arm fires); revert.
+- **G4**: the updater-absence step's script body (section 2) against a
+  scratch tree: clean tree with one bundle file -> summary line
+  `updater-artifact check: 0 hits across 1 bundle output files`, exit 0;
+  planted `app.msi.sig` -> `::error::1 updater artifact(s) found`,
+  exit 1; missing/empty bundle dir -> positive-control error, exit 1.
+  (Already run at design time, 2026-07-23, exactly these outputs;
+  re-run pre-merge against the committed workflow text.)
+- **G5**: the rename step's `pick()` against a scratch dir: one match ->
+  `pick: <path>` on stderr, path on stdout, exit 0; zero matches and two
+  matches -> `::error::expected exactly one artifact, got: ...` on
+  stderr, exit 1. (Already run at design time, 2026-07-23, exactly these
+  outputs; re-run pre-merge against the committed workflow text.)
 
 Then the two dispatch runs, in order. **Run A** (`rehearse-draft-release:
 false`) proves the artifact path; **Run B** (`true`) proves draft
 assembly. Checklist (every step names its observable):
 
 - **R1** (run A): guard passes both steps; the gate-green step's log
-  names the found ci run. All four legs green; the rename step's `pick`
-  assertion visibly ran (leg logs list exactly the expected files - 1
-  msi per Windows leg, 1 dmg, 3 + tar.gz on Linux).
+  names the found ci run. All four legs green; the rename step's log
+  carries one `pick: <path>` line per selected artifact (1 per Windows
+  leg, 1 on macOS, 3 on Linux - the function logs every selection to
+  stderr) and its closing `ls -l` lists exactly the renamed files
+  (1 / 1 / 4 incl. the tar.gz).
 - **R2** (run A): four workflow artifacts named `muxsmith-<leg>` exist
   with retention 7; downloaded together they contain exactly the 7 files
   of D89 with the scheme-conformant names (count check: 7).
 - **R3** (run A): **no release was created** (the assemble release step
   shows as skipped in the run's job view - the skip is the observable,
   not an absence-grep; `gh release list` unchanged as corroboration).
-- **R4** (run B): draft `rehearsal-<run_id>` exists, `isDraft: true`,
-  with exactly 8 assets (7 + SHA256SUMS). Download all;
-  `sha256sum -c SHA256SUMS` passes. Falsifiability control once: corrupt
-  one downloaded byte, watch `-c` fail, redownload.
+- **R4** (run B): draft `rehearsal-<run_id>` exists (created by the
+  assemble job's release step), `isDraft: true`, with exactly 8 assets
+  (7 + SHA256SUMS). Download all; `sha256sum -c SHA256SUMS` passes.
+  Falsifiability control once: corrupt one downloaded byte, watch `-c`
+  fail, redownload.
 - **R5** (run B): body = rehearsal banner + template with the version
-  substituted + generated notes; no updater artifact exists in any leg's
-  bundle output (leg logs: the enumerated globs
-  `bundle/**/*.sig`, `bundle/**/latest.json` found nothing - and the
-  positive control that the glob form finds the msi/dmg/deb files it
-  should).
+  substituted + generated notes. And in each of the four leg logs, the
+  step "Assert no updater artifacts were produced" printed its summary
+  line (`updater-artifact check: 0 hits across N bundle output files`,
+  N > 0 - the N is the step's built-in positive control that it saw the
+  bundle tree; the step's red and control-red states are the G4
+  fire-test).
 - **R6** (run B or A, artifact-content checks on a Linux machine):
   `dpkg-deb -I muxsmith-*.deb` shows `Recommends: mkvtoolnix` and
   `Depends:` containing `libwebkit2gtk-4.1-0` and `libgtk-3-0`;
@@ -1923,8 +1979,9 @@ check, and the real release name.
 **None.** The one sanctioned pending item the brief carried (the
 CLI-distribution assumption) was ruled by the owner mid-authoring
 (section 0, note 1) and is designed as settled D82. The ledger-lint
-scope question (section 7) is a controller-routing note, not a fork in
-this design: no artifact below depends on its answer.
+scope question was ruled by the controller (section 7): the wiring rides
+Plan 8's plan as a rider task, outside this design; no artifact in this
+document depends on it.
 
 ---
 
