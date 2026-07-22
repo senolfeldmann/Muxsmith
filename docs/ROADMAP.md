@@ -503,6 +503,11 @@ polish entry.
 
 ## Ledger hygiene
 
+- **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML
+  key inside an entry (observed: a doubled `steelman:` line) passes the
+  lint silently - the parser's later-key-wins swallows it. Extend
+  ledger-lint with a per-entry duplicate-key check; trigger: the next
+  ledger-lint or house-file-schema touch dispatches it alongside.
 - **RESOLVED 2026-07-16 (session 16, owner-disposed per entry; commit e24759b).**
   The 2026-07-15 blocked-pool audit (report:
   `docs/process-journal/artifacts/2026-07-15-ledger-blocked-pool-audit.md`,
