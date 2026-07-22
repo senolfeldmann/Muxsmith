@@ -45,16 +45,39 @@
 // catalog budget 45) -- not `editor-attachment-rule-add`/`-drop`, which
 // now caption only the AttachmentRule fields they are the registry labels
 // for (`registries.ts:185-189`).
-import { computed, useId } from "vue";
+import { computed, inject, useId } from "vue";
 import type { EditableFieldOf } from "./shared";
-import { MATCHABLE_TYPES, SETTABLE_TYPES } from "../../bindings/settables";
+import { editorDiagnosticsByPath, worstSeverity } from "../diagAnchor";
+import { diagnosticFluentParams } from "../../diagnosticFluentParams";
+import {
+  CODEC_KIND_NAMES,
+  MATCHABLE_TYPES,
+  SETTABLE_TYPES,
+  TYPE_VALUES,
+} from "../../bindings/settables";
 import type { PropScalarType } from "../../bindings/settables";
 import type { Scalar } from "../../bindings/profile";
+import type { Diagnostic } from "../../ipc";
 
-const props = defineProps<{ spec: EditableFieldOf<"propertyMap"> }>();
+const props = defineProps<{ spec: EditableFieldOf<"propertyMap">; path?: string }>();
 const model = defineModel<Record<string, Scalar> | null>();
 
 const rows = computed(() => Object.entries(model.value ?? {}));
+
+// Per-row diagnostic anchors (D57): a `changes`/`exact` row anchors at
+// `{widget path}.{rowKey}` (e.g. `tracks[0].changes.language`). The map is
+// injected ONCE here and looked up per row, since the rows are inline (not
+// child components) -- `useDiagAnchor`'s getter form is for a per-instance
+// child, which a row is not.
+const byPath = inject(editorDiagnosticsByPath, undefined);
+const rowAnchors = computed(() =>
+  rows.value.map(([key, value]) => {
+    const rowPath = props.path === undefined ? undefined : `${props.path}.${key}`;
+    const diags: Diagnostic[] =
+      rowPath === undefined || byPath === undefined ? [] : (byPath.value.get(rowPath) ?? []);
+    return { key, value, path: rowPath, diags, severity: worstSeverity(diags) };
+  }),
+);
 
 // Wave item 9 (whole-branch a11y finding, `PropertyMapWidget.vue`'s
 // key/value inputs had no accessible name at all -- axe `label`/critical):
@@ -79,12 +102,45 @@ function keyInputId(index: number): string {
   return `${keyIdBase}-${index}`;
 }
 
+// D58 (`gui-closed-domain-dropdowns`): the two curated matchable domains
+// `type` (4 values) and `codec_kind` (17 aliases) render as a `<select>` in
+// the EXACT-match value cells, resolved BEFORE the scalar-type switch. The
+// domain arrays are the emitter's committed output (`TYPE_VALUES`/
+// `CODEC_KIND_NAMES`, never hand-written in TS), keyed by the property name.
+const DOMAINS: Record<string, readonly string[]> = {
+  type: TYPE_VALUES,
+  codec_kind: CODEC_KIND_NAMES,
+};
+
+function domainFor(key: string): readonly string[] {
+  return DOMAINS[key] ?? [];
+}
+
 /** Which value-cell control a row's property name resolves to. Not one of
  *  the 10 `FieldWidget` kinds -- this is the typed switch INSIDE the
- *  `propertyMap` cell, per the binding point above. */
-type ValueCellKind = "checkbox" | "integer" | "float" | "text";
+ *  `propertyMap` cell, per the binding point above. `select` (D58) is
+ *  resolved ahead of the scalar switch. */
+type ValueCellKind = "select" | "checkbox" | "integer" | "float" | "text";
 
-function cellKindFor(key: string): ValueCellKind {
+function cellKindFor(key: string, value: Scalar): ValueCellKind {
+  // D58 dropdown: only in the exact-match value cells (matchable+scalar),
+  // only inside a track context (the D57 `path` -- the attachment maps share
+  // `matchExprFields` but their property universe has no `type`, ground-truth
+  // flaw), only for the byte-exact keys `type`/`codec_kind` (a `raw:type` key
+  // fails this and keeps its free-text cell, preserving the `raw:` bypass),
+  // and only when the value is empty (a fresh row) or already a domain member
+  // -- an out-of-domain value stays a text input so the dropdown never eats
+  // data it cannot represent.
+  if (
+    props.spec.widget.properties === "matchable" &&
+    props.spec.widget.values === "scalar" &&
+    props.path !== undefined &&
+    props.path.startsWith("tracks[") &&
+    (key === "type" || key === "codec_kind") &&
+    (value === "" || (typeof value === "string" && domainFor(key).includes(value)))
+  ) {
+    return "select";
+  }
   if (props.spec.widget.values !== "scalar") {
     return "text";
   }
@@ -143,6 +199,10 @@ function onTextInput(index: number, event: Event) {
   setValue(index, (event.target as HTMLInputElement).value);
 }
 
+function onSelectInput(index: number, event: Event) {
+  setValue(index, (event.target as HTMLSelectElement).value);
+}
+
 function addRow() {
   model.value = { ...(model.value ?? {}), "": "" };
 }
@@ -160,7 +220,7 @@ function removeRow(index: number) {
       {{ $t(spec.labelKey) }}
     </legend>
     <div
-      v-for="([key, value], index) in rows"
+      v-for="(row, index) in rowAnchors"
       :key="index"
     >
       <input
@@ -168,32 +228,69 @@ function removeRow(index: number) {
         data-testid="property-map-key"
         type="text"
         :aria-labelledby="legendId"
-        :value="key"
+        :value="row.key"
         @input="setKey(index, ($event.target as HTMLInputElement).value)"
       >
+      <span
+        v-if="row.severity !== null"
+        role="img"
+        class="diag-marker"
+        :class="`diag-marker--${row.severity}`"
+        data-testid="diag-marker"
+        :data-diag-path="row.path"
+        :aria-label="$t(`severity-${row.severity}`)"
+        :title="row.diags.map((d) => $t(d.code, diagnosticFluentParams(d.code, d.params))).join('\n')"
+      />
+      <select
+        v-if="cellKindFor(row.key, row.value) === 'select'"
+        data-testid="property-map-value"
+        :aria-labelledby="`${legendId} ${keyInputId(index)}`"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
+        @change="onSelectInput(index, $event)"
+      >
+        <option
+          v-if="row.value === ''"
+          value=""
+        />
+        <option
+          v-for="opt in domainFor(row.key)"
+          :key="opt"
+          :value="opt"
+        >
+          {{ opt }}
+        </option>
+      </select>
       <input
-        v-if="cellKindFor(key) === 'checkbox'"
+        v-else-if="cellKindFor(row.key, row.value) === 'checkbox'"
         data-testid="property-map-value"
         type="checkbox"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :checked="value === true"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :checked="row.value === true"
         @change="onCheckboxInput(index, $event)"
       >
       <input
-        v-else-if="cellKindFor(key) === 'integer'"
+        v-else-if="cellKindFor(row.key, row.value) === 'integer'"
         data-testid="property-map-value"
         type="number"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :value="value"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
         @input="onNumberInput(index, $event)"
       >
       <input
-        v-else-if="cellKindFor(key) === 'float'"
+        v-else-if="cellKindFor(row.key, row.value) === 'float'"
         data-testid="property-map-value"
         type="number"
         step="any"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :value="value"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
         @input="onNumberInput(index, $event)"
       >
       <input
@@ -201,7 +298,9 @@ function removeRow(index: number) {
         data-testid="property-map-value"
         type="text"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :value="value"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
         @input="onTextInput(index, $event)"
       >
       <button

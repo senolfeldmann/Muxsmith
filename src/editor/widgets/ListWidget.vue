@@ -17,9 +17,11 @@
 // AttachmentRule fields they are the registry labels for.
 import { computed } from "vue";
 import type { EditableFieldOf } from "./shared";
+import { useDiagAnchor } from "../diagAnchor";
+import { diagnosticFluentParams } from "../../diagnosticFluentParams";
 import SectionWidget from "./SectionWidget.vue";
 
-const props = defineProps<{ spec: EditableFieldOf<"list"> }>();
+const props = defineProps<{ spec: EditableFieldOf<"list">; path?: string }>();
 const model = defineModel<unknown[] | null>();
 
 const items = computed(() => model.value ?? []);
@@ -28,6 +30,15 @@ const itemSpec = computed<EditableFieldOf<"section">>(() => ({
   labelKey: props.spec.labelKey,
   widget: { kind: "section", of: props.spec.widget.item, optional: false },
 }));
+
+// The list's own path anchors the bare `{p}.any` / `{p}.not` diagnostics
+// (EmptyMatchList) at the list root; each item's `[{i}]` path is threaded
+// down to its section, which anchors its own marker (D57).
+const { diags, severity } = useDiagAnchor(() => props.path);
+
+function itemPath(index: number): string | undefined {
+  return props.path === undefined ? undefined : `${props.path}[${index}]`;
+}
 
 function itemValue(index: number): Record<string, unknown> | null {
   return (items.value[index] as Record<string, unknown> | null) ?? null;
@@ -79,7 +90,19 @@ function onDragEnd() {
 
 <template>
   <fieldset :title="$ta(spec.labelKey).tooltip">
-    <legend>{{ $t(spec.labelKey) }}</legend>
+    <legend>
+      {{ $t(spec.labelKey) }}
+      <span
+        v-if="severity !== null"
+        role="img"
+        class="diag-marker"
+        :class="`diag-marker--${severity}`"
+        data-testid="diag-marker"
+        :data-diag-path="path"
+        :aria-label="$t(`severity-${severity}`)"
+        :title="diags.map((d) => $t(d.code, diagnosticFluentParams(d.code, d.params))).join('\n')"
+      />
+    </legend>
     <div
       v-for="(_, index) in items"
       :key="index"
@@ -91,6 +114,7 @@ function onDragEnd() {
     >
       <SectionWidget
         :spec="itemSpec"
+        :path="itemPath(index)"
         :model-value="itemValue(index)"
         @update:model-value="setItemValue(index, $event)"
       />

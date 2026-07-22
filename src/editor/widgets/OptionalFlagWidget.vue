@@ -7,11 +7,14 @@
 // letting `v-model` write a bare `false`.
 import { useId } from "vue";
 import type { EditableFieldOf } from "./shared";
+import { useDiagAnchor } from "../diagAnchor";
+import { diagnosticFluentParams } from "../../diagnosticFluentParams";
 
-defineProps<{ spec: EditableFieldOf<"optionalFlag"> }>();
+const props = defineProps<{ spec: EditableFieldOf<"optionalFlag">; path?: string }>();
 const model = defineModel<true | undefined>();
 
 const id = useId();
+const { diags, severity } = useDiagAnchor(() => props.path);
 
 function onChange(event: Event) {
   const checked = (event.target as HTMLInputElement).checked;
@@ -22,11 +25,23 @@ function onChange(event: Event) {
 <template>
   <div>
     <label :for="id">{{ $t(spec.labelKey) }}</label>
+    <span
+      v-if="severity !== null"
+      role="img"
+      class="diag-marker"
+      :class="`diag-marker--${severity}`"
+      data-testid="diag-marker"
+      :data-diag-path="path"
+      :aria-label="$t(`severity-${severity}`)"
+      :title="diags.map((d) => $t(d.code, diagnosticFluentParams(d.code, d.params))).join('\n')"
+    />
     <input
       :id="id"
       type="checkbox"
       :checked="model === true"
       :title="$ta(spec.labelKey).tooltip"
+      :class="severity !== null ? `diag-anchored--${severity}` : undefined"
+      :aria-invalid="severity === 'error' ? 'true' : undefined"
       @change="onChange"
     >
   </div>

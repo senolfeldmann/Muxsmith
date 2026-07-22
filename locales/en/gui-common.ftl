@@ -30,6 +30,12 @@ browse-button = Browse...
     .tooltip = Choose the file with a file picker.
     .tooltip-directory = Choose the directory with a folder picker.
 
+## D52: help mode. The toggle sits in the nav bar (always visible in every
+## spec-8.2 view); help-sidebar-label names the sidebar aside.
+help-toggle-label = Help
+    .tooltip = Toggle help mode: hover or click any control to read what it does.
+help-sidebar-label = Help sidebar
+
 ## T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
 ## Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
 ## selects a diagnostics.ftl entry (spec 8.4): the frontend never shows a

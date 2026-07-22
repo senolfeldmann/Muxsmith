@@ -21,6 +21,7 @@ import { createApp, h, ref } from "vue";
 import type { Component } from "vue";
 import { createFluentVue } from "fluent-vue";
 import { buildBundles } from "../src/i18n";
+import { topicHtml } from "../src/help/topics";
 
 const modules = import.meta.glob<{ default: Component }>(
   ["../src/editor/widgets/*.vue", "../src/views/EditorView.vue"],
@@ -77,3 +78,4 @@ function mount(spec: MountSpec): void {
 }
 
 window.__muxsmithMount__ = mount;
+window.__muxsmithTopicHtml__ = topicHtml;

@@ -1,0 +1,82 @@
+/* App-shell help-mode layout and inspection highlights (D52).
+ *
+ * Global (not scoped): the help-hover/help-pinned classes are toggled at
+ * runtime onto [data-help-id] elements that live deep inside the view
+ * components, which a component-scoped block could never reach. Imported
+ * once from App.vue, the shell that owns both <main> and the sidebar. */
+
+/* Two-column arrangement while the sidebar is present. When help mode is
+ * off the sidebar is absent, so <main> takes the full width; turning it on
+ * only narrows <main> by the sidebar's width - no reflow of the views
+ * themselves, which stay v-show-mounted (D52). */
+.app-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.app-body > main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The sidebar scrolls independently of the views (D52). Width and the
+ * scroll bound are presentation tokens (latitude-carveout-presentation-tokens). */
+.app-body > aside[data-testid="help-sidebar"] {
+  flex: 0 0 22rem;
+  align-self: stretch;
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+}
+
+/* Semantic mapping closed by D52: outline (never border - no layout
+ * shift); pin visibly stronger than hover. Exact colors/widths:
+ * implementer-owned presentation tokens (carve-out). */
+.help-hover {
+  outline: 1px dashed var(--help-hover-color, #7a7a7a);
+  outline-offset: 2px;
+}
+.help-pinned {
+  outline: 2px solid var(--help-pinned-color, #2a6fd6);
+  outline-offset: 2px;
+}
+
+/* Field-anchored diagnostic markers (D57). Global for the same reason as
+ * the help classes above: the marker span and the diag-anchored outline
+ * live deep in the editor widget tree. Semantic severity mapping is
+ * enumeration-bound and reuses the severity-* keys; the outline (never a
+ * border - no layout shift) is the design's enumerated no-shift semantic.
+ * Exact colors/widths are presentation tokens
+ * (latitude-carveout-presentation-tokens); the values mirror
+ * DiagnosticsPanel's own severity-dot palette so a diagnostic reads the
+ * same in the panel and at its field. */
+.diag-marker {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  margin-inline-start: 0.35em;
+  vertical-align: middle;
+}
+.diag-marker--error {
+  background: var(--diag-error-color, #c0392b);
+}
+.diag-marker--warning {
+  background: var(--diag-warning-color, #d68910);
+}
+.diag-marker--info {
+  background: var(--diag-info-color, #2471a3);
+}
+
+.diag-anchored--error {
+  outline: 2px solid var(--diag-error-color, #c0392b);
+  outline-offset: 1px;
+}
+.diag-anchored--warning {
+  outline: 2px solid var(--diag-warning-color, #d68910);
+  outline-offset: 1px;
+}
+.diag-anchored--info {
+  outline: 2px solid var(--diag-info-color, #2471a3);
+  outline-offset: 1px;
+}

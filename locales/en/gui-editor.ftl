@@ -137,3 +137,9 @@ editor-save-note = Saving rewrites the file from the model: comments, key order 
 
 editor-action-add = Add
 editor-action-remove = Remove
+
+## Rule grid ordinal (D59)
+
+# Presentation-only 1-based index column; not a registry label, so no
+# .tooltip. The digit itself is locale-neutral data rendered in the cell.
+editor-track-rule-order = Order
