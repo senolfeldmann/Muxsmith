@@ -25,9 +25,10 @@ nav-batch = Batch
 nav-jobs = Jobs
 nav-editor = Editor
 settings-open-label = Settings
-settings-open-tooltip = Open application settings (mkvmerge path, default jobs, language).
+    .tooltip = Open application settings (mkvmerge path, default jobs, language).
 browse-button = Browse...
-browse-button-tooltip = Choose the file with a file picker.
+    .tooltip = Choose the file with a file picker.
+    .tooltip-directory = Choose the directory with a folder picker.
 
 ## T9: shell-level IPC error codes (src-tauri/src/error.rs::IpcError).
 ## Keyed directly on IpcError.code, exactly like a core Diagnostic's `code`
@@ -69,8 +70,8 @@ firstrun-guidance-macos = Install MKVToolNix from mkvtoolnix.download into /Appl
 firstrun-guidance-linux = Install the mkvtoolnix package from your distribution (e.g. apt, dnf, pacman), then retry, or point Muxsmith directly at the mkvmerge binary below (typically /usr/bin/mkvmerge or /usr/local/bin/mkvmerge).
 firstrun-guidance-fallback = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at the mkvmerge binary below.
 firstrun-picker-label = mkvmerge executable path
-firstrun-picker-hint = Enter or browse to the mkvmerge executable if it is not installed in a standard location.
+    .hint = Enter or browse to the mkvmerge executable if it is not installed in a standard location.
 firstrun-use-path = Use this path
-firstrun-use-path-tooltip = Save this mkvmerge path and detect it again.
+    .tooltip = Save this mkvmerge path and detect it again.
 firstrun-retry = Retry detection
-firstrun-retry-tooltip = Detect mkvmerge again without changing the configured path.
+    .tooltip = Detect mkvmerge again without changing the configured path.

@@ -102,11 +102,11 @@ defineExpose({ open });
           aria-describedby="settings-mkvmerge-path-hint"
         >
         <p id="settings-mkvmerge-path-hint">
-          {{ $t("settings-mkvmerge-path-hint") }}
+          {{ $ta("settings-mkvmerge-path-label").hint }}
         </p>
         <button
           type="button"
-          :title="$t('browse-button-tooltip')"
+          :title="$ta('browse-button').tooltip"
           @click="browse"
         >
           {{ $t("browse-button") }}
@@ -124,7 +124,7 @@ defineExpose({ open });
           aria-describedby="settings-default-jobs-hint"
         >
         <p id="settings-default-jobs-hint">
-          {{ $t("settings-default-jobs-hint") }}
+          {{ $ta("settings-default-jobs-label").hint }}
         </p>
       </div>
 
@@ -143,7 +143,7 @@ defineExpose({ open });
           </option>
         </select>
         <p id="settings-locale-hint">
-          {{ $t("settings-locale-hint") }}
+          {{ $ta("settings-locale-label").hint }}
         </p>
       </div>
 
@@ -151,14 +151,14 @@ defineExpose({ open });
         type="submit"
         :disabled="busy"
         :aria-busy="busy"
-        :title="$t('settings-save-tooltip')"
+        :title="$ta('settings-save').tooltip"
       >
         {{ $t("settings-save") }}
       </button>
       <button
         type="button"
         :disabled="busy"
-        :title="$t('settings-cancel-tooltip')"
+        :title="$ta('settings-cancel').tooltip"
         @click="close"
       >
         {{ $t("settings-cancel") }}

@@ -33,8 +33,10 @@
  * assumed) cannot catch. `assertAllCatalogsParseCleanly` closes that gap
  * properly: for every id check-i18n.mjs's own column-0 scan finds in a
  * catalog's source text, it asserts the real parser actually produced a
- * message WITH a value for that id -- a Junk-dropped or truncated entry
- * fails this even when `addResource` stays silent. It walks every locale
+ * message with a value OR at least one attribute for that id -- a
+ * Junk-dropped or truncated entry (which yields neither) fails this even
+ * when `addResource` stays silent, while a legitimately value-less message
+ * that carries attributes (D55) correctly passes. It walks every locale
  * directory in the same two groupings the app itself uses at runtime: the
  * frontend's combined gui-* + diagnostics bundle (mirrors
  * `src/i18n/index.ts`'s `buildBundle`) and `cli.ftl` standalone (mirrors
@@ -82,8 +84,10 @@ function scanIds(text: string): string[] {
  * throwing on any `addResource` error (a real id collision -- see the
  * module doc for why that is the ONLY thing `addResource` ever reports)
  * or on any id `scanIds` found in the source text that the real parser
- * did not turn into a message with a value (a Junk-dropped or truncated
- * entry). `label` names the grouping being checked, for the error message.
+ * dropped or truncated: a message it produced neither a value NOR any
+ * attribute for (a value-less message that DOES carry attributes -- D55's
+ * `batch-recents-select` -- is a valid Fluent shape, fully captured, not a
+ * drop). `label` names the grouping being checked, for the error message.
  */
 function parseOrThrow(locale: string, files: string[], label: string): FluentBundle {
   const bundle = new FluentBundle(locale);
@@ -96,7 +100,10 @@ function parseOrThrow(locale: string, files: string[], label: string): FluentBun
       throw new Error(`e2e/i18n-en: catalog error in ${label}: ${errors.map(String).join("; ")}`);
     }
   }
-  const droppedIds = expectedIds.filter((id) => bundle.getMessage(id)?.value == null);
+  const droppedIds = expectedIds.filter((id) => {
+    const message = bundle.getMessage(id);
+    return !message || (message.value == null && Object.keys(message.attributes).length === 0);
+  });
   if (droppedIds.length > 0) {
     throw new Error(
       `e2e/i18n-en: ${label} declares ${droppedIds.join(", ")} but the real Fluent parser ` +

@@ -6,7 +6,7 @@
 
 jobs-batch-progress = { $finished } / { $total } jobs finished
 jobs-cancel-batch-label = Cancel batch
-jobs-cancel-batch-tooltip = Cancel every queued and in-flight job in this run.
+    .tooltip = Cancel every queued and in-flight job in this run.
 jobs-summary-line = { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
 jobs-joblog-incomplete = The run's log could not be fully written to disk; some job records may be missing.
 jobs-joblog-unavailable = The run's log could not be written to disk; this run will not appear in history.
@@ -22,7 +22,7 @@ jobs-col-actions = Actions
 jobs-row-output-pending = Job { $index }
 jobs-row-progress-label = Progress for job { $index }
 jobs-row-cancel-label = Cancel
-jobs-row-cancel-tooltip = Cancel this job.
+    .tooltip = Cancel this job.
 jobs-row-warning-count = { $count ->
     [one] 1 warning
    *[other] { $count } warnings
@@ -44,7 +44,7 @@ jobs-log-filter-all = All jobs
 
 jobs-history-heading = Run history
 jobs-history-refresh = Refresh
-jobs-history-refresh-tooltip = Reload the list of past runs from disk.
+    .tooltip = Reload the list of past runs from disk.
 jobs-history-empty = No past runs found.
 jobs-history-run-label = { $startedAt } - { $ok } ok, { $warning } warning, { $failed } failed, { $cancelled } cancelled
 jobs-history-jobs-caption = Jobs in this run
@@ -52,9 +52,9 @@ jobs-history-view-log = View log
 jobs-history-log-region-label = Job log
 jobs-history-log-loading = Loading job log...
 jobs-history-copy-log = Copy log
-jobs-history-copy-tooltip = Copy this job's full log to the clipboard.
+    .tooltip = Copy this job's full log to the clipboard.
 jobs-history-save-log = Save as...
-jobs-history-save-tooltip = Save this job's full log to a file.
+    .tooltip = Save this job's full log to a file.
 jobs-history-export-failed = The log could not be copied or saved.
 jobs-history-export-filter-name = Log files
 

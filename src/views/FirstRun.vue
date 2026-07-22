@@ -106,11 +106,11 @@ async function attempt(save: boolean) {
           aria-describedby="firstrun-path-hint"
         >
         <p id="firstrun-path-hint">
-          {{ $t("firstrun-picker-hint") }}
+          {{ $ta("firstrun-picker-label").hint }}
         </p>
         <button
           type="button"
-          :title="$t('browse-button-tooltip')"
+          :title="$ta('browse-button').tooltip"
           @click="browse"
         >
           {{ $t("browse-button") }}
@@ -121,7 +121,7 @@ async function attempt(save: boolean) {
         type="submit"
         :disabled="busy || manualPath.trim() === ''"
         :aria-busy="busy"
-        :title="$t('firstrun-use-path-tooltip')"
+        :title="$ta('firstrun-use-path').tooltip"
       >
         {{ $t("firstrun-use-path") }}
       </button>
@@ -129,7 +129,7 @@ async function attempt(save: boolean) {
         type="button"
         :disabled="busy"
         :aria-busy="busy"
-        :title="$t('firstrun-retry-tooltip')"
+        :title="$ta('firstrun-retry').tooltip"
         @click="attempt(false)"
       >
         {{ $t("firstrun-retry") }}
