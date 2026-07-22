@@ -1892,15 +1892,16 @@ entries:
   kind: non-decision
   tier: 1
   domain: i18n
-  statement: "Placeable-name and selector-structure drift in the German catalogs is not machine-checked (check:i18n enforces id parity only); a check:i18n extension to cover placeable/selector structure was deferred, no actual drift found at close."
+  statement: "Placeable-name and selector-structure drift in the German catalogs is not machine-checked (check:i18n enforces id parity only); a check:i18n extension to cover placeable/selector structure was deferred, no actual drift found at close. RESOLVED: plan-7 T17 shipped the checks (D55 rules 4-5, en-reference parity per the round-7 amendment)."
   steelman: null
-  blocked_on: "Plan 7 execution (check-i18n placeable/selector-structure parity part)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "task-21-verdict.md residual / whole-branch-verdict.md M1"}
     - {date: "2026-07-21", kind: decided, ref: "ROADMAP Plan-7 anchor fold (S20 session-start trigger check, owner scope call)"}
+    - {date: "2026-07-22", kind: decided, ref: "S21 plan-close blocked-pool sweep, owner ruling: the deferred work landed via plan-7 T17 (a838a32, merged e4df011 - attribute + placeable/selector parity, rules 4-5); condition never fired, the plan swept it up - settled with this resolving occurrence"}
 - id: i18n-13-cli-key-rename-deferred
   kind: non-decision
   tier: 1
@@ -2248,14 +2249,15 @@ entries:
   kind: non-decision
   tier: 1
   domain: gui
-  statement: "No live in-session locale switch (bootstrap-once architecture; a restart notice was added); a live switch was deferred as a Plan 6 candidate."
+  statement: "No live in-session locale switch (bootstrap-once architecture; a restart notice was added); a live switch was deferred as a Plan 6 candidate. RESOLVED: plan-7 D56 shipped the live switch (T7, wave 1); the bootstrap-once restraint is superseded on the frontend, the restart notice retired."
   steelman: null
-  blocked_on: "Plan 7 (internal: help mode + i18n cluster; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "task-21.5-verdict.md / whole-branch funnel T21.5-m1"}
+    - {date: "2026-07-22", kind: decided, ref: "S21 plan-close blocked-pool sweep, owner ruling: D56's live locale switch landed via plan-7 T7 (72c07ee, merged 41e378d, wave 1) - the statement's deferred capability shipped; condition never fired, settled with this resolving occurrence"}
 - id: ci-02-sccache-rejected
   kind: restraint
   tier: 1

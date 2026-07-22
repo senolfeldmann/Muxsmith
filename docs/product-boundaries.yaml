@@ -460,3 +460,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "S20 owner re-ruling on E1 after controller steelman review (measured effort delta at muxsmith-cli i18n.rs); reverses cli-english-only"}
+- id: help-mode-suppression-pointer-scope
+  kind: restraint
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: gui
+  statement: "Help mode suppresses POINTER-channel mutations only: click activation (E3) and drag-reorder (capture-phase dragstart, whole-branch I1 fix). Keyboard and text-entry channels (typing into fields, select changes via keyboard) stay LIVE in help mode - deliberately: they require deliberate focus-plus-input, while the pointer channels are the ones a user exploring help mode hits by accident; the accidental-mutation class is closed. Spec 8.3's 'control activation suppressed' sentence is scoped to pointer channels accordingly (design one-liner batch, plan-7 close)."
+  steelman: "Full inertness is the maximal reading of spec 8.3 and closes even deliberate-channel mutation while help mode is active; rejected as an additional suppression layer plus tests against a channel that requires deliberate action - the accident class was the actual defect."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "S21 owner ruling (Option 2 of the whole-branch I1 escalation): scope the wording, keep keyboard live as deliberate restraint; dragstart half fixed in 13e138c"}
