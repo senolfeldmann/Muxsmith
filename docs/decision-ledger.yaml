@@ -4050,21 +4050,48 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T16 review Q1 (task-16-verdict.md): editor-track-rule-order placed in a new trailing '## Rule grid ordinal (D59)' section mirroring the existing single-key '## Save surface (D41)' precedent; reviewer names D41 as the first instance and this as the second, pattern held in both locales"}
-- id: design-empirical-claims-reproducible
+- id: design-acceptance-observables-have-producers
   kind: pattern
   tier: 1
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Every load-bearing empirical claim in a design document ships as a one-command reproduction (exact command, byte-quotable expected output), and every ABSENCE claim ships with a named positive control that fires - so the design review can re-run instead of re-derive. Named by the plan-7.5 round-1 reviewer as the standard the next design is held to: first-attempt byte-exact reproduction of every claim made that review cheap."
+  statement: "When a design freezes a workflow/config sketch AND ships an acceptance checklist over it, every checklist observable must name the sketch step that produces it - an observable with no producing step makes the acceptance test unexecutable exactly because the freeze forbids inventing the step later. Authoring check (readable trigger: you are writing or freezing an acceptance checklist): walk the checklist and name the emitting step per observable."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 2
+  count: 1
   occurrences:
-    - {date: "2026-07-22", kind: decided, ref: "plan-7.5 design review round 1 HARVEST (design-review-round-1.md): all empirical claims reproduced byte-exact on first re-run (rendered strings, mkvtoolnix counts, 46/46 catalog, exit codes), absence claims carried firing positive controls; reviewer names the pattern as the review-cost lever"}
-    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section): every F1-F5 fix shipped its own inline verification claim (grep with positive control, measured 17-of-47, byte-quoted describes) and each reproduced on re-run; reviewer names evidence-inline fix rounds as materially cheaper to delta-review"}
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 M1 (design-review-round-1.md): checklist R5's updater-glob observable had no producing step in the section-2 workflow that section 11 freezes - unexecutable as written; the reviewer's over-restriction analysis names the one-line authoring check; fix round resolves"}
+- id: deps-first-party-pinned-over-convenience
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: ci
+  statement: "In CI/release tooling, the house default is the first-party mechanism invoked directly with repo-pinned versions over a third-party convenience action/wrapper; adopting a wrapper needs an honest value inventory and a recorded revisit condition. Distills the recurring rejection ground 'fewer moving third-party parts under pin-everything' so it is cited, not re-argued per design."
+  steelman: "Convenience actions encode ecosystem experience (caching, artifact wiring, edge cases) that direct invocation re-derives; for a fast-moving target the wrapper absorbs upstream churn. Countered case-by-case in the value inventories: under SHA-pinning the wrapper adds a supply-chain surface while its convenience duplicates what the repo's pinned tooling already does."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: decided, ref: "plan-8 design round 1 (design doc D84/D85/D77 + review HARVEST): four rejections on the shared ground in one round - tauri-action, softprops/action-gh-release, cargo-dist, mise-action - each with value inventory + revisit condition; reviewer proposes the distillation (one decision round = one occurrence)"}
+- id: proc-quote-verbatim-or-paraphrase
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Quotation marks in a durable artifact assert byte-verbatim wording copied from the source at the moment of writing; reconstructed wording is a paraphrase and is written as one, without quotation marks and naming its source. Applies with FULL force to decorative/corroborative quotes - decoration reads identically to evidence downstream, so it gets the same rigor as load-bearing claims."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 m3 (design-review-round-1.md): a gh-help quote in the design was not verbatim against the live command output; harvest names the pattern (decorative corroboration got less rigor than the immaculate load-bearing verification in the same document); fix round corrects"}
 - id: proc-wrapped-prose-quote-grep
   kind: pattern
   tier: 1

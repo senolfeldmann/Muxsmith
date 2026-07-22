@@ -1020,8 +1020,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 7
+  count: 8
   occurrences:
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 m2 (design-review-round-1.md): the design asserted 'two stale comments in main.wxs' where the tree holds one comment, in mod.rs - a count-plus-location tree claim unverified at authoring, in a document whose load-bearing citations were otherwise immaculate; fix round corrects"}
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest, minor): topics.ts's fallback comment cites muxsmith-cli/src/i18n.rs:41-46 for the raw-id posture, but that span is Renderer::new - the actual fallback (id.to_string()) sits in render (~:123); behavior exists, span stale at authoring; one-line comment fix rides the whole-branch inputs"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "s22-h1-derivation-fix verdict HARVEST (post-promotion, mild): the fix report + commit 2f4d832 named the output-resolution site 'batch plan()' where the actual symbol is plan_core (line span correct); reviewer classified it under this entry - a symbol claim in a durable process artifact is a citation, quote the real symbol; no product artifact affected"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7.5 design review round 1 F1 (design-review-round-1.md): a D54 quote in the design misattributed its location - copied without re-opening the host document, the exact drift-class this entry predicts for quotes (reviewer HARVEST names it); content of the quote true, location wrong; fix round re-points it"}

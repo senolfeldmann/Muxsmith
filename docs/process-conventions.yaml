@@ -533,3 +533,19 @@ entries:
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "Şenol directive (S20, at 747k controller context mid-T14-review): long sessions previously ended without a clean cut; rule persisted and applied immediately - T14's running review completes, then the close sequence, no further dispatches"}
     - {date: "2026-07-22", kind: decided, ref: "Şenol directive (S21): threshold raised 700k -> 850k; mechanism unchanged (check after every task completion, close sequence above the bound)"}
+- id: design-empirical-claims-reproducible
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Every load-bearing empirical claim in a design document - and in a fix round on one - ships as a one-command reproduction (exact command, byte-quotable expected output), and every ABSENCE claim ships with a named positive control that fires; the review then re-runs instead of re-deriving. Trigger is readable: you are writing a sentence that asserts behavior, a count, or an absence. Handle: put the command and its expected output beside the claim."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7.5 design review round 1 HARVEST (design-review-round-1.md): all empirical claims reproduced byte-exact on first re-run (rendered strings, mkvtoolnix counts, 46/46 catalog, exit codes), absence claims carried firing positive controls; reviewer names the pattern as the review-cost lever"}
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section): every F1-F5 fix shipped its own inline verification claim (grep with positive control, measured 17-of-47, byte-quoted describes) and each reproduced on re-run; reviewer names evidence-inline fix rounds as materially cheaper to delta-review"}
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-8 design review round 1 HARVEST (design-review-round-1.md): verified-negative-with-positive-control used four times in the design (WiX Environment grep, NSIS PATH grep, R3, R7), survived every reviewer re-run; reviewer proposes naming it the standard form for absence claims - third strict-fit event, promoted at count 3"}
