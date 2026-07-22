@@ -49,7 +49,12 @@ import { computed, inject, useId } from "vue";
 import type { EditableFieldOf } from "./shared";
 import { editorDiagnosticsByPath, worstSeverity } from "../diagAnchor";
 import { diagnosticFluentParams } from "../../diagnosticFluentParams";
-import { MATCHABLE_TYPES, SETTABLE_TYPES } from "../../bindings/settables";
+import {
+  CODEC_KIND_NAMES,
+  MATCHABLE_TYPES,
+  SETTABLE_TYPES,
+  TYPE_VALUES,
+} from "../../bindings/settables";
 import type { PropScalarType } from "../../bindings/settables";
 import type { Scalar } from "../../bindings/profile";
 import type { Diagnostic } from "../../ipc";
@@ -97,12 +102,45 @@ function keyInputId(index: number): string {
   return `${keyIdBase}-${index}`;
 }
 
+// D58 (`gui-closed-domain-dropdowns`): the two curated matchable domains
+// `type` (4 values) and `codec_kind` (17 aliases) render as a `<select>` in
+// the EXACT-match value cells, resolved BEFORE the scalar-type switch. The
+// domain arrays are the emitter's committed output (`TYPE_VALUES`/
+// `CODEC_KIND_NAMES`, never hand-written in TS), keyed by the property name.
+const DOMAINS: Record<string, readonly string[]> = {
+  type: TYPE_VALUES,
+  codec_kind: CODEC_KIND_NAMES,
+};
+
+function domainFor(key: string): readonly string[] {
+  return DOMAINS[key] ?? [];
+}
+
 /** Which value-cell control a row's property name resolves to. Not one of
  *  the 10 `FieldWidget` kinds -- this is the typed switch INSIDE the
- *  `propertyMap` cell, per the binding point above. */
-type ValueCellKind = "checkbox" | "integer" | "float" | "text";
+ *  `propertyMap` cell, per the binding point above. `select` (D58) is
+ *  resolved ahead of the scalar switch. */
+type ValueCellKind = "select" | "checkbox" | "integer" | "float" | "text";
 
-function cellKindFor(key: string): ValueCellKind {
+function cellKindFor(key: string, value: Scalar): ValueCellKind {
+  // D58 dropdown: only in the exact-match value cells (matchable+scalar),
+  // only inside a track context (the D57 `path` -- the attachment maps share
+  // `matchExprFields` but their property universe has no `type`, ground-truth
+  // flaw), only for the byte-exact keys `type`/`codec_kind` (a `raw:type` key
+  // fails this and keeps its free-text cell, preserving the `raw:` bypass),
+  // and only when the value is empty (a fresh row) or already a domain member
+  // -- an out-of-domain value stays a text input so the dropdown never eats
+  // data it cannot represent.
+  if (
+    props.spec.widget.properties === "matchable" &&
+    props.spec.widget.values === "scalar" &&
+    props.path !== undefined &&
+    props.path.startsWith("tracks[") &&
+    (key === "type" || key === "codec_kind") &&
+    (value === "" || (typeof value === "string" && domainFor(key).includes(value)))
+  ) {
+    return "select";
+  }
   if (props.spec.widget.values !== "scalar") {
     return "text";
   }
@@ -161,6 +199,10 @@ function onTextInput(index: number, event: Event) {
   setValue(index, (event.target as HTMLInputElement).value);
 }
 
+function onSelectInput(index: number, event: Event) {
+  setValue(index, (event.target as HTMLSelectElement).value);
+}
+
 function addRow() {
   model.value = { ...(model.value ?? {}), "": "" };
 }
@@ -199,8 +241,29 @@ function removeRow(index: number) {
         :aria-label="$t(`severity-${row.severity}`)"
         :title="row.diags.map((d) => $t(d.code, diagnosticFluentParams(d.code, d.params))).join('\n')"
       />
+      <select
+        v-if="cellKindFor(row.key, row.value) === 'select'"
+        data-testid="property-map-value"
+        :aria-labelledby="`${legendId} ${keyInputId(index)}`"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
+        @change="onSelectInput(index, $event)"
+      >
+        <option
+          v-if="row.value === ''"
+          value=""
+        />
+        <option
+          v-for="opt in domainFor(row.key)"
+          :key="opt"
+          :value="opt"
+        >
+          {{ opt }}
+        </option>
+      </select>
       <input
-        v-if="cellKindFor(row.key) === 'checkbox'"
+        v-else-if="cellKindFor(row.key, row.value) === 'checkbox'"
         data-testid="property-map-value"
         type="checkbox"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
@@ -210,7 +273,7 @@ function removeRow(index: number) {
         @change="onCheckboxInput(index, $event)"
       >
       <input
-        v-else-if="cellKindFor(row.key) === 'integer'"
+        v-else-if="cellKindFor(row.key, row.value) === 'integer'"
         data-testid="property-map-value"
         type="number"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
@@ -220,7 +283,7 @@ function removeRow(index: number) {
         @input="onNumberInput(index, $event)"
       >
       <input
-        v-else-if="cellKindFor(row.key) === 'float'"
+        v-else-if="cellKindFor(row.key, row.value) === 'float'"
         data-testid="property-map-value"
         type="number"
         step="any"
