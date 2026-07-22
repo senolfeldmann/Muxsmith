@@ -3965,6 +3965,34 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T19 (task-19-verdict.md harvest): the brief's permissive DATA_HELP_ID_RE over-captured ${id} and spec.helpId on the real tree (permanent RED); grammar-constraining restored the closed 22-id set with no under-capture (reviewer walked the set); named the dominant pattern with the D45 LABEL_KEY_RE precedent"}
+- id: proc-every-transcription-hop-checked
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A verbatim block traveling a documentation chain (design -> plan/brief -> landed artifact) is fidelity-checked at EVERY hop, not only the last: the implementer byte-compares its brief, so a truncation introduced one hop earlier is structurally invisible to it and lands as a faithful copy of a broken source. The plan reviewer's coverage dimension owns the design->plan hop for fenced verbatim blocks (byte-compare against the design, same as the implementer's brief->artifact duty)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T21 review F1 (task-21-verdict.md): the plan's Task-21 block truncated design amendment 6(b), dropping the clause the design directed to land 'unchanged'; the implementer landed its brief byte-perfect and could not catch it; found only by the task reviewer comparing against design section 6"}
+- id: proc-spec-sweep-covers-tables
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A spec self-contradiction sweep enumerates decision-log rows, summary tables and other tabular restatements, not only prose sections - table rows restate mechanics in compressed form and are the echo sites systematic sweeps skip. Trigger is readable: you are writing or reviewing an amendment's sweep list and the document contains a table that mentions the amended subject."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T21 (task-21-report.md + task-21-verdict.md): section-2 Decision log row 29 contradicted the landed amendment-1/2 fact and appeared in NEITHER the design's own sweep list NOR the brief; found by the implementer's execution-time sweep, aligned verbatim-safely, upheld by the reviewer (Q1a: required by the sweep duty, no routing owed)"}
 - id: test-expected-value-differs-from-default
   kind: pattern
   tier: 1
