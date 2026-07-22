@@ -783,18 +783,79 @@ the single i18n gate; the parser stays line-based per its own charter):
    i18n-12, the D39 auto-guard)**: for every message value and every
    attribute value, compare against en: (a) the set of placeable variable
    references (`$name` occurrences anywhere in the pattern, variants
-   included) must be equal; (b) the number of select expressions must be
-   equal; (c) each select expression's selector variable must match; (d)
+   included) must be equal; (b)-(d), the select-structure part (amended
+   at execution, round 7 - the amendment block below records the refuted
+   premise), a **pure en-vs-de parity check on the flat line-based
+   derivation**: de's per-select structure is compared against en's as
+   the reference, never against an absolute shape - (b) the number of
+   select expressions the flat model derives must equal en's; (c) each
+   derived select expression's selector variable must match en's; (d)
    variant-key sets must be equal **except** keys that are CLDR plural
    categories (`zero`, `one`, `two`, `few`, `many`, `other`) or numeric
-   literals (`[0]`, `[1]`, ...), for which the rule is instead: at least
-   one variant, exactly one `*`-default. Hard fail. The carve-out exists
-   because plural-category sets legitimately differ per locale (a future
-   `ru` needs `few`/`many`); without it the gate would forbid a correct
+   literals (`[0]`, `[1]`, ...), for which the rule is instead parity:
+   variant presence (empty vs non-empty) and `*`-default count must
+   match en's. Hard fail. No absolute per-select assertion remains in
+   this rule; **absolute Fluent validity (every select well-formed,
+   exactly one `*`-default) is delegated to
+   `assertAllCatalogsParseCleanly` (`e2e/i18n-en.ts:118-136`, run by
+   `e2e/catalogs.spec.ts:12`), which real-Fluent-parses every locale x
+   file across the app's two bundle groupings (controller-verified)** -
+   a select missing its default is a parse error caught there, not
+   here. The flat derivation is deterministic and applied identically
+   to both locales, so any drift that changes the flat token stream
+   still surfaces as an en-vs-de difference - within what the
+   line-based charter can carry; the accepted residual blind spot is a
+   flat-structure-invariant drift (e.g. a variant moved between sibling
+   selects with totals unchanged). The carve-out exists because
+   plural-category sets legitimately differ per locale (a future `ru`
+   needs `few`/`many`); without it the gate would forbid a correct
    catalog. Non-plural selectors (the D39 `$property` kind) get full key
    equality - exactly the drift class that motivated the entry.
 
 Rules 4-5 run wherever check 3 runs (all `.ftl` including `cli.ftl`).
+
+**Amendment (round 7, 2026-07-22): rule 5's select-structure part
+rewritten from absolute assertions to en-reference parity.** Authority:
+the Task-17 NEEDS_CONTEXT decision memo
+(`.superpowers/sdd/plan-7/task-17-report.md`) + controller ruling,
+Option B, counterexamples controller-verified on the tree. The refuted
+premise: "this tree's catalogs have no nested selects" (the
+`patternStructure` premise the brief carried), on which rule 5(d)'s
+absolute carve-out branch ("at least one variant, exactly one
+`*`-default") rested. Three counterexamples, all structurally parallel
+en/de and all falsely RED under the absolute branch: `validate-summary`
+(`cli.ftl`) and `batch-diagnostics-summary` (`gui-batch.ftl`) chain
+sibling selects whose reopeners (`}, { $warnings ->` / `}, { $infos ->`)
+sit at column 0, which the line parser's continuation guard drops - one
+derived select absorbs all variant lines and the default count trips
+the absolute branch; `suggestion-partition` (`diagnostics.ftl`) nests
+selects, whose outer variant keys the line model attributes to the
+just-opened inner select - the outer select derives no keys and the
+absolute branch trips again. The absolute form is therefore permanently
+RED on the correct tree within the line-based charter; the parity form
+goes green on it while every fire-tested drift class stays caught
+(placeable rename, selector-var rename, select add/drop, non-plural
+variant-key drift, default-count drift) - including on
+`suggestion-partition`'s non-plural `$kind` selector, the i18n-12/D39
+motivation, which the rejected exclude-complex-messages resolution
+(Option C's allowlist) would have exempted; a nesting-aware parser
+(Option A) was rejected as fighting the script's line-based charter.
+Purpose preserved: structural de drift is still caught; absolute
+validity is the parse guard's job (named inline above).
+Dependent-sentence sweep (paraphrase-drift guard) - changed: section
+9's plural-category carve-out bullet (now carries the
+parity-not-absolute semantic). Walked and verified-unaffected (already
+parity-worded or semantics-independent): correction #5's
+"selector-structure parity extension"; D61's "D55's parity rule 5
+guards the new selector cross-locale"; D63's gate-coverage bullet
+("D55 rule 4/5 attribute + placeable/selector parity, and the e2e
+all-locales real-parse guard" - it already names the delegation
+layer); D63's rejected-single-bundle note ("the class D55 rule 5's
+carve-out already anticipates" - the carve-out stands); section 6's
+spec amendments 1-6 (none touch rule 5); section 8 triggers 2 and 9
+(the carve-out reference and the parity wording both hold under the
+amended semantics); section 9's "the five D55 rules" count (the rule is
+amended, not added or removed).
 
 **Rejected: keep suffixed siblings, skip the reorg.** Steelman: the
 migration touches 28 ids, 2 locales, the 20 `:title` sites plus the 6
@@ -1823,7 +1884,11 @@ keyboard (`proc-latitude-clause-boundary`).
   the `#[cfg(test)]` cutoff and the check-2 residual-comment update), and
   the four D62 checks are the exhaustive extension set.
 - The plural-category carve-out list is exactly
-  {zero, one, two, few, many, other} + numeric literals (D55 rule 5).
+  {zero, one, two, few, many, other} + numeric literals; within the
+  carve-out the check is parity with en (variant presence, `*`-default
+  count), never an absolute per-select assertion - absolute validity
+  belongs to `assertAllCatalogsParseCleanly` (D55 rule 5, round-7
+  amendment).
 - The locale switch is `applyLocale` in `src/i18n/fluent.ts`: fresh
   array assignment, `currentLocale` ref, `document.documentElement.lang`;
   no reload, no remount (D56).
