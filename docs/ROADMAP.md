@@ -230,6 +230,12 @@ action:
 - A labelKey is renamed -> D51's coupling renames the help-id and both
   topic files; D62 is the tracker (red until they agree). (Plan-7 design
   trigger 3.)
+- The plan-7 SDD salvage runs (plan close) -> dispatch a re-pointing of
+  the plan-7 design doc's three `.superpowers/sdd` citations (round-8
+  review adjudication: correct at commit time, must move WITH the
+  salvage in the same change; the amendment blocks quote their evidence
+  inline, so the citations are corroboration, not sole carrier).
+  (Round-8 fix delta, 2026-07-22.)
 - fluent-vue or @fluent/bundle is bumped -> re-verify the `bundles`
   setter contract and the `$ta` global (D56/D55 rest on installed
   3.8.2's verified behavior). (Plan-7 design trigger 4.)
