@@ -17,7 +17,8 @@ content bilingual en+de.
 (2026-07-21)**: E1 CLI rendering (first ruled English-only, **REVERSED
 same day to multilingual** - `cli-multilang-rendering`, folded in as
 D63/D64), E2 view-topic set (the three spec-8.2 views), E3 help-mode
-activation blocking (global suppression with allowlist). Section 7
+activation blocking (suppression with allowlist; pointer-scoped
+2026-07-22 by S21, `help-mode-suppression-pointer-scope`). Section 7
 records each ruling - both E1 events - with its analysis; the rulings
 are folded into the ADRs and amendments below. **Every fork in this
 document is closed.** No
@@ -352,8 +353,10 @@ commonmark.js: 48.3 kB, npm publish 22 months old, types lag the API.
   `help/en/<id>.md` (the same per-item fallback posture the bundle chain
   has), and renders through D50. If even the en topic is missing (only
   reachable in a build that dodged CI) it returns the raw help-id as
-  visible text - the `Renderer::msg` raw-id fallback posture
-  (`muxsmith-cli/src/i18n.rs:41-46`), never a silent blank.
+  visible text - the `Renderer::msg` raw-id fallback posture (contract
+  rustdoc at `Renderer::msg`, `muxsmith-cli/src/i18n.rs:73-78`; fallback
+  body in `Renderer::render`, `:121-123` - re-cited at plan close after
+  D63 rewrote the file, whole-branch M4), never a silent blank.
 - **Drift/parity guarantees**: D62 gives the topic tree the same CI
   guarantees the catalogs enjoy (existence per locale, no orphans, locale
   sets in lockstep). Nothing at runtime enforces parity; CI does.
@@ -421,7 +424,9 @@ scan reads.
 - One capture-phase `mouseover` + one `focusin` listener on `<main>`:
   `event.target.closest("[data-help-id]")` sets `hoverId` (null when the
   closest is null). Hover and keyboard focus are equivalent triggers
-  (a11y).
+  (a11y): `focusin` drives the same hover topic state. Recorded into
+  spec 8.3 at plan close - the whole-branch review (M6) found the
+  shipped `focusin` behavior design-mandated here but spec-unrecorded.
 - One capture-phase `click` listener on `<main>`: on an annotated element,
   `preventDefault()` + `stopPropagation()` and set `pinnedId` (replacing
   any prior pin); on an unannotated target, no topic change - the sidebar
@@ -431,14 +436,23 @@ scan reads.
   native modal's own cancel semantics win; the dialog sits in the top
   layer above help mode anyway). `Enter`/`Space` on a focused annotated
   element pins it, activation suppressed, same as click.
-- **All other activation inside `<main>` is suppressed while help mode is
-  active** (the same capture click listener calls `preventDefault` +
-  `stopPropagation` for unannotated targets too). The exhaustive allowlist
+- **All pointer-channel activation inside `<main>` is suppressed while
+  help mode is active** - click activation (the same capture click
+  listener calls `preventDefault` + `stopPropagation` for unannotated
+  targets too) and drag-reorder (a capture-phase `dragstart` listener in
+  the same set - the whole-branch I1 fix); keyboard and text-entry
+  channels (typing into fields, select changes via keyboard) stay
+  deliberately live, the accident-reachable pointer channels being the
+  closed class (`help-mode-suppression-pointer-scope`,
+  product-boundaries.yaml - owner ruling 2026-07-22, S21, Option 2).
+  The Enter/Space pin on annotated elements above is unchanged. The
+  exhaustive allowlist
   of controls that stay live: the help toggle button, the three nav tab
   buttons (`nav-batch`, `nav-jobs`, `nav-editor`), the settings button,
   and the sidebar's own interior (scroll; it contains no controls).
-  **RULED (owner, 2026-07-21, E3)**: this shape is final; spec amendment
-  6(c) folds it into spec 8.3.
+  **RULED (owner, 2026-07-21, E3; pointer scope ruled 2026-07-22, S21,
+  Option 2)**: this shape is final; spec amendment
+  6(c) folds it into spec 8.3, pointer-scoped in the plan-close batch.
 
 **Topic resolution**, in priority order: `pinnedId` else `hoverId` else
 the active view's topic (`view-batch`/`view-jobs`/`view-editor` keyed off
@@ -620,7 +634,7 @@ these are also the sidebar's default topics (D52):
 | `Profile.meta`, `.input`, `.output`, `.tracks`, `.attachments`, `.tags` (6 section wrappers) | structural containers; `view-editor` covers layout, their child controls carry the content |
 | `Meta.name`, `Meta.description` | plain prose fields; tooltip depth suffices |
 | `Input.recursive` | one checkbox, self-explanatory with its tooltip |
-| `OutputCfg.directory` | tooltip covers it (empty = profile's own directory) |
+| `OutputCfg.directory` | tooltip covers it (empty = output falls back to the run's source directory after the run-level override - the `output_dir` chain, `planner.rs:282-286`; parenthetical corrected at plan close per the T3 review) |
 | `ExternalBlock.external` | wrapper section; the donor concept lives in #6, the fields in #11/#12 |
 | `Locator.path`, `.recursive`, `.extensions`, `.case_sensitive` | self-explanatory with tooltips; no cross-setting interaction beyond what #6 explains |
 | `AttachmentRule.select`, `.drop`, `.add` | the triple's interplay is exactly #16's topic; three more topics would restate it |
@@ -1770,11 +1784,15 @@ plus the E3 ruling; no variant wording remains.
    the Esc rule ("clicking again (or Esc) exits") gains the qualifier
    "except while the settings dialog is open, whose native cancel
    consumes Esc". **(c) the ruled activation semantic** (owner
-   2026-07-21, E3): "while help mode is active, control activation
-   inside the main content area is suppressed; the help toggle, the
-   three view tabs, the settings button and the sidebar stay live;
-   clicking an annotated element pins its topic instead of activating
-   it."
+   2026-07-21, E3; pointer-scoped 2026-07-22 by S21 Option 2,
+   `help-mode-suppression-pointer-scope`, product-boundaries.yaml):
+   "while help mode is active, pointer-channel activation inside the
+   main content area is suppressed - click activation and drag-reorder,
+   both at capture phase; keyboard and text-entry channels (typing into
+   fields, select changes via keyboard) stay deliberately live; the
+   help toggle, the three view tabs, the settings button and the
+   sidebar stay live; clicking an annotated element pins its topic
+   instead of activating it."
 
 **Self-contradiction sweep, run against the amendments:** spec 8.3's
 "help content is one markdown file per help-id per locale
@@ -1856,6 +1874,15 @@ D52 with the ruling; spec amendment 6(c) carries the ruled semantic into
 spec 8.3. Rationale as recommended: the asymmetry "annotated controls
 are inert, unannotated ones fire" is unlearnable precisely because the
 annotated set is curated, and the worst-case misfire is destructive.
+**Scope refined (owner ruling 2026-07-22, S21, Option 2, out of the
+whole-branch review's I1)**: the suppression is pointer-channel - click
+activation and drag-reorder (capture-phase); keyboard and text-entry
+channels stay deliberately live
+(`help-mode-suppression-pointer-scope`, product-boundaries.yaml). The
+E3 letter ("no click can start a run, apply a suggestion, or save a
+file") stands; drag-reorder joined the suppressed set (the I1 fix),
+and the keyboard/text residual is the ruled restraint, not an
+oversight.
 
 **Finding-5 fork (presentation tokens). RULED: carve-out ratified** as
 `latitude-carveout-presentation-tokens`
@@ -1993,3 +2020,59 @@ keyboard (`proc-latitude-clause-boundary`).
 - All wording (tooltips, topics, the rewritten hint, new keys) goes
   through the owner's plan-close rendered-surface pass; the implementer
   authors draft content but final strings are the owner's gate.
+
+---
+
+**Amendment (plan-close one-liner batch, 2026-07-22).** Four ruled
+items, two files (this design + the v1 spec's 8.3); authorities per
+item. Every span below was read off the current tree at write time,
+symbol names beside spans.
+
+1. **M4 (whole-branch review)**: D51's raw-id-fallback citation
+   re-pointed after D63 rewrote `muxsmith-cli/src/i18n.rs` - contract
+   rustdoc at `Renderer::msg` (`:73-78`), fallback body in
+   `Renderer::render` (`:121-123`); the stale `:41-46` removed.
+2. **M6 (whole-branch review)**: focus-equals-hover recorded in spec
+   8.3 ("keyboard focus is equivalent to hover for topic selection",
+   marked as recorded from the shipped behavior). D52 already mandated
+   the equivalence; its hover-machinery sentence now carries the
+   spec-recording note. Provenance: the review found the behavior
+   design-mandated but spec-unrecorded - the spec sentence is the new
+   record, not a behavior change.
+3. **T3 review finding 1/Q3 (queued one-liner)**: D54's
+   `OutputCfg.directory` exclusion parenthetical corrected from
+   "empty = profile's own directory" to the source-directory fallback
+   after the run-level override - the `output_dir` chain,
+   `planner.rs:282-286` (fallback `unwrap_or_else(|| run.source
+   .clone())` at `:286`), behavior T3-review-verified.
+4. **S21 owner ruling, Option 2 (`help-mode-suppression-pointer-scope`,
+   product-boundaries.yaml; out of whole-branch I1)**: the help-mode
+   suppression wording pointer-scoped in both documents - spec 8.3's
+   suppression bullet and this design's D52 suppression bullet,
+   section 6 amendment 6(c), section 7's E3 record (scope-refinement
+   paragraph appended), and the document header's E3 line. All state:
+   click activation and drag-reorder suppressed (capture-phase, the
+   dragstart half being the I1 fix); keyboard and text-entry channels
+   deliberately live.
+
+Dependent-sentence sweep (both documents, tables included) - changed
+beyond the four target sentences: the design header's E3 parenthetical
+(was "global suppression with allowlist"); D52's "All other activation"
+bullet (now the pointer-channel enumeration naming the `dragstart`
+listener, with the Enter/Space pin noted unchanged); amendment 6(c)'s
+quoted semantic (now matches the pointer-scoped spec sentence). Walked
+and verified-unaffected: section 7 E3's opening "RULED: global
+suppression with the enumerated allowlist" (historical record of the
+2026-07-21 ruling, E1-style; the appended refinement paragraph carries
+the current scope); the D52 heading's "suppressed activation" (generic,
+scope-neutral); D52's rejected annotated-only-interception block (the
+click-asymmetry rationale is scope-independent); D52's keydown bullet
+(Enter/Space pin on annotated elements - inside the ruled shape);
+section 9's "hover and focusin are equivalent (D52)" and D52's
+equivalence sentence (consistent with the new spec recording); section
+3's mkvtoolnix help-mode parity row (no suppression claim); the spec's
+line-30 goals row ("hover-to-explain help mode", no channel claim);
+D54's other exclusion rows and the 18+24=42 recount (one cell's
+parenthetical changed, no count touched); D51's surrounding fallback
+prose (posture unchanged, only the citation); trigger 8's "tooltip
+suppression" (unrelated sense of the word).

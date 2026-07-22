@@ -387,12 +387,17 @@ On top of that, an integrated **help mode**:
 
 - A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc, except while the settings dialog is open, whose native cancel consumes Esc) exits.
 - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
-- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings). Hovering an element without a help-id sets no hover topic: the sidebar shows the pinned topic if one is pinned, else the current view's topic. Clicking an annotated element pins without activating it.
+- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings). Hovering an element without a help-id sets no hover topic: the sidebar shows the pinned topic if one is pinned, else the current view's topic. Keyboard focus is equivalent to hover for topic selection: `focusin` drives the same hover topic state (recorded at plan close from the shipped, design-mandated behavior - whole-branch review M6, 2026-07-22). Clicking an annotated element pins without activating it.
 - Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked, the active view is switched, in which case the hover state resets too and the sidebar shows the new view's topic, or help mode exits.
-- While help mode is active, control activation inside the main content
-  area is suppressed; the help toggle, the three view tabs, the settings
-  button and the sidebar stay live; clicking an annotated element pins its
-  topic instead of activating it (owner ruling 2026-07-21, E3).
+- While help mode is active, pointer-channel activation inside the main
+  content area is suppressed - click activation and drag-reorder, both
+  at capture phase; keyboard and text-entry channels (typing into
+  fields, select changes via keyboard) stay deliberately live
+  (`help-mode-suppression-pointer-scope`, product-boundaries.yaml -
+  owner ruling 2026-07-22, S21, Option 2); the help toggle, the three
+  view tabs, the settings button and the sidebar stay live; clicking an
+  annotated element pins its topic instead of activating it (owner
+  ruling 2026-07-21, E3).
 
 Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
 
