@@ -47,6 +47,7 @@ batch-dry-run = Dry run
 batch-files-heading = Files
 batch-resolution-rule-header = Rule
 batch-resolution-track-header = Resolved track
+batch-resolved-track = { $id } ({ $kind })
 batch-file-caption = { $source } (identifier: { $identifier }) -> { $output }
 batch-file-no-plan = { $source } (identifier: { $identifier }): no plan produced; see diagnostics below.
 

@@ -43,6 +43,7 @@ batch-dry-run = Probelauf
 batch-files-heading = Dateien
 batch-resolution-rule-header = Regel
 batch-resolution-track-header = Aufgelöste Spur
+batch-resolved-track = { $id } ({ $kind })
 batch-file-caption = { $source } (Kennung: { $identifier }) -> { $output }
 batch-file-no-plan = { $source } (Kennung: { $identifier }): kein Plan erzeugt; siehe Meldungen unten.
 
