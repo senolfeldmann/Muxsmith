@@ -588,6 +588,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ParamValue;
     use std::process::Command;
 
     /// Mirrors `muxsmith-core`'s identical `fake_mkvmerge` test helper
@@ -924,8 +925,8 @@ mod tests {
         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v50.0.0 ('Old') 64-bit");
         let err = detect_mkvmerge_body(Some(&override_path)).unwrap_err();
         assert_eq!(err.code, "mkvmerge-too-old");
-        assert_eq!(err.params["minimum"], "86.0");
-        assert!(err.params["found"].contains("v50.0.0"));
+        assert_eq!(err.params["minimum"], ParamValue::Str("86.0".into()));
+        assert!(matches!(&err.params["found"], ParamValue::Str(s) if s.contains("v50.0.0")));
     }
 
     #[test]

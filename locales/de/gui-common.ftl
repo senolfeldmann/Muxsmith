@@ -41,7 +41,10 @@ internal-task-failed = Ein interner Fehler ist aufgetreten: { $detail }
 profile-save-io-failed = Das Profil konnte nicht geschrieben werden: { $detail }
 profile-save-failed = Das Profil konnte für das Speichern nicht serialisiert werden: { $detail }
 apply-unparsable-config-path = Der Vorschlag konnte nicht angewendet werden: "{ $path }" benennt keine Regel.
-apply-rule-index-out-of-range = Der Vorschlag konnte nicht angewendet werden: keine Regel an Index { $index } (Regelanzahl: { $rules }).
+apply-rule-index-out-of-range = Der Vorschlag konnte nicht angewendet werden: keine Regel an Index { $index } (Regelanzahl: { $rules ->
+        [one] 1 Regel
+       *[other] { $rules } Regeln
+    }).
 apply-edit-changed-nothing = Der Vorschlag hat nichts geändert: Regel { $index } schränkt "{ $property }" bereits ein.
 
 firstrun-detecting = mkvmerge wird gesucht...

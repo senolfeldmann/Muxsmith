@@ -25,13 +25,13 @@ const HARNESS_PATH = resolve(import.meta.dirname, ".generated/tauri-mock-harness
 
 export type MockResult =
   | { kind: "resolve"; value: unknown }
-  | { kind: "reject"; error: { code: string; params?: Record<string, string> } };
+  | { kind: "reject"; error: { code: string; params?: Record<string, string | number> } };
 
 export function resolveWith(value: unknown): MockResult {
   return { kind: "resolve", value };
 }
 
-export function rejectWith(code: string, params: Record<string, string> = {}): MockResult {
+export function rejectWith(code: string, params: Record<string, string | number> = {}): MockResult {
   return { kind: "reject", error: { code, params } };
 }
 

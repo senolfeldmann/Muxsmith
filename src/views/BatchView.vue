@@ -45,7 +45,7 @@ const report = ref<ReportDocument | null>(null);
 const validating = ref(false);
 const dryRunning = ref(false);
 const ipcErrorCode = ref<string | null>(null);
-const ipcErrorParams = ref<Record<string, string>>({});
+const ipcErrorParams = ref<Record<string, string | number>>({});
 // Task 14 (D43, D49, apply-wiring routing): which `report.suggestions`
 // index is mid-round-trip, or `null` when none is -- drives the clicked
 // card's own `aria-busy` (not a single shared boolean) and, folded into

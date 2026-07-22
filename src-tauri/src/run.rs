@@ -932,7 +932,7 @@ fn get_job_log_in(
     let not_found = || {
         IpcError::new("job-log-not-found")
             .with("run_id", run_id)
-            .with("index", index.to_string())
+            .with("index", index)
     };
     let text = fs::read_to_string(&path).map_err(|_| not_found())?;
     serde_json::from_str(&text).map_err(|_| not_found())

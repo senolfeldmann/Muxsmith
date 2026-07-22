@@ -63,7 +63,10 @@ internal-task-failed = An internal error occurred: { $detail }
 profile-save-io-failed = The profile could not be written: { $detail }
 profile-save-failed = The profile could not be serialized for saving: { $detail }
 apply-unparsable-config-path = The suggestion could not be applied: "{ $path }" does not name a rule.
-apply-rule-index-out-of-range = The suggestion could not be applied: no rule at index { $index } (rule count: { $rules }).
+apply-rule-index-out-of-range = The suggestion could not be applied: no rule at index { $index } (rule count: { $rules ->
+        [one] 1 rule
+       *[other] { $rules } rules
+    }).
 apply-edit-changed-nothing = The suggestion changed nothing: rule { $index } already constrains "{ $property }".
 
 ## T9: first-run mkvmerge detection (D28).
