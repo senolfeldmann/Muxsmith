@@ -597,6 +597,13 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   visual refinement beyond the existing design language is deferred
   wholesale to 1.x. Companion of the presentation-token carve-out
   (process-conventions latitude-carveout-presentation-tokens).
+- **h1-scheme gate (machine-enforce the ratified topic-title form)**: the
+  "Label (section)" scheme is entirely review-enforced today - check:i18n
+  /D62 give zero signal on h1 text. A cheap check (h1 label-half ==
+  catalog label for the labelled topics, exempt classes as a small
+  allowlist) would make it structural. h1-normalization review harvest
+  (S21, 2026-07-22); pairs with the owner's pending section-derivation
+  ruling for the 8 deferred topics.
 - **Block-specific tooltip in KeywordOrBlockWidget (budget +2 keys)**:
   the inner block section currently inherits the widget's generic
   tooltip (innermost-title-wins, benign); a dedicated block labelKey
