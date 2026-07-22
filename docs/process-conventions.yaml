@@ -478,3 +478,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "S20 owner ruling on plan-7 design-review finding 5 + round-1 harvest presentation-token question; D52's CSS clause legalized retroactively, PENDING marker removed in the fix round"}
+- id: proc-context-budget-session-cut
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "During Muxsmith development work the controller checks its own context usage AFTER EVERY TASK COMPLETION (implementer report processed and review verdict routed). Above 700k tokens: NO new subagent dispatches - the in-flight task's loop is brought to its recorded state, then the session closes cleanly in this order: (1) the software-dev-process session-close gate incl. the journal entry, (2) write-handoff, (3) close-session - and the controller signals the owner to start a fresh session. A fix round that would need a new dispatch waits for the next session (the verdict file carries it). Manual discipline for now; the owner plans to automate the check later."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "Şenol directive (S20, at 747k controller context mid-T14-review): long sessions previously ended without a clean cut; rule persisted and applied immediately - T14's running review completes, then the close sequence, no further dispatches"}
