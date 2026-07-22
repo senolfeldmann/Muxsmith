@@ -1773,3 +1773,85 @@ proc-standing-guards-swept-on-new-shapes, content-claims-anchor-bound
 from 6 to 9 occurrences (two non-compiling plan literals adapted-and-
 surfaced, one Modify-vs-Create premise). Reviewer harvests routed at
 every verdict arrival; ledger-lint green at 426 entries throughout.
+
+## 2026-07-22 | Plan 7 complete and closed | session 21 (Peter, Fable 5)
+
+1. Scope: plan-7 second half and close - T14 fix round through T21, wave-2/3
+   merges, whole-branch review + fix wave, owner rulings, close mechanics.
+   Commits 0ce2728..9d01862 on master. Waves 1 and the first half of wave 2
+   were session 20 (previous entry).
+2. Decisions and why:
+   - D55 rule 5 select-structure re-ruled to en-vs-de parity (controller
+     ruling, four-eyes amendment round 7): execution refuted the design
+     premise "no nested selects in this tree" with three live counterexamples;
+     the absolute per-select assertions were permanently red on the correct
+     tree; absolute validity delegated to the existing all-locales parse
+     guard. Internal gate semantics, premise controller-verified on the tree.
+   - D62 widened four -> six checks (round 8): two cross-task constraints from
+     the T9/T10 content reviews postdated design approval; the ratified
+     markdown-subset rules gained gate teeth. The check-5/6 code-span
+     asymmetry recorded deliberate with its accepted consequence.
+   - Owner rulings (S21): context-budget session cut raised 700k -> 850k;
+     help-mode suppression scoped to POINTER channels, keyboard/text-entry
+     deliberately live (product-boundaries restraint, Option 2 of the I1
+     escalation); h1 scheme "Label (section)" ratified; content-criteria veto
+     window closed; track-rule add/remove ruled PRE-1.0 (new Plan 7.5
+     anchor); block-tooltip and h1-gate as v1.x lines.
+   - Citation two-class precedent (close batch review): live descriptive
+     citations get re-pointed on drift; evidentiary records get historical
+     marking - re-pointing fork evidence would falsify the record.
+3. What the process caught:
+   - T14 task review: a reachable double marker (detail panel re-anchoring
+     tracks[i]) that the fixture could not reach; fixed + fire-verified.
+   - T17 implementer refuted the no-nested-selects design premise via the
+     green-reachability duty BEFORE shipping permanently-red checks;
+     NEEDS_CONTEXT with a decision memo - the fork protocol as designed.
+   - T19: the brief's permissive regex over-captured dynamic binds (permanent
+     red on legitimate content); grammar-constrained, no under-capture.
+   - T21 review: the PLAN had truncated design amendment 6(b) - the
+     design->plan verbatim hop was unchecked; the implementer was byte-perfect
+     against a broken source. Its own sweep also found a decision-log echo
+     (row 29) that both the design sweep and the brief missed.
+   - Whole-branch review: I1 - suppression covered clicks only; drag/text/
+     keyboard channels stayed live (silent profile mutation possible), hidden
+     from three green task reviews because "activation" is not a DOM event
+     class. Plus six minors incl. two stale-comment classes.
+   - Rounds 7/8 delta reviews: stale line citations three separate times
+     (a copied span +7 drifted; the initiative re-staling its own citations);
+     drove the citation-drift convention from first entry to tier-2 promotion
+     to the two-class precedent within one day.
+   - ledger-lint blocked two controller bookkeeping errors (count mismatch,
+     entry spliced into a foreign occurrence list); a duplicate YAML key
+     passed silently - known lint gap.
+   - Reviewer catches of controller compression: "pipe-pair" attributed to T9
+     (which fire-tested the leading-pipe form), and a superseded ruling cited
+     as binding in an adjudication prompt.
+4. Mechanics: 8 tasks this session (T14 fix, T15-T21) + whole-branch + fix
+   wave + h1 normalization; 22 fresh dispatches + 15 resumptions = 37 agent
+   runs. Models per proc-03: implementers Opus 4.8 (T21 transcription Sonnet
+   5), every task reviewer Opus 4.8, design/amendment rounds + whole-branch
+   Fable 5, controller Fable 5; effort xhigh throughout. Nine-part gate run
+   four times on merged states, green first try each. Three stream merges,
+   zero textual conflicts. Fix rounds: T14, T21, close batch x2, whole-branch,
+   h1 cross-refs - all resolved in one round each.
+5. Friction: the previous session died at an account session limit mid-review
+   (the context-budget rule exists because of it; this session ran to plan
+   close within the raised bound). A harness security monitor false-flagged
+   an authorized agent commit (the repo's standing grant is invisible to it).
+   The controller's single-line grep undercounted a wrapped phrase and nearly
+   contradicted a correct author; a multiline recount resolved it in the
+   author's favor.
+6. Moments: the T17 fork end-to-end (implementer stops with a memo, controller
+   verifies three catalog structures on the tree, rules, four-eyes amendment,
+   resumed implementer completes) - the full protocol in one afternoon. The
+   whole-branch reviewer proving I1 by code topology alone. The T21 verdict
+   "execution exemplary, both defects one level up".
+7. Deltas: two mid-run design amendments from execution refuting design
+   premises - the four-eyes design survived contact with the tree only via
+   the fork protocol, twice. The verbatim-block chain design->plan->artifact
+   had an unchecked hop; now assigned to the plan reviewer's coverage
+   dimension (ledger: proc-every-transcription-hop-checked).
+8. Open threads: owner section-derivation ruling for the 8 deferred h1 topics
+   (incl. the de "Verweis" short form); rendered-surface residue (tooltip
+   fallback wording, one de topic-reference slip); Plan 7.5 vs Plan 8
+   ordering at the next kickoff; h1-gate and block-tooltip v1.x candidates.

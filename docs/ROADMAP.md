@@ -252,7 +252,8 @@ action:
   review adjudication: correct at commit time, must move WITH the
   salvage in the same change; the amendment blocks quote their evidence
   inline, so the citations are corroboration, not sole carrier).
-  (Round-8 fix delta, 2026-07-22.)
+  (Round-8 fix delta, 2026-07-22. CONSUMED same day: salvage 4cc128a,
+  re-pointing 9d01862, all three sites, same push.)
 - fluent-vue or @fluent/bundle is bumped -> re-verify the `bundles`
   setter contract and the `$ta` global (D56/D55 rest on installed
   3.8.2's verified behavior). (Plan-7 design trigger 4.)

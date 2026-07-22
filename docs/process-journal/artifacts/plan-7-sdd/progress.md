@@ -54,6 +54,18 @@ merge into master = next step. Then wave 4 (T21 on master), whole-branch.
 |---|---|---|---|
 | T21 v1-spec amendments | DONE_WITH_CONCERNS 4ac8d8b (row-29 echo found+aligned beyond brief) | NEEDS FIXES (F1 brief truncated design 6(b); Low formatting) -> fix cc0e6d7 -> delta APPROVED | execution graded exemplary; defects were plan-transcription-level; harvest mined (2 new entries) |
 
+## Close (S21, 2026-07-22)
+
+Owner rulings executed (Option 2 pointer-scope restraint; h1 "Label
+(section)" ratified - 5 normalized 49235c1 + 6 cross-refs a5015b9, both
+APPROVED, 8 deferred pending section-derivation ruling; content criteria
+window closed; pool sweep settled i18n-12 + gui-26; Plan 7.5 anchored
+pre-1.0; block-tooltip + h1-gate v1.x lines). Close one-liner batch
+7897bc4 + citation inventory 52ade44 (delta APPROVED with the two-class
+precedent). Final nine-part gate green; salvage 4cc128a (70 files in the
+commit); scratch citations re-pointed 9d01862; worktrees pruned. PLAN 7
+CLOSED.
+
 ALL 21 TASKS COMPLETE at cc0e6d7. Whole-branch review (top model):
 NOT READY (I1 + 6 minors) -> single fix wave 13e138c -> delta verdict
 READY-subject-to (1) owner ruling on I1's keyboard residual, (2) owner
