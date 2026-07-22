@@ -40,8 +40,41 @@ pub struct IpcError {
     /// selected by `code`; e.g. `detail` carries a passed-through
     /// third-party error string (the one prose exception, spec 8.4),
     /// `found`/`minimum` carry a too-old mkvmerge version pair, `run_id`/
-    /// `index` identify a run-lifecycle target.
-    pub params: HashMap<String, String>,
+    /// `index` identify a run-lifecycle target. Each value is a
+    /// [`ParamValue`]: numeric-semantic params (`index`, `rules`) serialize
+    /// as JSON numbers so Fluent can apply CLDR plural rules; everything
+    /// else stays a string (D61, i18n-05).
+    pub params: HashMap<String, ParamValue>,
+}
+
+/// One `IpcError` param value: a number for numeric-semantic params
+/// (`index`, `rules`), a string for everything else. `#[serde(untagged)]`
+/// keeps string params serializing exactly as before while numeric params
+/// become JSON numbers, so Fluent can apply CLDR plural rules (D61,
+/// i18n-05).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ParamValue {
+    /// A numeric param, rendered by Fluent as a number.
+    Num(u64),
+    /// A string param (the default; includes third-party passthrough text).
+    Str(String),
+}
+
+impl From<&str> for ParamValue {
+    fn from(v: &str) -> ParamValue {
+        ParamValue::Str(v.to_owned())
+    }
+}
+impl From<String> for ParamValue {
+    fn from(v: String) -> ParamValue {
+        ParamValue::Str(v)
+    }
+}
+impl From<usize> for ParamValue {
+    fn from(v: usize) -> ParamValue {
+        ParamValue::Num(v as u64)
+    }
 }
 
 impl IpcError {
@@ -59,7 +92,7 @@ impl IpcError {
 
     /// Attaches one param, builder-style, overwriting any prior value for
     /// `key`. Mirrors [`muxsmith_core::report::Diagnostic::with`].
-    pub fn with(mut self, key: impl Into<String>, value: impl Into<String>) -> IpcError {
+    pub fn with(mut self, key: impl Into<String>, value: impl Into<ParamValue>) -> IpcError {
         self.params.insert(key.into(), value.into());
         self
     }
@@ -166,12 +199,12 @@ impl From<ApplyError> for IpcError {
             }
             ApplyError::RuleIndexOutOfRange { index, rules } => {
                 IpcError::new("apply-rule-index-out-of-range")
-                    .with("index", index.to_string())
-                    .with("rules", rules.to_string())
+                    .with("index", index)
+                    .with("rules", rules)
             }
             ApplyError::EditChangedNothing { index, property } => {
                 IpcError::new("apply-edit-changed-nothing")
-                    .with("index", index.to_string())
+                    .with("index", index)
                     .with("property", property)
             }
         }
@@ -197,8 +230,11 @@ mod tests {
         }
         .into();
         assert_eq!(err.code, "mkvmerge-too-old");
-        assert_eq!(err.params["found"], "mkvmerge v50.0.0 ('Old') 64-bit");
-        assert_eq!(err.params["minimum"], "86.0");
+        assert_eq!(
+            err.params["found"],
+            ParamValue::Str("mkvmerge v50.0.0 ('Old') 64-bit".into())
+        );
+        assert_eq!(err.params["minimum"], ParamValue::Str("86.0".into()));
     }
 
     #[test]
@@ -220,8 +256,11 @@ mod tests {
         }
         .into();
         assert_eq!(err.code, "mkvmerge-query-failed");
-        assert_eq!(err.params["detail"], "unsupported option");
-        assert_eq!(err.params["code"], "2");
+        assert_eq!(
+            err.params["detail"],
+            ParamValue::Str("unsupported option".into())
+        );
+        assert_eq!(err.params["code"], ParamValue::Str("2".into()));
     }
 
     #[test]
@@ -232,14 +271,17 @@ mod tests {
         }
         .into();
         assert_eq!(err.code, "mkvmerge-query-failed");
-        assert_eq!(err.params["code"], "signal");
+        assert_eq!(err.params["code"], ParamValue::Str("signal".into()));
     }
 
     #[test]
     fn parse_failure_maps_to_query_failed_with_detail() {
         let err: IpcError = RuntimeError::Parse("no version token in \"gibberish\"".into()).into();
         assert_eq!(err.code, "mkvmerge-query-failed");
-        assert_eq!(err.params["detail"], "no version token in \"gibberish\"");
+        assert_eq!(
+            err.params["detail"],
+            ParamValue::Str("no version token in \"gibberish\"".into())
+        );
     }
 
     #[test]
@@ -252,7 +294,10 @@ mod tests {
     fn identify_json_failure_carries_detail() {
         let err: IpcError = IdentifyError::Json("EOF while parsing".into()).into();
         assert_eq!(err.code, "identify-failed");
-        assert_eq!(err.params["detail"], "EOF while parsing");
+        assert_eq!(
+            err.params["detail"],
+            ParamValue::Str("EOF while parsing".into())
+        );
     }
 
     #[test]
@@ -260,7 +305,10 @@ mod tests {
         let io: IpcError = SettingsError::Io("permission denied".into()).into();
         let parse: IpcError = SettingsError::Parse("unexpected EOF".into()).into();
         assert_eq!(io.code, "settings-io-failed");
-        assert_eq!(io.params["detail"], "permission denied");
+        assert_eq!(
+            io.params["detail"],
+            ParamValue::Str("permission denied".into())
+        );
         assert_eq!(parse.code, "settings-parse-failed");
         assert_ne!(io.code, parse.code);
     }
@@ -270,7 +318,10 @@ mod tests {
         let io: IpcError = SaveError::Io("permission denied".into()).into();
         let ser: IpcError = SaveError::Serialize("bad float".into()).into();
         assert_eq!(io.code, "profile-save-io-failed");
-        assert_eq!(io.params["detail"], "permission denied");
+        assert_eq!(
+            io.params["detail"],
+            ParamValue::Str("permission denied".into())
+        );
         assert_eq!(ser.code, "profile-save-failed");
         assert_ne!(io.code, ser.code);
     }
@@ -287,13 +338,19 @@ mod tests {
         .into();
 
         assert_eq!(unparsable.code, "apply-unparsable-config-path");
-        assert_eq!(unparsable.params["path"], "not-a-rule-path");
+        assert_eq!(
+            unparsable.params["path"],
+            ParamValue::Str("not-a-rule-path".into())
+        );
         assert_eq!(oob.code, "apply-rule-index-out-of-range");
-        assert_eq!(oob.params["index"], "7");
-        assert_eq!(oob.params["rules"], "1");
+        assert_eq!(oob.params["index"], ParamValue::Num(7));
+        assert_eq!(oob.params["rules"], ParamValue::Num(1));
         assert_eq!(noop.code, "apply-edit-changed-nothing");
-        assert_eq!(noop.params["index"], "0");
-        assert_eq!(noop.params["property"], "forced_track");
+        assert_eq!(noop.params["index"], ParamValue::Num(0));
+        assert_eq!(
+            noop.params["property"],
+            ParamValue::Str("forced_track".into())
+        );
 
         assert_ne!(unparsable.code, oob.code);
         assert_ne!(oob.code, noop.code);
@@ -303,7 +360,7 @@ mod tests {
     #[test]
     fn with_overwrites_a_prior_value_for_the_same_key() {
         let err = IpcError::new("x").with("k", "a").with("k", "b");
-        assert_eq!(err.params["k"], "b");
+        assert_eq!(err.params["k"], ParamValue::Str("b".into()));
     }
 
     #[test]
@@ -319,8 +376,11 @@ mod tests {
             .with("run_id", "20260710-153612Z")
             .with("index", "0")
             .with("index", "1");
-        assert_eq!(e.params["run_id"], "20260710-153612Z");
-        assert_eq!(e.params["index"], "1");
+        assert_eq!(
+            e.params["run_id"],
+            ParamValue::Str("20260710-153612Z".into())
+        );
+        assert_eq!(e.params["index"], ParamValue::Str("1".into()));
     }
 
     #[test]
@@ -329,5 +389,16 @@ mod tests {
         let json = serde_json::to_value(&e).unwrap();
         assert_eq!(json["code"], "invalid-run-id");
         assert_eq!(json["params"]["run_id"], "../etc");
+    }
+
+    #[test]
+    fn params_serialize_untagged_numbers_and_strings() {
+        let err = IpcError::new("apply-rule-index-out-of-range")
+            .with("index", 3usize)
+            .with("rules", 2usize)
+            .with("path", "x.yaml");
+        let v = serde_json::to_value(&err).unwrap();
+        assert_eq!(v["params"]["index"], serde_json::json!(3));
+        assert_eq!(v["params"]["path"], serde_json::json!("x.yaml"));
     }
 }

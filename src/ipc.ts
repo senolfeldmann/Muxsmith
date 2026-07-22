@@ -14,10 +14,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Profile, StructuredEdit } from "./bindings/profile";
 
 /** Mirrors `src-tauri/src/error.rs::IpcError`; the shape every rejected
- * command promise carries. */
+ * command promise carries. `params` values are `string | number`: the Rust
+ * side promotes numeric-semantic params (`index`, `rules`) to JSON numbers
+ * via `ParamValue` so Fluent applies CLDR plural rules (D61). */
 export interface IpcError {
   code: string;
-  params: Record<string, string>;
+  params: Record<string, string | number>;
 }
 
 /** Mirrors `src-tauri/src/settings.rs::DirMemory`. */

@@ -14,7 +14,7 @@ import { applyLocale } from "../i18n/fluent";
 const dialogEl = useTemplateRef("dialogEl");
 const busy = ref(false);
 const errorCode = ref<string | null>(null);
-const errorParams = ref<Record<string, string>>({});
+const errorParams = ref<Record<string, string | number>>({});
 
 const form = reactive({
   mkvmergePath: "",

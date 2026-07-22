@@ -121,7 +121,7 @@ const diagnostics = ref<Diagnostic[]>([]);
 const opening = ref(false);
 const saving = ref(false);
 const ipcErrorCode = ref<string | null>(null);
-const ipcErrorParams = ref<Record<string, string>>({});
+const ipcErrorParams = ref<Record<string, string | number>>({});
 
 // Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
 // (`src/recentProfiles.ts`), fed on every open below and rendered in the
