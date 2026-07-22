@@ -3850,3 +3850,17 @@ entries:
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 task-8 review (task-08-verdict.md): the topics' only two wrong sentences were extrapolations past their anchors (yaml_fragment claimed verbatim-landing where planner.rs renders a merged delta; core-33 termination overstated as resolution) while every transcribed claim held; reviewer named the heuristic for tasks 9/10"}
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 task-10 review (task-10-verdict.md finding 1): the extreme form - a FABRICATED affordance with no anchor at all (Add/Remove buttons on the rule grid that do not exist in EditorView.vue and that no task adds), in both locales; findings 2-3 are the ordinary extrapolation form (MissingExternal nuance, unconditional Optional-escape promise). Same heuristic, third and fourth instances in one wave"}
+- id: proc-standing-guards-swept-on-new-shapes
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a design decision ADDS a new-but-valid input shape (a value-less-with-attributes Fluent message, a new enum variant, a new file class), the pre-existing standing guards over that surface get a green-state sweep for the new shape BEFORE the shape lands - a guard written when the shape could not occur may have no reachable green state for it, and its red fires as a false positive on correct work. Sibling of proc-check-green-state-reachable (that entry covers writing a NEW completion check; this one covers EXISTING guards meeting a newly-legal shape - kept separate so neither promotes on the other's occurrences). Trigger is readable: a design ADR sanctions a shape the current tree never contains. Handle: enumerate the guards over that surface and run each against a synthetic instance of the new shape."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 T5 (task-05-verdict.md harvest): D55's sanctioned value-less batch-recents-select hit the T4-era parseOrThrow discriminator (?.value == null conflated dropped with value-less-with-attributes) - permanently red on correct work; surfaced as NEEDS_CONTEXT, controller-ruled Option A (discriminator corrected to documented intent), three-way verification both directions"}
