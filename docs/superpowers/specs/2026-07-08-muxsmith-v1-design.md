@@ -26,7 +26,7 @@ Muxsmith is a rule-based bulk muxing tool. The user defines a reusable **profile
 | mkvtoolnix dependency | External, user-installed, CLI invocation only | No linking, no GPL implications, no bundling burden. Detected at startup. |
 | Identification schema | Build-time data extraction, never redistributed | Property names/types are generated into the capability model at build time; sidesteps schema licensing and runtime fetching entirely. |
 | DRY strategy | One core crate; diagnostics as data; frontend does zero semantic validation | Validation, planning and execution share one code path; GUI and CLI are renderers. |
-| Localization | i18n-ready from day one; English-only content ships in v1 | No hardcoded user-facing strings anywhere. One Fluent catalog set shared by the Rust CLI (fluent-rs) and the frontend (@fluent/bundle); long-form help as per-locale markdown. Adding a locale is content work, not a refactor. |
+| Localization | i18n-ready from day one; English and German content ships in v1 | No hardcoded user-facing strings anywhere. One Fluent catalog set shared by the Rust CLI (fluent-rs) and the frontend (@fluent/bundle); long-form help as per-locale markdown. Adding a locale is content work, not a refactor. |
 | Discoverability | Self-explanatory UI plus an integrated help mode | Tooltips and inline explanations everywhere; a dedicated hover-to-explain help mode with sidebar (8.3). More UI surface, accepted deliberately: modern tools underinvest here. |
 
 ## 3. Concepts
@@ -385,10 +385,14 @@ Baseline discoverability: every non-obvious control carries a tooltip; views car
 
 On top of that, an integrated **help mode**:
 
-- A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc) exits.
+- A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc, except while the settings dialog is open, whose native cancel consumes Esc) exits.
 - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
-- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings).
-- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked or help mode exits.
+- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings). Hovering an element without a help-id sets no hover topic: the sidebar shows the pinned topic if one is pinned, else the current view's topic. Clicking an annotated element pins without activating it.
+- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked, the active view is switched, or help mode exits.
+- While help mode is active, control activation inside the main content
+  area is suppressed; the help toggle, the three view tabs, the settings
+  button and the sidebar stay live; clicking an annotated element pins its
+  topic instead of activating it (owner ruling 2026-07-21, E3).
 
 Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
 
@@ -398,8 +402,10 @@ Localization readiness is structural, not deferred polish:
 
 - **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text, and the JSON Schema's `description` fields (Rust doc comments, D47). The schema documents a file format, the same category as this spec and the README, both English-only by design; it is not application UI and not a diagnostic, so Fluent's localization mandate does not reach it.
 - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
-- Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
-- v1 ships English content only (non-goal 11); the mechanism ships complete.
+- Locale selection: system locale with manual override in app settings (takes effect live, without restart; D56) and `--locale` on the CLI; falls back to English per message.
+- v1 ships English and German content on both surfaces - GUI catalogs and
+  help topics, and the CLI's embedded catalogs (`cli-multilang-rendering`,
+  D63); further locales are content work (non-goal 11).
 
 ## 9. Capability model and version skew
 
@@ -413,7 +419,11 @@ Localization readiness is structural, not deferred polish:
 - Integration: real mkvmerge in CI generates tiny fixture MKVs (from srt/wav seeds via mkvmerge itself); end-to-end dry-run and run against them.
 - CLI rendering: snapshot tests (insta).
 - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
-- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. eslint (no-literal-string rule) keeps hardcoded strings out of the frontend; core is prose-free by construction.
+- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. the `@intlify/vue-i18n/no-raw-text` eslint rule (D27) keeps hardcoded
+strings out of Vue templates - template text nodes plus the configured
+static attributes (`title`, `aria-label`, `placeholder`, `alt`);
+`:`-bound expressions are covered by the check-i18n literal scan instead;
+core is prose-free by construction.
 - CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags. While the repo is private, branch pushes run Linux only (Actions minute multipliers: Windows 2x, macOS 10x); the full matrix runs on PRs, tags and manual dispatch. Reverts to the full matrix on every push when the repo goes public.
 
 ## 11. Non-goals for v1
@@ -428,7 +438,10 @@ Localization readiness is structural, not deferred polish:
 - mkvpropedit fast path for metadata-only changes.
 - Bundling mkvtoolnix binaries; a Windows convenience downloader is a v1.x candidate.
 - On-disk identification cache.
-- UI localization content: only English catalogs and help topics ship in v1. The mechanism (8.4) ships complete; adding a locale is content work, not a refactor.
+- Locales beyond English and German. The mechanism (8.4) ships complete on
+  both surfaces; adding a locale is content work (catalogs + help topics
+  land together, enforced by CI) plus one row in the CLI embed table
+  (D63), not a refactor.
 
 ## 12. Licensing
 
