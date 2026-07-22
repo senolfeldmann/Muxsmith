@@ -3883,14 +3883,15 @@ entries:
   source: agent-emergent
   nature: technical-code
   domain: cross
-  statement: "A file:line citation in a shipped code comment is a claim, verified at authoring like a normative count - line spans drift silently as the cited file evolves. Prefer an anchor that survives edits (function or symbol name, quoted text) plus the file; a bare span is checked at write time and re-checked whenever the citing comment is touched. Trigger is readable: you are typing file:line into a comment."
+  statement: "A file:line citation in any durable artifact - a code comment, a design document, an amendment, a convention entry - is a claim, verified against the CURRENT tree at the moment of writing, like a normative count. Copying a span from an older sentence is re-asserting it unverified: line spans drift silently as the cited file evolves, and a verification label ('controller-verified') covers the verified BEHAVIOR claim, never coordinates attached to it later. Prefer an anchor that survives edits (function or symbol name, quoted text) plus the file; a bare span is checked at write time and re-checked whenever the citing sentence is touched. Trigger is readable: you are typing (or pasting) file:line into a durable artifact."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest, minor): topics.ts's fallback comment cites muxsmith-cli/src/i18n.rs:41-46 for the raw-id posture, but that span is Renderer::new - the actual fallback (id.to_string()) sits in render (~:123); behavior exists, span stale at authoring; one-line comment fix rides the whole-branch inputs"}
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 design round-7 review F1 (design-review-round-7.md): the amendment's delegation citation e2e/i18n-en.ts:118-136 was copied from correction #5 into a controller-verified sentence while the wave-2 merge had shifted the function to 125-143; provenance proven (correct at design-creation commit f7e1e83, +7 since); statement widened to durable artifacts and paste-is-reassertion on this evidence"}
 - id: e2e-focus-delegation-needs-synthetic-events
   kind: pattern
   tier: 1
