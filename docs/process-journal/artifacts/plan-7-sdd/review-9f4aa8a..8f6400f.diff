@@ -1,0 +1,156 @@
+# Review package: 9f4aa8a..8f6400f
+
+## Commits
+8f6400f editor: presentation-only 1-based ordinal column on the rule grid (D59); gui-editor 46 ids
+
+## Files changed
+ e2e/smoke.spec.ts         | 12 ++++++++++++
+ locales/de/gui-editor.ftl |  6 ++++++
+ locales/en/gui-editor.ftl |  6 ++++++
+ src/views/EditorView.vue  |  4 ++++
+ 4 files changed, 28 insertions(+)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index b07b2df..2aa9124 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -935,34 +935,46 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
+   test("renders tracks.rules in order; a drag-reorder swaps the rows and updates the held model", async ({
+     page,
+   }) => {
+     await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
+ 
+     const rows = page.getByTestId("editor-rule-row");
+     await expect(rows).toHaveCount(2);
+     await expect(rows.nth(0)).toContainText("video");
+     await expect(rows.nth(1)).toContainText("audio");
+ 
++    // D59: the leading ordinal column -- a first "Order" columnheader, and
++    // 1-based cells rendering each row's array position.
++    await expect(page.getByRole("columnheader").first()).toHaveText(en("editor-track-rule-order"));
++    await expect(rows.nth(0).getByRole("cell").first()).toHaveText("1");
++    await expect(rows.nth(1).getByRole("cell").first()).toHaveText("2");
++
+     // Reorder is a semantic model edit, not a DOM mutation (binding note):
+     // `EditorView`'s drag handlers never read `dataTransfer`, only a
+     // closure index (mirroring `ListWidget.vue`'s identical mechanics), so
+     // dispatching bare `dragstart`/`drop` suffices -- following Playwright's
+     // documented programmatic-DnD pattern (a shared DataTransfer JSHandle
+     // across both events) regardless, since it is the correct cross-browser
+     // way to fire these two event types synthetically.
+     const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+     await rows.nth(0).dispatchEvent("dragstart", { dataTransfer });
+     await rows.nth(1).dispatchEvent("drop", { dataTransfer });
+ 
+     await expect(rows.nth(0)).toContainText("audio");
+     await expect(rows.nth(1)).toContainText("video");
+ 
++    // D59: the ordinal re-renders 1..n by position, so ordinal 1 now sits
++    // with the row that moved into position 0 (audio) -- it tracks array
++    // position, not rule identity.
++    await expect(rows.nth(0).getByRole("cell").first()).toHaveText("1");
++    await expect(rows.nth(1).getByRole("cell").first()).toHaveText("2");
++
+     await expect
+       .poll(async () => {
+         const model = (await readModel(page)) as Profile;
+         return model.tracks.rules.map((r) => (r.match.exact as Record<string, unknown> | null | undefined)?.type);
+       })
+       .toEqual(["audio", "video"]);
+   });
+ });
+ 
+ // Task 12 (D45, amended 2026-07-16, owner-rulings routing): EditorView's
+diff --git a/locales/de/gui-editor.ftl b/locales/de/gui-editor.ftl
+index 3a4190f..78413cd 100644
+--- a/locales/de/gui-editor.ftl
++++ b/locales/de/gui-editor.ftl
+@@ -134,10 +134,16 @@ editor-match-expr-not = Nicht
+     .tooltip = Teilausdrücke, von denen keiner zutreffen darf: schließt Spuren aus, die sonst passen würden.
+ 
+ ## Save surface (D41)
+ 
+ editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung bleiben dabei nicht erhalten, und Felder, die auf ihrem Standardwert stehen, werden nicht zurückgeschrieben.
+ 
+ ## Generic list/map actions
+ 
+ editor-action-add = Hinzufügen
+ editor-action-remove = Entfernen
++
++## Rule grid ordinal (D59)
++
++# Presentation-only 1-based index column; not a registry label, so no
++# .tooltip. The digit itself is locale-neutral data rendered in the cell.
++editor-track-rule-order = Reihenfolge
+diff --git a/locales/en/gui-editor.ftl b/locales/en/gui-editor.ftl
+index 3f91e65..db38fa2 100644
+--- a/locales/en/gui-editor.ftl
++++ b/locales/en/gui-editor.ftl
+@@ -130,10 +130,16 @@ editor-match-expr-not = Not
+     .tooltip = Sub-expressions of which none may hold: excludes tracks that would otherwise match.
+ 
+ ## Save surface (D41)
+ 
+ editor-save-note = Saving rewrites the file from the model: comments, key order and formatting are not preserved, and fields left at their default are not written back.
+ 
+ ## Generic list/map actions
+ 
+ editor-action-add = Add
+ editor-action-remove = Remove
++
++## Rule grid ordinal (D59)
++
++# Presentation-only 1-based index column; not a registry label, so no
++# .tooltip. The digit itself is locale-neutral data rendered in the cell.
++editor-track-rule-order = Order
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index 88b7d2e..66772af 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -526,20 +526,23 @@ function onDragEnd() {
+               class="diag-marker"
+               :class="`diag-marker--${rulesCaptionSeverity}`"
+               data-testid="diag-marker"
+               data-diag-path="tracks.rules"
+               :aria-label="$t(`severity-${rulesCaptionSeverity}`)"
+               :title="markerTitle(rulesCaptionDiags)"
+             />
+           </caption>
+           <thead>
+             <tr>
++              <th scope="col">
++                {{ $t("editor-track-rule-order") }}
++              </th>
+               <th scope="col">
+                 {{ $t("editor-track-rule-source") }}
+               </th>
+               <th scope="col">
+                 {{ $t("editor-track-rule-match-expr") }}
+               </th>
+               <th scope="col">
+                 {{ $t("editor-track-rule-optional") }}
+               </th>
+               <th scope="col">
+@@ -552,20 +555,21 @@ function onDragEnd() {
+               v-for="(rule, index) in rules"
+               :id="`editor-rule-row-${index}`"
+               :key="index"
+               data-testid="editor-rule-row"
+               draggable="true"
+               @dragstart="onDragStart(index)"
+               @dragover.prevent
+               @drop="onDrop(index)"
+               @dragend="onDragEnd"
+             >
++              <td>{{ index + 1 }}</td>
+               <td>
+                 <button
+                   type="button"
+                   data-testid="editor-rule-select"
+                   :aria-current="selectedIndex === index ? 'true' : undefined"
+                   @click="selectRule(index)"
+                 >
+                   {{ sourceSummary(rule) }}
+                 </button>
+                 <span

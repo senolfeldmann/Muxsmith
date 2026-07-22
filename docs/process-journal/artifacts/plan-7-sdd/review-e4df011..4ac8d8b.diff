@@ -1,0 +1,118 @@
+# Review package: e4df011..4ac8d8b
+
+## Commits
+4ac8d8b spec: fold plan-7 amendments 1/2/4/5/6 - bilingual v1 on both surfaces, live locale switch, real eslint rule, ruled help-mode semantics (design section 6)
+
+## Files changed
+ .../specs/2026-07-08-muxsmith-v1-design.md         | 29 ++++++++++++++++------
+ 1 file changed, 21 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index 14f2f3e..9a41c91 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -19,21 +19,21 @@ Muxsmith is a rule-based bulk muxing tool. The user defines a reusable **profile
+ |---|---|---|
+ | Rule semantics | Strict independent uniqueness | Every rule must resolve to exactly one track regardless of rule order; all overlaps are errors. Most explicit; configs must spell out exclusions (e.g. `forced_track: false`); error quality is a first-class feature to compensate. |
+ | Disambiguation help | Batch-wide validated suggestions | Suggestions are simulated against the whole batch before being shown; an applied suggestion survives the next dry run. |
+ | MKV structure scope | Full control in v1 | Tracks, attachments, chapters, tags, title all configurable. More surface than tracks-only, accepted deliberately. |
+ | Output naming | Keep name or rename template; collision policy | `error | skip | overwrite`, default `error`. In-place replacement excluded. |
+ | Stack | Tauri 2 + Rust core crate + Vue 3/TS frontend + clap CLI | Mature, small bundles, best packaging. Vue replaces the original React choice (2026-07-10, D27: author preference against React; Vue equally in his stack, SFC templates instead of JSX). Tradeoff: Rust learning curve for the core; webkitgtk quirks on Linux. |
+ | License | MIT | Permissive, commercialization by anyone including the author; consistent with the Ruby prototype. |
+ | mkvtoolnix dependency | External, user-installed, CLI invocation only | No linking, no GPL implications, no bundling burden. Detected at startup. |
+ | Identification schema | Build-time data extraction, never redistributed | Property names/types are generated into the capability model at build time; sidesteps schema licensing and runtime fetching entirely. |
+ | DRY strategy | One core crate; diagnostics as data; frontend does zero semantic validation | Validation, planning and execution share one code path; GUI and CLI are renderers. |
+-| Localization | i18n-ready from day one; English-only content ships in v1 | No hardcoded user-facing strings anywhere. One Fluent catalog set shared by the Rust CLI (fluent-rs) and the frontend (@fluent/bundle); long-form help as per-locale markdown. Adding a locale is content work, not a refactor. |
++| Localization | i18n-ready from day one; English and German content ships in v1 | No hardcoded user-facing strings anywhere. One Fluent catalog set shared by the Rust CLI (fluent-rs) and the frontend (@fluent/bundle); long-form help as per-locale markdown. Adding a locale is content work, not a refactor. |
+ | Discoverability | Self-explanatory UI plus an integrated help mode | Tooltips and inline explanations everywhere; a dedicated hover-to-explain help mode with sidebar (8.3). More UI surface, accepted deliberately: modern tools underinvest here. |
+ 
+ ## 3. Concepts
+ 
+ - **Primary file**: a file under the source directory whose basename matches `input.pattern` and whose extension is in `input.extensions`. Each primary file produces exactly one output file.
+ - **Identifier**: the substring of the primary basename matched by `input.pattern`, including its capture groups. Used to locate external files and to render output filenames.
+ - **External (donor) file**: a non-primary file located by a rule's external locator, contributing one track to the output.
+ - **Rule**: one entry in `tracks` (or `attachments.rules`); declares how to select exactly one track (or attachment) and which property changes to apply to it.
+ - **Plan**: the fully resolved result for one primary file: source files, rule-to-track assignments, output path, mkvmerge argv.
+ - **Batch**: all plans for one profile + run inputs, plus batch-level diagnostics.
+@@ -378,60 +378,73 @@ Three views, modeled on mkvtoolnix-gui:
+ App settings (not profile data): mkvmerge path override, default parallelism. Stored in the platform config directory.
+ 
+ First-run and startup: detect mkvtoolnix (PATH, then platform-standard install locations, then configured override); if missing, per-OS installation guidance. Minimum supported mkvtoolnix version is fixed during implementation and enforced with a clear error.
+ 
+ ### 8.3 Self-explanation and help mode
+ 
+ Baseline discoverability: every non-obvious control carries a tooltip; views carry small inline explanations where a first-time user would otherwise guess. The UI must be usable without reading external documentation.
+ 
+ On top of that, an integrated **help mode**:
+ 
+-- A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc) exits.
++- A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc, except while the settings dialog is open, whose native cancel consumes Esc) exits.
+ - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
+-- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings).
+-- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked or help mode exits.
++- Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings). Hovering an element without a help-id sets no hover topic: the sidebar shows the pinned topic if one is pinned, else the current view's topic. Clicking an annotated element pins without activating it.
++- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked, the active view is switched, or help mode exits.
++- While help mode is active, control activation inside the main content
++  area is suppressed; the help toggle, the three view tabs, the settings
++  button and the sidebar stay live; clicking an annotated element pins its
++  topic instead of activating it (owner ruling 2026-07-21, E3).
+ 
+ Mechanics: every help-annotated element carries a stable `help-id`; help content is one markdown file per help-id per locale (`help/<locale>/<help-id>.md`), rendered in the sidebar. Views have their own help-ids for the default sidebar content.
+ 
+ ### 8.4 Internationalization architecture
+ 
+ Localization readiness is structural, not deferred polish:
+ 
+ - **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text, and the JSON Schema's `description` fields (Rust doc comments, D47). The schema documents a file format, the same category as this spec and the README, both English-only by design; it is not application UI and not a diagnostic, so Fluent's localization mandate does not reach it.
+ - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
+-- Locale selection: system locale with manual override in app settings and `--locale` on the CLI; falls back to English per message.
+-- v1 ships English content only (non-goal 11); the mechanism ships complete.
++- Locale selection: system locale with manual override in app settings (takes effect live, without restart; D56) and `--locale` on the CLI; falls back to English per message.
++- v1 ships English and German content on both surfaces - GUI catalogs and
++  help topics, and the CLI's embedded catalogs (`cli-multilang-rendering`,
++  D63); further locales are content work (non-goal 11).
+ 
+ ## 9. Capability model and version skew
+ 
+ 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code, including the closed value domains of enum-typed properties (e.g. `type`) for config-time `InvalidPropertyValue` checks. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
+ 2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`. A property name unknown to the pinned model is a config-time `UnknownProperty` error (typo protection) unless the profile opts in with a `raw:` prefix (D32). A `raw:`-prefixed property bypasses the capability existence/type/domain checks and is matched untyped: byte-literal value equality against the property named verbatim, with no `language` normalization, no `codec_kind` alias expansion, and no false-when-absent Boolean shortcut. The opt-in is announced at config time by `RawProperty` (info), or by `RawOnKnownProperty` (warning) when the bare name is a model property with special matching semantics (`language`, `codec_kind`) that `raw:` degrades to byte-literal equality. At plan time each `raw:` property consumed while resolving a rule raises an `UnknownPropertySkew` warning carrying `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so the untyped match is visible whether the runtime schema is genuinely newer than pinned or the same. Additionally, planning emits a `SchemaDrift` info notice once per batch if any source file's `identification_format_version` exceeds the pinned version, alerting the user that their mkvmerge may support properties not yet in Muxsmith's model and enabling opt-in via the `raw:` prefix. Forward compatibility without lying about type safety: the untyped path is opt-in and declared, never inferred from a version bump. Upgrading the pinned schema (item 1) remains the typed path for a property that should become first-class.
+ 
+ ## 10. Testing
+ 
+ - `matcher` + planning semantics: unit tests plus property-based tests (proptest); this is the correctness core.
+ - `command`: golden tests, fixture identification JSON -> expected argv.
+ - Integration: real mkvmerge in CI generates tiny fixture MKVs (from srt/wav seeds via mkvmerge itself); end-to-end dry-run and run against them.
+ - CLI rendering: snapshot tests (insta).
+ - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
+-- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. eslint (no-literal-string rule) keeps hardcoded strings out of the frontend; core is prose-free by construction.
++- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. the `@intlify/vue-i18n/no-raw-text` eslint rule (D27) keeps hardcoded
++strings out of Vue templates - template text nodes plus the configured
++static attributes (`title`, `aria-label`, `placeholder`, `alt`);
++`:`-bound expressions are covered by the check-i18n literal scan instead;
++core is prose-free by construction.
+ - CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags. While the repo is private, branch pushes run Linux only (Actions minute multipliers: Windows 2x, macOS 10x); the full matrix runs on PRs, tags and manual dispatch. Reverts to the full matrix on every push when the repo goes public.
+ 
+ ## 11. Non-goals for v1
+ 
+ - In-place replacement of source files.
+ - Season/episode arithmetic (identifiers are opaque match keys; transforms are per-file, not cross-file).
+ - Watch/daemon mode.
+ - Wildcard multi-track rules ("keep all remaining audio"); breaks strict uniqueness; possible later as explicit `multi: true` rules.
+ - Any transcoding, ever; Muxsmith muxes.
+ - Per-file manual overrides in the GUI (that is mkvtoolnix-gui's job; an "open in mkvtoolnix-gui" escape hatch is a v1.x candidate).
+ - Track delay/stretch (`--sync`) changes; per-file offsets do not generalize to batch rules; v1.x candidate.
+ - mkvpropedit fast path for metadata-only changes.
+ - Bundling mkvtoolnix binaries; a Windows convenience downloader is a v1.x candidate.
+ - On-disk identification cache.
+-- UI localization content: only English catalogs and help topics ship in v1. The mechanism (8.4) ships complete; adding a locale is content work, not a refactor.
++- Locales beyond English and German. The mechanism (8.4) ships complete on
++  both surfaces; adding a locale is content work (catalogs + help topics
++  land together, enforced by CI) plus one row in the CLI embed table
++  (D63), not a refactor.
+ 
+ ## 12. Licensing
+ 
+ - Muxsmith: MIT.
+ - mkvtoolnix: invoked as external executables only; no linking, no code reuse, no redistribution in v1.
+ - Identification schema: consumed at build time as a data source; not shipped.

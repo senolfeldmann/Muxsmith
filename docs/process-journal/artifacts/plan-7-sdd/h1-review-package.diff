@@ -1,0 +1,195 @@
+commit 49235c1fa8bc59cb4351b97ca85369a0abadd64e
+Author: Şenol Feldmann <senol.feldmann@gmail.com>
+Date:   Wed Jul 22 21:50:55 2026 +0200
+
+    help: normalize deviating topic h1 to the owner-ratified "label (section)" form - tracks/attachments unmatched+rules, exact-match; en+de
+    
+    Plan-close h1 scheme normalization (T9 verdict Q1 / T10 verdict Q2). 10 files (5 topics x 2 locales). Ambiguous mappings deferred as NEEDS_CONTEXT (locator match-to-source/match-pattern, chapters, title, the three views, suggestion-card): their section names have no conforming-precedent anchor. The cross-reference sweep over the renamed titles remains the separately-scheduled owner-pass item.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/help/de/editor-attachments-rules.md b/help/de/editor-attachments-rules.md
+index bf09dbf..de97fc0 100644
+--- a/help/de/editor-attachments-rules.md
++++ b/help/de/editor-attachments-rules.md
+@@ -1,4 +1,4 @@
+-# Regeln für Anhänge
++# Regeln (Anhänge)
+ 
+ Eine geordnete Liste von Regeln über die Anhänge der Quelldatei. Jede Regel tut genau eines von drei Dingen:
+ 
+diff --git a/help/de/editor-attachments-unmatched.md b/help/de/editor-attachments-unmatched.md
+index 4dbee79..ab70ad4 100644
+--- a/help/de/editor-attachments-unmatched.md
++++ b/help/de/editor-attachments-unmatched.md
+@@ -1,4 +1,4 @@
+-# Nicht zugeordnete Anhänge
++# Nicht zugeordnet (Anhänge)
+ 
+ `Nicht zugeordnet` entscheidet, was mit Anhängen geschieht, die keine Anhangsregel matcht: `keep` oder `drop`. Der Standard ist `keep` - bewusst das Gegenteil des Spuren-Standards.
+ 
+diff --git a/help/de/editor-match-expr-exact.md b/help/de/editor-match-expr-exact.md
+index d1ae82a..91d44c4 100644
+--- a/help/de/editor-match-expr-exact.md
++++ b/help/de/editor-match-expr-exact.md
+@@ -1,4 +1,4 @@
+-# Exakter Match
++# Exakt (Match)
+ 
+ Der `exact`-Teil eines Match-Ausdrucks vergleicht Spureigenschaften auf Gleichheit. Er ist eine Zuordnung von Eigenschaftsnamen zu Werten; eine Spur kommt infrage, wenn jeder Eintrag zutrifft. Alle Einträge sind UND-verknüpft, zusammen mit allen weiteren Teilen des Ausdrucks - die vollständige Algebra beschreibt das Thema Match.
+ 
+diff --git a/help/de/editor-tracks-rules.md b/help/de/editor-tracks-rules.md
+index 773ff3e..5e83f31 100644
+--- a/help/de/editor-tracks-rules.md
++++ b/help/de/editor-tracks-rules.md
+@@ -1,4 +1,4 @@
+-# Spurregeln
++# Regeln (Spuren)
+ 
+ Das Regelraster ist das Herz eines Profils: eine geordnete Liste von Regeln, von denen jede genau eine Spur pro Quelldatei auswählt und optional deren Eigenschaften ändert. Jede Rasterzeile fasst eine Regel zusammen - Quelle, Match-Ausdruck, Optional-Flag, Änderungen.
+ 
+diff --git a/help/de/editor-tracks-unmatched.md b/help/de/editor-tracks-unmatched.md
+index cb02f11..d8e0bd6 100644
+--- a/help/de/editor-tracks-unmatched.md
++++ b/help/de/editor-tracks-unmatched.md
+@@ -1,4 +1,4 @@
+-# Nicht zugeordnete Spuren
++# Nicht zugeordnet (Spuren)
+ 
+ `Nicht zugeordnet` entscheidet, was mit Spuren der Quelldatei geschieht, die keine Spurregel matcht: `keep` oder `drop`. Der Standard ist `drop`. Auf Spender-Spuren wirkt die Einstellung nie - externe Spuren gelangen nur über eine Regel in die Ausgabe.
+ 
+diff --git a/help/en/editor-attachments-rules.md b/help/en/editor-attachments-rules.md
+index 815820f..207ec85 100644
+--- a/help/en/editor-attachments-rules.md
++++ b/help/en/editor-attachments-rules.md
+@@ -1,4 +1,4 @@
+-# Attachment rules
++# Rules (attachments)
+ 
+ An ordered list of rules over the source file's attachments. Each rule does exactly one of three things:
+ 
+diff --git a/help/en/editor-attachments-unmatched.md b/help/en/editor-attachments-unmatched.md
+index d8bb3d6..aed9e48 100644
+--- a/help/en/editor-attachments-unmatched.md
++++ b/help/en/editor-attachments-unmatched.md
+@@ -1,4 +1,4 @@
+-# Unmatched attachments
++# Unmatched (attachments)
+ 
+ `Unmatched` decides what happens to attachments that no attachment rule matches: `keep` or `drop`. The default is `keep` - deliberately the opposite of the tracks default.
+ 
+diff --git a/help/en/editor-match-expr-exact.md b/help/en/editor-match-expr-exact.md
+index e1d6b72..d592238 100644
+--- a/help/en/editor-match-expr-exact.md
++++ b/help/en/editor-match-expr-exact.md
+@@ -1,4 +1,4 @@
+-# Exact match
++# Exact (match)
+ 
+ The `exact` part of a match expression compares track properties for equality. It is a map of property names to values; a track qualifies when every entry holds. All entries are AND-combined, together with any other parts of the expression - the Match topic describes the full algebra.
+ 
+diff --git a/help/en/editor-tracks-rules.md b/help/en/editor-tracks-rules.md
+index 153dc0a..d9db92b 100644
+--- a/help/en/editor-tracks-rules.md
++++ b/help/en/editor-tracks-rules.md
+@@ -1,4 +1,4 @@
+-# Track rules
++# Rules (tracks)
+ 
+ The rules grid is the heart of a profile: an ordered list of rules, each selecting exactly one track per source file and optionally changing its properties. Each grid row summarizes one rule - source, match expression, optional flag, changes.
+ 
+diff --git a/help/en/editor-tracks-unmatched.md b/help/en/editor-tracks-unmatched.md
+index 90c7df9..43296cc 100644
+--- a/help/en/editor-tracks-unmatched.md
++++ b/help/en/editor-tracks-unmatched.md
+@@ -1,4 +1,4 @@
+-# Unmatched tracks
++# Unmatched (tracks)
+ 
+ `Unmatched` decides what happens to tracks of the primary file that no track rule matches: `keep` or `drop`. The default is `drop`. The policy never applies to donor tracks - external tracks enter the output only through a rule.
+ 
+
+commit a5015b965094e1aa2f0bf0924fdabf5a2faabc67
+Author: Şenol Feldmann <senol.feldmann@gmail.com>
+Date:   Wed Jul 22 21:56:14 2026 +0200
+
+    help: update cross-references to the renamed track/attachment topics to their new "label (section)" h1 titles, en+de
+    
+    Mechanical follow-through of the h1 normalization (49235c1): the six prose "see the X topic" references that named a title the rename changed now name the new title in their own locale (Rules (tracks) / Unmatched (tracks) / Rules (attachments) and the de equivalents). The parenthetical form is retained in the reference because the bare labels collide across sections. No other body text changes.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/help/de/editor-attachments-unmatched.md b/help/de/editor-attachments-unmatched.md
+index ab70ad4..0892f97 100644
+--- a/help/de/editor-attachments-unmatched.md
++++ b/help/de/editor-attachments-unmatched.md
+@@ -12,5 +12,5 @@ Die Ausgabe enthält nur die Anhänge, die eine `Auswählen`-Regel gematcht hat,
+ 
+ ## Wechselwirkungen
+ 
+-- Zuerst laufen die Regeln, in Listenreihenfolge, die erste passende Regel gewinnt pro Anhang; nur Anhänge, die keine Regel berührt hat, fallen auf diese Einstellung zurück. Siehe das Thema Regeln für Anhänge.
++- Zuerst laufen die Regeln, in Listenreihenfolge, die erste passende Regel gewinnt pro Anhang; nur Anhänge, die keine Regel berührt hat, fallen auf diese Einstellung zurück. Siehe das Thema Regeln (Anhänge).
+ - Dasselbe Bedienelement wie `Nicht zugeordnet` bei den Spuren, aber andere Domänensemantik: Spuren stehen standardmäßig auf `drop`, weil die Ausgabebesetzung meist definiert sein soll; Anhänge auf `keep`, weil sie Begleitmaterial sind und ihr Verlust still scheitert.
+diff --git a/help/de/editor-tracks-rules.md b/help/de/editor-tracks-rules.md
+index 5e83f31..b701598 100644
+--- a/help/de/editor-tracks-rules.md
++++ b/help/de/editor-tracks-rules.md
+@@ -4,7 +4,7 @@ Das Regelraster ist das Herz eines Profils: eine geordnete Liste von Regeln, von
+ 
+ ## Reihenfolge ist Ausgabereihenfolge
+ 
+-Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeile, um sie umzuordnen; die neue Rasterreihenfolge ist die neue Ausgabereihenfolge. Eine Einschränkung: unter `Nicht zugeordnet: keep` behalten die Quellspuren ihre Quellreihenfolge am Anfang der Ausgabe, nur Spender-Spuren folgen in Regelreihenfolge - siehe das Thema Nicht zugeordnete Spuren.
++Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeile, um sie umzuordnen; die neue Rasterreihenfolge ist die neue Ausgabereihenfolge. Eine Einschränkung: unter `Nicht zugeordnet: keep` behalten die Quellspuren ihre Quellreihenfolge am Anfang der Ausgabe, nur Spender-Spuren folgen in Regelreihenfolge - siehe das Thema Nicht zugeordnet (Spuren).
+ 
+ ## Eine Regel bearbeiten
+ 
+diff --git a/help/de/editor-tracks-unmatched.md b/help/de/editor-tracks-unmatched.md
+index d8e0bd6..791d90f 100644
+--- a/help/de/editor-tracks-unmatched.md
++++ b/help/de/editor-tracks-unmatched.md
+@@ -12,7 +12,7 @@ Jede Spur der Quelldatei läuft durch; Regeln ändern darüber hinaus Eigenschaf
+ 
+ ## Wechselwirkung mit der Reihenfolge
+ 
+-Die Regelreihenfolge definiert die Spurreihenfolge der Ausgabe - unter `keep` aber nur teilweise: die Ausgabe listet zuerst alle Spuren der Quelldatei in deren eigener Reihenfolge, danach die Spender-Spuren in Regelreihenfolge. Behaltene, aber nicht zugeordnete Quellspuren zählen für diese Reihenfolge als zugeordnet, und eine Regel, die eine Quellspur matcht, verschiebt sie nicht. Quellspuren umzuordnen erfordert deshalb `drop`; dort definiert allein die Regelliste die Reihenfolge. Siehe das Thema Spurregeln.
++Die Regelreihenfolge definiert die Spurreihenfolge der Ausgabe - unter `keep` aber nur teilweise: die Ausgabe listet zuerst alle Spuren der Quelldatei in deren eigener Reihenfolge, danach die Spender-Spuren in Regelreihenfolge. Behaltene, aber nicht zugeordnete Quellspuren zählen für diese Reihenfolge als zugeordnet, und eine Regel, die eine Quellspur matcht, verschiebt sie nicht. Quellspuren umzuordnen erfordert deshalb `drop`; dort definiert allein die Regelliste die Reihenfolge. Siehe das Thema Regeln (Spuren).
+ 
+ ## Wahl
+ 
+diff --git a/help/en/editor-attachments-unmatched.md b/help/en/editor-attachments-unmatched.md
+index aed9e48..22eb895 100644
+--- a/help/en/editor-attachments-unmatched.md
++++ b/help/en/editor-attachments-unmatched.md
+@@ -12,5 +12,5 @@ The output contains only the attachments a `Select` rule matched, plus files add
+ 
+ ## Interactions
+ 
+-- The rules run first, in list order, first matching rule wins per attachment; only attachments no rule touched fall through to this policy. See the Attachment rules topic.
++- The rules run first, in list order, first matching rule wins per attachment; only attachments no rule touched fall through to this policy. See the Rules (attachments) topic.
+ - Same control shape as `Unmatched` under Tracks, different domain semantics: tracks default to `drop` because the output lineup is usually meant to be defined; attachments default to `keep` because they are auxiliary and dropping them fails silently.
+diff --git a/help/en/editor-tracks-rules.md b/help/en/editor-tracks-rules.md
+index d9db92b..262b327 100644
+--- a/help/en/editor-tracks-rules.md
++++ b/help/en/editor-tracks-rules.md
+@@ -4,7 +4,7 @@ The rules grid is the heart of a profile: an ordered list of rules, each selecti
+ 
+ ## Order is output order
+ 
+-The row order defines the output track order. Drag a row to reorder; the new grid order is the new output order. One caveat: under `Unmatched: keep`, primary tracks keep their source order at the front of the output and only donor tracks follow in rule order - see the Unmatched tracks topic.
++The row order defines the output track order. Drag a row to reorder; the new grid order is the new output order. One caveat: under `Unmatched: keep`, primary tracks keep their source order at the front of the output and only donor tracks follow in rule order - see the Unmatched (tracks) topic.
+ 
+ ## Editing a rule
+ 
+diff --git a/help/en/editor-tracks-unmatched.md b/help/en/editor-tracks-unmatched.md
+index 43296cc..bad536b 100644
+--- a/help/en/editor-tracks-unmatched.md
++++ b/help/en/editor-tracks-unmatched.md
+@@ -12,7 +12,7 @@ Every primary track passes through; rules then edit properties or add donor trac
+ 
+ ## Ordering interaction
+ 
+-Rule order defines the output track order - but under `keep` only partially: the output lists all primary tracks first, in the primary's own order, then donor tracks in rule order. Kept-but-unmatched primary tracks count as matched for this ordering, and a rule matching a primary track does not reposition it. Reordering primary tracks therefore requires `drop`, where the rule list alone defines the order. See the Track rules topic.
++Rule order defines the output track order - but under `keep` only partially: the output lists all primary tracks first, in the primary's own order, then donor tracks in rule order. Kept-but-unmatched primary tracks count as matched for this ordering, and a rule matching a primary track does not reposition it. Reordering primary tracks therefore requires `drop`, where the rule list alone defines the order. See the Rules (tracks) topic.
+ 
+ ## Choosing
+ 

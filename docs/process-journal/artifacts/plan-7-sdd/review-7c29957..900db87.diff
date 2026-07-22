@@ -1,0 +1,616 @@
+# Review package: 7c29957..900db87
+
+## Commits
+900db87 shell: IpcError params typed string|number via untagged ParamValue; four promotion sites; plural selector on apply-rule-index-out-of-range (D61)
+
+## Files changed
+ e2e/mocks.ts                      |   4 +-
+ locales/de/gui-common.ftl         |   5 +-
+ locales/en/gui-common.ftl         |   5 +-
+ src-tauri/src/error.rs            | 117 ++++++++++++++++++++++++++++++--------
+ src-tauri/src/lib.rs              |   5 +-
+ src-tauri/src/run.rs              |   2 +-
+ src/components/SettingsDialog.vue |   2 +-
+ src/ipc.ts                        |   6 +-
+ src/views/BatchView.vue           |   2 +-
+ src/views/EditorView.vue          |   2 +-
+ 10 files changed, 115 insertions(+), 35 deletions(-)
+
+## Diff
+diff --git a/e2e/mocks.ts b/e2e/mocks.ts
+index 134de51..a94e124 100644
+--- a/e2e/mocks.ts
++++ b/e2e/mocks.ts
+@@ -18,27 +18,27 @@
+  * nothing about event delivery is reimplemented, only scripted responses
+  * for plain commands are.
+  */
+ import { resolve } from "node:path";
+ import type { Page } from "@playwright/test";
+ 
+ const HARNESS_PATH = resolve(import.meta.dirname, ".generated/tauri-mock-harness.js");
+ 
+ export type MockResult =
+   | { kind: "resolve"; value: unknown }
+-  | { kind: "reject"; error: { code: string; params?: Record<string, string> } };
++  | { kind: "reject"; error: { code: string; params?: Record<string, string | number> } };
+ 
+ export function resolveWith(value: unknown): MockResult {
+   return { kind: "resolve", value };
+ }
+ 
+-export function rejectWith(code: string, params: Record<string, string> = {}): MockResult {
++export function rejectWith(code: string, params: Record<string, string | number> = {}): MockResult {
+   return { kind: "reject", error: { code, params } };
+ }
+ 
+ export interface MockScenario {
+   /** `window.__TAURI_OS_PLUGIN_INTERNALS__.platform` (D28's per-OS install
+    * guidance): `@tauri-apps/plugin-os`'s `platform()` reads this global
+    * directly rather than going through `invoke` (see `global.d.ts`), so
+    * `installMockIPC` sets it explicitly instead of the mock IPC handler
+    * below ever seeing a `plugin:os|platform` command. */
+   platform?: string;
+diff --git a/locales/de/gui-common.ftl b/locales/de/gui-common.ftl
+index 309202d..58f3619 100644
+--- a/locales/de/gui-common.ftl
++++ b/locales/de/gui-common.ftl
+@@ -34,21 +34,24 @@ mkvmerge-spawn-failed = mkvmerge konnte nicht gestartet werden: { $detail }
+ identify-failed = Die Datei konnte nicht identifiziert werden: { $detail }
+ mkvmerge-query-failed = Die Abfrage von mkvmerge ist fehlgeschlagen: { $detail }
+ settings-dir-unavailable = Der Speicherort der Anwendungseinstellungen konnte auf diesem System nicht ermittelt werden.
+ settings-io-failed = Die Anwendungseinstellungen konnten nicht gelesen oder geschrieben werden: { $detail }
+ settings-parse-failed = Die Datei mit den Anwendungseinstellungen ist beschädigt: { $detail }
+ internal-task-failed = Ein interner Fehler ist aufgetreten: { $detail }
+ 
+ profile-save-io-failed = Das Profil konnte nicht geschrieben werden: { $detail }
+ profile-save-failed = Das Profil konnte für das Speichern nicht serialisiert werden: { $detail }
+ apply-unparsable-config-path = Der Vorschlag konnte nicht angewendet werden: "{ $path }" benennt keine Regel.
+-apply-rule-index-out-of-range = Der Vorschlag konnte nicht angewendet werden: keine Regel an Index { $index } (Regelanzahl: { $rules }).
++apply-rule-index-out-of-range = Der Vorschlag konnte nicht angewendet werden: keine Regel an Index { $index } (Regelanzahl: { $rules ->
++        [one] 1 Regel
++       *[other] { $rules } Regeln
++    }).
+ apply-edit-changed-nothing = Der Vorschlag hat nichts geändert: Regel { $index } schränkt "{ $property }" bereits ein.
+ 
+ firstrun-detecting = mkvmerge wird gesucht...
+ firstrun-missing-heading = mkvmerge wurde nicht gefunden
+ firstrun-too-old-heading = mkvmerge ist zu alt
+ firstrun-detect-failed-heading = mkvmerge-Erkennung fehlgeschlagen
+ firstrun-guidance-windows = Installiere MKVToolNix von mkvtoolnix.download und versuche es erneut, oder verweise Muxsmith unten direkt auf mkvmerge.exe (üblicherweise unter %ProgramFiles%\MKVToolNix\mkvmerge.exe).
+ firstrun-guidance-macos = Installiere MKVToolNix von mkvtoolnix.download nach /Applications und versuche es erneut, oder verweise Muxsmith unten direkt auf die mkvmerge-Binärdatei (üblicherweise /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge oder /usr/local/bin/mkvmerge).
+ firstrun-guidance-linux = Installiere das Paket mkvtoolnix aus deiner Distribution (z. B. apt, dnf, pacman) und versuche es erneut, oder verweise Muxsmith unten direkt auf die mkvmerge-Binärdatei (üblicherweise /usr/bin/mkvmerge oder /usr/local/bin/mkvmerge).
+ firstrun-guidance-fallback = Installiere MKVToolNix von mkvtoolnix.download und versuche es erneut, oder verweise Muxsmith unten direkt auf die mkvmerge-Binärdatei.
+diff --git a/locales/en/gui-common.ftl b/locales/en/gui-common.ftl
+index e3612f6..84b07da 100644
+--- a/locales/en/gui-common.ftl
++++ b/locales/en/gui-common.ftl
+@@ -56,21 +56,24 @@ identify-failed = Could not identify the file: { $detail }
+ mkvmerge-query-failed = Querying mkvmerge failed: { $detail }
+ settings-dir-unavailable = The application settings location could not be determined on this system.
+ settings-io-failed = Application settings could not be read or written: { $detail }
+ settings-parse-failed = The application settings file is corrupt: { $detail }
+ internal-task-failed = An internal error occurred: { $detail }
+ 
+ ## D42/D43: the editor's IPC error codes (save_profile, apply_suggestion).
+ profile-save-io-failed = The profile could not be written: { $detail }
+ profile-save-failed = The profile could not be serialized for saving: { $detail }
+ apply-unparsable-config-path = The suggestion could not be applied: "{ $path }" does not name a rule.
+-apply-rule-index-out-of-range = The suggestion could not be applied: no rule at index { $index } (rule count: { $rules }).
++apply-rule-index-out-of-range = The suggestion could not be applied: no rule at index { $index } (rule count: { $rules ->
++        [one] 1 rule
++       *[other] { $rules } rules
++    }).
+ apply-edit-changed-nothing = The suggestion changed nothing: rule { $index } already constrains "{ $property }".
+ 
+ ## T9: first-run mkvmerge detection (D28).
+ firstrun-detecting = Looking for mkvmerge...
+ firstrun-missing-heading = mkvmerge was not found
+ firstrun-too-old-heading = mkvmerge is too old
+ firstrun-detect-failed-heading = mkvmerge detection failed
+ firstrun-guidance-windows = Install MKVToolNix from mkvtoolnix.download, then retry, or point Muxsmith directly at mkvmerge.exe below (typically under %ProgramFiles%\MKVToolNix\mkvmerge.exe).
+ firstrun-guidance-macos = Install MKVToolNix from mkvtoolnix.download into /Applications, then retry, or point Muxsmith directly at the mkvmerge binary below (typically /Applications/MKVToolNix.app/Contents/MacOS/mkvmerge or /usr/local/bin/mkvmerge).
+ firstrun-guidance-linux = Install the mkvtoolnix package from your distribution (e.g. apt, dnf, pacman), then retry, or point Muxsmith directly at the mkvmerge binary below (typically /usr/bin/mkvmerge or /usr/local/bin/mkvmerge).
+diff --git a/src-tauri/src/error.rs b/src-tauri/src/error.rs
+index 68b12f6..444b589 100644
+--- a/src-tauri/src/error.rs
++++ b/src-tauri/src/error.rs
+@@ -33,40 +33,73 @@ use crate::settings::SettingsError;
+ pub struct IpcError {
+     /// A stable, kebab-case identifier for the failure condition (a Fluent
+     /// message id), in the same style as `DiagCode::key()` so the whole
+     /// app's error-code vocabulary stays uniform between core diagnostics
+     /// and shell-level command failures.
+     pub code: String,
+     /// Structured values a renderer interpolates into the message template
+     /// selected by `code`; e.g. `detail` carries a passed-through
+     /// third-party error string (the one prose exception, spec 8.4),
+     /// `found`/`minimum` carry a too-old mkvmerge version pair, `run_id`/
+-    /// `index` identify a run-lifecycle target.
+-    pub params: HashMap<String, String>,
++    /// `index` identify a run-lifecycle target. Each value is a
++    /// [`ParamValue`]: numeric-semantic params (`index`, `rules`) serialize
++    /// as JSON numbers so Fluent can apply CLDR plural rules; everything
++    /// else stays a string (D61, i18n-05).
++    pub params: HashMap<String, ParamValue>,
++}
++
++/// One `IpcError` param value: a number for numeric-semantic params
++/// (`index`, `rules`), a string for everything else. `#[serde(untagged)]`
++/// keeps string params serializing exactly as before while numeric params
++/// become JSON numbers, so Fluent can apply CLDR plural rules (D61,
++/// i18n-05).
++#[derive(Debug, Clone, PartialEq, Serialize)]
++#[serde(untagged)]
++pub enum ParamValue {
++    /// A numeric param, rendered by Fluent as a number.
++    Num(u64),
++    /// A string param (the default; includes third-party passthrough text).
++    Str(String),
++}
++
++impl From<&str> for ParamValue {
++    fn from(v: &str) -> ParamValue {
++        ParamValue::Str(v.to_owned())
++    }
++}
++impl From<String> for ParamValue {
++    fn from(v: String) -> ParamValue {
++        ParamValue::Str(v)
++    }
++}
++impl From<usize> for ParamValue {
++    fn from(v: usize) -> ParamValue {
++        ParamValue::Num(v as u64)
++    }
+ }
+ 
+ impl IpcError {
+     /// Builds a code-only error with no params. (Cleanup: this used to have
+     /// a duplicate `code(...)` constructor -- a merge artifact from two
+     /// tasks each naming their own read-only/settings vs. run-lifecycle
+     /// call sites differently -- collapsed into this single constructor;
+     /// every call site now uses this name.)
+     pub fn new(code: impl Into<String>) -> IpcError {
+         IpcError {
+             code: code.into(),
+             params: HashMap::new(),
+         }
+     }
+ 
+     /// Attaches one param, builder-style, overwriting any prior value for
+     /// `key`. Mirrors [`muxsmith_core::report::Diagnostic::with`].
+-    pub fn with(mut self, key: impl Into<String>, value: impl Into<String>) -> IpcError {
++    pub fn with(mut self, key: impl Into<String>, value: impl Into<ParamValue>) -> IpcError {
+         self.params.insert(key.into(), value.into());
+         self
+     }
+ }
+ 
+ /// Maps a runtime mkvmerge failure ([`Mkvmerge::detect`]/`locate`/any
+ /// query, `muxsmith_core::capability::runtime`) to an [`IpcError`].
+ /// `TooOld` is kept distinguishable from a plain not-found (D28, this
+ /// task's brief): the frontend needs `found`/`minimum` to render "upgrade
+ /// mkvtoolnix" guidance rather than "install mkvtoolnix" guidance.
+@@ -159,26 +192,26 @@ impl From<SaveError> for IpcError {
+ /// `tracks.rules`, or a suggestion computed against a since-edited model
+ /// (`EditChangedNothing`) that would otherwise silently no-op.
+ impl From<ApplyError> for IpcError {
+     fn from(e: ApplyError) -> IpcError {
+         match e {
+             ApplyError::UnparsableConfigPath(path) => {
+                 IpcError::new("apply-unparsable-config-path").with("path", path)
+             }
+             ApplyError::RuleIndexOutOfRange { index, rules } => {
+                 IpcError::new("apply-rule-index-out-of-range")
+-                    .with("index", index.to_string())
+-                    .with("rules", rules.to_string())
++                    .with("index", index)
++                    .with("rules", rules)
+             }
+             ApplyError::EditChangedNothing { index, property } => {
+                 IpcError::new("apply-edit-changed-nothing")
+-                    .with("index", index.to_string())
++                    .with("index", index)
+                     .with("property", property)
+             }
+         }
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+@@ -190,22 +223,25 @@ mod tests {
+     }
+ 
+     #[test]
+     fn too_old_carries_found_and_minimum() {
+         let err: IpcError = RuntimeError::TooOld {
+             found: "mkvmerge v50.0.0 ('Old') 64-bit".into(),
+             minimum: "86.0".into(),
+         }
+         .into();
+         assert_eq!(err.code, "mkvmerge-too-old");
+-        assert_eq!(err.params["found"], "mkvmerge v50.0.0 ('Old') 64-bit");
+-        assert_eq!(err.params["minimum"], "86.0");
++        assert_eq!(
++            err.params["found"],
++            ParamValue::Str("mkvmerge v50.0.0 ('Old') 64-bit".into())
++        );
++        assert_eq!(err.params["minimum"], ParamValue::Str("86.0".into()));
+     }
+ 
+     #[test]
+     fn too_old_is_distinguishable_from_not_found() {
+         let not_found: IpcError = RuntimeError::NotFound.into();
+         let too_old: IpcError = RuntimeError::TooOld {
+             found: "x".into(),
+             minimum: "y".into(),
+         }
+         .into();
+@@ -213,121 +249,156 @@ mod tests {
+     }
+ 
+     #[test]
+     fn non_zero_maps_to_query_failed_with_detail_and_exit_code() {
+         let err: IpcError = RuntimeError::NonZero {
+             code: Some(2),
+             stderr: "unsupported option".into(),
+         }
+         .into();
+         assert_eq!(err.code, "mkvmerge-query-failed");
+-        assert_eq!(err.params["detail"], "unsupported option");
+-        assert_eq!(err.params["code"], "2");
++        assert_eq!(
++            err.params["detail"],
++            ParamValue::Str("unsupported option".into())
++        );
++        assert_eq!(err.params["code"], ParamValue::Str("2".into()));
+     }
+ 
+     #[test]
+     fn non_zero_signal_termination_maps_code_param_to_signal() {
+         let err: IpcError = RuntimeError::NonZero {
+             code: None,
+             stderr: "killed".into(),
+         }
+         .into();
+         assert_eq!(err.code, "mkvmerge-query-failed");
+-        assert_eq!(err.params["code"], "signal");
++        assert_eq!(err.params["code"], ParamValue::Str("signal".into()));
+     }
+ 
+     #[test]
+     fn parse_failure_maps_to_query_failed_with_detail() {
+         let err: IpcError = RuntimeError::Parse("no version token in \"gibberish\"".into()).into();
+         assert_eq!(err.code, "mkvmerge-query-failed");
+-        assert_eq!(err.params["detail"], "no version token in \"gibberish\"");
++        assert_eq!(
++            err.params["detail"],
++            ParamValue::Str("no version token in \"gibberish\"".into())
++        );
+     }
+ 
+     #[test]
+     fn identify_runtime_failure_delegates_to_the_runtime_mapping() {
+         let err: IpcError = IdentifyError::Runtime(RuntimeError::NotFound).into();
+         assert_eq!(err.code, "mkvmerge-not-found");
+     }
+ 
+     #[test]
+     fn identify_json_failure_carries_detail() {
+         let err: IpcError = IdentifyError::Json("EOF while parsing".into()).into();
+         assert_eq!(err.code, "identify-failed");
+-        assert_eq!(err.params["detail"], "EOF while parsing");
++        assert_eq!(
++            err.params["detail"],
++            ParamValue::Str("EOF while parsing".into())
++        );
+     }
+ 
+     #[test]
+     fn settings_errors_map_to_distinct_codes() {
+         let io: IpcError = SettingsError::Io("permission denied".into()).into();
+         let parse: IpcError = SettingsError::Parse("unexpected EOF".into()).into();
+         assert_eq!(io.code, "settings-io-failed");
+-        assert_eq!(io.params["detail"], "permission denied");
++        assert_eq!(
++            io.params["detail"],
++            ParamValue::Str("permission denied".into())
++        );
+         assert_eq!(parse.code, "settings-parse-failed");
+         assert_ne!(io.code, parse.code);
+     }
+ 
+     #[test]
+     fn save_errors_map_to_distinct_codes() {
+         let io: IpcError = SaveError::Io("permission denied".into()).into();
+         let ser: IpcError = SaveError::Serialize("bad float".into()).into();
+         assert_eq!(io.code, "profile-save-io-failed");
+-        assert_eq!(io.params["detail"], "permission denied");
++        assert_eq!(
++            io.params["detail"],
++            ParamValue::Str("permission denied".into())
++        );
+         assert_eq!(ser.code, "profile-save-failed");
+         assert_ne!(io.code, ser.code);
+     }
+ 
+     #[test]
+     fn apply_errors_map_to_distinct_codes() {
+         let unparsable: IpcError =
+             ApplyError::UnparsableConfigPath("not-a-rule-path".into()).into();
+         let oob: IpcError = ApplyError::RuleIndexOutOfRange { index: 7, rules: 1 }.into();
+         let noop: IpcError = ApplyError::EditChangedNothing {
+             index: 0,
+             property: "forced_track".into(),
+         }
+         .into();
+ 
+         assert_eq!(unparsable.code, "apply-unparsable-config-path");
+-        assert_eq!(unparsable.params["path"], "not-a-rule-path");
++        assert_eq!(
++            unparsable.params["path"],
++            ParamValue::Str("not-a-rule-path".into())
++        );
+         assert_eq!(oob.code, "apply-rule-index-out-of-range");
+-        assert_eq!(oob.params["index"], "7");
+-        assert_eq!(oob.params["rules"], "1");
++        assert_eq!(oob.params["index"], ParamValue::Num(7));
++        assert_eq!(oob.params["rules"], ParamValue::Num(1));
+         assert_eq!(noop.code, "apply-edit-changed-nothing");
+-        assert_eq!(noop.params["index"], "0");
+-        assert_eq!(noop.params["property"], "forced_track");
++        assert_eq!(noop.params["index"], ParamValue::Num(0));
++        assert_eq!(
++            noop.params["property"],
++            ParamValue::Str("forced_track".into())
++        );
+ 
+         assert_ne!(unparsable.code, oob.code);
+         assert_ne!(oob.code, noop.code);
+         assert_ne!(unparsable.code, noop.code);
+     }
+ 
+     #[test]
+     fn with_overwrites_a_prior_value_for_the_same_key() {
+         let err = IpcError::new("x").with("k", "a").with("k", "b");
+-        assert_eq!(err.params["k"], "b");
++        assert_eq!(err.params["k"], ParamValue::Str("b".into()));
+     }
+ 
+     #[test]
+     fn new_builds_with_empty_params() {
+         let e = IpcError::new("run-already-active");
+         assert_eq!(e.code, "run-already-active");
+         assert!(e.params.is_empty());
+     }
+ 
+     #[test]
+     fn with_attaches_and_overwrites_params() {
+         let e = IpcError::new("job-log-not-found")
+             .with("run_id", "20260710-153612Z")
+             .with("index", "0")
+             .with("index", "1");
+-        assert_eq!(e.params["run_id"], "20260710-153612Z");
+-        assert_eq!(e.params["index"], "1");
++        assert_eq!(
++            e.params["run_id"],
++            ParamValue::Str("20260710-153612Z".into())
++        );
++        assert_eq!(e.params["index"], ParamValue::Str("1".into()));
+     }
+ 
+     #[test]
+     fn serializes_as_code_and_params() {
+         let e = IpcError::new("invalid-run-id").with("run_id", "../etc");
+         let json = serde_json::to_value(&e).unwrap();
+         assert_eq!(json["code"], "invalid-run-id");
+         assert_eq!(json["params"]["run_id"], "../etc");
+     }
++
++    #[test]
++    fn params_serialize_untagged_numbers_and_strings() {
++        let err = IpcError::new("apply-rule-index-out-of-range")
++            .with("index", 3usize)
++            .with("rules", 2usize)
++            .with("path", "x.yaml");
++        let v = serde_json::to_value(&err).unwrap();
++        assert_eq!(v["params"]["index"], serde_json::json!(3));
++        assert_eq!(v["params"]["path"], serde_json::json!("x.yaml"));
++    }
+ }
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index e131649..a5a8f85 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -581,20 +581,21 @@ pub fn run() {
+             run::get_job_log,
+         ])
+         .on_window_event(run::on_close_requested)
+         .run(tauri::generate_context!())
+         .expect("error while running muxsmith-gui");
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use crate::error::ParamValue;
+     use std::process::Command;
+ 
+     /// Mirrors `muxsmith-core`'s identical `fake_mkvmerge` test helper
+     /// (`crates/muxsmith-core/tests/mkvmerge_runtime.rs`): a fake
+     /// `mkvmerge` that answers `--version` with a fixed line and fails
+     /// every other invocation, so the mkvmerge-resolution branches
+     /// (`Mkvmerge::detect`) are tested deterministically without a real
+     /// mkvmerge on the test machine.
+     #[cfg(unix)]
+     fn fake_mkvmerge(dir: &Path, version_line: &str) -> PathBuf {
+@@ -917,22 +918,22 @@ mod tests {
+         assert_eq!(err.code, "mkvmerge-spawn-failed");
+     }
+ 
+     #[test]
+     #[cfg(unix)]
+     fn detect_mkvmerge_body_too_old_carries_found_and_minimum() {
+         let dir = tempfile::tempdir().unwrap();
+         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v50.0.0 ('Old') 64-bit");
+         let err = detect_mkvmerge_body(Some(&override_path)).unwrap_err();
+         assert_eq!(err.code, "mkvmerge-too-old");
+-        assert_eq!(err.params["minimum"], "86.0");
+-        assert!(err.params["found"].contains("v50.0.0"));
++        assert_eq!(err.params["minimum"], ParamValue::Str("86.0".into()));
++        assert!(matches!(&err.params["found"], ParamValue::Str(s) if s.contains("v50.0.0")));
+     }
+ 
+     #[test]
+     #[cfg(unix)]
+     fn detect_mkvmerge_body_success_reports_version_and_path() {
+         let dir = tempfile::tempdir().unwrap();
+         let override_path = fake_mkvmerge(dir.path(), "mkvmerge v123.4.5 ('New') 64-bit");
+         let info = detect_mkvmerge_body(Some(&override_path)).expect("detect");
+         assert_eq!(info.version, "123.4");
+         assert_eq!(info.path, override_path.display().to_string());
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index 21aed84..0eb42e6 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -925,21 +925,21 @@ fn get_job_log_in(
+     index: usize,
+ ) -> Result<serde_json::Value, IpcError> {
+     if !valid_run_id(run_id) {
+         return Err(IpcError::new("invalid-run-id").with("run_id", run_id));
+     }
+     let root = runs_root.ok_or_else(|| IpcError::new("job-log-unavailable"))?;
+     let path = root.join(run_id).join(format!("job-{index}.json"));
+     let not_found = || {
+         IpcError::new("job-log-not-found")
+             .with("run_id", run_id)
+-            .with("index", index.to_string())
++            .with("index", index)
+     };
+     let text = fs::read_to_string(&path).map_err(|_| not_found())?;
+     serde_json::from_str(&text).map_err(|_| not_found())
+ }
+ 
+ /// Guards path traversal (D26): a valid `run_id` is a single plain path
+ /// component -- no separators, no `':'` (a Windows drive prefix like `"C:"`
+ /// is a root-replacing component under `PathBuf::join` there, and `':'`
+ /// never occurs in a [`make_run_id`] name anyway), and not `.`/`..` --
+ /// checked before it is ever joined onto the runs root.
+diff --git a/src/components/SettingsDialog.vue b/src/components/SettingsDialog.vue
+index ff9f20b..3ca41b1 100644
+--- a/src/components/SettingsDialog.vue
++++ b/src/components/SettingsDialog.vue
+@@ -7,21 +7,21 @@ import { applyLocale } from "../i18n/fluent";
+ 
+ // D27 settings dialog: native <dialog>, opened imperatively via
+ // `defineExpose`'s `open()` (App.vue holds a template ref and calls it
+ // from the shell's own Settings button). Deliberately not `method="dialog"`
+ // on the <form>: saving needs an async IPC round trip to complete (and the
+ // dialog to stay open on failure), which a plain `method="dialog"` submit
+ // cannot express -- it closes synchronously regardless of outcome.
+ const dialogEl = useTemplateRef("dialogEl");
+ const busy = ref(false);
+ const errorCode = ref<string | null>(null);
+-const errorParams = ref<Record<string, string>>({});
++const errorParams = ref<Record<string, string | number>>({});
+ 
+ const form = reactive({
+   mkvmergePath: "",
+   defaultJobs: 1,
+   locale: "en",
+ });
+ 
+ let baseline: AppSettings = defaultAppSettings();
+ 
+ async function open() {
+diff --git a/src/ipc.ts b/src/ipc.ts
+index 39615d9..60842ab 100644
+--- a/src/ipc.ts
++++ b/src/ipc.ts
+@@ -7,24 +7,26 @@
+  * bundle (spec 8.4). T9 itself only calls `detectMkvmerge`/`getSettings`/
+  * `setSettings`; the rest exist so T10 (`validateProfile`, `dryRun`) and
+  * T11 (the run lifecycle, `listRuns`, `getJobLog`), and T13 (`loadProfile`,
+  * `saveProfile`, `validateProfileModel`; `applySuggestion` for T14) do not
+  * each redefine this layer.
+  */
+ import { invoke } from "@tauri-apps/api/core";
+ import type { Profile, StructuredEdit } from "./bindings/profile";
+ 
+ /** Mirrors `src-tauri/src/error.rs::IpcError`; the shape every rejected
+- * command promise carries. */
++ * command promise carries. `params` values are `string | number`: the Rust
++ * side promotes numeric-semantic params (`index`, `rules`) to JSON numbers
++ * via `ParamValue` so Fluent applies CLDR plural rules (D61). */
+ export interface IpcError {
+   code: string;
+-  params: Record<string, string>;
++  params: Record<string, string | number>;
+ }
+ 
+ /** Mirrors `src-tauri/src/settings.rs::DirMemory`. */
+ export interface DirMemory {
+   source?: string;
+   output?: string;
+ }
+ 
+ /** Mirrors `src-tauri/src/settings.rs::AppSettings`. */
+ export interface AppSettings {
+diff --git a/src/views/BatchView.vue b/src/views/BatchView.vue
+index a3ae42b..ab1b0af 100644
+--- a/src/views/BatchView.vue
++++ b/src/views/BatchView.vue
+@@ -38,21 +38,21 @@ import { rememberRecentProfile } from "../recentProfiles";
+ const fluent = useFluent();
+ 
+ const settings = ref<AppSettings>(defaultAppSettings());
+ const selectedProfile = ref<string | null>(null);
+ const sourceDir = ref("");
+ const outputDir = ref("");
+ const report = ref<ReportDocument | null>(null);
+ const validating = ref(false);
+ const dryRunning = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+-const ipcErrorParams = ref<Record<string, string>>({});
++const ipcErrorParams = ref<Record<string, string | number>>({});
+ // Task 14 (D43, D49, apply-wiring routing): which `report.suggestions`
+ // index is mid-round-trip, or `null` when none is -- drives the clicked
+ // card's own `aria-busy` (not a single shared boolean) and, folded into
+ // `busy` below, gates every other action while an apply is in flight the
+ // same way `validating`/`dryRunning` already do.
+ const applyingIndex = ref<number | null>(null);
+ 
+ const busy = computed(() => validating.value || dryRunning.value || applyingIndex.value !== null);
+ 
+ // Fix (D23): "the UI additionally disables Run while active" -- App
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index 66772af..3f9b2f3 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -114,21 +114,21 @@ const model = defineModel<Profile>();
+ 
+ const fluent = useFluent();
+ 
+ // --- Task 13: open/save/validate state ----------------------------------
+ 
+ const currentPath = ref<string | null>(null);
+ const diagnostics = ref<Diagnostic[]>([]);
+ const opening = ref(false);
+ const saving = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+-const ipcErrorParams = ref<Record<string, string>>({});
++const ipcErrorParams = ref<Record<string, string | number>>({});
+ 
+ // Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
+ // (`src/recentProfiles.ts`), fed on every open below and rendered in the
+ // pre-Open empty state (template). The read is tolerant, mirroring
+ // BatchView's own onMounted tolerance (T9/T10): a failed fetch just leaves
+ // the list empty, the editor stays fully usable.
+ const recents = ref<string[]>([]);
+ 
+ onMounted(async () => {
+   try {

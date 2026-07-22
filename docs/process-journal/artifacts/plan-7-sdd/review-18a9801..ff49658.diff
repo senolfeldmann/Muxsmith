@@ -1,0 +1,230 @@
+# Review package: 18a9801..ff49658
+
+## Commits
+ff49658 editor: suppress-self-anchor on rule-detail SectionWidget dedupes the tracks[{i}] grid-row/detail-root marker (D57 F1); e2e fixture reaches the collision
+
+## Files changed
+ e2e/editor-markers.spec.ts | 27 ++++++++++++++++++++++-----
+ src/views/EditorView.vue   |  8 +++++++-
+ 2 files changed, 29 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/e2e/editor-markers.spec.ts b/e2e/editor-markers.spec.ts
+index c64441e..5380f58 100644
+--- a/e2e/editor-markers.spec.ts
++++ b/e2e/editor-markers.spec.ts
+@@ -29,21 +29,25 @@ import type { Profile } from "../src/bindings/profile";
+ function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
+   return { name: en(id, args), exact: true };
+ }
+ 
+ const MKVMERGE_INFO: MkvmergeInfo = { path: "/usr/bin/mkvmerge", version: "90.0.0" };
+ const PROFILE_PATH = "/profiles/marker-demo.yaml";
+ 
+ // One primary rule (rule 0) carries the structure fixtures 6-10 anchor
+ // against (a match with `exact` + a one-item `any`, and a `changes` row
+ // keyed `language`); rule 1 exists only so `tracks[1]` (ProvableOverlap,
+-// the grid's second row) is a real, rendered row. `chapters`/`title`/
++// the grid's second row) is a real, rendered row. Rule 0 additionally
++// carries a bare `tracks[0]` diagnostic (fixture #17, OverlappingRules):
++// its grid row anchors one marker, and opening rule 0's detail panel roots
++// a `SectionWidget` at the same `tracks[0]` path -- the D57 single-anchor
++// case the panel must not double (F1). `chapters`/`title`/
+ // `output.filename` stay bare keywords: the keyword-or-block widget renders
+ // its nested block regardless, so the template/locator sub-widgets those
+ // paths anchor at exist without populating the block.
+ const markerProfile: Profile = {
+   profile_version: 1,
+   meta: { name: "demo" },
+   input: { pattern: ".*", extensions: ["mkv"] },
+   output: { filename: "keep" },
+   tracks: {
+     rules: [
+@@ -55,38 +59,43 @@ const markerProfile: Profile = {
+       { match: { exact: { type: "audio" } } },
+     ],
+   },
+   attachments: { rules: [{ select: {} }] },
+   chapters: "keep",
+   title: "keep",
+ };
+ 
+ // The closed path list. `input.pattern` carries TWO diagnostics
+ // (warning + error) -- the worst-of-severity case: its marker must render
+-// `--error`. 16 diagnostics over 15 distinct paths.
++// `--error`. 17 diagnostics over 16 distinct paths.
+ const diagnostics: Diagnostic[] = [
+   { code: "unsupported-profile-version", severity: "error", config_path: "profile_version", params: { found: "2", supported: "1" }, rendered: "unsupported-profile-version" },
+   { code: "multiple-identifier-matches", severity: "warning", config_path: "input.pattern", params: { name: "a.mkv" }, rendered: "multiple-identifier-matches" },
+   { code: "invalid-regex", severity: "error", config_path: "input.pattern", params: { detail: "bad" }, rendered: "invalid-regex" },
+   { code: "unknown-extension", severity: "warning", config_path: "input.extensions", params: { extension: "mvk", known: "mkv, mp4" }, rendered: "unknown-extension" },
+   { code: "no-track-rules", severity: "error", config_path: "tracks.rules", params: {}, rendered: "no-track-rules" },
+   { code: "provable-overlap", severity: "error", config_path: "tracks[1]", params: { rule_a: "1", rule_b: "2" }, rendered: "provable-overlap" },
+   { code: "empty-match-expression", severity: "warning", config_path: "tracks[0].match", params: {}, rendered: "empty-match-expression" },
+   { code: "invalid-property-value", severity: "error", config_path: "tracks[0].changes.language", params: { property: "language", value: "xx" }, rendered: "invalid-property-value" },
+   { code: "locator-conflict", severity: "error", config_path: "tracks[0].source.external", params: {}, rendered: "locator-conflict" },
+   { code: "empty-match-list", severity: "warning", config_path: "tracks[0].match.any", params: {}, rendered: "empty-match-list" },
+   { code: "empty-match-expression", severity: "info", config_path: "tracks[0].match.any[0]", params: {}, rendered: "empty-match-expression" },
+   { code: "attachment-rule-shape", severity: "error", config_path: "attachments.rules[0]", params: { found: "0" }, rendered: "attachment-rule-shape" },
+   { code: "missing-external", severity: "warning", config_path: "attachments.rules[0].add", params: {}, rendered: "missing-external" },
+   { code: "invalid-template", severity: "error", config_path: "output.filename.template", params: { kind: "empty-field", pos: "3" }, rendered: "invalid-template" },
+   { code: "invalid-keyword", severity: "info", config_path: "chapters", params: { found: "x", allowed: "external" }, rendered: "invalid-keyword" },
+   { code: "path-separator-in-template", severity: "error", config_path: "title.template", params: {}, rendered: "path-separator-in-template" },
++  // #17 (F1): a bare `tracks[0]` diagnostic on the rule whose detail panel
++  // the test opens. Its grid-row marker is the sole anchor for `tracks[0]`;
++  // the detail-panel `SectionWidget` roots at the same path and must
++  // `suppress-self-anchor` rather than render a redundant second marker.
++  { code: "overlapping-rules", severity: "error", config_path: "tracks[0]", params: { rules: "tracks[0], tracks[1]", track: "0" }, rendered: "overlapping-rules" },
+ ];
+ 
+ const loadedDoc: LoadProfileDocument = {
+   config_diagnostics: diagnostics,
+   batch_diagnostics: [],
+   files: [],
+   suggestions: [],
+   mkvmerge_found: true,
+   profile: markerProfile,
+ };
+@@ -98,20 +107,21 @@ const validateDoc: ReportDocument = {
+   suggestions: [],
+   mkvmerge_found: true,
+ };
+ 
+ // Markers rendered while the per-rule detail panel is closed: everything
+ // top-level and the grid, minus `profile_version` (no rendered control).
+ const TOP_MARKERS: { path: string; severity: string }[] = [
+   { path: "input.pattern", severity: "error" },
+   { path: "input.extensions", severity: "warning" },
+   { path: "tracks.rules", severity: "error" },
++  { path: "tracks[0]", severity: "error" },
+   { path: "tracks[1]", severity: "error" },
+   { path: "attachments.rules[0]", severity: "error" },
+   { path: "attachments.rules[0].add", severity: "warning" },
+   { path: "output.filename.template", severity: "error" },
+   { path: "chapters", severity: "info" },
+   { path: "title.template", severity: "error" },
+ ];
+ 
+ // The additional markers that appear once rule 0's detail panel is open.
+ const DETAIL_MARKERS: { path: string; severity: string }[] = [
+@@ -148,25 +158,25 @@ test("field-anchored markers resolve by exact config_path; panel stays complete;
+       validate_profile_model: [resolveWith(validateDoc)],
+     },
+   });
+ 
+   await page.goto("/");
+   await page.getByTestId("nav-editor").click();
+   const editor = page.getByTestId("view-editor");
+   await editor.getByRole("button", name("batch-profile-pick")).click();
+   await expect(editor.getByText(en("batch-profile-current", { path: PROFILE_PATH }))).toBeVisible();
+ 
+-  // The panel is never filtered: all 16 diagnostics list, including the
++  // The panel is never filtered: all 17 diagnostics list, including the
+   // panel-only `profile_version`.
+   await expect(
+     editor.locator('section[aria-labelledby="editor-diagnostics-heading"] li'),
+-  ).toHaveCount(16);
++  ).toHaveCount(17);
+ 
+   // `profile_version` has no rendered control -> no marker anywhere, panel
+   // row still present (asserted by the count above).
+   await expect(marker(page, "profile_version")).toHaveCount(0);
+ 
+   // Top-level + grid markers, each on exactly its own control at its worst
+   // severity. The total count is exact: a redundant second marker for any
+   // path (e.g. a keyword-or-block root double-rendered by its nested block)
+   // would fail it.
+   for (const { path, severity } of TOP_MARKERS) {
+@@ -197,30 +207,37 @@ test("field-anchored markers resolve by exact config_path; panel stays complete;
+   expect(await chaptersSelect.getAttribute("aria-invalid")).toBeNull();
+ 
+   await assertNoSeriousA11yViolations(page);
+ 
+   // Open rule 0's detail panel: the tracks[0].* markers now render, at
+   // their exact anchor depths and asymmetries.
+   await editor.getByTestId("editor-rule-select").first().click();
+   const rulePanel = editor.getByTestId("editor-rule-detail");
+   await expect(rulePanel).toBeVisible();
+ 
++  // D57 single-anchor invariant (F1): the detail panel roots a
++  // `SectionWidget` at `selectedPath` (`tracks[0]`) but must
++  // `suppress-self-anchor`, since the grid row already anchors that path.
++  // With rule 0's panel open, `tracks[0]` still resolves to exactly one
++  // marker (the grid row); a re-anchoring detail root would make it two.
++  await expect(marker(page, "tracks[0]")).toHaveCount(1);
++
+   for (const { path, severity } of DETAIL_MARKERS) {
+     await expect(marker(page, path)).toHaveClass(new RegExp(`\\bdiag-marker--${severity}\\b`));
+   }
+   await expect(editor.locator("[data-testid='diag-marker']")).toHaveCount(
+     TOP_MARKERS.length + DETAIL_MARKERS.length,
+   );
+ 
+   // Error at a propertyMap row -> aria-invalid on that row's value input.
+   const changesValue = rulePanel
+     .getByRole("group", name("editor-track-rule-changes"))
+     .getByTestId("property-map-value");
+   await expect(changesValue).toHaveAttribute("aria-invalid", "true");
+ 
+   // The panel is still complete and unfiltered after selection.
+   await expect(
+     editor.locator('section[aria-labelledby="editor-diagnostics-heading"] li'),
+-  ).toHaveCount(16);
++  ).toHaveCount(17);
+ 
+   await assertNoSeriousA11yViolations(page);
+ });
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index 64c898e..88b7d2e 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -362,21 +362,26 @@ function changesSummary(rule: TrackRule): string {
+ // `trackRule` registry, byte-for-byte the machinery `ListWidget.vue` already
+ // uses for AttachmentRule items (`attachments.rules`) -- the same code path,
+ // closing the spec-8.2 "detail editor per rule" gap
+ // (`registry-slot-capability-delta`) with zero new components and zero new
+ // catalog keys.
+ 
+ const selectedIndex = ref<number | null>(null);
+ 
+ // The detail panel edits rule `selectedIndex` through `SectionWidget` over
+ // `trackRule`; its path root is `tracks[{i}]` (D57), so every field it
+-// dispatches anchors at the same paths core emits for that rule.
++// dispatches anchors at the same paths core emits for that rule. The root
++// itself is a child-path prefix only: the bespoke grid row already anchors
++// `tracks[{i}]` (lint's ProvableOverlap, the design-named anchor), so the
++// mount passes `suppress-self-anchor` to avoid a redundant second marker at
++// that path -- mirroring the same-path collision `KeywordOrBlockWidget`
++// suppresses for its nested block.
+ const selectedPath = computed(() =>
+   selectedIndex.value === null ? undefined : `tracks[${selectedIndex.value}]`,
+ );
+ 
+ function selectRule(index: number) {
+   selectedIndex.value = index;
+ }
+ 
+ const ruleDetailSpec: EditableFieldOf<"section"> = {
+   labelKey: "editor-tracks-rules",
+@@ -590,20 +595,21 @@ function onDragEnd() {
+       </fieldset>
+ 
+       <section
+         v-if="selectedRule"
+         data-testid="editor-rule-detail"
+         :aria-labelledby="`editor-rule-row-${selectedIndex}`"
+       >
+         <SectionWidget
+           :spec="ruleDetailSpec"
+           :path="selectedPath"
++          suppress-self-anchor
+           :model-value="selectedRule"
+           @update:model-value="setRuleValue"
+         />
+       </section>
+ 
+       <p>{{ $t("editor-save-note") }}</p>
+       <button
+         type="button"
+         data-testid="editor-save"
+         :disabled="saveDisabled"
