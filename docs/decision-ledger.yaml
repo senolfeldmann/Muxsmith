@@ -3980,3 +3980,17 @@ entries:
   occurrences:
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T14 verdict F1: editor-markers.spec.ts's header states the no-double-marker contract, but the only bare tracks[i] diagnostic sits on rule 1 while the test opens rule 0's panel - the one structural site that can violate the invariant is never reached; fix extends the fixture to the opened rule"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 fix-round delta verdict (task-14-verdict.md appendix): the fix's fixture author picked OverlappingRules (anchors at tracks[0]) over reusing ProvableOverlap (anchors only at a pair's second rule) precisely to reach the violating structural site - deliberate correct application on the fix side, named by the re-reviewer's harvest"}
+- id: test-expected-value-differs-from-default
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: testing
+  statement: "An initial-state assertion whose expected value equals the environment's default - a <select> defaulting to its first option, an empty string, a zeroed field - passes for free when the binding it claims to test is broken. Pick a fixture whose expected value DIFFERS from the default state, so the assertion fails against the unbound implementation. Trigger is readable: you are asserting an initially rendered value. Kin of proc-guard-needs-its-control (a presence a broken implementation supplies for free) and guard-expected-side-independent-literals (a fixture value colliding with a second meaning); this is the collision with the DEFAULT, not with another concept."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 T15 review (task-15-verdict.md harvest): a select :value initial-render check whose fixture value is the first domain option is vacuous (element default-selects option 0 regardless - reproduced on case 2); the non-default case 10 is the load-bearing guard, falsified by the reviewer (removing :value fails case 10 only)"}
