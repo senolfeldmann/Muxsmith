@@ -3,6 +3,7 @@ import { reactive, ref, useTemplateRef } from "vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { defaultAppSettings, getSettings, setSettings } from "../ipc";
 import type { AppSettings, IpcError } from "../ipc";
+import { applyLocale } from "../i18n/fluent";
 
 // D27 settings dialog: native <dialog>, opened imperatively via
 // `defineExpose`'s `open()` (App.vue holds a template ref and calls it
@@ -61,6 +62,15 @@ async function save() {
       locale: form.locale,
     };
     await setSettings(next);
+    // Live locale switch (D56): swap the catalog in place when the locale
+    // actually changed, before `baseline` is reassigned below. Views are
+    // v-show-mounted, so no state is lost. The `!== null` narrows
+    // AppSettings.locale (string | null) to the string applyLocale takes;
+    // next.locale is always set here (from form.locale), so the guard only
+    // satisfies the type -- vue-tsc is the sole gate that catches it.
+    if (next.locale !== baseline.locale && next.locale !== null) {
+      applyLocale(next.locale);
+    }
     baseline = next;
     dialogEl.value?.close();
   } catch (e) {
