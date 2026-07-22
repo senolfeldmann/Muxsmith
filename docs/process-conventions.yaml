@@ -351,12 +351,13 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-16", kind: deferred, ref: "plan-6 T8 review verdict Q1 + harvest: extra _body twins ruled correct conformance on the merits, Minor process note under the rule's letter; carve-out proposed by the reviewer, escalated to the owner"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling over four refinement rounds (option 2 of the enumerated escalation; exemplary-list marking added by him; four-part outward-effect definition sharpened, test condition relaxed to never-weaken on his over-restriction objection; reviewer over-restriction watch added by him). Verbatim text approved; owner note on record: 'Wir werden sehen, ob das zu einschraenkend ist' - the boundary revises on evidence, and the watch is its collection mechanism"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T13 review Q2d: the implementer reused six existing catalog keys at NEW sites (nav tab, open/save buttons, diagnostics heading) and self-classified it grant-covered; condition 4 excludes catalog-key use at a new site, so this was a NEEDS_CONTEXT-that-was-skipped - disclosed, adjudicated acceptable-with-owner-sign-off (strings route to the plan-close rendered-surface pass). FIRST over-restriction-watch calibration data, both directions in one task: the boundary correctly gated 2 debatable reuses (nav tab 'Profile/Profil', 'Selected profile:' line) and needlessly gated 3 unambiguously generic ones (settings-save, batch-diagnostics-heading, batch-profile-filter-name); the reviewer's read: evidence for a NARROWER carve-out (generic-content key, no $param, no semantic-domain shift), not wholesale loosening"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 T3 review Q1 (task-03-verdict.md): first correctly-permitted comment-edit application - catalog header comments fail the grant's user-visible test, the en edit repaired a sentence the change itself falsified (sweep duty), the de edit sits at the grant's edge (records a decision) but was ruled within it; over-restriction watch calibration data, distinguishable interior vs edge recorded"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 review Q1 (task-14-verdict.md): suppressSelfAnchor adjudicated grant-covered - an internal mechanical prop realizing enumerated fixture behavior with zero outward surface, verified by walking the grammar (no core path anchors at the block wrapper alone) and by reproducing the double marker with the prop removed; calibration data for the do-not-over-restrict direction"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2
@@ -387,7 +388,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 9
+  count: 10
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
     - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
@@ -398,6 +399,7 @@ entries:
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T6 (task-06-verdict.md): the plan's transcribed Step-2 literal never compiled (Option-derived string|null placeable vs FluentVariable, reproduced TS2322); the Sonnet implementer adapted with the invariant-backed conservative repair and surfaced it twice (DONE_WITH_CONCERNS + source comment), reviewer ruled adapt-and-surface exactly this entry's shape. Class note from the verdict: plan-carried code is a CLAIM first tested at compile time in the real tree - the plan phase structurally cannot run that verification on a prose snippet"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T7 (task-07-verdict.md): second same-day instance - the plan's Step-4 literal fails vue-tsc (string|null into applyLocale(string)); implementer applied the null-narrow the standing cross-task constraint had pre-authorized by name, disclosed at site + report; reviewer notes the class is any string-typed SINK fed a T|null value, broader than the placeable wording"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T12 (task-12-verdict.md Q1): the plan listed src/style.css as Modify but no global stylesheet existed anywhere at the parent commit; implementer created it with the design-enumerated content, wired via the in-set App.vue import, surfaced as DONE_WITH_CONCERNS; reviewer upheld as mechanical adaptation (design opened the fork, not the keyboard) and names the authoring gap: a to-be-created file mislabeled Modify with its attachment site unspecified"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 (task-14-verdict.md Q3): the plan's illustrative marker markup (bare span + aria-label) fails its own axe gate - aria-prohibited-attr at serious impact, reproduced by stripping role=img from the built app; the implementer's role=img addition closed the latent defect, reviewer rules plan markup is intent, not axe-verified"}
 - id: proc-verification-step-must-be-falsifiable
   kind: pattern
   tier: 2
@@ -409,7 +411,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 6
+  count: 7
   occurrences:
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "D49 review F7, and the reason the statement now names documents as well as plans: D49's 'no test asserts the wire change' rested on `grep -rn '\"edit\"'`, which cannot match an unquoted TS object key - e2e/smoke.spec.ts:177 carries `edit: null`. The conclusion happened to survive (that fixture is inert against `edit: unknown`), so the defect was in the METHOD while the result was right, which is precisely the state an absence-check cannot distinguish. The D49 reviewer's framing, adopted verbatim into the statement: nobody re-runs a negative"}
@@ -417,6 +419,7 @@ entries:
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T4 report + review verdict: both new D48 guards had their red state produced deliberately before being trusted - the briefed step-4 break (generic predicate on TracksCfg.unmatched, core-83 test red, revert) AND an un-briefed extend-mutation on guard 2 (red, revert), adjudicated within remit. Guard 2 firing settles the plan's design trigger 2 by measurement: the guard stays for good in its literal-expected form"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 amendment-3 delta verdict harvest: a count-0 absence assertion paired with a PRESENCE assertion on the SAME selector satisfies the fire-once discipline without a deliberate-break step - the presence branch is the known-present control proving the selector resolves, so count-0 cannot pass by misspelling. Reusable template for absence-unless-triggered e2e checks (Task 13b step 1.1/1.2)"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design round 1, both sides (design-review-round-1.md harvest): the design author verified its SI-3 negative claim (no in-app help in mkvtoolnix-gui) with a positive-control grep before recording it, and the reviewer re-ran every no-work-needed absence claim with a known-present control - the harvest records the discipline as held everywhere, no vacuous negative in the round"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T13 (task-13-verdict.md harvest): two absence/negative checks (closed-set completeness; E3 suppression) trusted only after control-firing; the reviewer's formulation adopted - a green suppression test or an empty grep proves nothing until you watch it go red"}
 - id: proc-no-work-needed-check
   kind: pattern
   tier: 2
