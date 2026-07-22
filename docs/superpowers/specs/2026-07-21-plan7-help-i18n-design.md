@@ -834,7 +834,7 @@ Rules 4-5 run wherever check 3 runs (all `.ftl` including `cli.ftl`).
 **Amendment (round 7, 2026-07-22): rule 5's select-structure part
 rewritten from absolute assertions to en-reference parity.** Authority:
 the Task-17 NEEDS_CONTEXT decision memo
-(`.superpowers/sdd/plan-7/task-17-report.md`) + controller ruling,
+(`docs/process-journal/artifacts/plan-7-sdd/task-17-report.md`) + controller ruling,
 Option B, counterexamples controller-verified on the tree. The refuted
 premise: "this tree's catalogs have no nested selects" (the
 `patternStructure` premise the brief carried), on which rule 5(d)'s
@@ -1362,7 +1362,7 @@ block below):
    fire-proved that the leading-pipe pattern (`^\s*\|`) misses
    headerless GFM tables and harvested that zero-pipe strictly
    dominates it, topics having no legitimate `|` at all
-   (`.superpowers/sdd/plan-7/task-09-verdict.md:60,64`; binding
+   (`docs/process-journal/artifacts/plan-7-sdd/task-09-verdict.md:60,64`; binding
    constraint routed by the controller from that review).
 6. **Raw-HTML ban, inline code spans exempt** (amended in, round 8): a
    topic file containing angle-bracket markup outside an inline code
@@ -1397,7 +1397,7 @@ gate could precede the tree.
 **Amendment (round 8, 2026-07-22): D62's check enumeration widened from
 four to six; the "exhaustive four" wording corrected.** Authority: the
 Task-19 report surfacing the collision
-(`.superpowers/sdd/plan-7/task-19-report.md`, concern 1; all six checks
+(`docs/process-journal/artifacts/plan-7-sdd/task-19-report.md`, concern 1; all six checks
 implemented and fire-verified both directions in commit `a653d39` on
 `plan7-g`) + controller ruling: the two checks are IN, the design is
 amended to match the ruling. Why the design lagged: checks 5-6 enforce
