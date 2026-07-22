@@ -46,5 +46,10 @@ declare global {
     /** Every `update:modelValue` event the mounted component has emitted,
      * in order; reset on each `__muxsmithMount__` call. */
     __muxsmithEmitted__: Array<{ event: string; payload: unknown }>;
+    /** Set by `mount-entry.ts`: renders a help topic to HTML through
+     * `src/help/topics.ts` (D50/D51). Exposed so `help-topics.spec.ts`
+     * can exercise the loader's fallback chain from the page without an
+     * editor UI to open. */
+    __muxsmithTopicHtml__: (helpId: string, locale: string) => string;
   }
 }

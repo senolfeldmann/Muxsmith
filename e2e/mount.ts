@@ -19,9 +19,16 @@ export interface MountSpec {
   locale?: string;
 }
 
-export async function mountComponent(page: Page, spec: MountSpec): Promise<void> {
+/** Injects the built mount harness into a blank page WITHOUT mounting a
+ *  component - for specs that drive harness-exposed module functions
+ *  (window.__muxsmithTopicHtml__) directly. */
+export async function loadHarness(page: Page): Promise<void> {
   await page.setContent('<!doctype html><div id="mount"></div>');
   await page.addScriptTag({ path: MOUNT_HARNESS_PATH });
+}
+
+export async function mountComponent(page: Page, spec: MountSpec): Promise<void> {
+  await loadHarness(page);
   await page.evaluate((s) => window.__muxsmithMount__(s), spec);
 }
 
