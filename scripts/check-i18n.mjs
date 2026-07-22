@@ -21,6 +21,11 @@
 //     key off the spec and pass it to $t() at render time, so this is
 //     check 1's own coverage extended to that literal shape, not a
 //     second mechanism.
+//     D55 rule 2: the same scan covers literal fluent-vue attribute
+//     accessors `$ta('id')` / `ta('id')` (TA_CALL_RE) -- the id must
+//     resolve, same hard fail. Attribute *member* access after the call
+//     (`$ta('id').tooltip`, `$ta('id')[name]`) is dynamic and skipped
+//     exactly like a computed $t key; its coverage is checks 3-5.
 //
 //  2. WARNING ONLY (always exit 0 on this half): gui-* catalog ids never
 //     referenced anywhere in src/. Many ids are reached only dynamically
@@ -55,11 +60,13 @@
 //     bundle, and it is the only locale checks 1/2 validate against -- so
 //     every OTHER `locales/<tag>/` directory must carry exactly the same
 //     set of `.ftl` catalog *files* as `locales/en/`, and within each
-//     shared file, exactly the same message ids. No Fluent attributes
-//     (`.label = ...` style) exist in any catalog today (grepped across
-//     locales/en/*.ftl), so attribute-level parity is not needed yet;
-//     extend this check (and MESSAGE_ID_RE's own note below) if one is
-//     ever added.
+//     shared file, exactly the same message ids. D55 extends this parity
+//     to Fluent attributes and pattern structure (rules 4-5 below): for
+//     every shared id, the attribute-NAME set must equal en's (rule 4),
+//     and for every message value and every attribute value the placeable
+//     set and the flat-derived select structure must match en's (rule 5,
+//     an en-reference parity check -- see comparePatterns; absolute Fluent
+//     validity is delegated to e2e assertAllCatalogsParseCleanly).
 //
 //     UNLIKE checks 1/2, this check covers ALL `.ftl` files under
 //     `locales/en/`, INCLUDING `cli.ftl`. Decision (Task 20, does not
@@ -115,28 +122,53 @@ const RUST_ONLY_IDS = new Set([
 //     `jobs-row-warning-count`): fine -- the id sits on the first line and
 //     continuation lines are indented, so they can never register a bogus
 //     id, and Fluent syntax inside the value is never inspected.
-//   - ATTRIBUTES (`.label = ...` lines): NOT registered as ids. If a
-//     catalog ever adds attributes the frontend addresses (fluent-vue's
-//     `$t("msg.attr")` form), this scanner will flag those references as
-//     missing -- extend parseCatalogIds then, don't work around it. The
-//     same extension would need to reach check 3's parity comparison
-//     (currently id-set-only, since no catalog has attributes today).
+//   - ATTRIBUTES (indented `.name = ...` lines, e.g. `.tooltip`/`.hint`):
+//     NOT registered as ids (they are not column-0), but D55 registers
+//     them PER ID: `parseCatalog` records each id's attribute-name set and
+//     each attribute's pattern body alongside the id's own value. They are
+//     addressed by rules 2-5 -- literal `$ta('id')` resolution (rule 2),
+//     editor tooltip completeness (rule 3), and cross-locale attribute-name
+//     and pattern-structure parity (rules 4-5). Attribute *member* access
+//     (`$ta('id').tooltip`) stays dynamic and is not statically resolved.
 //   - TERMS (`-brand-name = ...`): NOT registered (leading `-` fails the
 //     regex). Correct as-is: terms are catalog-internal and can never be
 //     a `$t()` argument.
 const MESSAGE_ID_RE = /^([A-Za-z][A-Za-z0-9_-]*)\s*=/;
 
-/** Message ids found in one catalog file, given its full path. */
-function parseCatalogIds(path) {
-  const ids = [];
+/** One catalog file, line-parsed (charter above): message ids, each id's
+ *  attribute-name -> pattern body, and the id's own value body. */
+function parseCatalog(path) {
+  const messages = new Map(); // id -> { value: string, attrs: Map<name, body> }
   const text = readFileSync(path, "utf8");
+  let current = null;
+  let target = null; // { kind: "value" } | { kind: "attr", name }
   for (const line of text.split("\n")) {
-    const m = MESSAGE_ID_RE.exec(line);
-    if (m) {
-      ids.push(m[1]);
+    const idMatch = MESSAGE_ID_RE.exec(line);
+    if (idMatch) {
+      current = { value: line.slice(line.indexOf("=") + 1), attrs: new Map() };
+      messages.set(idMatch[1], current);
+      target = { kind: "value" };
+      continue;
+    }
+    if (current === null) continue;
+    const attrMatch = /^\s+\.([a-z][a-z0-9-]*)\s*=/.exec(line);
+    if (attrMatch) {
+      current.attrs.set(attrMatch[1], line.slice(line.indexOf("=") + 1));
+      target = { kind: "attr", name: attrMatch[1] };
+      continue;
+    }
+    if (/^\s+\S/.test(line)) {
+      // continuation line of the current value or attribute
+      if (target.kind === "value") current.value += "\n" + line;
+      else current.attrs.set(target.name, current.attrs.get(target.name) + "\n" + line);
     }
   }
-  return ids;
+  return messages;
+}
+
+/** Message ids found in one catalog file, given its full path. */
+function parseCatalogIds(path) {
+  return [...parseCatalog(path).keys()];
 }
 
 /** All `.ftl` file names directly inside a locale directory, sorted. */
@@ -173,6 +205,14 @@ const sourceFiles = readdirSync(SRC, { recursive: true })
 // settling on this pattern).
 const CALL_RE = /(?<![\w$])\$?t\(\s*(['"])([^'"]*)\1/g;
 
+// D55 rule 2: fluent-vue's attribute accessor `$ta("id")` / `ta("id")` --
+// same CALL_RE mechanics and same hard-fail-on-unknown-id treatment as
+// $t(). The id must exist; attribute *member* access after the call
+// (`$ta("id").tooltip`, `$ta("id")[name]`) is not statically resolved,
+// exactly like a dynamic $t key (skipped, never flagged) -- attribute
+// coverage comes from checks 3-5 instead.
+const TA_CALL_RE = /(?<![\w$])\$?ta\(\s*(['"])([^'"]*)\1/g;
+
 // D45: a registry's `FieldSpec.labelKey` (src/editor/registries.ts) is a
 // message id exactly like a literal $t() call, just never passed through
 // $t() itself -- the editor components (Tasks 10-13) read it off the spec
@@ -184,6 +224,7 @@ const LABEL_KEY_RE = /labelKey:\s*(['"])([^'"]*)\1/g;
 const missing = []; // { id, file, line }
 const literalCallIds = new Set();
 const literalAnywhereIds = new Set();
+const labelKeyIds = new Set(); // D55 rule 3: ids reached via LABEL_KEY_RE
 const fileTexts = new Map();
 
 for (const file of sourceFiles) {
@@ -199,9 +240,17 @@ for (const file of sourceFiles) {
         missing.push({ id, file: relative(ROOT, file), line: i + 1 });
       }
     }
+    for (const m of line.matchAll(TA_CALL_RE)) {
+      const id = m[2];
+      literalCallIds.add(id);
+      if (!knownIds.has(id)) {
+        missing.push({ id, file: relative(ROOT, file), line: i + 1 });
+      }
+    }
     for (const m of line.matchAll(LABEL_KEY_RE)) {
       const id = m[2];
       literalCallIds.add(id);
+      labelKeyIds.add(id);
       if (!knownIds.has(id)) {
         missing.push({ id, file: relative(ROOT, file), line: i + 1 });
       }
@@ -264,6 +313,94 @@ const otherLocales = readdirSync(LOCALES_ROOT, { withFileTypes: true })
 
 const parityErrors = [];
 
+// --- D55 rule 3: every registry label carries a .tooltip in en ---------
+const enCatalogs = new Map(
+  referenceCatalogFiles.map((f) => [f, parseCatalog(join(LOCALES_EN, f))]),
+);
+const tooltipErrors = [];
+for (const id of [...labelKeyIds].sort()) {
+  const hasTooltip = [...enCatalogs.values()].some(
+    (msgs) => msgs.get(id)?.attrs.has("tooltip"),
+  );
+  if (!hasTooltip) {
+    tooltipErrors.push(`labelKey "${id}" has no .tooltip attribute in the en catalog`);
+  }
+}
+
+// --- D55 rules 4+5: attribute-name and pattern-structure parity --------
+const PLURAL_KEYS = new Set(["zero", "one", "two", "few", "many", "other"]);
+const PLACEABLE_RE = /\$([A-Za-z][A-Za-z0-9_-]*)/g;
+const SELECTOR_RE = /\{\s*\$([A-Za-z][A-Za-z0-9_-]*)\s*->/g;
+const VARIANT_RE = /^\s*(\*)?\[([^\]]+)\]/;
+
+function patternStructure(body) {
+  const placeables = new Set([...body.matchAll(PLACEABLE_RE)].map((m) => m[1]));
+  // Flat, line-order derivation (line-based charter, NOT a Fluent parser):
+  // variants attach to the most recent selector seen. This does NOT model
+  // Fluent faithfully -- nested selects (diagnostics.ftl `suggestion-
+  // partition`) mis-attribute the outer variants, and sibling selects whose
+  // reopener `}, { $x ->` sits at column 0 (cli.ftl `validate-summary`,
+  // gui-batch.ftl `batch-diagnostics-summary`) get that selector dropped by
+  // parseCatalog's continuation guard. That is fine here because comparePatterns
+  // uses this derivation only for en-vs-de PARITY: it is deterministic and
+  // applied identically to both locales, so a real drift still surfaces as a
+  // difference. Absolute Fluent validity is the e2e parse guard's job (D55
+  // rule 5, amended round 7).
+  const selects = [];
+  for (const line of body.split("\n")) {
+    for (const m of line.matchAll(SELECTOR_RE)) {
+      selects.push({ selector: m[1], keys: [], defaults: 0 });
+    }
+    const v = VARIANT_RE.exec(line);
+    if (v && selects.length > 0) {
+      const current = selects[selects.length - 1];
+      current.keys.push(v[2].trim());
+      if (v[1] === "*") current.defaults += 1;
+    }
+  }
+  return { placeables, selects };
+}
+
+function comparePatterns(where, enBody, locBody, errors) {
+  const a = patternStructure(enBody);
+  const b = patternStructure(locBody);
+  if ([...a.placeables].sort().join() !== [...b.placeables].sort().join()) {
+    errors.push(`${where}: placeable set differs from en ({${[...a.placeables]}} vs {${[...b.placeables]}})`);
+  }
+  if (a.selects.length !== b.selects.length) {
+    errors.push(`${where}: select-expression count differs from en (${a.selects.length} vs ${b.selects.length})`);
+    return;
+  }
+  a.selects.forEach((sa, i) => {
+    const sb = b.selects[i];
+    if (sa.selector !== sb.selector) {
+      errors.push(`${where}: select ${i} selector differs ($${sa.selector} vs $${sb.selector})`);
+    }
+    const plural = (k) => PLURAL_KEYS.has(k) || /^\d+$/.test(k);
+    if (sa.keys.every(plural) && sb.keys.every(plural)) {
+      // CLDR carve-out, en-reference PARITY (D55 rule 5(d), amended round
+      // 7): plural-category sets legitimately differ per locale, so this
+      // does not assert an absolute shape -- it compares de against en's
+      // flat derivation: variant presence (empty vs non-empty) and
+      // *-default count must match en's. Absolute per-select validity
+      // (every select well-formed, exactly one *-default) is delegated to
+      // e2e assertAllCatalogsParseCleanly, which real-Fluent-parses every
+      // locale; a select missing its default is a parse error caught
+      // there, not here. The flat model collapses sibling/nested selects
+      // identically for both locales, so this parity stays sound within
+      // the line-based charter.
+      if (
+        (sa.keys.length === 0) !== (sb.keys.length === 0) ||
+        sa.defaults !== sb.defaults
+      ) {
+        errors.push(`${where}: select ${i} plural variant presence / *-default count differs from en (${sa.keys.length}/${sa.defaults} vs ${sb.keys.length}/${sb.defaults})`);
+      }
+    } else if (sa.keys.slice().sort().join() !== sb.keys.slice().sort().join()) {
+      errors.push(`${where}: select ${i} variant keys differ from en ([${sa.keys}] vs [${sb.keys}])`);
+    }
+  });
+}
+
 for (const locale of otherLocales) {
   const dir = join(LOCALES_ROOT, locale);
   const localeFiles = new Set(listCatalogFiles(dir));
@@ -284,7 +421,8 @@ for (const locale of otherLocales) {
       continue; // already reported as a missing catalog file above
     }
     const refIds = referenceIdsByFile.get(file);
-    const localeIds = new Set(parseCatalogIds(join(dir, file)));
+    const localeMsgs = parseCatalog(join(dir, file));
+    const localeIds = new Set(localeMsgs.keys());
     const missingIds = [...refIds.difference(localeIds)].sort();
     const extraIds = [...localeIds.difference(refIds)].sort();
     for (const id of missingIds) {
@@ -293,6 +431,45 @@ for (const locale of otherLocales) {
     for (const id of extraIds) {
       parityErrors.push(`locales/${locale}/${file}: extra id "${id}" (not present in locales/en/${file})`);
     }
+
+    // D55 rules 4+5: for every id shared between en and this locale,
+    // attribute-name-set equality (rule 4) and placeable/selector-structure
+    // parity on the value and each shared attribute (rule 5).
+    const enMsgs = enCatalogs.get(file);
+    for (const id of [...refIds].filter((x) => localeIds.has(x)).sort()) {
+      const enMsg = enMsgs.get(id);
+      const locMsg = localeMsgs.get(id);
+      const enAttrs = [...enMsg.attrs.keys()].sort();
+      const locAttrs = [...locMsg.attrs.keys()].sort();
+      if (enAttrs.join() !== locAttrs.join()) {
+        parityErrors.push(
+          `locales/${locale}/${file}: id "${id}" attribute set differs from en ({${enAttrs}} vs {${locAttrs}})`,
+        );
+      }
+      comparePatterns(
+        `locales/${locale}/${file}: "${id}" value`,
+        enMsg.value,
+        locMsg.value,
+        parityErrors,
+      );
+      for (const attr of enAttrs) {
+        if (locMsg.attrs.has(attr)) {
+          comparePatterns(
+            `locales/${locale}/${file}: "${id}".${attr}`,
+            enMsg.attrs.get(attr),
+            locMsg.attrs.get(attr),
+            parityErrors,
+          );
+        }
+      }
+    }
+  }
+}
+
+if (tooltipErrors.length > 0) {
+  console.error("check-i18n: editor labelKeys without a .tooltip attribute in the en catalog:");
+  for (const line of tooltipErrors) {
+    console.error(`  ${line}`);
   }
 }
 
@@ -303,7 +480,7 @@ if (parityErrors.length > 0) {
   }
 }
 
-if (missing.length === 0 && parityErrors.length === 0) {
+if (missing.length === 0 && parityErrors.length === 0 && tooltipErrors.length === 0) {
   console.log(
     `check-i18n: ok (${sourceFiles.length} source files scanned, ${knownIds.size} catalog ids, ` +
       `${unused.length} unused warning(s), ${otherLocales.length} other locale(s) checked for parity ` +
