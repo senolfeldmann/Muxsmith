@@ -102,10 +102,16 @@ watch(helpMode, (on) => {
   }
 });
 
-// A pin highlights a visible element; a hidden v-show view's pin would be
-// a highlight nobody can see (D52).
+// A view switch clears BOTH pinnedId and hoverId (D52, round-6 amendment):
+// the pin because a hidden v-show view's pin would highlight nothing
+// visible; the hover because the nav sits outside <main>, so no hover event
+// fires en route to the tab and a stale hoverId would otherwise keep the old
+// view's topic. Deliberately narrow: hoverId is cleared ONLY here, never
+// eagerly elsewhere (the delegation's normal null-on-unannotated-hover stays
+// as-is).
 watch(activeView, () => {
   pinnedId.value = null;
+  hoverId.value = null;
 });
 
 // Highlight classes: help-hover (faint) on the hovered element,

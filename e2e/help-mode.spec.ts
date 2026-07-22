@@ -237,19 +237,20 @@ test.describe("help mode annotations (D54)", () => {
 
     // Focusin is the keyboard-equivalent trigger of hover (the a11y pair of
     // capture listeners on <main>): it swaps the sidebar to the focused
-    // element's topic. Dispatched directly, not via a real focus: headless
-    // Chromium does not fire focus events for programmatic OR Tab focus here
-    // (verified: activeElement moves and document.hasFocus() is true, yet no
-    // focusin reaches the listener), so a real-focus action cannot exercise
-    // this listener in this harness -- the dispatched event drives the exact
-    // same capture-phase listener a real focusin would.
+    // element's topic. The event is dispatched directly rather than via a
+    // real element.focus(): a real .focus() DOES fire a focusin that reaches
+    // the <main> capture listener, but in this headless harness it does not
+    // drive the app's delegated state (the reactive topic swap), so the
+    // direct dispatch exercises the exact same capture-phase listener
+    // deterministically.
     await copy.dispatchEvent("focusin");
     await expectSidebarTopic(page, "batch-suggestion-card");
 
     // Enter pins the focused annotated element (activation suppressed). The
     // keydown listener is on document and fires on the REAL key event;
-    // focus() sets activeElement (the keydown target) even though it does not
-    // itself fire focusin in this harness.
+    // focus() sets activeElement (the keydown target). Its focusin does not
+    // drive the delegated topic swap in this harness, but that is immaterial
+    // here -- the pin comes from the Enter keydown, not from focusin.
     await copy.focus();
     await page.keyboard.press("Enter");
     // The pin holds as the hover moves to an unannotated control -- only
@@ -274,6 +275,28 @@ test.describe("help mode annotations (D54)", () => {
     // live pin outranks any hover).
     await page.getByTestId("nav-jobs").click();
     await page.getByTestId("view-jobs").hover();
+    await expectSidebarTopic(page, "view-jobs");
+  });
+
+  test("a view switch instantly clears a hover topic: hover the card, switch via nav without re-entering <main>, the new view's topic shows immediately (D52 round-6)", async ({
+    page,
+  }) => {
+    await batchCardInHelpMode(page);
+    const card = page.getByTestId("batch-suggestion-card");
+
+    // Hover (not pin) the annotated card: the sidebar shows the card topic.
+    await card.hover();
+    await expectSidebarTopic(page, "batch-suggestion-card");
+
+    // Switch views via the nav, which sits OUTSIDE <main>: Playwright moves
+    // the pointer straight to the tab, firing no hover event on any
+    // annotated element en route, so nothing refreshes hoverId. Without the
+    // round-6 hover-clear, hoverId would still point at the card and the
+    // sidebar would keep the stale batch-suggestion-card topic; with it, the
+    // pin > hover > view-topic chain lands on view-jobs immediately -- no
+    // re-hover into the new view needed (contrast the pin case above, which
+    // hovers view-jobs back in).
+    await page.getByTestId("nav-jobs").click();
     await expectSidebarTopic(page, "view-jobs");
   });
 
