@@ -48,7 +48,7 @@ editor-input-recursive = Rekursiv
 ## Output (OutputCfg)
 
 editor-output-directory = Verzeichnis
-    .tooltip = Standardverzeichnis für die gemuxten Dateien. Das in der Stapel-Ansicht gewählte Ausgabeverzeichnis übersteuert es pro Lauf.
+    .tooltip = Standardverzeichnis für die gemuxten Dateien; bleibt es leer, werden sie ins Quellverzeichnis geschrieben. Das in der Stapel-Ansicht gewählte Ausgabeverzeichnis übersteuert es pro Lauf.
 editor-output-filename = Dateiname
     .tooltip = Wie jede Ausgabedatei benannt wird: keep übernimmt den Quell-Dateinamen mit der Erweiterung .mkv, eine Vorlage rendert einen neuen Namen aus den erfassten Feldern.
 editor-output-on-collision = Bei Kollision

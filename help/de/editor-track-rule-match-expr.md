@@ -2,7 +2,7 @@
 
 Der Match-Ausdruck wählt aus der Quelle der Regel die eine Spur aus, die diese Regel behandelt. Er ist eine Konjunktion aus bis zu fünf Teilen; jeder vorhandene Teil muss zutreffen:
 
-- **`exact`**: Gleichheit von Eigenschaften, typisiert - Zahlen vergleichen numerisch, Sprachen als Sprachen (`de` ist gleich `ger`). Typisierte Gleichheit, die kuratierten Wertedomänen und der `raw:`-Bypass haben ein eigenes Thema; siehe das Thema Exact.
+- **`exact`**: Gleichheit von Eigenschaften, typisiert - Zahlen vergleichen numerisch, Sprachen als Sprachen (`de` ist gleich `ger`). Typisierte Gleichheit, die kuratierten Wertedomänen und der `raw:`-Bypass haben ein eigenes Thema; siehe das Thema Exakt.
 - **`substring`**: Enthaltensein ohne Groß-/Kleinschreibung, nur String-Eigenschaften - der übliche Weg, `SDH` oder `Commentary` im Spurnamen zu fangen.
 - **`regex`**: Regex-Suche, genau wie geschrieben; nutze `(?i)` für Groß-/Kleinschreibungs-Unabhängigkeit. Nur String-Eigenschaften.
 - **`any`**: eine Liste von Teilausdrücken, von denen mindestens einer zutreffen muss (ODER).

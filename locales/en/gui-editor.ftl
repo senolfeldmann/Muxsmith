@@ -44,7 +44,7 @@ editor-input-recursive = Recursive
 ## Output (OutputCfg)
 
 editor-output-directory = Directory
-    .tooltip = Default directory the muxed files are written to. The output directory picked in the Batch view overrides it per run.
+    .tooltip = Default directory the muxed files are written to; left empty, they go to the source directory. The output directory picked in the Batch view overrides it per run.
 editor-output-filename = Filename
     .tooltip = How each output file is named: keep reuses the source basename with an .mkv extension, a template renders a new name from the captured fields.
 editor-output-on-collision = On collision
