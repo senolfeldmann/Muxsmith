@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // Task 12/20 i18n completeness + cross-locale parity gate (spec 8.4, #17
-// step 2). No dependencies beyond Node itself. Three independent checks
-// over the same catalog/source scan:
+// step 2). No dependencies beyond Node itself. Four independent hard-
+// failure checks (exit 1), plus one warning-only pass (check 2). Checks
+// 1-3 below run over the catalog/source scan; the other two hard-failure
+// checks are D55 rule 3's editor-tooltip completeness and D61's IpcError
+// presence gate over src-tauri/src, each documented at its own code
+// block:
 //
 //  1. HARD FAILURE (exit 1): every LITERAL `t('id')`/`$t('id')` call found
 //     in src/**/*.{vue,ts} must resolve to a real message id in the known
@@ -44,15 +48,14 @@
 //       - gui-common.ftl's four close-abort-* keys (D31: consumed by
 //         src-tauri's own `include_str!` lookup in run.rs, never by the
 //         frontend)
-//     Known residual false positive, accepted because this half is a
-//     warning, never a failure: a handful of shell IpcError codes (e.g.
-//     gui-common.ftl's mkvmerge-spawn-failed/mkvmerge-query-failed/
-//     settings-io-failed/settings-parse-failed/internal-task-failed,
-//     gui-jobs.ftl's run-already-active/no-active-run/invalid-run-id/
-//     job-log-unavailable/job-log-not-found) are reached only via a
+//     Shell IpcError codes (gui-common.ftl's mkvmerge-spawn-failed etc.,
+//     gui-jobs.ftl's run-already-active etc.) are reached only via a
 //     generic `$t(err.code, err.params)` pattern and never spelled out
-//     literally anywhere in src/, so they can surface as "unused" even
-//     though they are genuinely rendered whenever that IPC error occurs.
+//     literally in src/. D61's presence gate now extracts every
+//     `IpcError::new("code")` from src-tauri/src and both hard-gates it
+//     (a code with no en message fails) and adds it to this check's
+//     usedIds union, so those codes are counted as used here instead of
+//     surfacing as a residual false-positive "unused" warning.
 //
 //  3. HARD FAILURE (exit 1): cross-locale key parity (Task 20, #17 step
 //     2). `locales/en/` is the reference locale -- src/i18n/index.ts
@@ -274,11 +277,45 @@ if (missing.length > 0) {
   }
 }
 
+// --- D61: every IpcError::new("code") in src-tauri has a GUI message ----
+// Line-based Rust scan, taking each file's content up to its first
+// `#[cfg(test)]` line (test modules sit at file bottoms in this tree).
+const SRC_TAURI = join(ROOT, "src-tauri", "src");
+const IPC_ERROR_RE = /IpcError::new\(\s*"([A-Za-z][A-Za-z0-9_-]*)"/g;
+const ipcErrorCodes = new Map(); // code -> "file:line"
+for (const f of readdirSync(SRC_TAURI, { recursive: true }).filter((f) => f.endsWith(".rs"))) {
+  const full = join(SRC_TAURI, f);
+  const text = readFileSync(full, "utf8");
+  const cut = text.indexOf("#[cfg(test)]");
+  const scanned = cut === -1 ? text : text.slice(0, cut);
+  scanned.split("\n").forEach((line, i) => {
+    for (const m of line.matchAll(IPC_ERROR_RE)) {
+      if (!ipcErrorCodes.has(m[1])) {
+        ipcErrorCodes.set(m[1], `${relative(ROOT, full)}:${i + 1}`);
+      }
+    }
+  });
+}
+const ipcErrors = [];
+for (const [code, site] of [...ipcErrorCodes].sort()) {
+  if (!knownIds.has(code)) {
+    ipcErrors.push(`IpcError code "${code}" (${site}) has no message in the en GUI catalogs`);
+  }
+}
+
+if (ipcErrors.length > 0) {
+  console.error("check-i18n: src-tauri IpcError codes with no en GUI catalog message (D61):");
+  for (const line of ipcErrors) {
+    console.error(`  ${line}`);
+  }
+}
+
 const usedIds = new Set([
   ...literalCallIds,
   ...literalAnywhereIds,
   ...diagnosticsIds,
   ...RUST_ONLY_IDS,
+  ...ipcErrorCodes.keys(),
 ]);
 
 const unused = [...knownIds.entries()]
@@ -480,9 +517,15 @@ if (parityErrors.length > 0) {
   }
 }
 
-if (missing.length === 0 && parityErrors.length === 0 && tooltipErrors.length === 0) {
+if (
+  missing.length === 0 &&
+  parityErrors.length === 0 &&
+  tooltipErrors.length === 0 &&
+  ipcErrors.length === 0
+) {
   console.log(
     `check-i18n: ok (${sourceFiles.length} source files scanned, ${knownIds.size} catalog ids, ` +
+      `${ipcErrorCodes.size} IpcError code(s) gated, ` +
       `${unused.length} unused warning(s), ${otherLocales.length} other locale(s) checked for parity ` +
       `against ${referenceCatalogFiles.length} en/ catalog(s)).`,
   );
