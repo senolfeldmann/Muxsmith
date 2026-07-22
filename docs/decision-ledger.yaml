@@ -3820,21 +3820,6 @@ entries:
   occurrences:
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 design: D54's hover sentence AND spec amendment 6(a) both paraphrased D52's mechanics loosely and both diverged ('keeps its topic' vs hoverId-null fallback); surfaced by plan-authoring as defect 4, fixed by the three-amendment round with the authority named inline (round-4 verdict)"}
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T3 review (task-03-verdict.md harvest): the same shape twice in one task - D54's exclusion parenthetical ('profile's own directory') contradicts the source it summarizes (planner.rs:285 source-dir fallback), and the plan's 'du-imperative' gloss contradicts the catalog header it delegates to; reviewer's formulation: cite without summarizing, or recompute the gloss from source. Fix routes: owner-pass wording + a batched design one-liner at plan close"}
-- id: proc-check-green-state-reachable
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "Fire-verifying a check proves its RED state is reachable; it does not prove its GREEN state is - a sweep-completion grep whose pattern over-matches (hitting legitimate non-targets that the same change deliberately preserves, or generated/ignored files in scope) is permanently red no matter how correctly the sweep lands. Complement of proc-verification-step-must-be-falsifiable: that entry demands the check CAN fail, this one demands it CAN pass. Trigger is readable: you are writing a completion check for a sweep or migration. Handle: run the check against the intended END state (construct it locally or reason member-by-member against the enumerated survivors) and show the expected-pass is reachable, before the check enters the plan."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-21", kind: decided, ref: "plan-7 plan review round 1, finding 1: Task 5's 24-name completion grep can never pass - three folded Fluent ids double as DOM id=/aria-describedby= values the same task preserves, plus a gitignored generated file sits in scope; every absence step in the plan was dutifully fire-verified red, which is exactly why the unreachable green survived (reviewer harvest process note)"}
-    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T2 review (task-02-verdict.md harvest), novel flavor: Step 4's stale-doc grep is permanently red because it collides with the plan's OWN Step-1 test fixture strings (self-collision within one task); the implementer's sharper substitute pattern was upheld as verification-instrumentation fix (fire-verified against HEAD~1), and the reviewer notes the mirror risk - the tuned pattern must not become a standing guard, it would under-fire on differently-worded survivors"}
 - id: content-claims-anchor-bound
   kind: pattern
   tier: 1

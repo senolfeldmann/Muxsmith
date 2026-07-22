@@ -370,7 +370,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 4
-  count: 6
+  count: 7
   occurrences:
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict: the brief's anchor list summed 19, stated 20, real 21 - untagged arithmetic over the tree"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1: the brief asserted rust-toolchain.toml components apply on a bare rustup toolchain install (false, rustup #4216); untagged, only the reviewer caught it; fix 308effc"}
@@ -378,6 +378,7 @@ entries:
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15): the duty binds on ROLE - a load-bearing premise of a decision, tagged or not - and not on every incidental fact; contested scoping question closed"}
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T7 report + review verdict: the step-5 premise (self-contradiction sweep already run; spec 4.1 example consistent with canonical save) verified at the source; the memo gloss 'omits source/optional on every rule' found imprecise (2 of 7 rules legitimately carry one key), the operative conclusion held"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T14 NEEDS_CONTEXT: the plan's wiring sentence ('SuggestionCard -> DiagnosticsPanel -> the command') rested on a false topology premise - the cards are BatchView's siblings of the panel since plan 5, and the profile FILE path lives in BatchView, which the Files list excluded. The implementer refuted the premise and stopped; controller verification also exposed that the candidate self-contained resolution misused config_path (a rule locator per rule_index_of, planner.rs:1897) as a file path - 27/27 e2e green because the echo mock is semantics-blind. Routed to amendment 4"}
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T17 NEEDS_CONTEXT (task-17-report.md): the design/brief premise 'this tree's catalogs have no nested selects' - load-bearing for D55 rule 5's absolute select assertions - refuted at the source (three real counterexamples across cli/diagnostics/gui-batch catalogs); implementer stopped with a decision memo, controller re-verified on the tree and routed a design amendment (round 7)"}
 - id: brief-drafts-verified-against-tree
   kind: pattern
   tier: 2
@@ -421,6 +422,22 @@ entries:
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 amendment-3 delta verdict harvest: a count-0 absence assertion paired with a PRESENCE assertion on the SAME selector satisfies the fire-once discipline without a deliberate-break step - the presence branch is the known-present control proving the selector resolves, so count-0 cannot pass by misspelling. Reusable template for absence-unless-triggered e2e checks (Task 13b step 1.1/1.2)"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design round 1, both sides (design-review-round-1.md harvest): the design author verified its SI-3 negative claim (no in-app help in mkvtoolnix-gui) with a positive-control grep before recording it, and the reviewer re-ran every no-work-needed absence claim with a known-present control - the harvest records the discipline as held everywhere, no vacuous negative in the round"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T13 (task-13-verdict.md harvest): two absence/negative checks (closed-set completeness; E3 suppression) trusted only after control-firing; the reviewer's formulation adopted - a green suppression test or an empty grep proves nothing until you watch it go red"}
+- id: proc-check-green-state-reachable
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Fire-verifying a check proves its RED state is reachable; it does not prove its GREEN state is - a sweep-completion grep whose pattern over-matches (hitting legitimate non-targets that the same change deliberately preserves, or generated/ignored files in scope) is permanently red no matter how correctly the sweep lands. Complement of proc-verification-step-must-be-falsifiable: that entry demands the check CAN fail, this one demands it CAN pass. Trigger is readable: you are writing a completion check for a sweep or migration. Handle: run the check against the intended END state (construct it locally or reason member-by-member against the enumerated survivors) and show the expected-pass is reachable, before the check enters the plan."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 plan review round 1, finding 1: Task 5's 24-name completion grep can never pass - three folded Fluent ids double as DOM id=/aria-describedby= values the same task preserves, plus a gitignored generated file sits in scope; every absence step in the plan was dutifully fire-verified red, which is exactly why the unreachable green survived (reviewer harvest process note)"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T2 review (task-02-verdict.md harvest), novel flavor: Step 4's stale-doc grep is permanently red because it collides with the plan's OWN Step-1 test fixture strings (self-collision within one task); the implementer's sharper substitute pattern was upheld as verification-instrumentation fix (fire-verified against HEAD~1), and the reviewer notes the mirror risk - the tuned pattern must not become a standing guard, it would under-fire on differently-worded survivors"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T17 (task-17-report.md NEEDS_CONTEXT): the implementer ran the green-reachability duty against D55 rule 5's select-structure checks and found them permanently RED on the correct tree (sibling column-0 reopeners in validate-summary/batch-diagnostics-summary, nested suggestion-partition, all en/de-structurally identical), refuting the design's no-nested-selects premise before the checks could ship; third instance, promoted"}
 - id: proc-no-work-needed-check
   kind: pattern
   tier: 2
