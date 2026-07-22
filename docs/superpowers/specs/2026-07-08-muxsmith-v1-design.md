@@ -388,7 +388,7 @@ On top of that, an integrated **help mode**:
 - A prominent Help/Guide button, always visible in every view. Clicking it toggles help mode; clicking again (or Esc, except while the settings dialog is open, whose native cancel consumes Esc) exits.
 - Entering help mode opens a right-hand sidebar with independently scrollable explanatory text; initially it shows the long-form explanation of the current view.
 - Hovering any help-annotated element highlights it with a faint border and swaps the sidebar content to that element's long-form explanation (beyond tooltip depth: what it does, when to use it, interactions with other settings). Hovering an element without a help-id sets no hover topic: the sidebar shows the pinned topic if one is pinned, else the current view's topic. Clicking an annotated element pins without activating it.
-- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked, the active view is switched, or help mode exits.
+- Clicking an element pins the selection: the element gets a prominent marking and the sidebar stays on its topic regardless of hover, until another element is clicked, the active view is switched, in which case the hover state resets too and the sidebar shows the new view's topic, or help mode exits.
 - While help mode is active, control activation inside the main content
   area is suppressed; the help toggle, the three view tabs, the settings
   button and the sidebar stay live; clicking an annotated element pins its
@@ -419,11 +419,11 @@ Localization readiness is structural, not deferred polish:
 - Integration: real mkvmerge in CI generates tiny fixture MKVs (from srt/wav seeds via mkvmerge itself); end-to-end dry-run and run against them.
 - CLI rendering: snapshot tests (insta).
 - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
-- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. the `@intlify/vue-i18n/no-raw-text` eslint rule (D27) keeps hardcoded
-strings out of Vue templates - template text nodes plus the configured
-static attributes (`title`, `aria-label`, `placeholder`, `alt`);
-`:`-bound expressions are covered by the check-i18n literal scan instead;
-core is prose-free by construction.
+- i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. The `@intlify/vue-i18n/no-raw-text` eslint rule (D27) keeps hardcoded
+  strings out of Vue templates - template text nodes plus the configured
+  static attributes (`title`, `aria-label`, `placeholder`, `alt`);
+  `:`-bound expressions are covered by the check-i18n literal scan instead;
+  core is prose-free by construction.
 - CI: GitHub Actions matrix (windows, macos, linux) running tests; packaging artifacts (msi, dmg, deb, rpm, AppImage) on release tags. While the repo is private, branch pushes run Linux only (Actions minute multipliers: Windows 2x, macOS 10x); the full matrix runs on PRs, tags and manual dispatch. Reverts to the full matrix on every push when the repo goes public.
 
 ## 11. Non-goals for v1
