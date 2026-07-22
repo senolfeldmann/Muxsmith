@@ -121,6 +121,23 @@ editor's controls get their help-ids in this pass instead of a retrofit.
   IpcError item above. (T4 verdict harvest H1 + plan-5.8 design-review
   harvest, 2026-07-14)
 
+## Plan 7.5: track-rule add/remove in the editor (pre-1.0, owner ruling S21)
+
+Owner ruling 2026-07-22 (S21, at the plan-7 close): the editor's
+track-rule gap lands PRE-1.0 as its own small package - moved here from
+the v1.x discussion anchor. The gap: the editor edits and drag-reorders
+existing `tracks.rules` entries (bespoke grid, detail panel) and can add/
+remove ATTACHMENT rules (generic ListWidget), but offers no way to create
+or delete a TRACK rule; spec 8.2 lists no such affordance either.
+Surfaced by the plan-7 T10 help-content review (task-10-verdict.md
+finding 1 side-product). The asymmetry reads as an oversight, not a
+decision - the owner's rationale for pre-1.0. Scope sketch (kickoff
+decides the design): add/remove affordance on the bespoke grid following
+the ListWidget add/remove precedent (generic action keys), detail-panel
+integration for a fresh rule, spec-8.2 amendment, e2e coverage incl. the
+D62/D55 gates' ripple (help topic for the new buttons). Ordering vs
+Plan 8 is the next kickoff's call.
+
 ## Plan 8: packaging / release pipeline
 
 Carries its own constraint set (code signing, notarization) that no other
@@ -580,16 +597,12 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   visual refinement beyond the existing design language is deferred
   wholesale to 1.x. Companion of the presentation-token carve-out
   (process-conventions latitude-carveout-presentation-tokens).
-- **Editor cannot add or remove track rules - product gap, OWNER TIMING
-  RULING PENDING**: the Plan-6 editor edits and drag-reorders existing
-  `tracks.rules` entries (bespoke grid) but offers no way to create or
-  delete one; spec 8.2 does not list the affordance either, and the
-  generic add/remove action keys live only in ListWidget/PropertyMapWidget,
-  which the grid bypasses. Surfaced by the plan-7 T10 help-content review
-  (task-10-verdict.md finding 1 side-product) when a topic documented the
-  non-existent buttons. Whether this lands pre-1.0 (an editor that cannot
-  create a rule vs the profile-as-YAML-spec authoring story) or 1.x is
-  the owner's call - discussion anchor, not a commitment. (2026-07-21.)
+- **Block-specific tooltip in KeywordOrBlockWidget (budget +2 keys)**:
+  the inner block section currently inherits the widget's generic
+  tooltip (innermost-title-wins, benign); a dedicated block labelKey
+  would sharpen the hover text at the cost of two catalog keys beyond
+  the 46-key budget. Plan-7 T4 verdict harvest + whole-branch triage
+  item 3; owner acknowledged as 1.x budget decision (S21, 2026-07-22).
 
 - **Remove mise from CI (post-1.0, Şenol 2026-07-12)**: mise is a
   dev-machine runtime manager, not a CI tool; CI should install node/pnpm
