@@ -387,7 +387,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 8
+  count: 9
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
     - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
@@ -397,6 +397,7 @@ entries:
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 T10 report + review verdict Q1: the mount-harness amendment's prescribed vite.mount.config.ts missed that Vue's esm-bundler build needs process.env.NODE_ENV defined in a raw IIFE bundle (the sibling harness config never needed it - no Vue in that bundle); found by running it, fixed with the standard Vite define recipe, surfaced with before/after bundle evidence (430->247 kB); reviewer verified the recipe and the sibling comparison"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T6 (task-06-verdict.md): the plan's transcribed Step-2 literal never compiled (Option-derived string|null placeable vs FluentVariable, reproduced TS2322); the Sonnet implementer adapted with the invariant-backed conservative repair and surfaced it twice (DONE_WITH_CONCERNS + source comment), reviewer ruled adapt-and-surface exactly this entry's shape. Class note from the verdict: plan-carried code is a CLAIM first tested at compile time in the real tree - the plan phase structurally cannot run that verification on a prose snippet"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T7 (task-07-verdict.md): second same-day instance - the plan's Step-4 literal fails vue-tsc (string|null into applyLocale(string)); implementer applied the null-narrow the standing cross-task constraint had pre-authorized by name, disclosed at site + report; reviewer notes the class is any string-typed SINK fed a T|null value, broader than the placeable wording"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T12 (task-12-verdict.md Q1): the plan listed src/style.css as Modify but no global stylesheet existed anywhere at the parent commit; implementer created it with the design-enumerated content, wired via the in-set App.vue import, surfaced as DONE_WITH_CONCERNS; reviewer upheld as mechanical adaptation (design opened the fork, not the keyboard) and names the authoring gap: a to-be-created file mislabeled Modify with its attachment site unspecified"}
 - id: proc-verification-step-must-be-falsifiable
   kind: pattern
   tier: 2
