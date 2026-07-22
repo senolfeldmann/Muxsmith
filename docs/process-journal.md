@@ -1680,3 +1680,96 @@ Mechanics addendum: the whole session ran on one controller context to
 Open threads: next-plan kickoff (7/8/9) follows the sweep session;
 the D49 removal experiment and the other mirrored triggers sit in the
 ROADMAP; framework-side follow-ups tracked agent-side.
+
+## 2026-07-22 | Plan 7 waves 1-2 (wave 2 in progress) | session 20 (Peter, Fable 5)
+
+Session spanned 2026-07-21/22 with two process restarts (same session
+resumed each time). Closed mid-wave-2 by the new context-budget rule, not
+at a plan boundary; no salvage pass owed (plan 7 still open).
+
+Kickoff and scope. Owner chose Plan 7 (help mode + i18n cluster) among the
+7/8/9 candidates. Session-start trigger check found both "next CI/gate
+structural work" triggers fired by the anchor itself; owner folded both
+items in (IpcError presence gate + number promotion; check-i18n
+placeable/selector parity). One stale ROADMAP claim corrected in place
+later (the parse-all-catalogs premise; an e2e real-parse had existed since
+plan 5.5).
+
+Design phase, four-eyes, six review rounds total. Round 1 found a
+config_path grammar enumerated wrong in both directions (phantom and
+missing members); the fix round re-derived it from source AND demonstrated
+every corrected member live through the real binary - that probe
+discipline became a house entry (proc-enumeration-fired-by-execution).
+Owner rulings settled four escalations (CLI localization, view-topic set,
+help-mode activation suppression, presentation-token carve-out) - and the
+CLI ruling was REVERSED the same day after a steelman review measured the
+real cost delta at the code (de catalogs existed parity-gated and
+owner-reviewed; renderer locale-generic; --locale already parsed).
+Recorded as supersede-never-overwrite: cli-english-only superseded by
+cli-multilang-rendering, both entries keeping their full argument trail.
+Plan-authoring then surfaced four design defects (the strongest: a
+schema-through-the-funnel premise refuted by an argument-less unit-variant
+subcommand), closed via amendment rounds 4-5; execution's T13 later
+surfaced a D52 self-consistency gap (stale hover topic after a view
+switch, reproduced on the running app) closed as round 6.
+
+Plan phase, four-eyes. 21 tasks, 4 waves, streams A-H; the plan review's
+coverage walk found zero gaps but a completion grep whose green state was
+unreachable (its own targets legitimately survive as DOM attributes) - new
+house entry proc-check-green-state-reachable, which then earned two more
+occurrences within a day (a self-collision with the plan's own test
+fixture; a pre-existing parse guard with no green state for a
+newly-sanctioned value-less Fluent shape).
+
+Wave 1 executed and merged: 10 tasks, every one independently reviewed,
+two NEEDS_CONTEXT forks routed and ruled (the schema exception reopening a
+closed one-caller carve-out as designed; a parse-guard discriminator
+corrected to its documented intent), two content fix rounds (an
+extrapolated apply-semantics claim; a fabricated grid affordance - the
+latter also exposing a real product gap, the editor cannot add or remove
+track rules, now a ROADMAP discussion anchor). Five sequential merges,
+full nine-part gate after each, all green, pushed. The product now ships a
+bilingual CLI, all 42 editor tooltips as Fluent attributes, the folded
+attribute catalogs, a live in-session locale switch, and 44 help topics.
+
+Wave 2 through T14: marked pinned + eager topic loader (T11); help-mode
+sidebar with the single licensed v-html site and ruled activation
+suppression (T12, including a refuted Modify-vs-Create plan premise -
+the app's first global stylesheet); the D54 annotated set (T13); the D52
+hover-clear fix with an instant post-switch e2e (T12 fix round);
+field-anchored diagnostic markers (T14) - reviewed NEEDS FIXES: one
+reachable double-marker in the rule detail panel (one-line fix + fixture
+extension), all three surfaced-pattern adjudications upheld. The fix
+round is the next session's first dispatch.
+
+Process events, all mechanized rather than resolved by appeal:
+- The model-assignment tiering silently failed to apply: no dispatch
+  named a model, so every agent inherited the session's top model, and an
+  account usage limit killed five agents mid-wave. Root causes: the
+  execution skill's packaged Model Selection section was never loaded
+  (its own closing rule describes the failure verbatim), and the tiering
+  existed as Tier-2 data with no dispatch-time trigger. Fixed at three
+  layers: doctrine (skill loaded at the pre-execution gate; every
+  dispatch names its model explicitly), proc-03 statement handle, and an
+  owner-bound mapping settled across four same-day rulings (top model
+  only for controller loop, whole-branch review, four-eyes rounds,
+  decision documents; mid tier for task implementers and reviewers;
+  cheap tier for plan-carried transcription).
+- Three background runs stalled hours each on a session-relocation
+  permission prompt (a new harness tool generation; auto mode never
+  approves permission-root moves to non-managed paths). Ban persisted in
+  the implementer preamble + ledger; stall-polluted duration metrics
+  flagged unusable.
+- Owner directive, applied immediately: above 700k controller context,
+  no new dispatches - close the session cleanly (this entry) and resume
+  fresh (proc-context-budget-session-cut).
+
+House-knowledge growth this session: one promotion
+(core-derive-dont-restate at count 3), new entries incl.
+proc-closed-exception-shape (its reopening rule traversed live the same
+day it was written), proc-supersede-never-overwrite,
+proc-standing-guards-swept-on-new-shapes, content-claims-anchor-bound
+(four instances in one wave), and brief-drafts-verified-against-tree grew
+from 6 to 9 occurrences (two non-compiling plan literals adapted-and-
+surfaced, one Modify-vs-Create premise). Reviewer harvests routed at
+every verdict arrival; ledger-lint green at 426 entries throughout.
