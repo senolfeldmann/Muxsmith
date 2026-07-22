@@ -107,7 +107,7 @@ onMounted(checkMkvmerge);
       <button
         type="button"
         data-testid="open-settings"
-        :title="$t('settings-open-tooltip')"
+        :title="$ta('settings-open-label').tooltip"
         @click="settingsDialog?.open()"
       >
         {{ $t("settings-open-label") }}

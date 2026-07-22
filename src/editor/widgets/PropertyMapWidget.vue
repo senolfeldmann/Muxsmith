@@ -155,7 +155,7 @@ function removeRow(index: number) {
 </script>
 
 <template>
-  <fieldset>
+  <fieldset :title="$ta(spec.labelKey).tooltip">
     <legend :id="legendId">
       {{ $t(spec.labelKey) }}
     </legend>

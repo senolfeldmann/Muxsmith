@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFluent } from "fluent-vue";
 import DiagnosticsPanel from "./DiagnosticsPanel.vue";
 import type { PlanAssignment, ReportFile } from "../ipc";
 
@@ -17,11 +18,24 @@ import type { PlanAssignment, ReportFile } from "../ipc";
 // consistency. `track_kind` (video/audio/subtitles/buttons) is likewise
 // left as-is: an mkvmerge-identification vocabulary word passed through
 // from core, not app-authored UI copy (spec 8.4's `detail`-param
-// exception covers the same kind of third-party passthrough text).
+// exception covers the same kind of third-party passthrough text). The
+// "id (kind)" parenthesization around those two is catalog-controlled via
+// `batch-resolved-track` (D60): only the "-" and the untranslated
+// `track_kind` value stay code-side, not the punctuation around them.
 defineProps<{ file: ReportFile }>();
 
+const fluent = useFluent();
+
 function resolvedTrackLabel(a: PlanAssignment): string {
-  return a.track_id === null ? "-" : `${a.track_id} (${a.track_kind})`;
+  // The `|| a.track_kind === null` half of this check is TypeScript
+  // narrowing, not a second fallback case in practice: core's
+  // `Assignment::track_kind` doc comment (`planner.rs:53`) states
+  // `track_kind` is `None` exactly when `track_id` is `None`. It is
+  // needed because `Option<String>` binds to `string | null` and
+  // `fluent.$t`'s `FluentVariable` params reject `null`.
+  return a.track_id === null || a.track_kind === null
+    ? "-"
+    : fluent.$t("batch-resolved-track", { id: a.track_id, kind: a.track_kind });
 }
 </script>
 

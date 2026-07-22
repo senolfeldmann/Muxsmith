@@ -34,6 +34,7 @@ const text = computed<string>({
       :id="id"
       v-model="text"
       type="text"
+      :title="$ta(spec.labelKey).tooltip"
     >
   </div>
 </template>

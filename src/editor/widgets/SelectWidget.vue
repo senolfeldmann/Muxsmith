@@ -18,6 +18,7 @@ const id = useId();
     <select
       :id="id"
       v-model="model"
+      :title="$ta(spec.labelKey).tooltip"
     >
       <option
         v-for="option in spec.widget.options"

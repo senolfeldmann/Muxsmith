@@ -63,7 +63,7 @@ const isTerminal = computed(() => props.job.state.kind === "finished");
         type="button"
         data-testid="job-cancel"
         :disabled="isTerminal"
-        :title="$t('jobs-row-cancel-tooltip')"
+        :title="$ta('jobs-row-cancel-label').tooltip"
         @click="emit('cancel', job.index)"
       >
         {{ $t("jobs-row-cancel-label") }}

@@ -77,7 +77,7 @@ function requestApply() {
     <button
       type="button"
       data-testid="batch-suggestion-copy"
-      :title="$t('batch-suggestion-copy-tooltip')"
+      :title="$ta('batch-suggestion-copy').tooltip"
       @click="copy"
     >
       {{ $t("batch-suggestion-copy") }}
@@ -91,7 +91,7 @@ function requestApply() {
     <button
       type="button"
       data-testid="batch-suggestion-apply"
-      :title="$t('batch-suggestion-apply-tooltip')"
+      :title="$ta('batch-suggestion-apply').tooltip"
       :disabled="busy"
       :aria-busy="applying"
       @click="requestApply"

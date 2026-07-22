@@ -26,6 +26,7 @@ function onChange(event: Event) {
       :id="id"
       type="checkbox"
       :checked="model === true"
+      :title="$ta(spec.labelKey).tooltip"
       @change="onChange"
     >
   </div>

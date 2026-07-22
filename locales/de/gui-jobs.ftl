@@ -9,7 +9,7 @@
 
 jobs-batch-progress = { $finished } / { $total } Jobs abgeschlossen
 jobs-cancel-batch-label = Stapel abbrechen
-jobs-cancel-batch-tooltip = Jeden eingereihten und laufenden Job in diesem Lauf abbrechen.
+    .tooltip = Jeden eingereihten und laufenden Job in diesem Lauf abbrechen.
 jobs-summary-line = { $ok } ok, { $warning } Warnung, { $failed } fehlgeschlagen, { $cancelled } abgebrochen
 jobs-joblog-incomplete = Das Protokoll des Laufs konnte nicht vollständig auf die Festplatte geschrieben werden; einige Job-Einträge fehlen möglicherweise.
 jobs-joblog-unavailable = Das Protokoll des Laufs konnte nicht auf die Festplatte geschrieben werden; dieser Lauf erscheint nicht im Verlauf.
@@ -25,7 +25,7 @@ jobs-col-actions = Aktionen
 jobs-row-output-pending = Job { $index }
 jobs-row-progress-label = Fortschritt für Job { $index }
 jobs-row-cancel-label = Abbrechen
-jobs-row-cancel-tooltip = Diesen Job abbrechen.
+    .tooltip = Diesen Job abbrechen.
 jobs-row-warning-count = { $count ->
     [one] 1 Warnung
    *[other] { $count } Warnungen
@@ -47,7 +47,7 @@ jobs-log-filter-all = Alle Jobs
 
 jobs-history-heading = Lauf-Verlauf
 jobs-history-refresh = Aktualisieren
-jobs-history-refresh-tooltip = Die Liste vergangener Läufe von der Festplatte neu laden.
+    .tooltip = Die Liste vergangener Läufe von der Festplatte neu laden.
 jobs-history-empty = Keine vergangenen Läufe gefunden.
 jobs-history-run-label = { $startedAt } - { $ok } ok, { $warning } Warnung, { $failed } fehlgeschlagen, { $cancelled } abgebrochen
 jobs-history-jobs-caption = Jobs in diesem Lauf
@@ -55,9 +55,9 @@ jobs-history-view-log = Protokoll anzeigen
 jobs-history-log-region-label = Job-Protokoll
 jobs-history-log-loading = Job-Protokoll wird geladen...
 jobs-history-copy-log = Protokoll kopieren
-jobs-history-copy-tooltip = Das vollständige Protokoll dieses Jobs in die Zwischenablage kopieren.
+    .tooltip = Das vollständige Protokoll dieses Jobs in die Zwischenablage kopieren.
 jobs-history-save-log = Speichern unter...
-jobs-history-save-tooltip = Das vollständige Protokoll dieses Jobs in eine Datei speichern.
+    .tooltip = Das vollständige Protokoll dieses Jobs in eine Datei speichern.
 jobs-history-export-failed = Das Protokoll konnte nicht kopiert oder gespeichert werden.
 jobs-history-export-filter-name = Protokolldateien
 

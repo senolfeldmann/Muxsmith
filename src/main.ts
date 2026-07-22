@@ -1,7 +1,6 @@
 import { createApp } from "vue";
-import { createFluentVue } from "fluent-vue";
 import App from "./App.vue";
-import { buildBundles } from "./i18n";
+import { applyLocale, fluent } from "./i18n/fluent";
 import { getSettings } from "./ipc";
 
 /**
@@ -23,7 +22,7 @@ async function resolveLocale(): Promise<string> {
 
 async function bootstrap() {
   const locale = await resolveLocale();
-  const fluent = createFluentVue({ bundles: buildBundles(locale) });
+  applyLocale(locale);
   createApp(App).use(fluent).mount("#app");
 }
 

@@ -142,7 +142,7 @@ defineExpose({ refresh });
       data-testid="jobs-history-refresh"
       :disabled="loading"
       :aria-busy="loading"
-      :title="$t('jobs-history-refresh-tooltip')"
+      :title="$ta('jobs-history-refresh').tooltip"
       @click="refresh"
     >
       {{ $t("jobs-history-refresh") }}
@@ -248,7 +248,7 @@ defineExpose({ refresh });
             data-testid="jobs-history-copy"
             :disabled="copyBusy"
             :aria-busy="copyBusy"
-            :title="$t('jobs-history-copy-tooltip')"
+            :title="$ta('jobs-history-copy-log').tooltip"
             @click="copyLog"
           >
             {{ $t("jobs-history-copy-log") }}
@@ -258,7 +258,7 @@ defineExpose({ refresh });
             data-testid="jobs-history-save"
             :disabled="saveBusy"
             :aria-busy="saveBusy"
-            :title="$t('jobs-history-save-tooltip')"
+            :title="$ta('jobs-history-save-log').tooltip"
             @click="saveLog"
           >
             {{ $t("jobs-history-save-log") }}

@@ -20,12 +20,14 @@ const id = useId();
       v-if="spec.widget.multiline"
       :id="id"
       v-model="model"
+      :title="$ta(spec.labelKey).tooltip"
     />
     <input
       v-else
       :id="id"
       v-model="model"
       type="text"
+      :title="$ta(spec.labelKey).tooltip"
     >
   </div>
 </template>

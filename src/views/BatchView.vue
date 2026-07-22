@@ -281,30 +281,34 @@ const diagnosticCounts = computed(() => {
 });
 const hasErrors = computed(() => diagnosticCounts.value.error > 0);
 
-/** The Fluent key explaining why Run is disabled, or `null` when it isn't.
- * The two conditions the T10 brief names (errors, mkvmerge missing), the
- * functional precondition of having a validated report to run at all --
- * `start_run` re-plans and dry-runs internally regardless (spec 5.5), so
- * this view never requires an explicit dry-run click first -- plus the D23
- * fix: a run already active elsewhere in the app (Jobs view, via
- * `runActive`) checked first, since it overrides every other reason. */
+/** The `batch-run` tooltip attribute name explaining why Run is disabled,
+ * or `null` when it isn't. The two conditions the T10 brief names (errors,
+ * mkvmerge missing), the functional precondition of having a validated
+ * report to run at all -- `start_run` re-plans and dry-runs internally
+ * regardless (spec 5.5), so this view never requires an explicit dry-run
+ * click first -- plus the D23 fix: a run already active elsewhere in the app
+ * (Jobs view, via `runActive`) checked first, since it overrides every other
+ * reason. Rendered via `$ta("batch-run")[name]`; `null` falls back to the
+ * base `tooltip` attribute (D55). */
 const runDisabledReason = computed<string | null>(() => {
   if (props.runActive) {
-    return "batch-run-tooltip-run-active";
+    return "tooltip-run-active";
   }
   if (!selectedProfile.value || !report.value) {
-    return "batch-run-tooltip-no-profile";
+    return "tooltip-no-profile";
   }
   if (report.value.mkvmerge_found === false) {
-    return "batch-run-tooltip-mkvmerge-missing";
+    return "tooltip-mkvmerge-missing";
   }
   if (hasErrors.value) {
-    return "batch-run-tooltip-errors";
+    return "tooltip-errors";
   }
   return null;
 });
 const runDisabled = computed(() => runDisabledReason.value !== null || busy.value);
-const runTooltip = computed(() => fluent.$t(runDisabledReason.value ?? "batch-run-tooltip"));
+const runTooltip = computed(
+  () => fluent.$ta("batch-run")[runDisabledReason.value ?? "tooltip"],
+);
 
 function emitStartRun(): void {
   if (runDisabled.value || !selectedProfile.value) {
@@ -345,7 +349,7 @@ function emitStartRun(): void {
         type="button"
         data-testid="batch-profile-pick"
         :disabled="busy"
-        :title="$t('batch-profile-pick-tooltip')"
+        :title="$ta('batch-profile-pick').tooltip"
         @click="pickProfile"
       >
         {{ $t("batch-profile-pick") }}
@@ -367,7 +371,7 @@ function emitStartRun(): void {
             data-testid="batch-recent-profile"
             :data-index="i"
             :disabled="busy"
-            :title="$t('batch-recents-select-tooltip')"
+            :title="$ta('batch-recents-select').tooltip"
             @click="selectProfile(path)"
           >
             {{ path }}
@@ -394,13 +398,13 @@ function emitStartRun(): void {
           @change="onDirInputChange('source')"
         >
         <p id="batch-source-dir-hint">
-          {{ $t("batch-source-hint") }}
+          {{ $ta("batch-source-label").hint }}
         </p>
         <button
           type="button"
           data-testid="batch-source-browse"
           :disabled="busy"
-          :title="$t('batch-browse-dir-tooltip')"
+          :title="$ta('browse-button')['tooltip-directory']"
           @click="pickDir('source')"
         >
           {{ $t("browse-button") }}
@@ -417,13 +421,13 @@ function emitStartRun(): void {
           @change="onDirInputChange('output')"
         >
         <p id="batch-output-dir-hint">
-          {{ $t("batch-output-hint") }}
+          {{ $ta("batch-output-label").hint }}
         </p>
         <button
           type="button"
           data-testid="batch-output-browse"
           :disabled="busy"
-          :title="$t('batch-browse-dir-tooltip')"
+          :title="$ta('browse-button')['tooltip-directory']"
           @click="pickDir('output')"
         >
           {{ $t("browse-button") }}
@@ -443,7 +447,7 @@ function emitStartRun(): void {
       data-testid="batch-dry-run"
       :disabled="!selectedProfile || busy"
       :aria-busy="dryRunning"
-      :title="$t('batch-dry-run-tooltip')"
+      :title="$ta('batch-dry-run').tooltip"
       @click="runDryRun"
     >
       {{ $t("batch-dry-run") }}

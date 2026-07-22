@@ -39,7 +39,7 @@ function catalogsForLocale(locale: string): string[] {
  * CLDR plural-rule set, so collapsing the region is lossless for the
  * locale negotiation this loader does.
  */
-function primarySubtag(locale: string): string {
+export function primarySubtag(locale: string): string {
   return locale.split("-")[0].toLowerCase();
 }
 

@@ -21,6 +21,7 @@ const id = useId();
       :id="id"
       v-model="model"
       type="text"
+      :title="$ta(spec.labelKey).tooltip"
     >
   </div>
 </template>

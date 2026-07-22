@@ -9,6 +9,10 @@
 /** A field the editor renders. */
 export interface EditableField {
   labelKey: string;
+  /** D54's annotated set only; value always === labelKey when present
+   *  (naming convention, written out literally so D62's literal scan
+   *  sees it - never derived). */
+  helpId?: string;
   widget: FieldWidget;
 }
 

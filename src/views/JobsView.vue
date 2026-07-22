@@ -259,7 +259,7 @@ const joblogNoteKey = computed(() => {
           type="button"
           data-testid="cancel-batch"
           :disabled="!runActive"
-          :title="$t('jobs-cancel-batch-tooltip')"
+          :title="$ta('jobs-cancel-batch-label').tooltip"
           @click="onCancelBatch"
         >
           {{ $t("jobs-cancel-batch-label") }}
