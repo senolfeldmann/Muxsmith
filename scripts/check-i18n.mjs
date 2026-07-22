@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // Task 12/20 i18n completeness + cross-locale parity gate (spec 8.4, #17
-// step 2). No dependencies beyond Node itself. Four independent hard-
+// step 2). No dependencies beyond Node itself. Five independent hard-
 // failure checks (exit 1), plus one warning-only pass (check 2). Checks
-// 1-3 below run over the catalog/source scan; the other two hard-failure
-// checks are D55 rule 3's editor-tooltip completeness and D61's IpcError
-// presence gate over src-tauri/src, each documented at its own code
-// block:
+// 1-3 below run over the catalog/source scan; the other three hard-failure
+// checks are D55 rule 3's editor-tooltip completeness, D61's IpcError
+// presence gate over src-tauri/src, and D62's help-topic-tree gate over
+// help/ (referenced<->file both directions, locale lockstep, and topic
+// content hygiene) -- the one place where "i18n-complete" is defined now
+// spans the help/ topic tree as well as the catalogs; each documented at
+// its own code block:
 //
 //  1. HARD FAILURE (exit 1): every LITERAL `t('id')`/`$t('id')` call found
 //     in src/**/*.{vue,ts} must resolve to a real message id in the known
@@ -517,15 +520,136 @@ if (parityErrors.length > 0) {
   }
 }
 
+// --- D62: help-topic completeness + content hygiene, both directions, ----
+// per locale. The i18n gate is the one place "i18n-complete" is defined
+// (D62's rejected `check-help.mjs` alternative); with D62 that definition
+// now spans the help/ topic tree too. Six hard-fail conditions feed
+// helpErrors:
+//   1. referenced -> file, per locale     4. external-URL ban
+//   2. file -> referenced (orphans)       5. table/pipe ban (ZERO-PIPE)
+//   3. help/ vs locales/ locale lockstep  6. raw-HTML ban (code-span exempt)
+// Checks 5-6 are the run's cross-task content-hygiene constraints, siblings
+// of the external-URL ban; the brief (task-19) sketches only 1-4 (design
+// section D62 calls those four "exhaustive"), so 5-6 are surfaced in the
+// task-19 report as a controller-directed extension.
+const HELP_ROOT = join(ROOT, "help");
+// Referenced-id extraction. The captured value is constrained to the
+// help-id grammar [a-z][a-z0-9-]* (every real id: view-*, editor-*,
+// batch-suggestion-card) so the scan cannot pick up a dynamic Vue bind
+// (`:data-help-id="spec.helpId"`, FieldWidgetDispatcher.vue) or a
+// querySelector template (`[data-help-id="${id}"]`, App.vue) as a bogus
+// referenced id -- both otherwise capture a non-id and fail check 1
+// forever. VIEW_TOPIC_RE already carries the same grammar posture. (The
+// brief's `[^'"]*` / `[^"]+` captures predate those two src sites; the
+// grammar constraint is the task-19 minimal adaptation, surfaced.)
+const HELP_ID_PROP_RE = /helpId:\s*(['"])([a-z][a-z0-9-]*)\1/g; // (a) registry literals
+const DATA_HELP_ID_RE = /data-help-id="([a-z][a-z0-9-]*)"/g; //    (b) template literals
+const VIEW_TOPIC_RE = /['"](view-[a-z-]+)['"]/g; //               (c) VIEW_TOPICS values
+
+const referencedHelpIds = new Map(); // id -> "file:line" (first reference)
+for (const [file, text] of fileTexts) {
+  text.split("\n").forEach((line, i) => {
+    for (const re of [HELP_ID_PROP_RE, DATA_HELP_ID_RE]) {
+      for (const m of line.matchAll(re)) {
+        const id = m[2] ?? m[1];
+        if (!referencedHelpIds.has(id)) {
+          referencedHelpIds.set(id, `${relative(ROOT, file)}:${i + 1}`);
+        }
+      }
+    }
+  });
+}
+// (c) is deliberately redundant with (b) for the three view ids: a view
+// root losing its data-help-id, or the map growing an id without a topic,
+// both still fail. Shape (a) cannot see them (no `helpId:` property name).
+const stateText = readFileSync(join(SRC, "help", "state.ts"), "utf8");
+for (const m of stateText.matchAll(VIEW_TOPIC_RE)) {
+  if (!referencedHelpIds.has(m[1])) {
+    referencedHelpIds.set(m[1], "src/help/state.ts (VIEW_TOPICS)");
+  }
+}
+
+const helpErrors = [];
+const helpLocales = readdirSync(HELP_ROOT, { withFileTypes: true })
+  .filter((e) => e.isDirectory())
+  .map((e) => e.name)
+  .sort();
+const catalogLocales = readdirSync(LOCALES_ROOT, { withFileTypes: true })
+  .filter((e) => e.isDirectory())
+  .map((e) => e.name)
+  .sort();
+
+// 1. referenced -> file, per locale
+for (const [id, site] of [...referencedHelpIds].sort()) {
+  for (const locale of helpLocales) {
+    try {
+      readFileSync(join(HELP_ROOT, locale, `${id}.md`));
+    } catch {
+      helpErrors.push(`help id "${id}" (referenced at ${site}) has no help/${locale}/${id}.md`);
+    }
+  }
+}
+// 2. file -> referenced (orphans)
+for (const locale of helpLocales) {
+  for (const f of readdirSync(join(HELP_ROOT, locale)).filter((f) => f.endsWith(".md"))) {
+    const id = f.slice(0, -3);
+    if (!referencedHelpIds.has(id)) {
+      helpErrors.push(`help/${locale}/${f}: orphan topic (no helpId/data-help-id/VIEW_TOPICS reference)`);
+    }
+  }
+}
+// 3. locale-set lockstep with locales/
+if (helpLocales.join() !== catalogLocales.join()) {
+  helpErrors.push(`help/ locales [${helpLocales}] != locales/ [${catalogLocales}] (lockstep, D62)`);
+}
+// 4-6. per-topic content hygiene, one read per file:
+//   4. external-URL ban -- help is self-contained by design (D50 trust
+//      model, offline posture, CSP: the webview must not navigate out);
+//      cross-topic references are prose ("see the Match topic"), not links.
+//   5. table/pipe ban (ZERO-PIPE) -- topics are prose, never tabular. A
+//      bare `|` is flagged, not a `|...|` pair, so a headerless / outer-
+//      pipe-less GFM table (`a | b`, one pipe) cannot slip through.
+//   6. raw-HTML ban -- markdown prose only, no injected elements. Inline
+//      code spans (`...`) are stripped before the tag scan, because the
+//      pattern topics carry angle brackets legitimately inside code
+//      (`(?<season>\d{2})`); without the exemption both locales' copies of
+//      editor-input-pattern.md would go red on valid content.
+const RAW_HTML_RE = /<\/?[a-zA-Z]/; // an opening or closing HTML-tag start
+for (const locale of helpLocales) {
+  for (const f of readdirSync(join(HELP_ROOT, locale)).filter((f) => f.endsWith(".md"))) {
+    const text = readFileSync(join(HELP_ROOT, locale, f), "utf8");
+    if (/https?:\/\//.test(text)) {
+      helpErrors.push(`help/${locale}/${f}: contains an external URL (banned, D62 check 4)`);
+    }
+    text.split("\n").forEach((line, i) => {
+      if (line.includes("|")) {
+        helpErrors.push(`help/${locale}/${f}:${i + 1}: contains a table/pipe character (banned, D62 check 5)`);
+      }
+      if (RAW_HTML_RE.test(line.replace(/`[^`]*`/g, ""))) {
+        helpErrors.push(`help/${locale}/${f}:${i + 1}: contains raw HTML (banned, D62 check 6; inline code spans exempt)`);
+      }
+    });
+  }
+}
+
+if (helpErrors.length > 0) {
+  console.error("check-i18n: help-topic gate violations (D62):");
+  for (const line of helpErrors) {
+    console.error(`  ${line}`);
+  }
+}
+
 if (
   missing.length === 0 &&
   parityErrors.length === 0 &&
   tooltipErrors.length === 0 &&
-  ipcErrors.length === 0
+  ipcErrors.length === 0 &&
+  helpErrors.length === 0
 ) {
   console.log(
     `check-i18n: ok (${sourceFiles.length} source files scanned, ${knownIds.size} catalog ids, ` +
       `${ipcErrorCodes.size} IpcError code(s) gated, ` +
+      `${referencedHelpIds.size} help id(s) x ${helpLocales.length} help locale(s), ` +
       `${unused.length} unused warning(s), ${otherLocales.length} other locale(s) checked for parity ` +
       `against ${referenceCatalogFiles.length} en/ catalog(s)).`,
   );
