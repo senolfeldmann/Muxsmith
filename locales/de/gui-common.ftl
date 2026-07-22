@@ -24,6 +24,10 @@ browse-button = Durchsuchen...
     .tooltip = Die Datei über einen Dateidialog auswählen.
     .tooltip-directory = Das Verzeichnis über einen Ordnerdialog auswählen.
 
+help-toggle-label = Hilfe
+    .tooltip = Hilfemodus umschalten: Fahre über ein Bedienelement oder klicke es an, um zu lesen, was es tut.
+help-sidebar-label = Hilfe-Seitenleiste
+
 mkvmerge-not-found = mkvmerge wurde nicht gefunden.
 mkvmerge-too-old = Das gefundene mkvmerge ({ $found }) ist älter als die erforderliche Mindestversion { $minimum }.
 mkvmerge-spawn-failed = mkvmerge konnte nicht gestartet werden: { $detail }

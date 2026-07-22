@@ -82,7 +82,7 @@ async function save() {
   }
 }
 
-defineExpose({ open });
+defineExpose({ open, isOpen: () => dialogEl.value?.open ?? false });
 </script>
 
 <template>
