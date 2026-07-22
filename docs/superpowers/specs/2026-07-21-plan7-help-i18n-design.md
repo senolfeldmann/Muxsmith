@@ -1301,12 +1301,13 @@ change), check-i18n check + comment update, one catalog message (en+de).
 
 ---
 
-## D62: Help-id completeness: check-i18n gains the topic-tree gate, both directions, per locale, plus the external-URL ban
+## D62: Help-id completeness: check-i18n gains the topic-tree gate, both directions, per locale, plus the content bans (external URLs, tables, raw HTML)
 
 **Decision.** The guard lives in `scripts/check-i18n.mjs` (with D55/D61's
 extensions; one i18n gate, one CI step - spec 10 names help-id
 completeness in the same sentence as the catalog checks). Hard-fail
-checks, all four:
+checks, all six (5-6 amended in at execution, round 8 - the amendment
+block below):
 
 1. **Referenced -> file, per locale**: collect the referenced help-id set
    as the union of (a) `helpId:\s*(['"])([^'"]*)\1` literals in
@@ -1337,16 +1338,80 @@ checks, all four:
    not links, because sidebar navigation is hover/pin-driven (D52). This
    is a proposed safeguard and per the standing rule is not argued back
    out during design.
+5. **Zero-pipe table ban** (amended in, round 8): a topic file containing
+   a `|` character anywhere - inline code spans included - is a hard
+   failure. Enforces the ratified markdown-subset content rule "no
+   tables"; the zero-pipe form is deliberate because it also catches
+   headerless GFM tables, which the T9 content review proved a pipe-pair
+   pattern misses (binding constraint routed by the controller from that
+   review).
+6. **Raw-HTML ban, inline code spans exempt** (amended in, round 8): a
+   topic file containing angle-bracket markup outside an inline code
+   span is a hard failure. The exemption is the constraint's letter, not
+   implementer tolerance: the regex text `(?<season>\d{2})` in
+   `help/en/editor-input-pattern.md` and
+   `help/de/editor-input-pattern.md` (verified on the T19 tree,
+   `plan7-g`) false-positives a naive angle-bracket pattern - two
+   legitimate files would go red without it (binding constraint routed
+   by the controller from the T9/T10 content reviews).
+
+The code-span asymmetry between checks 5 and 6 is deliberate, the
+constraints' letter, not an oversight: check 5 bans pipes even inside
+inline code spans; only check 6 carries the code-span exemption. The
+accepted consequence: the help tree carries zero pipes today (T19
+fire-run green, re-verified here by grep over `help/`), and a future
+topic wanting a regex alternation like `(mkv|mka)` inside a code span
+goes red and is rephrased, not exempted.
 
 The empty-state note, recorded so the gate's first run is understood
 (corrected at plan-authoring): with `help/` absent (today's tree), **two**
 checks hard-fail, not one - check 1 on the first annotated control the
 moment D53/D54 land, and check 3 unconditionally (an absent `help/` tree
-has no locale-directory set to equal `locales/`' `{en, de}`). The gate
+has no locale-directory set to equal `locales/`' `{en, de}`); checks 2
+and 4-6 iterate the (empty) topic-file set and are vacuously green, so
+the count stays two under the round-8 widening. The gate
 therefore cannot land green before `help/en/` and `help/de/` exist: the
 gate, the annotations and the topic tree land together or CI is red -
 which is the intended forcing order, now stated without implying the
 gate could precede the tree.
+
+**Amendment (round 8, 2026-07-22): D62's check enumeration widened from
+four to six; the "exhaustive four" wording corrected.** Authority: the
+Task-19 report surfacing the collision
+(`.superpowers/sdd/plan-7/task-19-report.md`, concern 1; all six checks
+implemented and fire-verified both directions in commit `a653d39` on
+`plan7-g`) + controller ruling: the two checks are IN, the design is
+amended to match the ruling. Why the design lagged: checks 5-6 enforce
+the ratified markdown-subset content rules via two binding cross-task
+constraints the controller routed from the T9/T10 content reviews -
+verdicts that postdate this design's approval (2026-07-21), so the
+four-check enumeration was correct when approved and stale by
+execution. The recorded asymmetry (check 5 pipes-everywhere vs check
+6's code-span exemption) is deliberate per the constraints' letter -
+the paragraph above carries it with its consequence.
+Dependent-sentence sweep (paraphrase-drift guard) - changed: the D62
+heading (now "the content bans (external URLs, tables, raw HTML)"
+instead of naming the external-URL ban alone); "Hard-fail checks, all
+four" -> "all six"; the empty-state note (now names checks 2 and 4-6
+vacuously green on an absent topic tree, keeping its "two checks
+hard-fail" count true); section 9's "the four D62 checks are the
+exhaustive extension set" -> "the six D62 checks" (count recomputed
+from the final enumeration, not transcribed). Walked and
+verified-unaffected: D50's trust-model sentence ("the trust model plus
+D62's external-URL ban" - check 4 stands, and the new bans only
+strengthen the posture); D50's rejected-hand-rolled-subset steelman (a
+design-time evaluation of a renderer alternative; checks 5-6 give the
+ratified content rules a gate-side forcing function without reviving
+that fork); correction #5 ("D62's sibling in D55/D61's script" - no
+count); the D51/D52/D53/D54 references to D62 (scan/tracker/ripple
+behavior, checks 1-2, unchanged); section 3's parity-table row
+("check-i18n three checks at the cited behaviors" describes the
+pre-plan script, historical); section 5's out-of-scope bullet ("D62's
+URL ban makes linklessness structural" - check 4 stands); section 6's
+spec amendments 1-6 and self-contradiction sweep (the spec-10
+minimum-not-ceiling reading holds a fortiori with six checks); section
+8 triggers 2 and 3 (lockstep gate and rename tracker - checks 3 and
+1-2, unchanged).
 
 **Rejected: a separate `check-help.mjs` + own CI step.** Steelman:
 check-i18n's name and charter say catalogs; a second script is
@@ -1882,7 +1947,8 @@ keyboard (`proc-latitude-clause-boundary`).
   `batch-recents-select` (D55).
 - check-i18n stays line-based; the five D55 rules, the D61 gate (with
   the `#[cfg(test)]` cutoff and the check-2 residual-comment update), and
-  the four D62 checks are the exhaustive extension set.
+  the six D62 checks (round-8 amendment) are the exhaustive extension
+  set.
 - The plural-category carve-out list is exactly
   {zero, one, two, few, many, other} + numeric literals; within the
   carve-out the check is parity with en (variant presence, `*`-default
