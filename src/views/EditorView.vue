@@ -93,7 +93,7 @@
 // `editor-tracks-rules` ("Rules"), already the grid heading/caption.
 // Selection is cleared on reorder (`onDrop`) so a post-reorder edit can
 // never land on a rule the user did not re-select.
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, provide, ref, watch } from "vue";
 import { useFluent } from "fluent-vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Profile, TrackRule } from "../bindings/profile";
@@ -103,6 +103,8 @@ import { profileFields, tracksFields } from "../editor/registries";
 import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
 import SectionWidget from "../editor/widgets/SectionWidget.vue";
 import type { EditableFieldOf } from "../editor/widgets/shared";
+import { editorDiagnosticsByPath, worstSeverity } from "../editor/diagAnchor";
+import { diagnosticFluentParams } from "../diagnosticFluentParams";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
 import { getSettings, loadProfile, saveProfile, validateProfileModel } from "../ipc";
 import type { Diagnostic, IpcError } from "../ipc";
@@ -138,6 +140,44 @@ onMounted(async () => {
 });
 
 const hasErrors = computed(() => diagnostics.value.some((d) => d.severity === "error"));
+
+// --- Task 14 (D57): field-anchored diagnostic markers -------------------
+//
+// Group the diagnostics by `config_path` and provide the map; each widget
+// anchors its marker by EXACT string equality against the paths the widget
+// tree constructs while rendering (the composition layer mirrors core's
+// emission grammar verbatim, never parsing or normalizing). A path with no
+// rendered control (`profile_version`, or any future core path the tree
+// does not know) is silently panel-only -- the marker layer is strictly
+// additive and the diagnostics panel below is never filtered.
+const diagnosticsByPath = computed(() => {
+  const map = new Map<string, Diagnostic[]>();
+  for (const d of diagnostics.value) {
+    const list = map.get(d.config_path) ?? [];
+    list.push(d);
+    map.set(d.config_path, list);
+  }
+  return map;
+});
+provide(editorDiagnosticsByPath, diagnosticsByPath);
+
+// The bespoke rule grid is not a registry-dispatched widget, so its caption
+// (`tracks.rules`) and each row (`tracks[{i}]`, which also anchors lint's
+// ProvableOverlap) look up their anchors against the map here directly.
+function pathDiags(path: string): Diagnostic[] {
+  return diagnosticsByPath.value.get(path) ?? [];
+}
+function markerTitle(diags: Diagnostic[]): string {
+  return diags.map((d) => fluent.$t(d.code, diagnosticFluentParams(d.code, d.params))).join("\n");
+}
+const rulesCaptionDiags = computed(() => pathDiags("tracks.rules"));
+const rulesCaptionSeverity = computed(() => worstSeverity(rulesCaptionDiags.value));
+function ruleRowDiags(index: number): Diagnostic[] {
+  return pathDiags(`tracks[${index}]`);
+}
+function ruleRowSeverity(index: number) {
+  return worstSeverity(ruleRowDiags(index));
+}
 
 // The one sanctioned frontend affordance (spec 7, D41 binding point):
 // Save is disabled while any error-severity diagnostic exists.
@@ -327,6 +367,13 @@ function changesSummary(rule: TrackRule): string {
 
 const selectedIndex = ref<number | null>(null);
 
+// The detail panel edits rule `selectedIndex` through `SectionWidget` over
+// `trackRule`; its path root is `tracks[{i}]` (D57), so every field it
+// dispatches anchors at the same paths core emits for that rule.
+const selectedPath = computed(() =>
+  selectedIndex.value === null ? undefined : `tracks[${selectedIndex.value}]`,
+);
+
 function selectRule(index: number) {
   selectedIndex.value = index;
 }
@@ -451,6 +498,7 @@ function onDragEnd() {
         v-for="[key, spec] in topLevelFields"
         :key="key"
         :spec="spec"
+        :path="key"
         :model-value="fieldValue(key)"
         @update:model-value="setFieldValue(key, $event)"
       />
@@ -459,6 +507,7 @@ function onDragEnd() {
         <legend>{{ $t("editor-profile-tracks") }}</legend>
         <FieldWidgetDispatcher
           :spec="tracksUnmatchedSpec"
+          path="tracks.unmatched"
           :model-value="model?.tracks.unmatched"
           @update:model-value="setTracksUnmatched"
         />
@@ -466,6 +515,16 @@ function onDragEnd() {
         <table>
           <caption data-help-id="editor-tracks-rules">
             {{ $t("editor-tracks-rules") }}
+            <span
+              v-if="rulesCaptionSeverity !== null"
+              role="img"
+              class="diag-marker"
+              :class="`diag-marker--${rulesCaptionSeverity}`"
+              data-testid="diag-marker"
+              data-diag-path="tracks.rules"
+              :aria-label="$t(`severity-${rulesCaptionSeverity}`)"
+              :title="markerTitle(rulesCaptionDiags)"
+            />
           </caption>
           <thead>
             <tr>
@@ -504,6 +563,16 @@ function onDragEnd() {
                 >
                   {{ sourceSummary(rule) }}
                 </button>
+                <span
+                  v-if="ruleRowSeverity(index) !== null"
+                  role="img"
+                  class="diag-marker"
+                  :class="`diag-marker--${ruleRowSeverity(index)}`"
+                  data-testid="diag-marker"
+                  :data-diag-path="`tracks[${index}]`"
+                  :aria-label="$t(`severity-${ruleRowSeverity(index)}`)"
+                  :title="markerTitle(ruleRowDiags(index))"
+                />
               </td>
               <td>{{ matchSummary(rule) }}</td>
               <td>
@@ -527,6 +596,7 @@ function onDragEnd() {
       >
         <SectionWidget
           :spec="ruleDetailSpec"
+          :path="selectedPath"
           :model-value="selectedRule"
           @update:model-value="setRuleValue"
         />

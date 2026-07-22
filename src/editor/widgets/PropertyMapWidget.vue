@@ -45,16 +45,34 @@
 // catalog budget 45) -- not `editor-attachment-rule-add`/`-drop`, which
 // now caption only the AttachmentRule fields they are the registry labels
 // for (`registries.ts:185-189`).
-import { computed, useId } from "vue";
+import { computed, inject, useId } from "vue";
 import type { EditableFieldOf } from "./shared";
+import { editorDiagnosticsByPath, worstSeverity } from "../diagAnchor";
+import { diagnosticFluentParams } from "../../diagnosticFluentParams";
 import { MATCHABLE_TYPES, SETTABLE_TYPES } from "../../bindings/settables";
 import type { PropScalarType } from "../../bindings/settables";
 import type { Scalar } from "../../bindings/profile";
+import type { Diagnostic } from "../../ipc";
 
-const props = defineProps<{ spec: EditableFieldOf<"propertyMap"> }>();
+const props = defineProps<{ spec: EditableFieldOf<"propertyMap">; path?: string }>();
 const model = defineModel<Record<string, Scalar> | null>();
 
 const rows = computed(() => Object.entries(model.value ?? {}));
+
+// Per-row diagnostic anchors (D57): a `changes`/`exact` row anchors at
+// `{widget path}.{rowKey}` (e.g. `tracks[0].changes.language`). The map is
+// injected ONCE here and looked up per row, since the rows are inline (not
+// child components) -- `useDiagAnchor`'s getter form is for a per-instance
+// child, which a row is not.
+const byPath = inject(editorDiagnosticsByPath, undefined);
+const rowAnchors = computed(() =>
+  rows.value.map(([key, value]) => {
+    const rowPath = props.path === undefined ? undefined : `${props.path}.${key}`;
+    const diags: Diagnostic[] =
+      rowPath === undefined || byPath === undefined ? [] : (byPath.value.get(rowPath) ?? []);
+    return { key, value, path: rowPath, diags, severity: worstSeverity(diags) };
+  }),
+);
 
 // Wave item 9 (whole-branch a11y finding, `PropertyMapWidget.vue`'s
 // key/value inputs had no accessible name at all -- axe `label`/critical):
@@ -160,7 +178,7 @@ function removeRow(index: number) {
       {{ $t(spec.labelKey) }}
     </legend>
     <div
-      v-for="([key, value], index) in rows"
+      v-for="(row, index) in rowAnchors"
       :key="index"
     >
       <input
@@ -168,32 +186,48 @@ function removeRow(index: number) {
         data-testid="property-map-key"
         type="text"
         :aria-labelledby="legendId"
-        :value="key"
+        :value="row.key"
         @input="setKey(index, ($event.target as HTMLInputElement).value)"
       >
+      <span
+        v-if="row.severity !== null"
+        role="img"
+        class="diag-marker"
+        :class="`diag-marker--${row.severity}`"
+        data-testid="diag-marker"
+        :data-diag-path="row.path"
+        :aria-label="$t(`severity-${row.severity}`)"
+        :title="row.diags.map((d) => $t(d.code, diagnosticFluentParams(d.code, d.params))).join('\n')"
+      />
       <input
-        v-if="cellKindFor(key) === 'checkbox'"
+        v-if="cellKindFor(row.key) === 'checkbox'"
         data-testid="property-map-value"
         type="checkbox"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :checked="value === true"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :checked="row.value === true"
         @change="onCheckboxInput(index, $event)"
       >
       <input
-        v-else-if="cellKindFor(key) === 'integer'"
+        v-else-if="cellKindFor(row.key) === 'integer'"
         data-testid="property-map-value"
         type="number"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :value="value"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
         @input="onNumberInput(index, $event)"
       >
       <input
-        v-else-if="cellKindFor(key) === 'float'"
+        v-else-if="cellKindFor(row.key) === 'float'"
         data-testid="property-map-value"
         type="number"
         step="any"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :value="value"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
         @input="onNumberInput(index, $event)"
       >
       <input
@@ -201,7 +235,9 @@ function removeRow(index: number) {
         data-testid="property-map-value"
         type="text"
         :aria-labelledby="`${legendId} ${keyInputId(index)}`"
-        :value="value"
+        :class="row.severity !== null ? `diag-anchored--${row.severity}` : undefined"
+        :aria-invalid="row.severity === 'error' ? 'true' : undefined"
+        :value="row.value"
         @input="onTextInput(index, $event)"
       >
       <button

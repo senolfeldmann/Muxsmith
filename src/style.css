@@ -40,3 +40,43 @@
   outline: 2px solid var(--help-pinned-color, #2a6fd6);
   outline-offset: 2px;
 }
+
+/* Field-anchored diagnostic markers (D57). Global for the same reason as
+ * the help classes above: the marker span and the diag-anchored outline
+ * live deep in the editor widget tree. Semantic severity mapping is
+ * enumeration-bound and reuses the severity-* keys; the outline (never a
+ * border - no layout shift) is the design's enumerated no-shift semantic.
+ * Exact colors/widths are presentation tokens
+ * (latitude-carveout-presentation-tokens); the values mirror
+ * DiagnosticsPanel's own severity-dot palette so a diagnostic reads the
+ * same in the panel and at its field. */
+.diag-marker {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  margin-inline-start: 0.35em;
+  vertical-align: middle;
+}
+.diag-marker--error {
+  background: var(--diag-error-color, #c0392b);
+}
+.diag-marker--warning {
+  background: var(--diag-warning-color, #d68910);
+}
+.diag-marker--info {
+  background: var(--diag-info-color, #2471a3);
+}
+
+.diag-anchored--error {
+  outline: 2px solid var(--diag-error-color, #c0392b);
+  outline-offset: 1px;
+}
+.diag-anchored--warning {
+  outline: 2px solid var(--diag-warning-color, #d68910);
+  outline-offset: 1px;
+}
+.diag-anchored--info {
+  outline: 2px solid var(--diag-info-color, #2471a3);
+  outline-offset: 1px;
+}

@@ -12,12 +12,22 @@
 // what gets sent.
 import { computed, useId } from "vue";
 import type { EditableFieldOf } from "./shared";
+import { useDiagAnchor } from "../diagAnchor";
+import { diagnosticFluentParams } from "../../diagnosticFluentParams";
 import SectionWidget from "./SectionWidget.vue";
 
-const props = defineProps<{ spec: EditableFieldOf<"keywordOrBlock"> }>();
+const props = defineProps<{ spec: EditableFieldOf<"keywordOrBlock">; path?: string }>();
 const model = defineModel<string | Record<string, unknown> | null>();
 
 const id = useId();
+
+// The keyword-or-block widget is the sole anchor for its own path (core's
+// grammar has no segment for the union root beyond the field, e.g.
+// `chapters`, `tracks[i].source`, `output.filename`, `title`); its nested
+// block section receives the same path for child construction but does not
+// re-anchor it (`anchor-self=false` below), so there is one marker, on the
+// user-facing control, not a redundant second one on the block wrapper.
+const { diags, severity } = useDiagAnchor(() => props.path);
 
 const isKeyword = computed(() => typeof model.value === "string");
 
@@ -37,10 +47,22 @@ const blockModel = computed<Record<string, unknown> | null | undefined>({
 <template>
   <div>
     <label :for="id">{{ $t(spec.labelKey) }}</label>
+    <span
+      v-if="severity !== null"
+      role="img"
+      class="diag-marker"
+      :class="`diag-marker--${severity}`"
+      data-testid="diag-marker"
+      :data-diag-path="path"
+      :aria-label="$t(`severity-${severity}`)"
+      :title="diags.map((d) => $t(d.code, diagnosticFluentParams(d.code, d.params))).join('\n')"
+    />
     <select
       :id="id"
       :value="isKeyword ? model : ''"
       :title="$ta(spec.labelKey).tooltip"
+      :class="severity !== null ? `diag-anchored--${severity}` : undefined"
+      :aria-invalid="severity === 'error' ? 'true' : undefined"
       @change="model = ($event.target as HTMLSelectElement).value"
     >
       <option
@@ -54,6 +76,8 @@ const blockModel = computed<Record<string, unknown> | null | undefined>({
     <SectionWidget
       v-model="blockModel"
       :spec="blockSpec"
+      :path="path"
+      suppress-self-anchor
     />
   </div>
 </template>

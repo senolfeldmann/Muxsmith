@@ -27,7 +27,11 @@ import PropertyMapWidget from "./PropertyMapWidget.vue";
 import ListWidget from "./ListWidget.vue";
 import SectionWidget from "./SectionWidget.vue";
 
-defineProps<{ spec: EditableField }>();
+// `path` (D57): the config_path this field renders at, threaded through
+// unchanged to the resolved widget so it can anchor its diagnostic marker
+// by exact-string equality. Absent when the editor mounts a widget outside
+// the diagnostics-providing EditorView (the standalone mount harness).
+defineProps<{ spec: EditableField; path?: string }>();
 const model = defineModel<unknown>();
 
 function widgetComponentFor(kind: FieldWidget["kind"]): Component {
@@ -65,6 +69,7 @@ function widgetComponentFor(kind: FieldWidget["kind"]): Component {
     :is="widgetComponentFor(spec.widget.kind)"
     v-model="model"
     :spec="spec"
+    :path="path"
     :data-help-id="spec.helpId"
   />
 </template>
