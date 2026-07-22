@@ -3976,6 +3976,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T14 verdict F1: editor-markers.spec.ts's header states the no-double-marker contract, but the only bare tracks[i] diagnostic sits on rule 1 while the test opens rule 0's panel - the one structural site that can violate the invariant is never reached; fix extends the fixture to the opened rule"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 fix-round delta verdict (task-14-verdict.md appendix): the fix's fixture author picked OverlappingRules (anchors at tracks[0]) over reusing ProvableOverlap (anchors only at a pair's second rule) precisely to reach the violating structural site - deliberate correct application on the fix side, named by the re-reviewer's harvest"}
