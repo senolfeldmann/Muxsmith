@@ -548,6 +548,9 @@ polish entry.
   lint silently - the parser's later-key-wins swallows it. Extend
   ledger-lint with a per-entry duplicate-key check; trigger: the next
   ledger-lint or house-file-schema touch dispatches it alongside.
+  **TRIGGER FIRED AND CONSUMED 2026-07-22 (S22)**: Plan 8's ledger-lint
+  CI wiring (next bullet) is the ledger-lint touch; the extension rides
+  the same Plan-8 rider task.
 - **RESOLVED 2026-07-16 (session 16, owner-disposed per entry; commit e24759b).**
   The 2026-07-15 blocked-pool audit (report:
   `docs/process-journal/artifacts/2026-07-15-ledger-blocked-pool-audit.md`,
@@ -598,6 +601,12 @@ polish entry.
   must be trusted), so gating it in CI adds a Python leg to a Rust+Node matrix -
   a deliberate deferral to the next CI-touching plan, so the gate is not just a
   script someone must remember to run. Until then it is a manual/local check.
+  **DEFERRAL TRIGGER FIRED 2026-07-22 (S22, surfaced by the plan-8 design
+  author's NEEDS_CONTEXT): Plan 8 adds release.yml = the next CI-touching
+  plan. Controller ruling: Plan 8 absorbs the CI wiring as a rider task,
+  bundled with the duplicate-key extension (entry above). The rider enters
+  the plan brief at plan authoring; not a design amendment (nothing in the
+  plan-8 design depends on it).**
   **PREDICTION CONFIRMED 2026-07-16, and the entry is now evidence-backed
   rather than precautionary.** An ad-hoc validator of exactly this shape,
   written to check two new entries, found a real pre-existing defect on its
@@ -722,6 +731,13 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   there, the claimed scope: no-raw-text scans Vue template text nodes plus
   the configured static attributes, so it cannot see a runtime-generated
   label. (2026-07-15, Plan-6 brainstorming)
+- **Spec 5.2 diagnostics table completeness**: the table omits rows for
+  ~17 `diag_codes!` members (cumulative drift - additions never got rows;
+  no gate ties the table to the enum). If the table is the catalog of
+  record, it wants ONE wholesale amendment batch on the next spec-touching
+  plan, not one row per plan; the plan-7.5 design's amendment-2 row is the
+  local symptom. (2026-07-22 S22, plan-7.5 design review round-1 harvest,
+  controller watch item.)
 - **Cosmetic cleanup, one pass (sweep group K)**: duplicate section-header
   comment suggestions.rs:325 vs :291 (routed-items item 3, 2026-07-14);
   spec 5.2 NonUtf8Path row wording "per file" vs implemented "per path"

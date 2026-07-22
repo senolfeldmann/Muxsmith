@@ -4050,3 +4050,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T16 review Q1 (task-16-verdict.md): editor-track-rule-order placed in a new trailing '## Rule grid ordinal (D59)' section mirroring the existing single-key '## Save surface (D41)' precedent; reviewer names D41 as the first instance and this as the second, pattern held in both locales"}
+- id: design-empirical-claims-reproducible
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Every load-bearing empirical claim in a design document ships as a one-command reproduction (exact command, byte-quotable expected output), and every ABSENCE claim ships with a named positive control that fires - so the design review can re-run instead of re-derive. Named by the plan-7.5 round-1 reviewer as the standard the next design is held to: first-attempt byte-exact reproduction of every claim made that review cheap."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7.5 design review round 1 HARVEST (design-review-round-1.md): all empirical claims reproduced byte-exact on first re-run (rendered strings, mkvtoolnix counts, 46/46 catalog, exit codes), absence claims carried firing positive controls; reviewer names the pattern as the review-cost lever"}
