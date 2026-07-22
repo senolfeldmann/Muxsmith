@@ -289,6 +289,11 @@ action:
   inline, so the citations are corroboration, not sole carrier).
   (Round-8 fix delta, 2026-07-22. CONSUMED same day: salvage 4cc128a,
   re-pointing 9d01862, all three sites, same push.)
+- The plan-7.5 SDD salvage runs (plan close) -> re-point the plan-7.5
+  design's citation of `.superpowers/sdd/plan-7.5/design-review-round-1.md`
+  (amendment-2 scoping paragraph) to the salvaged artifact path, in the
+  same change as the salvage - per the ruled round-8 house pattern.
+  (Plan-7.5 delta review observation, 2026-07-22 S22.)
 - fluent-vue or @fluent/bundle is bumped -> re-verify the `bundles`
   setter contract and the `$ta` global (D56/D55 rest on installed
   3.8.2's verified behavior). (Plan-7 design trigger 4.)

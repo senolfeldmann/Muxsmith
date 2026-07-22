@@ -4061,6 +4061,21 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7.5 design review round 1 HARVEST (design-review-round-1.md): all empirical claims reproduced byte-exact on first re-run (rendered strings, mkvtoolnix counts, 46/46 catalog, exit codes), absence claims carried firing positive controls; reviewer names the pattern as the review-cost lever"}
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section): every F1-F5 fix shipped its own inline verification claim (grep with positive control, measured 17-of-47, byte-quoted describes) and each reproduced on re-run; reviewer names evidence-inline fix rounds as materially cheaper to delta-review"}
+- id: proc-wrapped-prose-quote-grep
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A quote-existence check against wrapped Markdown/prose must be whitespace-tolerant (or normalize whitespace first) before its 'not found' is trusted - a line-based grep false-negatives on soft-wrapped sentences. The make-the-check-fire discipline applies to the checker's own tooling: confirm the pattern against a known-present wrapped quote before accepting an absence."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: decided, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section, reviewer self-lesson): the D54 closure sentence false-negatived under a line-based grep because the prose wraps; found only when the reviewer switched to a whitespace-tolerant pattern"}
