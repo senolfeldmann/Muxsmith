@@ -138,6 +138,16 @@ integration for a fresh rule, spec-8.2 amendment, e2e coverage incl. the
 D62/D55 gates' ripple (help topic for the new buttons). Ordering vs
 Plan 8 is the next kickoff's call.
 
+**KICKOFF 2026-07-22 (S22, parallel with Plan 8 by owner call)** - owner
+rulings, binding for the design: fresh rule = empty skeleton,
+invalid-until-filled, the existing diagnostics/marker plumbing guides
+(no prefill guesses); remove without confirmation (explicit save bounds
+the loss; the durable answer is the v1.x undo/redo entry below); new
+rule appends at the end, auto-selected, detail panel opens; buttons
+render the generic editor-action-add/-remove keys (zero new label
+keys); no last-rule protection (core-83 passthrough / NoTrackRules
+semantics carry it). Four-eyes design in progress, ADR range D65+.
+
 ## Plan 8: packaging / release pipeline
 
 Carries its own constraint set (code signing, notarization) that no other
@@ -151,6 +161,20 @@ plan shares; orthogonal to all GUI work.
   no publisher/category, no signing or updater config; the version is
   declared independently in Cargo.toml, tauri.conf.json and package.json
   with no sync mechanism.
+
+**KICKOFF 2026-07-22 (S22, parallel with Plan 7.5 by owner call)** - owner
+rulings, binding for the design: UNSIGNED artifacts on all three OS at
+1.0 (per-OS install-hurdle documentation ships with the release docs;
+signing revisit is a registered trigger below); NO auto-updater at 1.0
+(v1.x); a `v*` tag builds bundles and attaches them to a DRAFT GitHub
+release - the owner publishes manually; artifact matrix: Windows x64 +
+arm64 (msi), macOS arm64 ONLY (dmg; an Intel request is a registered
+trigger below), Linux x64 as deb + rpm + AppImage + a portable tar.gz
+("just runs" archive); pipeline verification runs via workflow_dispatch
+(artifacts + draft-release rehearsal), never a test tag; deb/rpm declare
+mkvtoolnix as Recommends at 1.0 (hard Depends = v1.x entry below);
+Plan 8 builds the pipeline and does NOT tag 1.0. Four-eyes design in
+progress, ADR range D75+.
 
 ## Plan 9: core/orchestration hoists + planner seam
 
@@ -270,6 +294,11 @@ action:
 - A user asks for quieter UI / tooltip suppression -> the mkvtoolnix
   `uiDisableToolTips` parity gap becomes a v1.x candidate with precedent
   cited (plan-7 design section 3). (Plan-7 design trigger 8.)
+- First external-user complaint about unsigned-install hurdles (or a
+  comparable adoption signal) -> re-evaluate code signing/notarization
+  per OS. (Plan-8 kickoff ruling F1, 2026-07-22 S22.)
+- A macOS Intel (x64) user asks for a build -> add the x64 dmg leg to
+  the release matrix. (Plan-8 kickoff ruling F4, 2026-07-22 S22.)
 - Next core/planner-touching plan -> run the D49 G1/G2 removal experiment
   (mutate delta_for's AddExact arm to re-stringify, run the suite: G1+G2+G3
   all fail -> they stay for good; only G3 fails -> G1/G2 are removal
@@ -619,6 +648,18 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   the 46-key budget. Plan-7 T4 verdict harvest + whole-branch triage
   item 3; owner acknowledged as 1.x budget decision (S21, 2026-07-22).
 
+- **Editor undo/redo, all operations (owner ruling S22, 2026-07-22,
+  plan-7.5 kickoff)**: full undo/redo across every editor mutation -
+  field edits, rule add/remove (incl. the deliberately unconfirmed
+  delete), drag-reorder, list/map widget mutations. Ruled 1.x wholesale
+  at the kickoff; at 1.0 the explicit-save model bounds the loss, and
+  undo/redo - not a confirmation dialog - is the durable answer to
+  accidental destruction. Design note for the 1.x pass: the editor's
+  single in-memory model (Plan 6) is the natural command/snapshot
+  boundary.
+- **deb/rpm hard Depends on mkvtoolnix (owner S22, 2026-07-22)**: 1.0
+  ships Recommends (first-run detection + per-OS guidance carries the
+  absent-mkvmerge case); revisit promoting to a hard Depends in 1.x.
 - **Remove mise from CI (post-1.0, Şenol 2026-07-12)**: mise is a
   dev-machine runtime manager, not a CI tool; CI should install node/pnpm
   directly (pinned setup action) rather than fetch a floating mise binary
