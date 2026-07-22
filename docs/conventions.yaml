@@ -1020,9 +1020,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 5
+  count: 6
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest, minor): topics.ts's fallback comment cites muxsmith-cli/src/i18n.rs:41-46 for the raw-id posture, but that span is Renderer::new - the actual fallback (id.to_string()) sits in render (~:123); behavior exists, span stale at authoring; one-line comment fix rides the whole-branch inputs"}
+    - {date: "2026-07-22", kind: violated-corrected, ref: "s22-h1-derivation-fix verdict HARVEST (post-promotion, mild): the fix report + commit 2f4d832 named the output-resolution site 'batch plan()' where the actual symbol is plan_core (line span correct); reviewer classified it under this entry - a symbol claim in a durable process artifact is a citation, quote the real symbol; no product artifact affected"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 design round-7 review F1 (design-review-round-7.md): the amendment's delegation citation e2e/i18n-en.ts:118-136 was copied from correction #5 into a controller-verified sentence while the wave-2 merge had shifted the function to 125-143; provenance proven (correct at design-creation commit f7e1e83, +7 since); statement widened to durable artifacts and paste-is-reassertion on this evidence"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 whole-branch review M4 (whole-branch-verdict.md): design D51 cites i18n.rs:41-46 while the design's OWN plan rewrote i18n.rs (the fallback now at :121-123) - a design re-staling its own citation within one initiative; third instance, promoted; fix rides the plan-close design one-liner batch"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-close batch delta review F1-F3 (design-review-round-7.md, post-promotion): the batch corrected M4's span but never walked the OTHER citations into the file the initiative rewrote - three more i18n.rs spans stale in the same document, one the very fact M4 re-pointed (design :1483 cites :79-83 for the fallback M4 just moved to :121-123). The entry's own initiative-rewrite trigger existed in Tier 2 at batch time; the sweep walked change-dependent sentences, not file-dependent citations - fix round re-points all three"}
@@ -1038,7 +1039,8 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "S21 owner ratification of the base scheme (plan-7 T9 verdict Q1 / T10 verdict Q2 adjudications); applied to 5 topics x 2 locales + 6 cross-reference fixes, independently reviewed APPROVED (h1-normalization-report.md / h1-normalization-verdict.md, commits 49235c1 + a5015b9)"}
     - {date: "2026-07-22", kind: decided, ref: "S22 owner ruling on the h1-normalization-verdict.md HARVEST proposal: derivation rule ratified as recommended - locator pair = (external locator)/(Externer Verweis), chapters/title stay bare, views + suggestion card exempt; normalization dispatch for the locator pair follows in-session"}
+    - {date: "2026-07-22", kind: reinforced, ref: "S22 locator normalization (commits e0262f9 + 2f4d832, s22-h1-derivation-fix verdict APPROVED + HARVEST): first post-ratification application ran clean - unique labels, parenthetical on h1s only, zero reference edits, exactly the scheme's predicted outcome; over-restriction watch explicitly clear"}
