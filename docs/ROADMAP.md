@@ -732,7 +732,8 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   the configured static attributes, so it cannot see a runtime-generated
   label. (2026-07-15, Plan-6 brainstorming)
 - **Spec 5.2 diagnostics table completeness**: the table omits rows for
-  ~17 `diag_codes!` members (cumulative drift - additions never got rows;
+  exactly 17 of 47 `diag_codes!` members (measured mechanically in the
+  plan-7.5 fix round; cumulative drift - additions never got rows;
   no gate ties the table to the enum). If the table is the catalog of
   record, it wants ONE wholesale amendment batch on the next spec-touching
   plan, not one row per plan; the plan-7.5 design's amendment-2 row is the

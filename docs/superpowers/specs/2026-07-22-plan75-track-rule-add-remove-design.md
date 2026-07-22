@@ -174,7 +174,9 @@ warning; the visible guidance is the open detail panel's Match-section
 marker plus the never-filtered `DiagnosticsPanel`.
 
 **Help-mode delegation mechanics** (`src/App.vue`). All help-mode
-handlers are capture-phase listeners on `<main>`: `helpTarget()` resolves
+handlers are capture-phase; the pointer and hover handlers (mouseover,
+focusin, click, dragstart) register on `<main>`, the keydown handler on
+`document` (both in the `watch(helpMode)` block). `helpTarget()` resolves
 `closest("[data-help-id]")` from the event target; `onHelpClick`
 `preventDefault()`s and `stopPropagation()`s every click and pins the
 resolved id; `onHelpKeydown` intercepts Enter/Space whenever
@@ -559,8 +561,8 @@ The affordance is documented in the existing `editor-tracks-rules` topic
 the very topic whose fabricated Add/Remove sentence T10 finding 1
 deleted; this design restores the sentence as truth.
 
-**Why dedicated help-ids are structurally ruled out (three stacked
-constraints):**
+**Why dedicated help-ids are ruled out (both routes walked, each
+closed):**
 
 1. `gui-helpid-equals-labelkey` (Tier 1): a registry control's help-id
    IS its labelKey, written out literally. The buttons' labelKeys are
@@ -571,16 +573,27 @@ constraints):**
    sites. That is precisely the shared-id overreach class T10 finding 3
    recorded (one id serving three surfaces, promising behavior only one
    has).
-2. A dedicated non-labelKey help-id would need either a new labelKey
-   (ruling 4: zero) or an exception to the identity scheme - an owner
-   change to a Tier-1 pattern, for two sentences of content.
+2. The non-labelKey route is mechanically open, not structurally
+   barred - `gui-helpid-equals-labelkey` scopes the identity to a
+   REGISTRY control's help-id, and a sanctioned non-labelKey help-id
+   class already exists: `view-batch`/`view-jobs`/`view-editor` and
+   `batch-suggestion-card` are help-ids and none is a catalog id
+   (verified: the anchored id grep over `locales/en/*.ftl` returns
+   nothing for them while hitting `editor-tracks-rules` as the
+   positive control). A template `data-help-id` on the buttons would
+   need no new labelKey (ruling 4 untouched) and no Tier-1 exception.
+   What it needs is membership in the annotated set - and that set is
+   owner-closed, constraint 3.
 3. D54's owner-approved classification already EXCLUDES the
    "`editor-action-add`/`-remove` buttons" row by name (reason cell:
    "generic list actions / presentation column; no per-instance
-   content") and closes the id and host sets ("adding or dropping a
-   member is an owner change, not an implementation nicety"). This
-   design conforms to the standing classification instead of reopening
-   it.
+   content") and closes the id and host sets - D54's own closure
+   sentence: "the id set, file set and host elements above are closed
+   here"; the plan-7 design's §9 implementer boundary restates it as
+   "adding or dropping a member is an owner change, not an
+   implementation nicety" (`2026-07-21-plan7-help-i18n-design.md` §9,
+   the annotated-set bullet). This design conforms to the standing
+   classification instead of reopening it.
 
 **Topic content (both locales, same change - the bilingual duty).** The
 sentences are drafted at implementation and finalized through the
@@ -626,18 +639,22 @@ Both mutation paths into the model are therefore closed in help mode by
 the existing capture-phase delegation, with no new listener and no
 button-side condition.
 
-**Rejected: dedicated help-ids + two new topic pairs.** Steelman:
-help-mode discoverability - hovering the new buttons would surface a
-precise topic instead of the view topic; the D62 gate would track the
-files by construction; content could deepen later. Rejected: the
-content is two sentences, below owner decision B's inclusion criterion
-(D54's own test: genuine "when to use / interactions with other
-settings" content beyond tooltip depth); the grid topic is the natural
-home the user already
-reaches (the grid caption is the annotated element of record for rule
-mechanics); and the ripple (2 id/labelKey questions + 4 topic files +
-a D54 owner change + D62 set growth) buys a hover target for content
-that would duplicate the grid topic.
+**Rejected: dedicated help-ids + two new topic pairs.** Steelman, in
+its strongest form - through the sanctioned non-labelKey class
+(constraint 2): the view topics and `batch-suggestion-card` prove that
+template `data-help-id`s without catalog ids are house-legal, so two
+dedicated ids cost no labelKey and no scheme change - just two topic
+pairs and a D54 set change - and buy precise hover targeting in help
+mode (a topic instead of the `view-editor` fallthrough), with the D62
+gate tracking the files by construction and room for the content to
+deepen later. Rejected: the content is two sentences, below owner
+decision B's inclusion criterion (D54's own test: genuine "when to use
+/ interactions with other settings" content beyond tooltip depth); the
+grid topic is the natural home the user already reaches (the grid
+caption is the annotated element of record for rule mechanics); and
+the ripple (a D54 owner change to both the id and host sets + 4 topic
+files + D62 set growth) buys a hover target for content that would
+duplicate the grid topic.
 
 **Rejected: annotating the buttons with the existing
 `editor-tracks-rules` id (a second host element).** Steelman: precise
@@ -799,6 +816,21 @@ end.
    The suppression clause transcribes `validate.rs`'s own comment and
    guard (the `empty_list_here` check), verified against the code.
 
+   Scoping, so this row does not read as completing the table: the 5.2
+   table is not exhaustive - **17 of `diag_codes!`'s 47 members have no
+   row** (measured 2026-07-22 against `report/mod.rs`;
+   `ParseError`, `EmptyExtensions`, `ProvableOverlap`, the template
+   family and `NoTrackRules` among them). This amendment adds exactly
+   one row because `EmptyMatchExpression` had ZERO spec presence
+   anywhere while this design's guidance mechanism (D65) depends on it;
+   `NoTrackRules`, which D69 depends on equally, is already spec'd
+   with severity and condition in §4.5 prose ("Empty rules under
+   `drop` remain a `NoTrackRules` error") and needs no table row to be
+   citable. The wholesale table-staleness question is the round-1
+   review's controller watch item
+   (`.superpowers/sdd/plan-7.5/design-review-round-1.md` HARVEST),
+   outside this plan's scope.
+
 **Self-contradiction sweep (spec-wide, for the two amendments):**
 spec 8.2's view-1 sentence is the spec's only description of the
 editor's rule affordances (grep "grid" / "detail editor": no other
@@ -863,14 +895,23 @@ Mocked-IPC cases (real app + `installTauriMocks`, the
 8. Remove to zero under `keep`: mock responds `passthrough-profile`
    (info) at `tracks.rules`; caption marker renders info, Save enabled.
 
-Help-mode (additive test in `e2e/help-mode.spec.ts`, its editor
-describe):
+Help-mode (one additive test in `e2e/help-mode.spec.ts`, appended to
+the existing `test.describe("help mode (D52)")` block - the
+activation-suppression family; the file's three describes are
+"help mode (D52)", "help mode annotations (D54)" and "help mode drag
+suppression (I1)", read at the current tree. The case follows the I1
+sibling's in-test counterpart shape ("a drag-reorder mutates the rule
+grid outside help mode but is suppressed inside it"): real app +
+`installTauriMocks`, its own opened-profile fixture, mutation control
+and suppression assertion in the SAME test and harness):
 
-9. Help mode on: clicking Add mutates nothing (row count unchanged) and
-   pins `view-editor`; Enter on the focused Remove button removes
-   nothing. (The counterpart mutation - the same clicks working OUTSIDE
-   help mode - is cases 1/4, so the suppression assertions are
-   non-vacuous.)
+9. Outside help mode: click Add -> row count +1; focus Add, press
+   Enter -> +1 again (both channels demonstrably mutate - the
+   non-vacuity controls). Toggle help mode on: click Add -> count
+   unchanged and `view-editor` pinned; focus Add, press Enter -> count
+   unchanged. Add, not Remove, carries the assertions deliberately:
+   Remove is disabled without a selection, so a suppression check
+   against it could pass vacuously.
 
 **Gate ripple, enumerated (the D62/D55 duty):**
 
@@ -919,7 +960,9 @@ describe):
    confirmation dialog (D66 records the rejection).
 6. **The owner wants the grid buttons help-annotated after all** ->
    that is a D54 id/host-set owner change reopening D71's resolution,
-   not an implementation nicety (D54's own closure sentence).
+   not an implementation nicety (the plan-7 design §9 annotated-set
+   boundary; D54's own closure sentence is "the id set, file set and
+   host elements above are closed here").
 
 ---
 
