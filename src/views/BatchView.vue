@@ -329,7 +329,10 @@ function emitStartRun(): void {
 </script>
 
 <template>
-  <section data-testid="view-batch">
+  <section
+    data-testid="view-batch"
+    data-help-id="view-batch"
+  >
     <h2>{{ $t("batch-view-heading") }}</h2>
 
     <section

@@ -65,5 +65,6 @@ function widgetComponentFor(kind: FieldWidget["kind"]): Component {
     :is="widgetComponentFor(spec.widget.kind)"
     v-model="model"
     :spec="spec"
+    :data-help-id="spec.helpId"
   />
 </template>

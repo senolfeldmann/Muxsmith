@@ -236,7 +236,10 @@ const joblogNoteKey = computed(() => {
 </script>
 
 <template>
-  <section data-testid="view-jobs">
+  <section
+    data-testid="view-jobs"
+    data-help-id="view-jobs"
+  >
     <h2>{{ $t("nav-jobs") }}</h2>
 
     <p

@@ -390,7 +390,10 @@ function onDragEnd() {
 </script>
 
 <template>
-  <section data-testid="view-editor">
+  <section
+    data-testid="view-editor"
+    data-help-id="view-editor"
+  >
     <button
       type="button"
       data-testid="editor-open"
@@ -461,7 +464,7 @@ function onDragEnd() {
         />
         <h2>{{ $t("editor-tracks-rules") }}</h2>
         <table>
-          <caption>
+          <caption data-help-id="editor-tracks-rules">
             {{ $t("editor-tracks-rules") }}
           </caption>
           <thead>

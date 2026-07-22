@@ -69,7 +69,10 @@ function requestApply() {
 </script>
 
 <template>
-  <article data-testid="batch-suggestion-card">
+  <article
+    data-testid="batch-suggestion-card"
+    data-help-id="batch-suggestion-card"
+  >
     <p>
       {{ $t("batch-suggestion-header", { config_path: suggestion.config_path }) }}
     </p>

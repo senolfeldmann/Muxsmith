@@ -84,11 +84,13 @@ export const profileFields: Record<keyof Profile, FieldSpec> = {
   },
   chapters: {
     labelKey: "editor-profile-chapters",
+    helpId: "editor-profile-chapters",
     widget: { kind: "keywordOrBlock", keywords: CHAPTERS_KEYWORDS, block: "externalBlock" },
   },
   tags: { labelKey: "editor-profile-tags", widget: { kind: "section", of: "tags", optional: false } },
   title: {
     labelKey: "editor-profile-title",
+    helpId: "editor-profile-title",
     widget: { kind: "keywordOrBlock", keywords: TITLE_KEYWORDS, block: "templateBlock" },
   },
 };
@@ -102,8 +104,12 @@ export const metaFields: Record<keyof Meta, FieldSpec> = {
 };
 
 export const inputFields: Record<keyof Input, FieldSpec> = {
-  pattern: { labelKey: "editor-input-pattern", widget: { kind: "text", syntax: "regex", multiline: false } },
-  extensions: { labelKey: "editor-input-extensions", widget: { kind: "stringList" } },
+  pattern: {
+    labelKey: "editor-input-pattern",
+    helpId: "editor-input-pattern",
+    widget: { kind: "text", syntax: "regex", multiline: false },
+  },
+  extensions: { labelKey: "editor-input-extensions", helpId: "editor-input-extensions", widget: { kind: "stringList" } },
   recursive: { labelKey: "editor-input-recursive", widget: { kind: "bool" } },
 };
 
@@ -111,14 +117,20 @@ export const outputFields: Record<keyof OutputCfg, FieldSpec> = {
   directory: { labelKey: "editor-output-directory", widget: { kind: "directoryPath", optional: true } },
   filename: {
     labelKey: "editor-output-filename",
+    helpId: "editor-output-filename",
     widget: { kind: "keywordOrBlock", keywords: FILENAME_KEYWORDS, block: "templateBlock" },
   },
-  on_collision: { labelKey: "editor-output-on-collision", widget: { kind: "select", options: COLLISION_POLICIES } },
+  on_collision: {
+    labelKey: "editor-output-on-collision",
+    helpId: "editor-output-on-collision",
+    widget: { kind: "select", options: COLLISION_POLICIES },
+  },
 };
 
 export const templateBlockFields: Record<keyof TemplateBlock, FieldSpec> = {
   template: {
     labelKey: "editor-template-block-template",
+    helpId: "editor-template-block-template",
     widget: { kind: "text", syntax: "templateLiteral", multiline: false },
   },
 };
@@ -139,15 +151,18 @@ export const externalBlockFields: Record<keyof ExternalBlock, FieldSpec> = {
 export const trackRuleFields: Record<keyof TrackRule, FieldSpec> = {
   source: {
     labelKey: "editor-track-rule-source",
+    helpId: "editor-track-rule-source",
     widget: { kind: "keywordOrBlock", keywords: SOURCE_KEYWORDS, block: "externalBlock" },
   },
   match: {
     labelKey: "editor-track-rule-match-expr",
+    helpId: "editor-track-rule-match-expr",
     widget: { kind: "section", of: "matchExpr", optional: false },
   },
-  optional: { labelKey: "editor-track-rule-optional", widget: { kind: "bool" } },
+  optional: { labelKey: "editor-track-rule-optional", helpId: "editor-track-rule-optional", widget: { kind: "bool" } },
   changes: {
     labelKey: "editor-track-rule-changes",
+    helpId: "editor-track-rule-changes",
     widget: { kind: "propertyMap", properties: "settable", values: "scalar" },
   },
 };
@@ -156,25 +171,43 @@ export const locatorFields: Record<keyof Locator, FieldSpec> = {
   path: { labelKey: "editor-locator-path", widget: { kind: "directoryPath", optional: false } },
   recursive: { labelKey: "editor-locator-recursive", widget: { kind: "bool" } },
   extensions: { labelKey: "editor-locator-extensions", widget: { kind: "stringList" } },
-  match_to_source: { labelKey: "editor-locator-match-to-source", widget: { kind: "optionalFlag" } },
+  match_to_source: {
+    labelKey: "editor-locator-match-to-source",
+    helpId: "editor-locator-match-to-source",
+    widget: { kind: "optionalFlag" },
+  },
   match_pattern: {
     labelKey: "editor-locator-match-pattern",
+    helpId: "editor-locator-match-pattern",
     widget: { kind: "text", syntax: "templateRegex", multiline: false },
   },
   case_sensitive: { labelKey: "editor-locator-case-sensitive", widget: { kind: "bool" } },
 };
 
 export const attachmentsFields: Record<keyof AttachmentsCfg, FieldSpec> = {
-  unmatched: { labelKey: "editor-attachments-unmatched", widget: { kind: "select", options: KEEP_DROP } },
+  unmatched: {
+    labelKey: "editor-attachments-unmatched",
+    helpId: "editor-attachments-unmatched",
+    widget: { kind: "select", options: KEEP_DROP },
+  },
   rules: {
     labelKey: "editor-attachments-rules",
+    helpId: "editor-attachments-rules",
     widget: { kind: "list", item: "attachmentRule", reorderable: true },
   },
 };
 
 export const tracksFields: Record<keyof TracksCfg, FieldSpec> = {
-  unmatched: { labelKey: "editor-tracks-unmatched", widget: { kind: "select", options: KEEP_DROP } },
-  rules: { labelKey: "editor-tracks-rules", widget: { kind: "list", item: "trackRule", reorderable: true } },
+  unmatched: {
+    labelKey: "editor-tracks-unmatched",
+    helpId: "editor-tracks-unmatched",
+    widget: { kind: "select", options: KEEP_DROP },
+  },
+  rules: {
+    labelKey: "editor-tracks-rules",
+    helpId: "editor-tracks-rules",
+    widget: { kind: "list", item: "trackRule", reorderable: true },
+  },
 };
 
 export const attachmentRuleFields: Record<keyof AttachmentRule, FieldSpec> = {
@@ -197,6 +230,7 @@ export const tagsFields: Record<keyof TagsCfg, FieldSpec> = {
 export const matchExprFields: Record<keyof MatchExpr, FieldSpec> = {
   exact: {
     labelKey: "editor-match-expr-exact",
+    helpId: "editor-match-expr-exact",
     widget: { kind: "propertyMap", properties: "matchable", values: "scalar" },
   },
   substring: {
