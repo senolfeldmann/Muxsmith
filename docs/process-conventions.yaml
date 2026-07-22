@@ -351,13 +351,14 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 5
+  count: 6
   occurrences:
     - {date: "2026-07-16", kind: deferred, ref: "plan-6 T8 review verdict Q1 + harvest: extra _body twins ruled correct conformance on the merits, Minor process note under the rule's letter; carve-out proposed by the reviewer, escalated to the owner"}
     - {date: "2026-07-16", kind: decided, ref: "Şenol ruling over four refinement rounds (option 2 of the enumerated escalation; exemplary-list marking added by him; four-part outward-effect definition sharpened, test condition relaxed to never-weaken on his over-restriction objection; reviewer over-restriction watch added by him). Verbatim text approved; owner note on record: 'Wir werden sehen, ob das zu einschraenkend ist' - the boundary revises on evidence, and the watch is its collection mechanism"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 T13 review Q2d: the implementer reused six existing catalog keys at NEW sites (nav tab, open/save buttons, diagnostics heading) and self-classified it grant-covered; condition 4 excludes catalog-key use at a new site, so this was a NEEDS_CONTEXT-that-was-skipped - disclosed, adjudicated acceptable-with-owner-sign-off (strings route to the plan-close rendered-surface pass). FIRST over-restriction-watch calibration data, both directions in one task: the boundary correctly gated 2 debatable reuses (nav tab 'Profile/Profil', 'Selected profile:' line) and needlessly gated 3 unambiguously generic ones (settings-save, batch-diagnostics-heading, batch-profile-filter-name); the reviewer's read: evidence for a NARROWER carve-out (generic-content key, no $param, no semantic-domain shift), not wholesale loosening"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 T3 review Q1 (task-03-verdict.md): first correctly-permitted comment-edit application - catalog header comments fail the grant's user-visible test, the en edit repaired a sentence the change itself falsified (sweep duty), the de edit sits at the grant's edge (records a decision) but was ruled within it; over-restriction watch calibration data, distinguishable interior vs edge recorded"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 review Q1 (task-14-verdict.md): suppressSelfAnchor adjudicated grant-covered - an internal mechanical prop realizing enumerated fixture behavior with zero outward surface, verified by walking the grammar (no core path anchors at the block wrapper alone) and by reproducing the double marker with the prop removed; calibration data for the do-not-over-restrict direction"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T16 review Q1 (task-16-verdict.md): design-silent catalog-section placement fork (new trailing ADR-referenced ## section vs inside the all-.tooltip registry section) adjudicated grant-covered zero-outward-effect conformance to the nearest local precedent (D41 save-surface), correctly surfaced not routed; further do-not-over-restrict calibration"}
 - id: proc-57-briefs-not-ground-truth
   kind: pattern
   tier: 2

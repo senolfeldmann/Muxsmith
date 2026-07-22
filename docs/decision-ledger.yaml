@@ -3994,3 +3994,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T15 review (task-15-verdict.md harvest): a select :value initial-render check whose fixture value is the first domain option is vacuous (element default-selects option 0 regardless - reproduced on case 2); the non-default case 10 is the load-bearing guard, falsified by the reviewer (removing :value fails case 10 only)"}
+- id: i18n-adr-keys-get-trailing-catalog-section
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: i18n
+  statement: "Non-registry-label, attribute-less gui-editor keys tied to a single ADR get their own trailing ADR-referenced ## section in both catalogs, never a slot inside an all-.tooltip registry section (which would break that section's attribute uniformity). Watch item per the T16 reviewer: two instances so far - consider an explicit written convention on a third."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 T16 review Q1 (task-16-verdict.md): editor-track-rule-order placed in a new trailing '## Rule grid ordinal (D59)' section mirroring the existing single-key '## Save surface (D41)' precedent; reviewer names D41 as the first instance and this as the second, pattern held in both locales"}
