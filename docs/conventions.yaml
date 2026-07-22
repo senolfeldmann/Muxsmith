@@ -1027,3 +1027,18 @@ entries:
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 whole-branch review M4 (whole-branch-verdict.md): design D51 cites i18n.rs:41-46 while the design's OWN plan rewrote i18n.rs (the fallback now at :121-123) - a design re-staling its own citation within one initiative; third instance, promoted; fix rides the plan-close design one-liner batch"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-close batch delta review F1-F3 (design-review-round-7.md, post-promotion): the batch corrected M4's span but never walked the OTHER citations into the file the initiative rewrote - three more i18n.rs spans stale in the same document, one the very fact M4 re-pointed (design :1483 cites :79-83 for the fallback M4 just moved to :121-123). The entry's own initiative-rewrite trigger existed in Tier 2 at batch time; the sweep walked change-dependent sentences, not file-dependent citations - fix round re-points all three"}
     - {date: "2026-07-22", kind: decided, ref: "citation-inventory fix delta (52ade44 + design-review-round-7.md final verdict): the two-class rule ruled and folded into this statement - live descriptive claims re-pointed, evidentiary records historically marked (original span verbatim, staling event named, live twin pointed); the amendment-3 site named the boundary case done right"}
+- id: help-topic-h1-scheme
+  kind: pattern
+  tier: 2
+  source: human
+  nature: technical-code
+  domain: docs
+  statement: "A help topic's h1 is '<label> (<section>)': the control's registry label in the topic's locale, byte-equal to the gui-editor catalog value, followed by the nearest containing editor section in parentheses (en lowercase catalog form, de catalog-cased). Section derivation: section = the nearest containing editor section's catalog label; the locator pair derives from the external-locator block label ('external locator' / 'Externer Verweis'); an ambiguous section label goes to the owner, never coined ad hoc. Topics with no containing section stay bare - enumerated closed exemption list: the template topic, the top-level Profile controls (chapters, title), the three view topics, the suggestion card. Prose cross-references retain the parenthetical only where the bare label collides across sections; a unique label leads bare."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 2
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "S21 owner ratification of the base scheme (plan-7 T9 verdict Q1 / T10 verdict Q2 adjudications); applied to 5 topics x 2 locales + 6 cross-reference fixes, independently reviewed APPROVED (h1-normalization-report.md / h1-normalization-verdict.md, commits 49235c1 + a5015b9)"}
+    - {date: "2026-07-22", kind: decided, ref: "S22 owner ruling on the h1-normalization-verdict.md HARVEST proposal: derivation rule ratified as recommended - locator pair = (external locator)/(Externer Verweis), chapters/title stay bare, views + suggestion card exempt; normalization dispatch for the locator pair follows in-session"}

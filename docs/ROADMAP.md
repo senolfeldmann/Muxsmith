@@ -608,8 +608,10 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   /D62 give zero signal on h1 text. A cheap check (h1 label-half ==
   catalog label for the labelled topics, exempt classes as a small
   allowlist) would make it structural. h1-normalization review harvest
-  (S21, 2026-07-22); pairs with the owner's pending section-derivation
-  ruling for the 8 deferred topics.
+  (S21, 2026-07-22). The section-derivation ruling landed 2026-07-22
+  (S22): scheme + derivation rule + the closed exemption allowlist are
+  now conventions.yaml `help-topic-h1-scheme`, so the gate's allowlist
+  is enumerated, not open.
 - **Block-specific tooltip in KeywordOrBlockWidget (budget +2 keys)**:
   the inner block section currently inherits the widget's generic
   tooltip (innermost-title-wins, benign); a dedicated block labelKey
