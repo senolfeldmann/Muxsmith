@@ -534,6 +534,9 @@ function onDragEnd() {
           <thead>
             <tr>
               <th scope="col">
+                {{ $t("editor-track-rule-order") }}
+              </th>
+              <th scope="col">
                 {{ $t("editor-track-rule-source") }}
               </th>
               <th scope="col">
@@ -559,6 +562,7 @@ function onDragEnd() {
               @drop="onDrop(index)"
               @dragend="onDragEnd"
             >
+              <td>{{ index + 1 }}</td>
               <td>
                 <button
                   type="button"

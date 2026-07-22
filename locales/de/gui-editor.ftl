@@ -141,3 +141,9 @@ editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kom
 
 editor-action-add = Hinzufügen
 editor-action-remove = Entfernen
+
+## Rule grid ordinal (D59)
+
+# Presentation-only 1-based index column; not a registry label, so no
+# .tooltip. The digit itself is locale-neutral data rendered in the cell.
+editor-track-rule-order = Reihenfolge

@@ -942,6 +942,12 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
     await expect(rows.nth(0)).toContainText("video");
     await expect(rows.nth(1)).toContainText("audio");
 
+    // D59: the leading ordinal column -- a first "Order" columnheader, and
+    // 1-based cells rendering each row's array position.
+    await expect(page.getByRole("columnheader").first()).toHaveText(en("editor-track-rule-order"));
+    await expect(rows.nth(0).getByRole("cell").first()).toHaveText("1");
+    await expect(rows.nth(1).getByRole("cell").first()).toHaveText("2");
+
     // Reorder is a semantic model edit, not a DOM mutation (binding note):
     // `EditorView`'s drag handlers never read `dataTransfer`, only a
     // closure index (mirroring `ListWidget.vue`'s identical mechanics), so
@@ -955,6 +961,12 @@ test.describe("editor view: rule grid + drag-reorder (Task 11, D45)", () => {
 
     await expect(rows.nth(0)).toContainText("audio");
     await expect(rows.nth(1)).toContainText("video");
+
+    // D59: the ordinal re-renders 1..n by position, so ordinal 1 now sits
+    // with the row that moved into position 0 (audio) -- it tracks array
+    // position, not rule identity.
+    await expect(rows.nth(0).getByRole("cell").first()).toHaveText("1");
+    await expect(rows.nth(1).getByRole("cell").first()).toHaveText("2");
 
     await expect
       .poll(async () => {
