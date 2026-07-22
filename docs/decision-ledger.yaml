@@ -3805,21 +3805,6 @@ entries:
   occurrences:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 D64 amendment (controller ruling): muxsmith_bare() for the no-args test - measured funnel-vs-bare behavior difference on the built binary, helper in tests/support/mod.rs so the cargo_bin grep invariant holds verbatim, one named caller, second caller reopens D64; round-4 review harvest named the shape"}
     - {date: "2026-07-21", kind: reinforced, ref: "first live traversal of the reopening rule, same day: Task-1 NEEDS_CONTEXT refuted the schema-through-the-funnel premise, the second caller REOPENED D64 as a design decision (controller ruling, amendment, round-5 delta review) instead of quietly riding the helper - the shape functioned exactly as written (round-5 harvest)"}
-- id: proc-paraphrase-names-authority
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "When a document restates a rule whose normative home is another section or document, the restatement names its authority inline and subordinates itself ('X is the authority; this sentence follows its mechanics') - a bare paraphrase drifts into a competing variant that later readers cannot rank. Trigger is readable: you are describing behavior that another passage defines. Handle: cite the defining passage and mark the sentence as derived."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 design: D54's hover sentence AND spec amendment 6(a) both paraphrased D52's mechanics loosely and both diverged ('keeps its topic' vs hoverId-null fallback); surfaced by plan-authoring as defect 4, fixed by the three-amendment round with the authority named inline (round-4 verdict)"}
-    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T3 review (task-03-verdict.md harvest): the same shape twice in one task - D54's exclusion parenthetical ('profile's own directory') contradicts the source it summarizes (planner.rs:285 source-dir fallback), and the plan's 'du-imperative' gloss contradicts the catalog header it delegates to; reviewer's formulation: cite without summarizing, or recompute the gloss from source. Fix routes: owner-pass wording + a batched design one-liner at plan close"}
 - id: content-claims-anchor-bound
   kind: pattern
   tier: 1

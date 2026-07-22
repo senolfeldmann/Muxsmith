@@ -439,6 +439,22 @@ entries:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 plan review round 1, finding 1: Task 5's 24-name completion grep can never pass - three folded Fluent ids double as DOM id=/aria-describedby= values the same task preserves, plus a gitignored generated file sits in scope; every absence step in the plan was dutifully fire-verified red, which is exactly why the unreachable green survived (reviewer harvest process note)"}
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T2 review (task-02-verdict.md harvest), novel flavor: Step 4's stale-doc grep is permanently red because it collides with the plan's OWN Step-1 test fixture strings (self-collision within one task); the implementer's sharper substitute pattern was upheld as verification-instrumentation fix (fire-verified against HEAD~1), and the reviewer notes the mirror risk - the tuned pattern must not become a standing guard, it would under-fire on differently-worded survivors"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T17 (task-17-report.md NEEDS_CONTEXT): the implementer ran the green-reachability duty against D55 rule 5's select-structure checks and found them permanently RED on the correct tree (sibling column-0 reopeners in validate-summary/batch-diagnostics-summary, nested suggestion-partition, all en/de-structurally identical), refuting the design's no-nested-selects premise before the checks could ship; third instance, promoted"}
+- id: proc-paraphrase-names-authority
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a document restates a rule - or reports another document's finding or proof - whose normative home or source is elsewhere, the restatement names its authority inline and subordinates itself ('X is the authority; this sentence follows its mechanics') - a bare paraphrase drifts into a competing variant that later readers cannot rank, and a compressed report of a finding drifts into claims the source never made. Trigger is readable: you are describing behavior or evidence that another passage defines. Handle: cite the defining passage and mark the sentence as derived; report a tested pattern by the pattern actually tested."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 design: D54's hover sentence AND spec amendment 6(a) both paraphrased D52's mechanics loosely and both diverged ('keeps its topic' vs hoverId-null fallback); surfaced by plan-authoring as defect 4, fixed by the three-amendment round with the authority named inline (round-4 verdict)"}
+    - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T3 review (task-03-verdict.md harvest): the same shape twice in one task - D54's exclusion parenthetical ('profile's own directory') contradicts the source it summarizes (planner.rs:285 source-dir fallback), and the plan's 'du-imperative' gloss contradicts the catalog header it delegates to; reviewer's formulation: cite without summarizing, or recompute the gloss from source. Fix routes: owner-pass wording + a batched design one-liner at plan close"}
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 round-8 review M1 (design-review-round-7.md): the controller's T19 constraint note compressed T9's fire-tested LEADING-PIPE pattern into 'beats the pipe-pair pattern'; the round-8 amendment hardened the paraphrase into a T9 proof claim about a pattern T9 never ran; caught by the delta reviewer against task-09-verdict.md, fixed in the amendment + the constraint note; third instance, promoted, statement widened to reported findings"}
 - id: proc-no-work-needed-check
   kind: pattern
   tier: 2
