@@ -1009,3 +1009,19 @@ entries:
     - {date: "2026-07-13", kind: decided, ref: "capability/mod.rs:125-129 - CODEC_KIND_NAMES derived from CODEC_KINDS, the rationale in its own doc comment: 'Derived from CODEC_KINDS rather than hand-re-listed, so the two can never drift'"}
     - {date: "2026-07-15", kind: decided, ref: "plan-6 design (approved): D45 rules the four keyword arrays GENERATED into keywords.ts over a guard test ('a guard detects drift; derivation makes it unrepresentable'), and D48 applies the same rule to its schemars extend annotation after an earlier draft's excuse ('extend needs a literal in an attribute position') was measured false. ONE decision round applying the principle at two sites, counted as one event, not two"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design (approved), D58: TYPE_VALUES/CODEC_KIND_NAMES derived into settables.ts through the existing ts_export drift gate rather than hand-listed frontend-side - the strict-fit third event that promotes the entry at count 3; the round-1 review harvest observed the same truth-once principle as the round's recurring rejection shape across D53/D57/D62 (corroboration within the same round, not separate events)"}
+- id: code-comment-line-citations-drift
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: cross
+  statement: "A file:line citation in any durable artifact - a code comment, a design document, an amendment, a convention entry - is a claim, verified against the CURRENT tree at the moment of writing, like a normative count. Copying a span from an older sentence is re-asserting it unverified: line spans drift silently as the cited file evolves, and a verification label ('controller-verified') covers the verified BEHAVIOR claim, never coordinates attached to it later. Prefer an anchor that survives edits (function or symbol name, quoted text) plus the file; a bare span is checked at write time and re-checked whenever the citing sentence is touched - and whenever the SAME INITIATIVE rewrites a file it cites elsewhere, the citing document has re-staled its own span. Trigger is readable: you are typing (or pasting) file:line into a durable artifact."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest, minor): topics.ts's fallback comment cites muxsmith-cli/src/i18n.rs:41-46 for the raw-id posture, but that span is Renderer::new - the actual fallback (id.to_string()) sits in render (~:123); behavior exists, span stale at authoring; one-line comment fix rides the whole-branch inputs"}
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 design round-7 review F1 (design-review-round-7.md): the amendment's delegation citation e2e/i18n-en.ts:118-136 was copied from correction #5 into a controller-verified sentence while the wave-2 merge had shifted the function to 125-143; provenance proven (correct at design-creation commit f7e1e83, +7 since); statement widened to durable artifacts and paste-is-reassertion on this evidence"}
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 whole-branch review M4 (whole-branch-verdict.md): design D51 cites i18n.rs:41-46 while the design's OWN plan rewrote i18n.rs (the fallback now at :121-123) - a design re-staling its own citation within one initiative; third instance, promoted; fix rides the plan-close design one-liner batch"}

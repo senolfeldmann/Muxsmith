@@ -3862,21 +3862,48 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest): Steps 2/3/4 fully specified the code, the implementer transcribed verbatim, and the review reduced to tree-match plus gate re-run; named as the target shape for plan-carried code"}
-- id: code-comment-line-citations-drift
+- id: gui-suppression-enumerates-event-classes
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "A suppress-all-interactions design decision enumerates the DOM EVENT CLASSES it covers (click, keyboard activation, drag, input/change), not only the suppressed targets - 'control activation' is not a DOM primitive, so a suppression written against it silently leaves non-click mutation channels (drag-reorder, text entry, select keyboard change) live. Trigger is readable: a design sentence says interactions/activation are suppressed; handle: list the event classes and give each a capture-phase handler or an explicit exemption."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 whole-branch review I1 (whole-branch-verdict.md): E3's click suppression shipped while drag-reorder, text entry and select keyboard change stayed live in help mode, contradicting amended spec 8.3; hidden from three green task reviews because no task owned 'activation' as an event-class set; dragstart fix in the whole-branch fix wave, keyboard residual to the owner"}
+- id: comment-sweep-on-capability-landing
   kind: pattern
   tier: 1
   source: agent-emergent
   nature: technical-code
   domain: cross
-  statement: "A file:line citation in any durable artifact - a code comment, a design document, an amendment, a convention entry - is a claim, verified against the CURRENT tree at the moment of writing, like a normative count. Copying a span from an older sentence is re-asserting it unverified: line spans drift silently as the cited file evolves, and a verification label ('controller-verified') covers the verified BEHAVIOR claim, never coordinates attached to it later. Prefer an anchor that survives edits (function or symbol name, quoted text) plus the file; a bare span is checked at write time and re-checked whenever the citing sentence is touched. Trigger is readable: you are typing (or pasting) file:line into a durable artifact."
+  statement: "A change that SHIPS a capability sweeps the tree for comments and test narratives asserting its absence (grep the denial phrasing: 'no live', 'not supported', 'never') - a stale denial beside working code misleads the next reader with the authority of an inline comment. Trigger is readable: the diff makes something possible that a comment somewhere says is impossible."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 2
+  count: 1
   occurrences:
-    - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest, minor): topics.ts's fallback comment cites muxsmith-cli/src/i18n.rs:41-46 for the raw-id posture, but that span is Renderer::new - the actual fallback (id.to_string()) sits in render (~:123); behavior exists, span stale at authoring; one-line comment fix rides the whole-branch inputs"}
-    - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 design round-7 review F1 (design-review-round-7.md): the amendment's delegation citation e2e/i18n-en.ts:118-136 was copied from correction #5 into a controller-verified sentence while the wave-2 merge had shifted the function to 125-143; provenance proven (correct at design-creation commit f7e1e83, +7 since); statement widened to durable artifacts and paste-is-reassertion on this evidence"}
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 whole-branch review M1 + harvest (whole-branch-verdict.md): mocks.ts/smoke.spec.ts narratives still deny live locale swap after D56 shipped it (task reviews had noted them; the class named by the whole-branch pass); fix wave scopes both to the restart path and points live coverage at locale-switch.spec"}
+- id: e2e-catalog-binding-helpers
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "e2e assertions bind expected strings through the catalog helpers (en(), enAttr(), topicMarkup) and never hand-duplicate catalog text - the helper chain kept the D55 attribute migration reviewable because every expectation followed the catalogs mechanically. Positive pattern named by the plan-7 whole-branch review; keep it for future locale-touching work."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 whole-branch review HARVEST (whole-branch-verdict.md): the en()/enAttr()/topicMarkup discipline named as the pattern that made the D55 migration reviewable across 52 e2e cases"}
 - id: e2e-focus-delegation-needs-synthetic-events
   kind: pattern
   tier: 1
