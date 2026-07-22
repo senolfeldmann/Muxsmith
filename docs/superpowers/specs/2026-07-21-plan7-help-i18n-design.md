@@ -1341,10 +1341,12 @@ block below):
 5. **Zero-pipe table ban** (amended in, round 8): a topic file containing
    a `|` character anywhere - inline code spans included - is a hard
    failure. Enforces the ratified markdown-subset content rule "no
-   tables"; the zero-pipe form is deliberate because it also catches
-   headerless GFM tables, which the T9 content review proved a pipe-pair
-   pattern misses (binding constraint routed by the controller from that
-   review).
+   tables"; the zero-pipe form is deliberate: the T9 content review
+   fire-proved that the leading-pipe pattern (`^\s*\|`) misses
+   headerless GFM tables and harvested that zero-pipe strictly
+   dominates it, topics having no legitimate `|` at all
+   (`.superpowers/sdd/plan-7/task-09-verdict.md:60,64`; binding
+   constraint routed by the controller from that review).
 6. **Raw-HTML ban, inline code spans exempt** (amended in, round 8): a
    topic file containing angle-bracket markup outside an inline code
    span is a hard failure. The exemption is the constraint's letter, not
