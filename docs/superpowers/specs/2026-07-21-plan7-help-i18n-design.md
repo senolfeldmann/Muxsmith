@@ -85,7 +85,10 @@ embeds `locales/en/{diagnostics,cli}.ftl` via `include_str!` and `:32-37`
 loads exactly those two constants; `--locale de` today negotiates a `de`
 langid over English-only resources. The rustdoc claims "v1 ships English
 content only" (`:12`, `:19`) - stale as a repo statement (de shipped in
-Plan 5.5), accurate as a description of this renderer today. Escalated
+Plan 5.5), accurate as a description of this renderer today. (The
+`i18n.rs` line refs in this paragraph are the design-time, pre-D63
+file - the layout D63's landing rewrote; current spans are cited in
+D63.) Escalated
 as E1; ruled English-only, then **RE-RULED the same day: the CLI renders
 multilingually** (`cli-multilang-rendering`,
 `product-boundaries.yaml:448`, superseding `cli-english-only` :433).
@@ -1475,12 +1478,13 @@ mechanism (`src/i18n/index.ts`) on the Rust side:
   unknown, two when it is de. Each bundle gets its own locale's two
   resources and its own langid (so CLDR plural rules are per-locale
   correct - the reason this is a chain and not one merged bundle),
-  and keeps `set_use_isolating(false)` (`i18n.rs:30-31`: grep-able
-  output).
+  and keeps `set_use_isolating(false)` (`i18n.rs:60-62`, comment plus
+  call: grep-able output).
 - **Per-message fallback**: `render` walks the chain and uses the first
   bundle that has the message id with a value; a message missing
   everywhere falls back to the raw id exactly as today
-  (`i18n.rs:79-83`) - so the order is de -> en -> raw id, the boundary
+  (the fallback body in `Renderer::render`, `i18n.rs:121-123`) - so the
+  order is de -> en -> raw id, the boundary
   entry verbatim. `msg`, `msg_with_counts`, `diagnostic`,
   `diagnostic_no_file` and the numeric-param promotion are untouched
   above the lookup.
@@ -1492,7 +1496,9 @@ mechanism (`src/i18n/index.ts`) on the Rust side:
   wrong placeable name is a hard CI failure there, so no de twin of
   `catalog_completeness.rs` is added.
 - **New renderer unit tests, enumerated** (in `i18n.rs`'s existing test
-  module, beside the `zz-ZZ-invalid` case at `:212`): (1) a de request
+  module, beside the `zz-ZZ-invalid` case -
+  `invalid_locale_falls_back_to_en_and_renders`, constructor at
+  `:248`): (1) a de request
   renders a de message; (2) a message present only in en renders the en
   value under a de chain (per-message fallback); (3) a region-qualified
   "de-DE" resolves the de row; (4) an unknown tag renders the en chain.
@@ -1601,9 +1607,11 @@ machine - the exact failure the entry names). Therefore:
   (grep over `e2e/*.ts` for muxsmith/cargo_bin invocations: zero hits;
   the suite drives `dist/` with mocked Tauri IPC). The constraint binds
   it prospectively through the boundary entry should that ever change.
-- **What is deliberately NOT pinned**: the four renderer unit tests in
+- **What is deliberately NOT pinned**: the renderer unit tests in
   `i18n.rs` construct `Renderer::new(Some(...))` in-process with
-  explicit tags (`:206-275` today) - they are the locale-behavior tests
+  explicit tags (the `mod tests` module, `:237-518`; re-measured at
+  plan close: 14 `Renderer::new(Some(...))` constructors, zero
+  `Renderer::new(None)`) - they are the locale-behavior tests
   themselves and never consult `sys_locale`.
 
 **Rejected: pinning via environment (`LC_ALL`/`LANG` on the child
@@ -1747,7 +1755,9 @@ plus the E3 ruling; no variant wording remains.
    land together, enforced by CI) plus one row in the CLI embed table
    (D63), not a refactor."
 3. **Renderer rustdoc** (`crates/muxsmith-cli/src/i18n.rs:11-13` and
-   `:19-20`): the stale "v1 ships English content only" claim is
+   `:19-20` of the pre-D63 file; landed - the rewritten rustdoc is now
+   the `Renderer` struct doc `:21-26` and the `Renderer::new` doc
+   `:32-38`): the stale "v1 ships English content only" claim is
    replaced by the D63 reality: the renderer embeds the en and de
    catalogs and renders through a per-message fallback chain
    (requested locale, then en, then the raw id), locale resolution
@@ -1826,7 +1836,8 @@ what was decided between; the losing variants' consequences are moot.
 **E1 - CLI German rendering. Two same-day rulings; the second stands.**
 The fork: the de catalogs for cli/diagnostics exist and are
 parity-gated, but the CLI embeds en only
-(`muxsmith-cli/src/i18n.rs:7-8,32-37`), while spec 8.4 promised
+(`muxsmith-cli/src/i18n.rs:7-8,32-37` on the design-time, pre-D63
+tree), while spec 8.4 promised
 `--locale` selection. The design recommended (a) fold de embedding into
 Plan 7 (mechanism locale-generic, content ships, i18n-cluster plan);
 alternative (b) defer to v1.x.
@@ -2076,3 +2087,21 @@ D54's other exclusion rows and the 18+24=42 recount (one cell's
 parenthetical changed, no count touched); D51's surrounding fallback
 prose (posture unchanged, only the citation); trigger 8's "tooltip
 suppression" (unrelated sense of the word).
+
+**Addendum (same day, close-batch delta review F1-F3): the D63 staling
+event swept across every `i18n.rs` citation in this document** - the
+class sweep M4's own premise ("after D63 rewrote the file") owed and
+the batch missed. Every span verified against the current tree:
+D63's raw-id-fallback cite re-pointed to `Renderer::render`
+`:121-123` (was `:79-83`, the same fact M4 moved);
+`set_use_isolating(false)` to `:60-62` (was `:30-31`); the
+`zz-ZZ-invalid` case to `:248` with its test name (was `:212`); D64's
+not-pinned note re-measured (`mod tests` `:237-518`, 14 explicit-tag
+constructors, zero `Renderer::new(None)`; was "four tests,
+`:206-275`"). Marked historical rather than re-pointed (they describe
+the pre-D63 file): section 1's CLI ground-truth paragraph, section 7
+E1's fork record (`:7-8,32-37`), amendment 3's rustdoc spans (with the
+landed locations added: struct doc `:21-26`, `Renderer::new` doc
+`:32-38`). Re-confirmed current as cited: `:21-27` (resolution order in
+the struct rustdoc), `:7-8` (embed constants; D63 ground truth and the
+since-Plan-2 claim), `:73-78`/`:121-123` (M4's own sites).
