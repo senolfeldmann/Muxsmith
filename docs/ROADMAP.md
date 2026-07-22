@@ -176,6 +176,17 @@ mkvtoolnix as Recommends at 1.0 (hard Depends = v1.x entry below);
 Plan 8 builds the pipeline and does NOT tag 1.0. Four-eyes design in
 progress, ADR range D75+.
 
+**CLI-distribution ruling (owner, S22 second round, after a source-level
+mkvtoolnix parity check)**: msi and dmg bundle the CLI binary alongside
+the GUI - mkvtoolnix parity (its Windows installer ships every tool via
+`File "../*.exe"`, its dmg carries all binaries in Contents/MacOS) -
+with NO add-to-PATH installer option (mkvtoolnix offers none either;
+the manual PATH step is documented in the install docs). The Linux
+CLI/GUI package split of mkvtoolnix is deliberately NOT adopted: one
+package per format, both binaries (recorded divergence); the tar.gz
+carries both binaries as already ruled. Homebrew-Cask distribution is
+a v1.x entry below.
+
 ## Plan 9: core/orchestration hoists + planner seam
 
 Orthogonal to every GUI plan; can run as a parallel worktree stream rather
@@ -660,6 +671,10 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
 - **deb/rpm hard Depends on mkvtoolnix (owner S22, 2026-07-22)**: 1.0
   ships Recommends (first-run detection + per-OS guidance carries the
   absent-mkvmerge case); revisit promoting to a hard Depends in 1.x.
+- **Homebrew Cask distribution (owner S22, 2026-07-22)**: publish the
+  macOS dmg as a Homebrew cask in 1.x (own tap vs homebrew/cask
+  submission, and the signing/notarization implications cask acceptance
+  may raise, are checked then - not 1.0 packaging scope).
 - **Remove mise from CI (post-1.0, Şenol 2026-07-12)**: mise is a
   dev-machine runtime manager, not a CI tool; CI should install node/pnpm
   directly (pinned setup action) rather than fetch a floating mise binary
