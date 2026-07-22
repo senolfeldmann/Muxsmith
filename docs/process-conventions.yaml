@@ -390,7 +390,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 11
+  count: 12
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.8 design-doc implementer report (brief-vs-tree divergences: spec 5.4 premise, 5.2 row text, two line spans)"}
     - {date: "2026-07-14", kind: reinforced, ref: "plan-5.8 task-1 report + review verdict (three e2e harness adaptations judged correct against dry_run_cli/run_live idiom)"}
@@ -403,6 +403,7 @@ entries:
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T12 (task-12-verdict.md Q1): the plan listed src/style.css as Modify but no global stylesheet existed anywhere at the parent commit; implementer created it with the design-enumerated content, wired via the in-set App.vue import, surfaced as DONE_WITH_CONCERNS; reviewer upheld as mechanical adaptation (design opened the fork, not the keyboard) and names the authoring gap: a to-be-created file mislabeled Modify with its attachment site unspecified"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 (task-14-verdict.md Q3): the plan's illustrative marker markup (bare span + aria-label) fails its own axe gate - aria-prohibited-attr at serious impact, reproduced by stripping role=img from the built app; the implementer's role=img addition closed the latent defect, reviewer rules plan markup is intent, not axe-verified"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T20 (task-20-verdict.md Q1 + harvest): the brief's Files list omitted src-tauri/src/lib.rs though its test asserts on the very params field whose type the task changes - workspace compile-forced (reviewer fire-verified E0308/E0599 on revert); implementer adapted, surfaced, staged explicitly; reviewer names the authoring rule: a field-type change on a shared symbol greps every assertion/consumer crate-wide at brief time (same class as plan-7 T12, plan-6 T5)"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T19 (task-19-verdict.md Q1): the brief's DATA_HELP_ID_RE ([^\"]+) over-captured two dynamic-bind garbage ids on the real tree, making check 1 permanently red on legitimate content; implementer grammar-constrained the capture, restoring the expected 22, surfaced it; reviewer verified no under-capture by walking the closed id set"}
 - id: proc-verification-step-must-be-falsifiable
   kind: pattern
   tier: 2

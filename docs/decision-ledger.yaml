@@ -3951,6 +3951,20 @@ entries:
   occurrences:
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T14 verdict F1: editor-markers.spec.ts's header states the no-double-marker contract, but the only bare tracks[i] diagnostic sits on rule 1 while the test opens rule 0's panel - the one structural site that can violate the invariant is never reached; fix extends the fixture to the opened rule"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T14 fix-round delta verdict (task-14-verdict.md appendix): the fix's fixture author picked OverlappingRules (anchors at tracks[0]) over reusing ProvableOverlap (anchors only at a pair's second rule) precisely to reach the violating structural site - deliberate correct application on the fix side, named by the re-reviewer's harvest"}
+- id: gate-scan-captures-grammar-constrained
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: ci
+  statement: "A literal-scan gate regex that captures an id (help id, label key, code) constrains the capture to the id's actual grammar (e.g. [a-z][a-z0-9-]*), never a permissive [^\"]+ / [^']+ - a permissive capture over src/ always over-captures dynamic binds (:attr=\"expr\"), template-literal selectors (${id}) and kin, making the gate permanently red on legitimate content. House precedent: D45's LABEL_KEY_RE. Accepted residual: a malformed literal outside the grammar is silently skipped by the gate (bounded by the visible runtime raw-id fallback)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-22", kind: decided, ref: "plan-7 T19 (task-19-verdict.md harvest): the brief's permissive DATA_HELP_ID_RE over-captured ${id} and spec.helpId on the real tree (permanent RED); grammar-constraining restored the closed 22-id set with no under-capture (reviewer walked the set); named the dominant pattern with the D45 LABEL_KEY_RE precedent"}
 - id: test-expected-value-differs-from-default
   kind: pattern
   tier: 1
