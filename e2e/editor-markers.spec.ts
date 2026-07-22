@@ -36,7 +36,11 @@ const PROFILE_PATH = "/profiles/marker-demo.yaml";
 // One primary rule (rule 0) carries the structure fixtures 6-10 anchor
 // against (a match with `exact` + a one-item `any`, and a `changes` row
 // keyed `language`); rule 1 exists only so `tracks[1]` (ProvableOverlap,
-// the grid's second row) is a real, rendered row. `chapters`/`title`/
+// the grid's second row) is a real, rendered row. Rule 0 additionally
+// carries a bare `tracks[0]` diagnostic (fixture #17, OverlappingRules):
+// its grid row anchors one marker, and opening rule 0's detail panel roots
+// a `SectionWidget` at the same `tracks[0]` path -- the D57 single-anchor
+// case the panel must not double (F1). `chapters`/`title`/
 // `output.filename` stay bare keywords: the keyword-or-block widget renders
 // its nested block regardless, so the template/locator sub-widgets those
 // paths anchor at exist without populating the block.
@@ -62,7 +66,7 @@ const markerProfile: Profile = {
 
 // The closed path list. `input.pattern` carries TWO diagnostics
 // (warning + error) -- the worst-of-severity case: its marker must render
-// `--error`. 16 diagnostics over 15 distinct paths.
+// `--error`. 17 diagnostics over 16 distinct paths.
 const diagnostics: Diagnostic[] = [
   { code: "unsupported-profile-version", severity: "error", config_path: "profile_version", params: { found: "2", supported: "1" }, rendered: "unsupported-profile-version" },
   { code: "multiple-identifier-matches", severity: "warning", config_path: "input.pattern", params: { name: "a.mkv" }, rendered: "multiple-identifier-matches" },
@@ -80,6 +84,11 @@ const diagnostics: Diagnostic[] = [
   { code: "invalid-template", severity: "error", config_path: "output.filename.template", params: { kind: "empty-field", pos: "3" }, rendered: "invalid-template" },
   { code: "invalid-keyword", severity: "info", config_path: "chapters", params: { found: "x", allowed: "external" }, rendered: "invalid-keyword" },
   { code: "path-separator-in-template", severity: "error", config_path: "title.template", params: {}, rendered: "path-separator-in-template" },
+  // #17 (F1): a bare `tracks[0]` diagnostic on the rule whose detail panel
+  // the test opens. Its grid-row marker is the sole anchor for `tracks[0]`;
+  // the detail-panel `SectionWidget` roots at the same path and must
+  // `suppress-self-anchor` rather than render a redundant second marker.
+  { code: "overlapping-rules", severity: "error", config_path: "tracks[0]", params: { rules: "tracks[0], tracks[1]", track: "0" }, rendered: "overlapping-rules" },
 ];
 
 const loadedDoc: LoadProfileDocument = {
@@ -105,6 +114,7 @@ const TOP_MARKERS: { path: string; severity: string }[] = [
   { path: "input.pattern", severity: "error" },
   { path: "input.extensions", severity: "warning" },
   { path: "tracks.rules", severity: "error" },
+  { path: "tracks[0]", severity: "error" },
   { path: "tracks[1]", severity: "error" },
   { path: "attachments.rules[0]", severity: "error" },
   { path: "attachments.rules[0].add", severity: "warning" },
@@ -155,11 +165,11 @@ test("field-anchored markers resolve by exact config_path; panel stays complete;
   await editor.getByRole("button", name("batch-profile-pick")).click();
   await expect(editor.getByText(en("batch-profile-current", { path: PROFILE_PATH }))).toBeVisible();
 
-  // The panel is never filtered: all 16 diagnostics list, including the
+  // The panel is never filtered: all 17 diagnostics list, including the
   // panel-only `profile_version`.
   await expect(
     editor.locator('section[aria-labelledby="editor-diagnostics-heading"] li'),
-  ).toHaveCount(16);
+  ).toHaveCount(17);
 
   // `profile_version` has no rendered control -> no marker anywhere, panel
   // row still present (asserted by the count above).
@@ -204,6 +214,13 @@ test("field-anchored markers resolve by exact config_path; panel stays complete;
   const rulePanel = editor.getByTestId("editor-rule-detail");
   await expect(rulePanel).toBeVisible();
 
+  // D57 single-anchor invariant (F1): the detail panel roots a
+  // `SectionWidget` at `selectedPath` (`tracks[0]`) but must
+  // `suppress-self-anchor`, since the grid row already anchors that path.
+  // With rule 0's panel open, `tracks[0]` still resolves to exactly one
+  // marker (the grid row); a re-anchoring detail root would make it two.
+  await expect(marker(page, "tracks[0]")).toHaveCount(1);
+
   for (const { path, severity } of DETAIL_MARKERS) {
     await expect(marker(page, path)).toHaveClass(new RegExp(`\\bdiag-marker--${severity}\\b`));
   }
@@ -220,7 +237,7 @@ test("field-anchored markers resolve by exact config_path; panel stays complete;
   // The panel is still complete and unfiltered after selection.
   await expect(
     editor.locator('section[aria-labelledby="editor-diagnostics-heading"] li'),
-  ).toHaveCount(16);
+  ).toHaveCount(17);
 
   await assertNoSeriousA11yViolations(page);
 });

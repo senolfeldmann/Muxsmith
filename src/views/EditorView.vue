@@ -369,7 +369,12 @@ const selectedIndex = ref<number | null>(null);
 
 // The detail panel edits rule `selectedIndex` through `SectionWidget` over
 // `trackRule`; its path root is `tracks[{i}]` (D57), so every field it
-// dispatches anchors at the same paths core emits for that rule.
+// dispatches anchors at the same paths core emits for that rule. The root
+// itself is a child-path prefix only: the bespoke grid row already anchors
+// `tracks[{i}]` (lint's ProvableOverlap, the design-named anchor), so the
+// mount passes `suppress-self-anchor` to avoid a redundant second marker at
+// that path -- mirroring the same-path collision `KeywordOrBlockWidget`
+// suppresses for its nested block.
 const selectedPath = computed(() =>
   selectedIndex.value === null ? undefined : `tracks[${selectedIndex.value}]`,
 );
@@ -597,6 +602,7 @@ function onDragEnd() {
         <SectionWidget
           :spec="ruleDetailSpec"
           :path="selectedPath"
+          suppress-self-anchor
           :model-value="selectedRule"
           @update:model-value="setRuleValue"
         />
