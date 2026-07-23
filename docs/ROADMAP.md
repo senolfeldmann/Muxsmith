@@ -146,7 +146,9 @@ the loss; the durable answer is the v1.x undo/redo entry below); new
 rule appends at the end, auto-selected, detail panel opens; buttons
 render the generic editor-action-add/-remove keys (zero new label
 keys); no last-rule protection (core-83 passthrough / NoTrackRules
-semantics carry it). Four-eyes design in progress, ADR range D65+.
+semantics carry it). Design D65-D72 four-eyes complete (one fix round,
+delta APPROVED) and **owner-APPROVED 2026-07-23**; four-eyes plan
+authoring in progress.
 
 ## Plan 8: packaging / release pipeline
 
@@ -173,8 +175,9 @@ trigger below), Linux x64 as deb + rpm + AppImage + a portable tar.gz
 ("just runs" archive); pipeline verification runs via workflow_dispatch
 (artifacts + draft-release rehearsal), never a test tag; deb/rpm declare
 mkvtoolnix as Recommends at 1.0 (hard Depends = v1.x entry below);
-Plan 8 builds the pipeline and does NOT tag 1.0. Four-eyes design in
-progress, ADR range D75+.
+Plan 8 builds the pipeline and does NOT tag 1.0. Design D75-D90
+four-eyes complete (one fix round, delta APPROVED) and **owner-APPROVED
+2026-07-23**; four-eyes plan authoring in progress.
 
 **CLI-distribution ruling (owner, S22 second round, after a source-level
 mkvtoolnix parity check)**: msi and dmg bundle the CLI binary alongside
