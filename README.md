@@ -96,7 +96,10 @@ Validation announces the passthrough with an info notice (`passthrough-profile`)
 
 Muxsmith needs **mkvmerge >= 86.0** on the PATH or in a standard install location (it ships with [MKVToolNix](https://mkvtoolnix.download/)).
 
-<!-- placeholder(1.0): release artifacts per OS (msi/dmg/deb/rpm/AppImage) once the packaging pipeline lands -->
+<!-- placeholder(1.0): Install section - artifact table per OS (msi x2 /
+     dmg / deb / rpm / AppImage / tar.gz, naming per Plan-8 D89) linking
+     docs/INSTALL.md, which already carries the per-OS unsigned-install
+     steps; drop the WIP banner in the same pass -->
 
 Until packaged releases land, build from source:
 
