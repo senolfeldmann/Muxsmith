@@ -603,8 +603,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 5
+  count: 6
   occurrences:
+    - {date: "2026-07-27", kind: reinforced, ref: "wix-fix report channel (a) (wix-fix-report.md): the ruled fallback assumed the non-ASCII sink set was publisher+copyright; the empirical set was publisher+LICENSE-inlined-into-the-msi, copyright never reaches WiX - wrong in both directions, so the fallback branch was dead on arrival; the A/B run enumerated the real surface before any remediation shipped"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix verdict HARVEST H3 (wording-fix-verdict.md): a tree-wide old-string zero can never pass without NAMED exclusions (frozen SDD records, the mandating plan doc) plus a fire-check of each zero against BASE - deliberate provenance exclusions are part of the explicitly named surface, not a hole in it"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix report secondary note (wording-fix-report.md): grep -rIl reported the stale dist/ bundle clean because -I classified minified JS as binary - a flag silently excluding files from the sweep surface is the same false-empty class; grep -a is the surface-preserving form for build-output sweeps"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
