@@ -121,7 +121,20 @@ editor's controls get their help-ids in this pass instead of a retrofit.
   IpcError item above. (T4 verdict harvest H1 + plan-5.8 design-review
   harvest, 2026-07-14)
 
-## Plan 7.5: track-rule add/remove in the editor (pre-1.0, owner ruling S21)
+## Plan 7.5: track-rule add/remove in the editor - EXECUTED AND CLOSED 2026-07-27
+
+**Executed 2026-07-23/27** (4 tasks over two parallel worktree streams that
+interleaved on master with Plan 8; one fix round on Task 2 after a mid-run
+design amendment; merges e36885f + 33be397, nine-part gate green after each;
+path-scoped whole-branch verdict READY). The owner rendered-surface pass was
+ruled and executed in-session (406e91b: seven verbatim wording edits across
+five files, including the v1 spec's 8.2 sentence). Salvage in
+docs/process-journal/artifacts/plan-7.5-sdd/ (31 files). Roll-up funnel: the
+whole-branch verdict's 15 triage items closed, landed via the owner pass, or
+carried by a trigger below; blocked-pool sweep run across all four
+house-knowledge files (24 blocked entries; one re-pointed off a non-event
+justification, one flagged for resolution at the Plan-8 close). The anchor
+below is history.
 
 Owner ruling 2026-07-22 (S21, at the plan-7 close): the editor's
 track-rule gap lands PRE-1.0 as its own small package - moved here from
@@ -296,7 +309,34 @@ action:
   design's citation of `.superpowers/sdd/plan-7.5/design-review-round-1.md`
   (amendment-2 scoping paragraph) to the salvaged artifact path, in the
   same change as the salvage - per the ruled round-8 house pattern.
-  (Plan-7.5 delta review observation, 2026-07-22 S22.)
+  (Plan-7.5 delta review observation, 2026-07-22 S22. FIRED AND CONSUMED
+  2026-07-27: salvage 8e2c044, re-pointing d5a6470, same push. The
+  consuming sweep found a SECOND design citation - task-2-verdict.md -
+  and re-pointed both; the plan's own close-actions bullet and this entry
+  keep the pre-salvage path deliberately, because they record what the
+  trigger said rather than pointing a reader at a live artifact.)
+- A request for site-specific wording or tooltips on the editor's generic
+  action keys (any site) -> reopens the shared-key question as an OWNER
+  decision; the latent-coupling steelman recorded in
+  `editor-generic-action-keys` is the argument that fires. Default stays
+  shared keys. (Plan-7.5 design trigger 3, D68/D72.)
+- Core changes `EmptyMatchExpression`'s severity or the skeleton rule's
+  emission set -> D65's recorded semantics and e2e case 6's
+  Save-stays-enabled assertion re-verify; a flip to error severity changes
+  the save gate, which is an owner-visible product change, not a silent
+  ride-along. (Plan-7.5 design trigger 4.)
+- An accidental-rule-deletion report arrives -> route to the v1.x editor
+  undo/redo entry below, NOT to a confirmation dialog (D66 records that
+  rejection with its steelman). (Plan-7.5 design trigger 5.)
+- The owner wants the rule grid's Add/Remove buttons help-annotated after
+  all -> that is a D54 id/host-set owner change reopening D71's resolution,
+  not an implementation nicety. (Plan-7.5 design trigger 6.)
+- A FOURTH e2e spec file needs the local `name()` helper -> hoist it into a
+  shared e2e helper module. Three local copies (smoke, editor-markers,
+  editor-rule-add-remove) are the established house pattern and hoisting now
+  would touch every site; the fourth copy is where the pattern stops paying.
+  (Plan-7.5 T1 review I4, 2026-07-27; same shape as the fake-mkvmerge
+  three-copy trigger above.)
 - fluent-vue or @fluent/bundle is bumped -> re-verify the `bundles`
   setter contract and the `$ta` global (D56/D55 rest on installed
   3.8.2's verified behavior). (Plan-7 design trigger 4.)

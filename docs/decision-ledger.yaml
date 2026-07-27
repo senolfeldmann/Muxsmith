@@ -4220,7 +4220,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 verdict minor + HARVEST 1 (task-5-verdict.md): the inlined PyYAML loader constructor sat outside the parse try, so yaml.ReaderError escapes as a traceback instead of the clean does-not-parse violation (still exit 1; pre-existing on master, reproduced there); whole-branch triage carries the fix decision"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 verdict minor + HARVEST 1 (task-5-verdict.md): the inlined PyYAML loader constructor sat outside the parse try, so yaml.ReaderError escapes as a traceback instead of the clean does-not-parse violation (still exit 1, so the gate never fails open). CORRECTION 2026-07-27: the original occurrence called this 'pre-existing on master' - false, established by the whole-branch reviewer and reproduced independently by the fix implementer (the pre-plan-8 script at aec4cef wraps yaml.safe_load inside the try and ReaderError is a YAMLError subclass, so old master caught it cleanly). The escape was INTRODUCED by 92c62f1, i.e. by the very inlining this entry describes, which makes it the entry's own instance rather than an inherited defect. Fixed in ecab53a"}
 - id: shell-dialect-assumptions-in-agent-scripts
   kind: pattern
   tier: 1
@@ -4274,9 +4274,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 progress.md (T3 'review dispatching' line): the controller wrote the intention, the dispatch never happened, and the merge chain idled waiting on a phantom review until a ledger re-read caught it; reviewer dispatched on discovery, correction line appended"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 progress.md line 10 recorded 'pnpm-grep pattern promoted tier-2' while e2e-filter-invokes-playwright-directly still stood at tier 1; the promotion landed only at a61fead. Measured by the plan-7.5 whole-branch reviewer (whole-branch-verdict.md I-2); label since reconciled, no product effect"}
 - id: cfg-gated-uses-need-cfg-gated-imports
   kind: pattern
   tier: 1
@@ -4320,3 +4321,60 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "wording-fix report (wording-fix-report.md): first run 4 failed / 58 passed, all help-mode sidebar compares old-vs-new wording; pnpm build flipped dist/ to current, re-run 62/62; root cause named from the config's own comment"}
+- id: borrowed-qualifier-verified-like-a-quote
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A provenance or causality qualifier - 'pre-existing', 'unchanged', 'already covered', 'the same as before' - is a claim about an artifact you can open, and it is verified at that artifact before it is relayed, exactly like a quotation or a number. It travels further than a number precisely because it looks like context rather than data: numbers get recomputed en route, qualifiers get copied. Trigger is readable: you are about to write a word that locates a fact in time or attributes it elsewhere."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 whole-branch verdict W1 (whole-branch-verdict.md): 'pre-existing on master' travelled task-5 verdict -> progress.md:20 -> ledger occurrence -> the whole-branch brief unchallenged, while every figure in the same chain was corrected en route; the reviewer reproduced it and found the escape was introduced by 92c62f1. The verdict that coined the qualifier contained its own disproof in the same section"}
+- id: approved-with-minors-needs-a-disposition-line-each
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "At a task close, every non-clean finding in that task's verdict gets exactly one disposition line in the progress tracker - fixed-now, deferred-to-<named vehicle>, or rejected-because. An APPROVED verdict carrying minors is where findings evaporate: the clean overall verdict reads as closure and the unrouted minor ships. Trigger is readable: you are writing the 'Task N: complete' line while the verdict in front of you lists findings - count them and account for each."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 whole-branch verdict W2 (whole-branch-verdict.md): task-5's verdict carried three minors; m1 and m2 were routed to whole-branch triage in progress.md, m3 ('this is on the task', an overstated CI-trigger claim in a docstring) reached no routing line and shipped unfixed until the whole-branch pass found it"}
+- id: deferred-correction-entries-name-the-claim-text
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A record that defers a text correction to a later pass names the CLAIM TEXT to find, not (only) a bare :line list - a recorded line number drifts exactly like a cited one, and the later pass then edits by coordinate against a moved target. Counterpart of the tooling rule in proc-wrapped-prose-quote-grep, applied to the written record rather than to the checker: the deferring writer owes the anchor, and the consuming pass locates by content and reports every delta between the recorded list and what it finds."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 whole-branch verdict adjudication 7 (whole-branch-verdict.md): of seven recorded stale-WiX-language sites, one was not stale (design :1012), one pointed at the wrong artifact (plan :718 instead of design :1966), and one real site was unrecorded; the brief's locate-by-content instruction caught all three, the recorded :line list would have propagated all three"}
+- id: gitignored-paths-need-command-grep
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: process
+  statement: "On this dev machine the interactive shell binds `grep` to a function that honours .gitignore, so a rooted recursive sweep (grep -r over a directory) silently skips git-ignored trees - notably .superpowers/ - and returns a FALSE EMPTY rather than an error. Use `command grep` (or `git grep` for tracked files) whenever the search surface includes ignored paths. Refinement measured 2026-07-27: with an explicit path to a single ignored FILE the function still returns the hit, so the trap is specific to the recursive sweep form, which is exactly the form used when checking that something does not exist anywhere."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "controller session-23 close work: grep -rl over .superpowers/ and docs/ for two rehearsal run ids returned only the handoff snapshot, implying the rehearsal evidence had never been written to an artifact; command grep on the same pattern found 12 hits in task-6-report.md. The false empty would have read as a write-at-creation violation that had not occurred"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 whole-branch verdict HARVEST 5 (whole-branch-verdict.md): the reviewer tested the brief's warning and found the single-file explicit-path form unaffected, narrowing the trap to the rooted -r sweep; it used command grep throughout regardless"}

@@ -418,7 +418,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 10
+  count: 11
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 T2 review round D (task-2-verdict.md): the help-ON sidebar assertion passes with the pin removed (the unpinned fallback is already view-editor) while the committed comment claims it evidences the listener ran - a no-reachable-red assertion wearing an evidence claim; one-sentence comment fix in the fix round"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 verdict minor (task-4-verdict.md): the step-2 transcription diff compared a file to an extraction produced by the same tooling path - tautological, no reachable red by construction; the claim held anyway via the independent three-source hash equality, which is the falsifiable form the step should have been"}
@@ -430,6 +430,7 @@ entries:
     - {date: "2026-07-16", kind: reinforced, ref: "plan-6 amendment-3 delta verdict harvest: a count-0 absence assertion paired with a PRESENCE assertion on the SAME selector satisfies the fire-once discipline without a deliberate-break step - the presence branch is the known-present control proving the selector resolves, so count-0 cannot pass by misspelling. Reusable template for absence-unless-triggered e2e checks (Task 13b step 1.1/1.2)"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design round 1, both sides (design-review-round-1.md harvest): the design author verified its SI-3 negative claim (no in-app help in mkvtoolnix-gui) with a positive-control grep before recording it, and the reviewer re-ran every no-work-needed absence claim with a known-present control - the harvest records the discipline as held everywhere, no vacuous negative in the round"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T13 (task-13-verdict.md harvest): two absence/negative checks (closed-set completeness; E3 suppression) trusted only after control-firing; the reviewer's formulation adopted - a green suppression test or an empty grep proves nothing until you watch it go red"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 rehearsal (task-6-report.md, re-run section): the cheapest fire-proof of a conditional step's negative arm is the OTHER run of a deliberately paired dispatch - R3 read skipped in run A and success in run B, two runs differing in exactly the gating input, so no synthetic break was needed. Where a paired run already exists, that pairing IS the positive control"}
 - id: proc-check-green-state-reachable
   kind: pattern
   tier: 2
@@ -605,7 +606,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 6
+  count: 7
   occurrences:
     - {date: "2026-07-27", kind: reinforced, ref: "wix-fix report channel (a) (wix-fix-report.md): the ruled fallback assumed the non-ASCII sink set was publisher+copyright; the empirical set was publisher+LICENSE-inlined-into-the-msi, copyright never reaches WiX - wrong in both directions, so the fallback branch was dead on arrival; the A/B run enumerated the real surface before any remediation shipped"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix verdict HARVEST H3 (wording-fix-verdict.md): a tree-wide old-string zero can never pass without NAMED exclusions (frozen SDD records, the mandating plan doc) plus a fire-check of each zero against BASE - deliberate provenance exclusions are part of the explicitly named surface, not a hole in it"}
@@ -613,3 +614,18 @@ entries:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "joblog-datebomb-fix verdict Medium (joblog-datebomb-fix-verdict.md): the sweep claimed 33 hits / 3 files workspace-wide, actual 34 / 4 - e2e/smoke.spec.ts:481 missed because the non-Rust sweep returned a FALSE empty; benign hit, but the figure propagated into the commit message and progress ledger; third strict-fit event, promoted at count 3"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 close-fix review MEDIUM 1 (close-fix-verdict.md): the English help cross-reference census was reported as 13 sites / 11 conformant by four consecutive layers (controller measurement, implementer report, eb4608b commit message, review brief); the tree holds 14 / 12. The pattern see the [^)]*topic cannot match a parenthesized title, so help/en/editor-tracks-rules.md:7 was invisible - the implementer's independent reproduction inherited the identical blind spot, which is why a second run of the same pattern is not a second measurement"}
+- id: gate-includes-cross-target-lint-for-the-unrun-os
+  kind: pattern
+  tier: 2
+  source: human
+  nature: operational
+  domain: ci
+  statement: "The local pre-push gate includes a cross-target clippy run for the CI-matrix OS the dev machine is not: `cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`, documented as gate part 6 in BUILDING.md with `rustup target add x86_64-pc-windows-msvc` as a one-time documented prerequisite (deliberately NOT a rust-toolchain.toml `targets` key - the gate is run by whoever pushes, while the key would make every contributor's first build fetch a Windows std they never need). Clippy is check-only, so no Windows linker or MSVC toolchain is involved; measured 1.3s warm. It closes the window in which a cfg-gated import or a platform-only lint is red only on the OS nobody runs locally. An in-tree comment naming the same rule is not a gate and was superseded by this part."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "owner ruling 7 at the plan-8 rehearsal round (plan-8 progress.md), after a Windows-only clippy red went unobserved through five consecutive CI failure runs; the whole-branch reviewer then established the command empirically (green in 1.34s warm, fire-verified red by un-gating the ParamValue import) and BUILDING.md landed it in bcb67f3, deleting the superseded comment-level rule"}

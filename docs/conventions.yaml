@@ -955,14 +955,15 @@ entries:
   source: human
   nature: technical-code
   domain: core
-  statement: "The regex recompiled per matches call is deferred to a later cleanup pass."
+  statement: "The regex recompiled per matches call (per track x rule x file) is deferred to v1.x; the fix is compile-once at validate/plan setup."
   steelman: null
-  blocked_on: "later cleanup pass"
+  blocked_on: "v1.x (ROADMAP v1.x entry 'regex compile cache'), with the registered promotion trigger: a bulk profile showing regex compilation dominating moves it into pre-1.0 hardening"
   status: blocked
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: deferred, ref: "memo D18"}
+    - {date: "2026-07-27", kind: deferred, ref: "plan-7.5 close blocked-pool sweep (doctrine section 3, step 1b): blocked_on named 'a later cleanup pass', a non-event justification of the class the 2026-07-15 audit re-pointed elsewhere; re-pointed to the existing ROADMAP v1.x entry and its promotion trigger"}
 - id: exec-03-mkvpropedit-fastpath
   kind: non-decision
   tier: 2
