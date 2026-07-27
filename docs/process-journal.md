@@ -1935,3 +1935,26 @@ consulted. Lesson ledgered: occurrence dates are claims.
 - Session closed at the context-budget cut per process-conventions
   (proc-context-budget-session-cut): rehearsal fork queue, both plan
   closes, and the owner wording pass hand over via HANDOFF.
+
+## 2026-07-27 | Session 22 continued: owner rulings executed, rehearsal GREEN | session 22 (Peter, Fable 5)
+
+The owner settled all open points in-session, so the planned handover
+shrank. Executed same-session as post-plan fixes, each with independent
+review: the plan-7.5 owner wording pass (seven ruled edits across five
+files; the review measured both sharpened spec claims MORE correct than
+their predecessors against D65), and the Windows-msi fix. The msi
+diagnosis surfaced WiX light's discarded stderr (LGHT0311, code page
+1252) AND killed the ruled ASCII fallback empirically before it could
+ship: the non-ASCII sink set was publisher + the LICENSE text inlined
+into the msi dialog - copyright never reaches WiX - so transliteration
+would not have fixed the build. The technical route won: a WiX
+localization file sets code page 1254 and the publisher keeps its
+correct orthography; both Windows legs green, MSIs binary-verified.
+The rehearsal then re-ran in full: both workflow_dispatch runs green
+across all four legs, 8 of 8 machine-verifiable observables PASS with
+cross-run positive controls beyond the design's ask; the two owner
+observables (draft inspection, draft deletion) stay open by design with
+the draft preserved. The mid-tier model resolution updated by owner
+correction: Opus 5 (freshly released). Remaining for the next session:
+both plan closes and the plan-8 whole-branch review; a server-overload
+window forced two agent resumptions (no work lost, timings polluted).
