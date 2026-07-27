@@ -1855,3 +1855,83 @@ every verdict arrival; ledger-lint green at 426 entries throughout.
    (incl. the de "Verweis" short form); rendered-surface residue (tooltip
    fallback wording, one de topic-reference slip); Plan 7.5 vs Plan 8
    ordering at the next kickoff; h1-gate and block-tooltip v1.x candidates.
+
+## 2026-07-27 | Plans 7.5 + 8 designed, planned, executed to rehearsal | session 22 (Peter, Fable 5)
+
+Session spanned three calendar stretches (2026-07-22 evening, 07-23 morning,
+07-27) with two multi-day idle gaps; eleven ledger occurrence dates written
+with the stale in-session date were batch-corrected once the OS clock was
+consulted. Lesson ledgered: occurrence dates are claims.
+
+- Opened with the owner ruling on the deferred h1 section-derivation rule
+  (locator pair = external-locator block label; chapters/title bare; views +
+  suggestion card exempt). Promoted the whole h1 scheme to conventions.yaml
+  (help-topic-h1-scheme) - it had been review-enforced but recorded in no
+  house file. A small fix dispatch normalized the locator pair, fixed a de
+  reference slip, and added the output-directory empty-fallback tooltip
+  clause; independent review APPROVED.
+- Both plan kickoffs ran in one owner interview each. Plan 7.5 rulings:
+  empty-skeleton fresh rule, unconfirmed remove, append+select+panel,
+  generic action keys, no last-rule floor; undo/redo ruled v1.x. Plan 8
+  rulings: unsigned at 1.0, no updater, draft releases on v* tags, matrix
+  win x64+arm64 / mac arm64-only / linux x64 deb+rpm+AppImage+tar.gz,
+  workflow_dispatch rehearsal, Recommends for mkvtoolnix. A second-round
+  ruling after a source-level mkvtoolnix parity check: installers bundle
+  the CLI (parity), no add-to-PATH option (parity: mkvtoolnix has none),
+  Linux stays one package (recorded divergence); Homebrew Cask v1.x.
+- Four-eyes design phase, parallel: 7.5 = D65-D72, 8 = D75-D90, each one
+  fix round then delta APPROVED, both owner-approved. Four-eyes plan
+  phase, parallel: each one fix round then delta APPROVED. The plan
+  reviews' coverage walks and count recomputations held (zero stale-count
+  defects in 7.5's plan; plan-8's one count defect sat in a plan-CLOSE
+  bullet - the enumeration class had moved to the section written last and
+  swept least).
+- Execution, interleaved on master with per-stream worktrees. Plan 7.5:
+  all four tasks complete, one mid-run design amendment (the T2 reviewer
+  REFUTED the assumed separate guard by running the neutralization against
+  the whole suite - the keydown-suppression mechanism was unguarded
+  repo-wide behind the masking click layer; amendment added an event-level
+  probeEnterKeydown witness whose acceptance criterion is failing under
+  branch-only neutralization; the fix round proved exactly that signature).
+  Whole-branch verdict READY. Plan 8: wave 1 (version-sync + bundle/sidecar
+  configs, INSTALL.md collateral, release.yml, ledger-lint rider) complete
+  and merged A-D, every merge gated in full. One mid-run design amendment
+  (A1): the FROZEN section-2 workflow fence was illegal YAML (unquoted
+  scalar containing colon-space) - four review rounds of eyes passed what
+  one parser load catches; ledgered as design-frozen-fences-parser-loaded.
+- Two latent defects surfaced by the gates, both predating this session's
+  work: a calendar-bomb test fixture (absolute 2026-07-10 run-id aged past
+  the 14-day prune - failed identically on the pre-merge base) and a
+  Windows-only clippy red (ungated import over cfg(unix)-gated uses,
+  pushed 2026-07-22, FIVE consecutive failure CI runs unobserved because
+  push conclusions were never checked; the plan-8 choreography's mandatory
+  gh run watch caught it). Both fixed via reviewed dispatches; both
+  classes ledgered (test-fixture-dates-outside-retention-windows,
+  cfg-gated-uses-need-cfg-gated-imports, proc-push-ci-conclusion-observed).
+  First full-matrix green CI run since 07-22 followed.
+- Rehearsal (Task 6, the plan's acceptance test): BLOCKED, correctly. Run A:
+  guard + macOS-arm64 + Linux legs green (all five artifact names
+  D89-conformant, tar.gz layout exact, rpm Recommends present, retention
+  7 days); BOTH Windows legs fail in WiX light, whose stderr tauri-bundler
+  discards - unverified leading hypothesis: U+015E in publisher/copyright
+  vs the Windows-1252 code page. Run B deliberately not dispatched
+  (no-information run against a known-red gate; decision memo instead).
+  The implementer also caught a controller dispatch line contradicting the
+  plan's draft-cleanup rule (plan governs: owner deletes at close).
+- House-knowledge yield of the session: five promotions to tier 2
+  (design-empirical-claims-reproducible, e2e-filter-invokes-playwright-
+  directly, proc-noninteractive-file-ops-in-agents, proc-wrapped-prose-
+  quote-grep widened to extraction tooling, proc-sweep-surface-
+  completeness), plus new narrow entries incl. redundant-layers-need-
+  mechanism-witness, design-acceptance-observables-have-producers,
+  proc-ledger-records-facts-not-intentions (the last from a controller
+  miss: a "review dispatching" ledger line whose dispatch never happened;
+  a ledger re-read caught the phantom wait).
+- Infrastructure: a model-usage limit killed both plan reviewers mid-run
+  (resumed from transcripts, no context loss); later a server-overload
+  window killed the rehearsal agent three times pre-dispatch (backoffs,
+  fourth attempt ran through). Wall-clock timings of the affected runs are
+  polluted and unusable as process data.
+- Session closed at the context-budget cut per process-conventions
+  (proc-context-budget-session-cut): rehearsal fork queue, both plan
+  closes, and the owner wording pass hand over via HANDOFF.
