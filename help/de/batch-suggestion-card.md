@@ -6,7 +6,7 @@ Ein Probelauf kann einen Konflikt finden, den das Einengen des Match einer Regel
 
 **Kopieren** legt das YAML-Fragment in die Zwischenablage, damit du es selbst in das Profil einfügen kannst.
 
-**Anwenden** erledigt den ganzen Weg mit einem Klick: Es lädt das Profil frisch von der Festplatte, wendet die Einengung an und speichert die Profildatei sofort wieder auf die Festplatte. Es gibt keinen separaten Bestätigungs- oder Speicherschritt; nach Anwenden ist die Datei auf der Festplatte geändert. Gespeichert wird kanonisch, Kommentare und Formatierung der Datei bleiben also nicht erhalten (siehe das Editor-Thema).
+**Anwenden** erledigt den ganzen Weg mit einem Klick: Es lädt das Profil frisch von der Festplatte, wendet die Einengung an und speichert die Profildatei sofort wieder auf die Festplatte. Es gibt keinen separaten Bestätigungs- oder Speicherschritt; nach Anwenden ist die Datei auf der Festplatte geändert. Gespeichert wird kanonisch, Kommentare und Formatierung der Datei bleiben also nicht erhalten (siehe das Thema Editor-Ansicht).
 
 ## Was Anwenden nie tut
 

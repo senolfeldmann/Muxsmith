@@ -10,9 +10,9 @@ Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeil
 
 Klicke eine Zeile an, um sie auszuwählen; das Detailpanel unter dem Raster bearbeitet die ausgewählte Regel - ihre Quelle (die Quelldatei oder ein externer Spender), ihren Match-Ausdruck, das Optional-Flag und die Eigenschaftsänderungen.
 
-Die Schaltfläche Hinzufügen hängt eine neue, leere Regel am Ende der Liste an, wählt sie aus und öffnet ihr Detailpanel. Eine Warnung markiert diese neue Regel, bis du ihren Match-Ausdruck ausgefüllt hast.
+Die Schaltfläche Hinzufügen hängt eine neue, leere Regel am Ende der Liste an, wählt sie aus und öffnet ihr Detailpanel. Eine Warnung im Detailpanel markiert die neue Regel, bis du ihren Match-Ausdruck ausgefüllt hast.
 
-Die Schaltfläche Entfernen löscht die ausgewählte Regel; sie bleibt gesperrt, solange keine Zeile ausgewählt ist. Entfernen verlangt keine Bestätigung - wie jede andere Änderung im Editor betrifft es nur das Modell, und die Datei auf der Festplatte ändert sich erst, wenn du speicherst (siehe das Editor-Thema).
+Die Schaltfläche Entfernen löscht die ausgewählte Regel; die Schaltfläche bleibt gesperrt, solange keine Zeile ausgewählt ist. Entfernen verlangt keine Bestätigung - wie jede andere Änderung im Editor betrifft es nur das Modell, und die Datei auf der Festplatte ändert sich erst, wenn du speicherst (siehe das Thema Editor-Ansicht).
 
 ## Genau eine Spur pro Regel
 

@@ -10,9 +10,9 @@ The row order defines the output track order. Drag a row to reorder; the new gri
 
 Click a row to select it; the detail panel below the grid edits the selected rule - its source (the primary file or an external donor), its match expression, the optional flag, and the property changes.
 
-The Add button appends a new empty rule at the end of the list, selects it, and opens its detail panel. A warning flags that new rule until you fill in its match expression.
+The Add button appends a new empty rule at the end of the list, selects it, and opens its detail panel. A warning in its detail panel flags the new rule until you fill in its match expression.
 
-The Remove button deletes the selected rule; it stays unavailable until a row is selected. Removing asks no confirmation - like every other change in the editor it touches the model only, and the file on disk changes when you save (see the Editor topic).
+The Remove button deletes the selected rule; the button stays unavailable until a row is selected. Removing asks no confirmation - like every other change in the editor it touches the model only, and the file on disk changes when you save (see the Editor view topic).
 
 ## Exactly one track per rule
 
