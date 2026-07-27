@@ -4092,7 +4092,7 @@ entries:
   count: 2
   occurrences:
     - {date: "2026-07-23", kind: decided, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section, reviewer self-lesson): the D54 closure sentence false-negatived under a line-based grep because the prose wraps; found only when the reviewer switched to a whitespace-tolerant pattern"}
-    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 PLAN delta review HARVEST (plan-review-round-1.md round-2 section): a fixed-line-range fence extraction produced a phantom one-line delta (a swept-in closing fence) during the transcription re-diff; the anchor-based re-run confirmed byte-exactness; reviewer routes it here as the same tooling family"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 PLAN delta review HARVEST (plan-review-round-1.md round-2 section): a fixed-line-range fence extraction produced a phantom one-line delta (a swept-in closing fence) during the transcription re-diff; the anchor-based re-run confirmed byte-exactness; reviewer routes it here as the same tooling family"}
 - id: e2e-diagnostic-rendered-is-wire-ballast
   kind: pattern
   tier: 1
@@ -4106,7 +4106,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
 - id: proc-sweep-surface-completeness
   kind: pattern
   tier: 1
@@ -4120,8 +4120,8 @@ entries:
   promoted_at: null
   count: 2
   occurrences:
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
-    - {date: "2026-07-23", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
 - id: ci-additive-only-check-numstat
   kind: pattern
   tier: 1
@@ -4135,7 +4135,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 plan review round 1 m1 (plan-review-round-1.md): Task 5 Step 5's grep-based additive-only check named defective, numstat idiom prescribed; reviewer flags the shape as a conventions candidate on recurrence"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 m1 (plan-review-round-1.md): Task 5 Step 5's grep-based additive-only check named defective, numstat idiom prescribed; reviewer flags the shape as a conventions candidate on recurrence"}
 - id: plan-interfaces-absent-by-construction
   kind: pattern
   tier: 1
@@ -4149,7 +4149,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-23", kind: decided, ref: "plan-8 plan review round 1 HARVEST (plan-review-round-1.md): Task 4's Interfaces note named the transferable pattern for every parallel-stream plan"}
+    - {date: "2026-07-27", kind: decided, ref: "plan-8 plan review round 1 HARVEST (plan-review-round-1.md): Task 4's Interfaces note named the transferable pattern for every parallel-stream plan"}
 - id: proc-noninteractive-file-ops-in-agents
   kind: pattern
   tier: 1
@@ -4163,5 +4163,61 @@ entries:
   promoted_at: null
   count: 2
   occurrences:
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
+- id: proc-readonly-reviewer-falsification
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A read-only reviewer verifies a NEGATIVE without mutating the tree via side-effect-free substitutes: pipe a synthetic known-bad input through the exact same pattern/command, or force the positive case out of git itself (git diff --no-index /dev/null <file> makes a diff-line pattern fire on an unmodified file). 'I could not fire-verify, so I trusted it' is how a reviewer's negative goes unchecked - the falsifiability duty binds the reviewer with these tools, not a waiver."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T3 verdict HARVEST pattern 2 (task-3-verdict.md): both substitutes used in the review as the read-only counterpart of the implementer's fire-verification; named for process-conventions candidacy"}
+- id: review-gate-iteration-domain
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a gate's passing result is an absence, the reviewer reads the gate's ITERATION DOMAIN (which files/ids the check actually loops over), not only its output: the structural read establishes reach over every target at once and is cheaper than per-file fire-tests; a single fire-test proves one check on one file. Both are worth having; the structural read is the stronger evidence."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T3 verdict HARVEST pattern 3 (task-3-verdict.md): reading check-i18n's help-content loop established all three D62 content checks reach both edited files, answering the parity question as a by-product"}
+- id: content-contract-closes-claims-not-wording
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: docs
+  statement: "A D-level content contract states explicitly: the CLAIM SET is closed; wording, sentence structure, locale-local terminology and cross-references are the author's and ride the owner surface pass. Without that sentence, a literal reading of 'exactly these claims, nothing more' condemns legitimate cross-references and reads a claims closure as a wording freeze."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T3 verdict HARVEST pattern 4 + over-restriction flag (task-3-verdict.md): the task got the boundary right under D71; the reviewer names the explicit sentence for future content contracts and flags the stricter reading as the over-restriction to avoid"}
+- id: proc-task-check-subset-clause
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Task steps run the NAMED check subset; the full nine-part gate is owed at merge and at push (controller-side); the task-level drift guard for out-of-surface changes is the zero-surface diff check (commit stat shows only the task's files). Preambles state this clause so the subset-vs-gate fork never reaches an implementer as a judgment call - and a mandated full gate on a two-file docs diff is ceremony that trains gate-as-ritual."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T3 verdict Q3 + over-restriction flag (task-3-verdict.md), same fork disclosed in the T1 and plan-8 T3 reports the same day: subset sanctioned by the task's own step text each time; reviewer proposes the disambiguating preamble clause instead of a blanket gate mandate (one adjudication event, corroborated across reports)"}
