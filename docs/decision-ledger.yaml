@@ -3921,21 +3921,6 @@ entries:
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T13 (task-13-verdict.md harvest): established during the E3/help-mode review with reproduction; named relevant to any future a11y/focus test"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T12 fix-round delta (task-12-verdict.md part 3): the reviewer independently re-probed the fact and refuted a controller-dictated mechanism claim in the comment rewording; mechanism-neutral wording recommended and adopted into this statement"}
-- id: e2e-filter-invokes-playwright-directly
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: technical-code
-  domain: testing
-  statement: "Filtered e2e runs invoke npx playwright test --grep <pattern> directly, never through pnpm script forwarding: pnpm 11 forwards a -- separator literally so playwright drops the post-separator tokens and silently runs the FULL suite (green but slow, filter defeated), and against a &&-chained script the forwarded args land on the outer sh -c as positionals, never reaching the last command. The pnpm form without the separator (pnpm test:e2e --grep ...) works only for a single-command script; the direct npx call is shape-independent."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-21", kind: decided, ref: "plan-7 T3 review Q2 (task-03-verdict.md): the plan's separator form empirically proven to run the full suite; corrected form recorded as stream-B cross-task constraint"}
-    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T13 (task-13-verdict.md harvest): the &&-chained variant - pnpm <script> with separator hands --grep to the outer sh -c as a positional; direct npx invocation named the robust form"}
 - id: gui-provide-inject-template
   kind: pattern
   tier: 1

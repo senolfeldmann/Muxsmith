@@ -1046,3 +1046,19 @@ entries:
     - {date: "2026-07-22", kind: decided, ref: "S21 owner ratification of the base scheme (plan-7 T9 verdict Q1 / T10 verdict Q2 adjudications); applied to 5 topics x 2 locales + 6 cross-reference fixes, independently reviewed APPROVED (h1-normalization-report.md / h1-normalization-verdict.md, commits 49235c1 + a5015b9)"}
     - {date: "2026-07-22", kind: decided, ref: "S22 owner ruling on the h1-normalization-verdict.md HARVEST proposal: derivation rule ratified as recommended - locator pair = (external locator)/(Externer Verweis), chapters/title stay bare, views + suggestion card exempt; normalization dispatch for the locator pair follows in-session"}
     - {date: "2026-07-22", kind: reinforced, ref: "S22 locator normalization (commits e0262f9 + 2f4d832, s22-h1-derivation-fix verdict APPROVED + HARVEST): first post-ratification application ran clean - unique labels, parenthetical on h1s only, zero reference edits, exactly the scheme's predicted outcome; over-restriction watch explicitly clear"}
+- id: e2e-filter-invokes-playwright-directly
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "Filtered e2e runs invoke playwright directly (npx playwright test --grep <pattern>, or the equivalent pnpm exec playwright test --grep), never through pnpm script forwarding: pnpm 11 forwards a -- separator literally so playwright drops the post-separator tokens and silently runs the FULL suite (green but slow, filter defeated), and against a &&-chained script the forwarded args land on the outer sh -c as positionals, never reaching the last command. The pnpm form without the separator (pnpm test:e2e --grep ...) works only for a single-command script; the direct invocation is shape-independent."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-21", kind: decided, ref: "plan-7 T3 review Q2 (task-03-verdict.md): the plan's separator form empirically proven to run the full suite; corrected form recorded as stream-B cross-task constraint"}
+    - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T13 (task-13-verdict.md harvest): the &&-chained variant - pnpm <script> with separator hands --grep to the outer sh -c as a positional; direct npx invocation named the robust form"}
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 T1 implementer report concern 3 (task-1-report.md): pnpm test:e2e -- --grep ran the full 61-test suite (appended --list ignored too) while pnpm exec playwright test --grep filtered correctly; the PLAN itself still carried the defeated form - the tier-1 entry was invisible at plan authoring, which is the promotion's own argument. Third strict-fit event, promoted at count 3"}
