@@ -13,6 +13,7 @@ gh-log.md
 node_modules/
 dist/
 src-tauri/gen/
+src-tauri/binaries/
 
 # Task 12: Playwright + the e2e mock harness build (never ships in the
 # Tauri binary -- see e2e/vite.harness.config.ts)
