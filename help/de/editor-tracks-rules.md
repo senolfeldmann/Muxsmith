@@ -10,10 +10,14 @@ Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeil
 
 Klicke eine Zeile an, um sie auszuwählen; das Detailpanel unter dem Raster bearbeitet die ausgewählte Regel - ihre Quelle (die Quelldatei oder ein externer Spender), ihren Match-Ausdruck, das Optional-Flag und die Eigenschaftsänderungen.
 
+Die Schaltfläche Hinzufügen hängt eine neue, leere Regel am Ende der Liste an, wählt sie aus und öffnet ihr Detailpanel. Eine Warnung markiert diese neue Regel, bis du ihren Match-Ausdruck ausgefüllt hast.
+
+Die Schaltfläche Entfernen löscht die ausgewählte Regel; sie bleibt gesperrt, solange keine Zeile ausgewählt ist. Entfernen verlangt keine Bestätigung - wie jede andere Änderung im Editor betrifft es nur das Modell, und die Datei auf der Festplatte ändert sich erst, wenn du speicherst (siehe das Editor-Thema).
+
 ## Genau eine Spur pro Regel
 
 Jede Regel muss pro Quelldatei genau eine Spur ergeben. Zwei Kandidaten sind ein Mehrdeutigkeitsfehler - verenge den Match-Ausdruck (die Vorschlagskarten in der Stapel-Ansicht können dir das Verengen abnehmen). Null Kandidaten sind ebenfalls ein Fehler, außer die Regel ist `Optional` - siehe das Thema Optional.
 
 ## Wann die Liste leer sein darf
 
-Eine leere Regelliste ist nur unter `Nicht zugeordnet: keep` erlaubt - ein reiner Passthrough-Remux. Unter `drop` ist mindestens eine Regel erforderlich, sonst würde jede Spur verworfen.
+Eine leere Regelliste ist nur unter `Nicht zugeordnet: keep` erlaubt - ein reiner Passthrough-Remux. Unter `drop` ist mindestens eine Regel erforderlich, sonst würde jede Spur verworfen. Auch die letzte Regel darf entfernt werden; die dann leere Liste ist genau der hier beschriebene Zustand.
