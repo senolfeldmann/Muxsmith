@@ -1,12 +1,6 @@
-Muxsmith __VERSION__ - builds carry no developer identity; read the install note for your OS
-before first launch: [Windows](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#windows)
-| [macOS](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#macos)
-| [Linux](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#linux)
+Muxsmith __VERSION__ - builds carry no developer identity; read the install note for your OS before first launch: [Windows](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#windows) | [macOS](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#macos) | [Linux](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#linux)
 
-**Runtime requirement:** Muxsmith drives `mkvmerge` from
-[MKVToolNix](https://mkvtoolnix.download/). The deb/rpm packages declare
-it as a recommended dependency; on Windows/macOS install it yourself
-(details in the install notes).
+**Runtime requirement:** Muxsmith drives `mkvmerge` from [MKVToolNix](https://mkvtoolnix.download/). The deb/rpm packages declare it as a recommended dependency; on Windows/macOS install it yourself (details in the install notes).
 
 | Artifact | For |
 |---|---|
@@ -18,11 +12,6 @@ it as a recommended dependency; on Windows/macOS install it yourself
 | `muxsmith-__VERSION__-linux-x86_64.AppImage` | any Linux distro |
 | `muxsmith-__VERSION__-linux-x86_64.tar.gz` | portable, CLI + GUI |
 
-Verify downloads: put `SHA256SUMS` beside the files and run
-`sha256sum --ignore-missing -c SHA256SUMS` on Linux,
-`shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS, or in
-PowerShell on Windows `Get-FileHash <file> -Algorithm SHA256` compared
-against that file's line in `SHA256SUMS` (the comparison is
-case-insensitive).
+Verify downloads: put `SHA256SUMS` beside the files and run `sha256sum --ignore-missing -c SHA256SUMS` on Linux, `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS, or in PowerShell on Windows `Get-FileHash <file> -Algorithm SHA256` compared against that file's line in `SHA256SUMS` (the comparison is case-insensitive).
 
 ---
