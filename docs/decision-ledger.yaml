@@ -3861,9 +3861,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "plan-7 T11 (task-11-verdict.md harvest): Steps 2/3/4 fully specified the code, the implementer transcribed verbatim, and the review reduced to tree-match plus gate re-run; named as the target shape for plan-carried code"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 T1 verdict HARVEST H3 (task-1-verdict.md): the brief's carried block equals the design block equals the landed file (sha256 match), review verified in minutes; cheap-tier transcription task shape confirmed end-to-end"}
 - id: gui-suppression-enumerates-event-classes
   kind: pattern
   tier: 1
@@ -4070,14 +4071,15 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Quotation marks in a durable artifact assert byte-verbatim wording copied from the source at the moment of writing; reconstructed wording is a paraphrase and is written as one, without quotation marks and naming its source. Applies with FULL force to decorative/corroborative quotes - decoration reads identically to evidence downstream, so it gets the same rigor as load-bearing claims."
+  statement: "Quotation marks in a durable artifact assert byte-verbatim wording copied from the source at the moment of writing; reconstructed wording is a paraphrase and is written as one, without quotation marks and naming its source. The same assertion is made by an OUTPUT-FORMATTED BLOCK presented as a command's output: transcript blocks carry only real output (including 'no output'); a conclusion lives outside the block. Applies with FULL force to decorative/corroborative material - it reads identically to evidence downstream, so it gets the same rigor as load-bearing claims. (Widened to output blocks on the second occurrence.)"
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 m3 (design-review-round-1.md): a gh-help quote in the design was not verbatim against the live command output; harvest names the pattern (decorative corroboration got less rigor than the immaculate load-bearing verification in the same document); fix round corrects"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T1 verdict m1 + HARVEST H2 (task-1-verdict.md): the report typeset the conclusion NO-WARNINGS-OR-ERRORS inside a $-command block, making an unfalsifiable claim look like a measurement; claim true, form corrected by rule - statement widened to output blocks"}
 - id: proc-wrapped-prose-quote-grep
   kind: pattern
   tier: 1
@@ -4221,3 +4223,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T3 verdict Q3 + over-restriction flag (task-3-verdict.md), same fork disclosed in the T1 and plan-8 T3 reports the same day: subset sanctioned by the task's own step text each time; reviewer proposes the disambiguating preamble clause instead of a blanket gate mandate (one adjudication event, corroborated across reports)"}
+- id: build-recheck-forces-rebuild
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A second invocation of an incremental build tool on a warm cache emits diagnostics only for units it actually rebuilds - piping such a re-run through a warning grep is an absence check that CANNOT fail. The falsifiable form: force the unit to rebuild (touch a rerun-if-changed input or the source), capture the full output, and pair it with one deliberate break that shows the check firing."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T1 verdict m1 + HARVEST H1 (task-1-verdict.md): the report's zero-warnings evidence was a warm-cache grep; the reviewer established the true claim via forced build-script rerun plus a productName:42 positive control (exit 101)"}
+- id: design-frozen-fences-parser-loaded
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A machine-readable fence a design FREEZES for verbatim transcription (YAML/JSON/TOML workflow or config sketch) owes authoring and review one real parser load before the freeze - eyes pass illegal syntax that any parser rejects instantly, and a freeze converts the latent syntax error into a mandated one."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 design amendment A1 (delta review round 3, design-review-round-1.md): the frozen section-2 fence carried an unquoted ': ' scalar through four review rounds; T4's parse check hit it, controller ruled Option A, author amended with red-green parse proof; the design reviewer's own harvest names the missed parser load"}
