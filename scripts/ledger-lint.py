@@ -27,8 +27,9 @@ transfer to YAML - a real parser exists (PyYAML), and a linter whose whole job
 is to be trusted must not itself be a fragile line parser. So this is Python,
 a deliberate and recorded divergence, not an oversight. Requires PyYAML; run
 with the project's mise-managed python (`python3 scripts/ledger-lint.py`).
-CI wiring exists: the ci.yml `ledger-lint` job runs this script on every push
-and pull request (Plan 8 rider, ROADMAP 'Ledger hygiene' ruling 2026-07-22).
+CI wiring exists: the ci.yml `ledger-lint` job runs this script on every master
+push, `v*` tag and pull request (Plan 8 rider, ROADMAP 'Ledger hygiene' ruling
+2026-07-22).
 """
 
 import sys
@@ -94,14 +95,16 @@ def main() -> int:
             violations.append(f"{rel}: file not found")
             continue
 
-        loader = DuplicateKeyLoader(text)
+        loader = None
         try:
+            loader = DuplicateKeyLoader(text)
             doc = loader.get_single_data()
         except yaml.YAMLError as exc:
             violations.append(f"{rel}: does not parse ({exc})")
             continue
         finally:
-            loader.dispose()
+            if loader is not None:
+                loader.dispose()
 
         # 6. no duplicate key in any mapping
         for key, first, dup in loader.duplicate_keys:
