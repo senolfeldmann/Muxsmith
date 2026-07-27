@@ -92,6 +92,41 @@ function attemptDrag(
   );
 }
 
+/**
+ * Dispatches a synthetic Enter `keydown` at the rule-grid Add button and
+ * reports whether anything preventDefaulted it -- the event-level witness for
+ * the keydown-suppression layer (design amendment 1, ruling
+ * `redundant-layers-need-mechanism-witness`), mirroring `attemptDrag` above:
+ * dispatch the event yourself, read the event's own state, do not infer the
+ * mechanism from a downstream observable.
+ *
+ * It exists because the row count cannot attribute the closure: Enter on a
+ * focused `<button>` synthesizes a click, which the capture-phase click
+ * listener stops anyway, so the keyboard channel stays closed even with
+ * `onHelpKeydown`'s Enter/Space branch deleted outright. `defaultPrevented`
+ * discriminates, because `onHelpKeydown` (capture-phase on `document`) is the
+ * ONLY keydown listener in `src/`, its Escape branch preventDefaults nothing,
+ * and the click layer never sees a keydown at all.
+ *
+ * `cancelable: true` is load-bearing: on a non-cancelable event
+ * `preventDefault()` is a no-op, which would leave the witness structurally red
+ * against correct code. No rAF flush (unlike `attemptDrag`): the value is event
+ * state read synchronously after a synchronous dispatch, with no rendering in
+ * between.
+ */
+function probeEnterKeydown(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const add = document.querySelector('[data-testid="editor-rule-add"]')!;
+    const keydown = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    add.dispatchEvent(keydown);
+    return keydown.defaultPrevented;
+  });
+}
+
 test.describe("help mode (D52)", () => {
   test("toggle opens the sidebar on the active view's topic; the nav stays live and swaps it; a click in <main> is suppressed; Esc exits", async ({
     page,
@@ -225,6 +260,14 @@ test.describe("help mode (D52)", () => {
     await page.keyboard.press("Enter");
     await expect(rows).toHaveCount(3);
 
+    // The witness's paired absence control: with no help-mode keydown listener
+    // registered, nothing preventDefaults the synthetic Enter.
+    expect(await probeEnterKeydown(page)).toBe(false);
+    // The probe's own side effect, tested rather than assumed: a synthetic
+    // keydown is untrusted (`isTrusted: false`), so the browser runs no
+    // activation behavior on it and the probe itself appends no rule.
+    await expect(rows).toHaveCount(3);
+
     const sidebar = page.getByTestId("help-sidebar");
     await page.getByTestId("help-toggle").click();
     await expect(sidebar).toBeVisible();
@@ -233,9 +276,11 @@ test.describe("help mode (D52)", () => {
     // preventDefaults and stopPropagations before `@click="addRule"` can run,
     // and pins the nearest annotated ancestor -- the view root's
     // `view-editor`, since the buttons themselves carry no `data-help-id`
-    // (D71's fallthrough). The pinned topic is this half's evidence that the
-    // listener actually handled the click, so the unchanged row count is a
-    // suppression rather than an event that never arrived.
+    // (D71's fallthrough). The sidebar assertion checks topic IDENTITY only
+    // and is NOT evidence that the listener ran: `pinnedId ?? hoverId ??
+    // VIEW_TOPICS[activeView]` resolves to `view-editor` in this view whether
+    // the click pinned it, the pointer merely hovered it, or the listener
+    // never saw it -- the row count is what carries the suppression evidence.
     await add.click();
     await expect(rows).toHaveCount(3);
     expect(await sidebar.innerHTML()).toBe(await normalizeInPage(page, topicMarkup("view-editor")));
@@ -249,6 +294,15 @@ test.describe("help mode (D52)", () => {
     await add.focus();
     await page.keyboard.press("Enter");
     await expect(rows).toHaveCount(3);
+
+    // THE witness: the unchanged count above is over-determined (the
+    // synthesized click is stopped by the click layer regardless), so the
+    // keydown layer gets its own event-level assertion -- the discriminating
+    // counterpart to the `false` control before help mode was switched on,
+    // exactly the pair the I1 sibling reads off `dragstartPrevented`. Recorded
+    // side effect: the probe pins `view-editor`, which the click half above
+    // already pinned, and no assertion after this point reads pin state.
+    expect(await probeEnterKeydown(page)).toBe(true);
   });
 });
 
