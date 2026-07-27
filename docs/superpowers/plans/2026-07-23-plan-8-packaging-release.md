@@ -259,7 +259,9 @@ git -c commit.gpgsign=false commit -m "release: version-sync guard script; tauri
 }
 ```
 
-Every literal is frozen by design section 11 (upgradeCode GUID, publisher spelling with `Ş`, category `Video`, section `video`, minimumSystemVersion `11.0`, the en-US language list). `createUpdaterArtifacts`, `fileAssociations`, `macOS.dmg` and `linux.appimage` stay ABSENT (D76/D86 - absence is the decision, not an oversight). A JSON file cannot carry the upgradeCode warning as a comment; it lives in D86 and the BUILDING.md subsection (Step 4).
+**Superseded 2026-07-27:** the shipped configuration is the en-US language MAP with its locale file (`wix/locale-en-US.wxl`), per design amendment A2; the fence above is the wording this plan mandated before the WiX code-page fix.
+
+Every literal is frozen by design section 11 (upgradeCode GUID, publisher spelling with `Ş`, category `Video`, section `video`, minimumSystemVersion `11.0`, the en-US language list (superseded by design amendment A2)). `createUpdaterArtifacts`, `fileAssociations`, `macOS.dmg` and `linux.appimage` stay ABSENT (D76/D86 - absence is the decision, not an oversight). A JSON file cannot carry the upgradeCode warning as a comment; it lives in D86 and the BUILDING.md subsection (Step 4).
 
 - [ ] **Step 2: Create `src-tauri/tauri.bundle.conf.json`** containing exactly (design 3.2):
 

@@ -301,7 +301,7 @@ ruling, with the macOS mechanics corrected per brief-note 2:
   manual PATH step for the CLI.
 - **macOS**: unsigned and not notarized; macOS 15+: first open is blocked,
   then System Settings > Privacy & Security > "Open Anyway" (Apple
-  citation in section 1); macOS 11-14: Control-click -> Open; alternative
+  citation in section 0, note 2); macOS 11-14: Control-click -> Open; alternative
   for terminal users: `xattr -d com.apple.quarantine`; CLI location inside
   the app bundle and the manual PATH step.
 - **Linux**: no gatekeeping hurdle (ruling text: "Linux none"); AppImage
@@ -940,7 +940,7 @@ the brief):
   rehearsal explicitly verifies its rendering in the msi's
   Programs-and-Features entry (step R8), and the pre-decided fallback if
   the msi mangles it is the ASCII transliteration `"Senol Feldmann"` in
-  `publisher` only - no other field, no other trigger.
+  `publisher` only - no other field, no other trigger (superseded, A2).
 - `category`: `"Video"` (closed schema list, verified; the product is a
   video-container tool; mkvtoolnix's own desktop metadata sits in the
   video group).
@@ -955,8 +955,10 @@ the brief):
   Both arches share it, which matches Tauri's default derivation (the
   literal `.x64` string regardless of arch) and means an arch-switching
   user gets a clean upgrade instead of two side-by-side installs.
-  `windows.wix.language`: `["en-US"]`, explicit - the installer UI
-  language set; the app itself is bilingual at runtime; a `de-DE`
+  `windows.wix.language`: `{ "en-US": { "localePath": "wix/locale-en-US.wxl" } }`
+  (A2) - the installer UI language set; the locale file pins the MSI
+  database code page to 1254 so `Ş` survives WiX's 1252 en-US default;
+  the app itself is bilingual at runtime; a `de-DE`
   installer UI would double the msi count against the ruled two-artifact
   Windows matrix, so it is deliberately not configured (a de installer
   UI request is observable and can ride the signing revisit).
@@ -1508,7 +1510,7 @@ The file after the change (non-bundle sections unchanged and elided;
     "windows": {
       "wix": {
         "upgradeCode": "9262b417-b687-5ea3-ace1-18b9d51b215f",
-        "language": ["en-US"]
+        "language": { "en-US": { "localePath": "wix/locale-en-US.wxl" } }
       }
     },
     "macOS": {
@@ -1878,11 +1880,15 @@ false`) proves the artifact path; **Run B** (`true`) proves draft
 assembly. Checklist (every step names its observable):
 
 - **R1** (run A): guard passes both steps; the gate-green step's log
-  names the found ci run. All four legs green; the rename step's log
-  carries one `pick: <path>` line per selected artifact (1 per Windows
-  leg, 1 on macOS, 3 on Linux - the function logs every selection to
-  stderr) and its closing `ls -l` lists exactly the renamed files
-  (1 / 1 / 4 incl. the tar.gz).
+  names the gated SHA (the `ci gate green for <sha>` echo). All four legs
+  green; the rename step's log carries one `pick: <path>` line per
+  selected artifact (1 per Windows leg, 1 on macOS, 3 on Linux - the
+  function logs every selection to stderr) and its closing `ls -l` lists
+  exactly the renamed files (1 / 1 / 4 incl. the tar.gz).
+  R1 addendum: each `pick:` path contains the guard's version (the
+  bundler-native filenames carry the bundler-produced version, so this
+  line is the artifact-level check that bundle metadata inherited the
+  workspace version, D87).
 - **R2** (run A): four workflow artifacts named `muxsmith-<leg>` exist
   with retention 7; downloaded together they contain exactly the 7 files
   of D89 with the scheme-conformant names (count check: 7).
@@ -1904,7 +1910,8 @@ assembly. Checklist (every step names its observable):
 - **R6** (run B or A, artifact-content checks on a Linux machine):
   `dpkg-deb -I muxsmith-*.deb` shows `Recommends: mkvtoolnix` and
   `Depends:` containing `libwebkit2gtk-4.1-0` and `libgtk-3-0`;
-  `dpkg-deb -c` lists `./usr/bin/muxsmith` and `./usr/bin/muxsmith-gui`;
+  `dpkg-deb -c` payload paths include `usr/bin/muxsmith` and
+  `usr/bin/muxsmith-gui` (dpkg >= 1.22 emits no leading `./`);
   `rpm -qp --recommends muxsmith-*.rpm` prints `mkvtoolnix`;
   `./muxsmith-*.AppImage --appimage-extract` yields
   `squashfs-root/usr/bin/muxsmith`; the tar.gz lists the D88 four-file
@@ -1918,7 +1925,8 @@ assembly. Checklist (every step names its observable):
 - **R8** (owner, on real hardware, once per OS): msi installs on a
   Windows machine after the SmartScreen "Run anyway" flow exactly as
   `docs/INSTALL.md` describes; Programs-and-Features shows publisher
-  "Şenol Feldmann" unmangled (D86's fallback fires only if this fails);
+  "Şenol Feldmann" unmangled (D86's fallback fires only if this fails;
+  superseded, A2);
   dmg opens on an Apple-Silicon Mac via the Settings > Open Anyway flow
   as documented; `muxsmith` runs from the documented per-OS CLI
   locations. These three walk-throughs double as the screenshot source
@@ -1963,9 +1971,10 @@ check, and the real release name.
    Windows-7z parity gap (section 5) becomes a v1.x candidate: a
    `windows-x86_64.zip` from the existing msi leg's binaries, D88-style.
 7. **A user asks for a German installer UI** -> reopen D86's
-   `wix.language` single-language decision (the mechanism is a config
-   list; the cost is more msi artifacts or a transform decision, which
-   is why it waits for a request).
+   `wix.language` single-language decision (the mechanism is a
+   per-language map carrying a locale file - see A2; the cost is more msi
+   artifacts or a transform decision, which is why it waits for a
+   request).
 8. **A tar.gz-equivalent bundler lands in Tauri or cargo-dist earns its
    keep for the archive leg** -> revisit D88's hand-packed step.
 9. **The gh CLI on runner images breaks a release-ops invocation**
@@ -2004,7 +2013,8 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
   staging path pattern, and the `.gitignore` line (D82/3.2/3.4).
 - The full bundle block of section 3.1 including every literal
   (upgradeCode GUID, publisher spelling with `Ş`, category `Video`,
-  section `video`, minimumSystemVersion `11.0`, en-US language list);
+  section `video`, minimumSystemVersion `11.0`, the en-US language map
+  with its locale file `wix/locale-en-US.wxl` (A2));
   the `version` key is deleted, not moved.
 - `scripts/check-version-sync.sh` as written in 3.3; its three red
   states are fire-verified per section 8 G1-G3 before merge.
@@ -2021,7 +2031,7 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
   `--generate-notes`.
 - The publisher-rendering fallback (D86) fires only on R8's observable
   failure, and changes exactly the `publisher` field to
-  `"Senol Feldmann"`.
+  `"Senol Feldmann"` (superseded, A2).
 - No step publishes, edits or un-drafts a release; no test tag is ever
   pushed (D77/D79/D81).
 
@@ -2059,3 +2069,20 @@ pre-fix PyYAML run rejected at that same line/column ("mapping values are
 not allowed here", line 94, column 59) - check red before green, delta
 `diff` between the two extracts shows the single quoted line and nothing
 else.
+
+**A2 (2026-07-27, owner ruling 6 + post-rehearsal record).** The WiX fix
+`07c0255` changes two D86 literals: `windows.wix.language` becomes the map
+`{ "en-US": { "localePath": "wix/locale-en-US.wxl" } }`, and the new
+committed file `src-tauri/wix/locale-en-US.wxl` (Codepage 1254) joins the
+D86 config surface. D86's pre-decided publisher fallback (ASCII
+"Senol Feldmann" in `publisher` only, triggered by R8) is **superseded on
+the merits**: the diagnosis run (30268008932) demonstrated three Ş sinks -
+publisher (8 msi string rows), the LICENSE text inlined into
+LicenseAgreementDlg (1 row), copyright (never reaches WiX) - and its ASCII
+A/B control rebuilt with ASCII publisher AND copyright still failed on the
+LICENSE sink, so the fallback could not have fixed the build; the database
+code page is the instrument. R8 remains the owner's rendering check; if it
+ever fails, the answer is code-page work, not transliteration. Sites
+updated by this amendment: D86 decision text (:941-943 fallback clause,
+:958 language value), section 3.1 fence, section 11 (frozen-literal list,
+fallback bullet), section 8 R8 parenthetical, section 9 trigger 7 premise.
