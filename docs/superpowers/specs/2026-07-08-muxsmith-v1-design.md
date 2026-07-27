@@ -281,6 +281,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
 | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
 | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
 | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
+| `EmptyMatchExpression` | warning | a rule's `match` expression has no conditions at all (no exact/substring/regex/any/not): it would match every track of its source (config-time; suppressed when the emptiness is a present-but-empty top-level `any`/`not` list, which already raises its own `EmptyMatchList` for the same node) |
 | `UnknownPropertySkew` | warning | a `raw:`-opted property was consumed at plan time and matched untyped; `property`/`found_version`/`pinned` params report the property and the runtime-vs-pinned schema versions, one code covering both a genuinely newer schema and a same-version untyped match (9.2) |
 | `SchemaDrift` | info | at least one source file's `identification_format_version` exceeds the build-time pinned schema version; `found_version`/`pinned` params carry both versions; emitted once per batch when planning concludes (9.2) |
 | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
@@ -371,7 +372,7 @@ muxsmith schema                      # print the profile JSON Schema
 
 Three views, modeled on mkvtoolnix-gui:
 
-1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
+1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder; Add appends an empty rule - invalid until filled, announced by validation - selects it and opens its detail editor; Remove deletes the selected rule without confirmation, legal down to zero rules per 4.5), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.
 
