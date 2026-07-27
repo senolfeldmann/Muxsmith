@@ -4451,3 +4451,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5, the plan-amendment author running beside the Task-3 implementer: it staged only its own path, and its bare `git commit` (86bfd69) swept in the co-writer's staged draft-body.md anyway. Self-disclosed rather than smoothed over, repaired by soft reset plus a pathspec-scoped re-commit (29ef17b, verified to touch one file), 86bfd69 left unreferenced, nothing pushed; the co-writer's change was restored to its staged pre-incident state and it committed its own work afterwards"}
+- id: dispatch-preconditions-name-zero-commits-ahead
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: ci
+  statement: "A task that dispatches remote work against a branch ref (a workflow_dispatch, a deploy, anything the SERVER resolves) has 'zero commits ahead of the remote' among its preconditions, measured with `git rev-list --count origin/<branch>..HEAD`. Otherwise the local HEAD the controller reasons about and the SHA the server actually runs can differ silently: the dispatch resolves server-side, so a local-only commit is invisible to it and the run's headSha may not be the SHA any gate proved. Trigger is readable: a step hands a branch NAME to something that will resolve it elsewhere."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5 Task 4 (task-4-report.md flag 1, upheld as a note by task-4-verdict.md and carried by the whole-branch verdict): master was one commit ahead of origin at the rehearsal dispatch; the run's headSha came back as the ci-verified SHA and no harm followed - but only because the ahead commit touched the ROADMAP. The same state with release collateral ahead would have produced a silent mismatch between the dispatched state and the verified one. Safety by accident is the finding, not the outcome"}
+- id: foreground-waits-declare-a-total-elapsed-budget
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A step that waits on something slow states a TOTAL ELAPSED budget plus the chunked form that satisfies it, never a single timeout larger than the harness can execute. A subagent's shell call is capped well below the multi-hour waits release pipelines need, so a bare `timeout 5400` is unexecutable as written: the implementer must either chunk it - which makes a stop rule phrased as 'a tripped timeout stops the task' ambiguous, since each chunk trips - or reach for backgrounding, which the same constraints ban. Write the budget, the chunk length, and what a genuinely exhausted budget means. Trigger is readable: you are writing a timeout longer than a single tool call can run."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5 Task 4 Step 1 prescribed one foreground `timeout 5400 gh run watch`; the implementer executed it as two sequential bounded watches with full disclosure, which was the only compliant reading, and the task-4 verdict raised the stop rule's ambiguity under chunking (F2). The run took about eleven minutes against a ninety-minute budget, so the gap never bound - it would have on a slower matrix"}
+- id: a-serial-ruling-binds-dispatch-concurrency-too
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a plan is cut serial because its tasks share files, that ruling constrains the CONTROLLER's dispatch concurrency as well, not merely the order of the plan's own tasks. A mid-plan dispatch that is not one of those tasks - a routed fix, a plan amendment, a bookkeeping edit - re-creates exactly the concurrency the cut removed, in the same tree, against the same index. Trigger is readable: you are about to dispatch anything while a plan task is live in the same working tree. Either wait, or give the second writer its own worktree."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5 whole-branch verdict HARVEST: the plan was deliberately cut serial and no-worktree because its tasks share files, and the controller then dispatched a plan amendment alongside the live Task 3. The shared-index incident followed that first mid-plan concurrent dispatch immediately - see concurrent-writers-need-pathspec-scoped-commits for the mechanism"}

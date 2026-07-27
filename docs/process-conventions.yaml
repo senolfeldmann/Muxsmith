@@ -505,7 +505,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 10
+  count: 11
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T2 verdict minor (task-2-verdict.md): the report evidence block dropped a line (count 9 not 8) and the controller again relayed the stale count into the review dispatch - second borrowed-count hop the same day; controller handle adopted: dispatches reference the artifact, never restate its numbers"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 verdict minor (task-4-verdict.md): the task report asserted ten observed outputs over its own nine-row enumeration, and the controller relayed the ten unrecomputed into the review dispatch - trigger-1 silent in a report, borrowed number propagated one hop; caught by the reviewer recount"}
@@ -517,6 +517,7 @@ entries:
     - {date: "2026-07-16", kind: violated-corrected, ref: "Trigger 2 added on evidence from the D49 fix round, where the rule as first written could not have fired. Adding a third ApplyError variant propagated correctly into the enum, the IpcError mapping, the catalog, the tests and three separate counts - and missed the one sentence directly above the block that grew (:624-625, 'Two codes x two locales = four lines', over a block now carrying three codes and six lines, counted by the re-reviewer). The substance propagated, the prose describing its size did not. Nobody was typing a number at that moment, so trigger 1 was silent; the act that needed the sweep was the ADDITION. Same round: a 'Three ApplyError tests' heading (:1026) sat over two bodies. Third instance across three rounds"}
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 plan review round 1, findings 3/4/6: three count defects in one plan (per-file call-site counts each off by one - the fn definition line counted; a '28' asserted where the step's own command expects 27; a stale design line count) despite the plan transcribing this entry's constraint into its own Global Constraints. The reviewer's harvest names counts as the round's repeated defect class"}
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T17 review M1 (task-17-verdict.md): trigger 2 landing in a SOURCE-FILE gate header - check-i18n.mjs's charter still opens 'Three independent checks' after rule 3 added a fourth hard-fail check; the count-recompute duty reaches code charters, not only design/plan documents; fix routed onto T18 (same file, next task)"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5 Task 4 verdict flag 2: plan 8 asserted a per-leg PRESENCE check with no count; plan 8.5 converted it into a count of LEGS and then silently reused that number as a count of LOG LINES, asserted from drafting intent and never measured. GitHub echoes each step's script source into its log group, so four legs produce four echoes plus four outputs and the check read 8 against an expected 4. The recorded fix is to restore the presence shape, not to patch 4 to 8 - a hardcoded 8 inherits the same fragility"}
 - id: latitude-carveout-presentation-tokens
   kind: pattern
   tier: 2

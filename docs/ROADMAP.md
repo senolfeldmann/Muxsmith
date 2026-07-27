@@ -206,6 +206,21 @@ package per format, both binaries (recorded divergence); the tar.gz
 carries both binaries as already ruled. Homebrew-Cask distribution is
 a v1.x entry below.
 
+## Plan 8.5: macOS packaging fixes - EXECUTED AND CLOSED 2026-07-28
+
+**Executed 2026-07-27/28**: four serial tasks on one tree (no worktrees, by
+the plan's own reasoning - three config/doc tasks do not amortize four
+worktree setups plus merge gates), one fix round on Task 1, one mid-run plan
+amendment, whole-branch verdict READY with no blocking finding. Commits
+9460daf, 5060ef5, 50e08cd, 87c1dee, plus the amendment 29ef17b; rehearsal run
+30312889098 green, 6/6 jobs, all six machine halves with fired controls and
+two differential measurements against the original defect artifact. **The
+owner accepted all three rulings at their acceptance surface** - the installer
+shows the unidentified-developer path instead of "damaged", the dmg mounts
+with no licence dialog, the rendered body carries the three links on one line,
+and INSTALL.md matches the flow he walked. Salvage in
+docs/process-journal/artifacts/plan-8.5-sdd/. The anchor below is history.
+
 ## Plan 8.5: macOS packaging fixes (pre-1.0, owner rulings 2026-07-27)
 
 The three findings of the owner's R8 walk-through, as their own small
@@ -525,7 +540,7 @@ action:
 
 Must be resolved before the first tagged release; none blocks Plan 6 work.
 
-- **BLOCKER: the macOS dmg's app does not launch - "the app is damaged"**
+- **DONE 2026-07-28 (Plan 8.5, owner-accepted on hardware). BLOCKER: the macOS dmg's app does not launch - "the app is damaged"**
   (owner R8 walk-through on real Apple-Silicon hardware, 2026-07-27; the
   first human execution of the documented install path). Measured on the
   rehearsal artifact from the Linux side: the two Mach-O binaries in
@@ -552,7 +567,7 @@ Must be resolved before the first tagged release; none blocks Plan 6 work.
   freshly built bundle, observe which of the two dialogs appears).
   Whatever lands, `docs/INSTALL.md`'s macOS section is re-verified against
   the real flow afterwards.
-- **BLOCKER-adjacent: the dmg's pre-mount license (SLA) mis-renders the
+- **DONE 2026-07-28 (Plan 8.5, owner-accepted on hardware; the licence was REMOVED rather than repaired - mkvtoolnix ships none either). BLOCKER-adjacent: the dmg's pre-mount license (SLA) mis-renders the
   publisher name** (same walk-through). `bundle.licenseFile` is
   `../LICENSE`, whose copyright line carries `Ş` as UTF-8 `c5 9e`
   (verified by hexdump). Observed: the name garbles at that character and
@@ -577,7 +592,7 @@ Must be resolved before the first tagged release; none blocks Plan 6 work.
   note from the same file: mkvtoolnix DOES codesign both the .app contents
   and the dmg when an identity is configured, and re-signs after
   `install_name_tool` invalidates the signature.)
-- **Release-body OS links break into separate paragraphs** - confirmed on
+- **DONE 2026-07-28 (Plan 8.5, owner-accepted on the rendered draft). Release-body OS links break into separate paragraphs** - confirmed on
   the rendered draft, which is what the deferred owner wording item asked.
   `.github/release/draft-body.md` lines 2-4 begin with `|`, and GitHub
   renders them as their own blocks instead of one line. Fix: join the three
