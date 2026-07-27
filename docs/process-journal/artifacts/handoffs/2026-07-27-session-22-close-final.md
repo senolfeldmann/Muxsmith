@@ -105,8 +105,11 @@ before any push and after every merge. Ledger/Tier-2 YAML by targeted text
 replacement only; `scripts/ledger-lint.py` after every edit (now also
 duplicate-key-checking, and wired as a CI job). Binding session-scale rules
 in docs/process-conventions.yaml: proc-03-model-assignment (explicit model
-per dispatch; top model only controller/whole-branch/four-eyes/decision
-docs; mid for task implementers+reviewers; cheap for plan-carried
+per dispatch; RE-INSTANTIATED by owner ruling at this close: the
+CONTROLLER LOOP runs Opus 5 - the owner sets it as the session model -
+and Fable 5 serves ONLY design/plan four-eyes rounds, whole-branch
+reviews + deltas, and four-eyes decision documents; mid tier Opus 5 for
+task implementers+reviewers/fixes/recon; Sonnet 5 for plan-carried
 transcription) and proc-context-budget-session-cut (this close is an
 instance). Subagents never call session-relocation tools; worktrees are
 plain directories. Notable Tier-2 additions this session (all binding):
