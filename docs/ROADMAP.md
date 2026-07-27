@@ -1173,7 +1173,7 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   ledger i18n-12; design D55 rule 5). (T4 verdict harvest H1, 2026-07-14;
   plan-5.8 design-review harvest, 2026-07-14)
 
-## Test flakiness
+## Test flakiness (owner call 2026-07-28: no flakiness at 1.x; this is the tracked instance)
 
 - **`dry_run_json_emits_a_document_when_the_language_query_fails` failed once
   under load, then passed four times** (Plan 8.5 pre-push gate, 2026-07-28).
@@ -1194,5 +1194,13 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   Trigger: the next time this test, or any other fake-binary test using that
   helper, fails without a code change -> that second data point is worth a
   systematic-debugging pass; a single non-reproducible failure is not.
-  Recorded rather than chased because chasing a one-in-five flake with no
-  second observation costs more than it can currently prove.
+  **Owner call 2026-07-28: fix it, timing 1.x - flakiness is not accepted
+  as a standing condition.** Candidate fix, named so the 1.x pass does not
+  re-derive it: the helper writes the script directly at the path it then
+  execs, which is the shape a write-then-exec race takes; writing to a
+  temporary name, setting the mode, and `rename()`-ing it into place makes
+  the exec'd path one that was never open for writing. That removes a known
+  race CLASS - it is explicitly NOT a confirmed fix for this observation,
+  whose cause remains unestablished, and the 1.x pass should say which of
+  the two it is claiming. Cheap either way: three lines in one test-support
+  helper, no product code.
