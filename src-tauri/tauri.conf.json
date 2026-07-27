@@ -49,7 +49,7 @@
     "windows": {
       "wix": {
         "upgradeCode": "9262b417-b687-5ea3-ace1-18b9d51b215f",
-        "language": ["en-US"]
+        "language": { "en-US": { "localePath": "wix/locale-en-US.wxl" } }
       }
     },
     "macOS": {

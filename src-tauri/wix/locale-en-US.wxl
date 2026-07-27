@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSI database code page for the en-US build.
+
+  The publisher "Şenol Feldmann" (U+015E) and the LICENSE text embedded into
+  WixUIExtension's LicenseAgreementDlg are not representable in Windows-1252,
+  which is what tauri-bundler derives from languages.json for en-US. WiX v3
+  light.exe then rejects the link with LGHT0311 and names WixLocalization/@Codepage
+  as one of the supported places to change it.
+
+  Windows-1254 (Turkish) is an ANSI code page - required, because
+  Package/@SummaryCodepage rejects non-ANSI values (LGHT0349) - it is
+  ASCII-compatible, and it carries Ş at 0xDE. Every other string in this
+  installer is pure ASCII, so 1254 differs from 1252 only where it has to.
+
+  tauri-bundler appends its default locale strings for every Id this file does
+  not already define, so overriding TauriCodepage here keeps TauriLanguage
+  (1033) and the UI strings on the bundler's defaults.
+-->
+<WixLocalization Culture="en-us" Codepage="1254"
+                 xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="TauriCodepage">1254</String>
+</WixLocalization>
