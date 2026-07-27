@@ -113,6 +113,12 @@ run as independent jobs.
 Release bundles add the CLI as a bundled sidecar via a build-flavor
 overlay (`src-tauri/tauri.bundle.conf.json`); plain `pnpm exec tauri
 build` deliberately omits it so dev/test builds need no staging step.
+
+On macOS, `src-tauri/tauri.macos.conf.json` additionally merges in
+automatically (Tauri platform config) and clears `bundle.licenseFile`:
+the dmg ships without a pre-mount license dialog (Plan 8.5 ruling 2),
+while the Windows msi keeps its license dialog from the global key.
+
 To reproduce what CI ships:
 
 ```bash

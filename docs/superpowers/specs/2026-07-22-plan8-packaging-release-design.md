@@ -1,7 +1,7 @@
 # Plan 8 design: packaging / release pipeline
 
-Status: DRAFT 2026-07-22, fix round 1 applied 2026-07-23; amendment log at
-the end (A1, 2026-07-23; A2 and A3, 2026-07-27). Numbering starts
+Status: DRAFT 2026-07-22, fix round 1 applied 2026-07-23; every amendment
+is recorded in the `## Amendment log` section at the end. Numbering starts
 at **D75** per the ROADMAP Plan-8 kickoff block; D65-D74 is Plan 7.5's
 parallel reservation (its design uses D65-D72 - counted from its spec's
 `^## D` headings; no collision either way). Last pre-existing ADR is D64
@@ -2171,3 +2171,27 @@ Gatekeeper lines, draft-body title line); 4.5's README-rider fence is
 now also superseded by the tree ("unsigned-install" -> "install-hurdle").
 Section 11's frozen-literal list is read with this amendment: the
 signingIdentity literal is frozen alongside the 3.1 literals.
+
+**A5 (2026-07-27, owner kickoff ruling 2, executed by Plan 8.5 Task 2).**
+New committed file `src-tauri/tauri.macos.conf.json`
+(`{"bundle": {"licenseFile": null}}`) clears the inherited `licenseFile`
+for macOS builds only: the dmg ships without the pre-mount SLA (the
+third `Ş` sink of the R8 walk-through disappears as a class), while
+Windows keeps the confirmed-correct license dialog from the global D86
+key. Mechanism verified at source and empirically (2026-07-27, plan-8.5
+authoring): platform configs merge via RFC 7396 `json_patch::merge` -
+null DELETES the key (tauri-cli tag `tauri-cli-v2.11.4`,
+`crates/tauri-cli/src/helpers/config.rs`, fn `load_config`); a
+null-carrying `tauri.linux.conf.json` removed the deb's Recommends on
+the repo-pinned CLI. Scope note on D82: its "deliberately avoids the
+auto-merged `tauri.<platform>.conf.json` filenames" rationale is
+sidecar-specific (`externalBin` is processed on every compile);
+`licenseFile` has no compile-time consumer, so the auto-merged platform
+file is the correct lever here and the one the ruling names. Correction
+riding along: D86's parenthetical "deb/rpm embed it as-is" does not hold
+at the pinned bundler source (debian.rs never consumes licenseFile;
+rpm.rs consumes only the license STRING for the rpm License tag) - no
+decision rests on it. Fence bookkeeping per A3's rule: section 4.4's
+BUILDING.md fence is superseded by the tree at the new platform-config
+paragraph; section 11's frozen-literal list is read as including
+`src-tauri/tauri.macos.conf.json` with exactly the content above.
