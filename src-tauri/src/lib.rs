@@ -588,6 +588,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the #[cfg(unix)] fake-script test consumes the param type; an
+    // unconditional import fails clippy -D warnings on Windows (unused).
+    #[cfg(unix)]
     use crate::error::ParamValue;
     use std::process::Command;
 
