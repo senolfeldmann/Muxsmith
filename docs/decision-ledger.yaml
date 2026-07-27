@@ -4287,8 +4287,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "windows-clippy-fix report (windows-clippy-fix-report.md): the in-tree precedent found during the fix - crates/muxsmith-core/tests/mkvmerge_runtime.rs already gates its RuntimeError use with cfg(unix) and a comment naming this exact Windows clippy failure; the class was solved in-tree once and recurred in plan-7 anyway, which is this entry's reason to exist (prior event, cited at its artifact)"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "CI run 30260189439 windows-2025 leg (ci-watch-2afa39d.log + gh log-failed): plan-7 commit 900db87 imported ParamValue ungated in src-tauri lib.rs's test module with platform-gated uses; Windows clippy red across five pushes; fix dispatched"}
 - id: proc-push-ci-conclusion-observed
   kind: pattern
