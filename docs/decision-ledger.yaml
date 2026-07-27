@@ -4121,3 +4121,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-23", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
+- id: proc-sweep-surface-completeness
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A firing positive control proves a sweep PATTERN is valid, never that its SEARCH SURFACE is complete - the two are separate obligations, and only the first is covered by break-and-watch. A claim of the form 'exactly these N refs/sites' binds only over an explicitly named complete surface; for house-YAML citations that surface is by construction the four files ledger-lint hardcodes. Close-section bullets that enumerate repo state owe the same grep-with-control discipline as task steps - they are written last and swept least."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
+- id: ci-additive-only-check-numstat
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: ci
+  statement: "An additive-only assertion over a git diff uses `git diff --numstat` asserting deletions == 0, not `grep -c '^-[^-]'` over unified output - the grep misses blank-line deletions and carries inverted/fragile exit semantics."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 plan review round 1 m1 (plan-review-round-1.md): Task 5 Step 5's grep-based additive-only check named defective, numstat idiom prescribed; reviewer flags the shape as a conventions candidate on recurrence"}
+- id: plan-interfaces-absent-by-construction
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "In a file-disjoint parallel-stream plan, a task's Files/Interfaces section pre-declares the cross-stream files as 'absent by construction in this worktree' - absence is expected state, not a defect - pre-empting the likeliest false NEEDS_CONTEXT of a parallel cut at the cost of one sentence."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: decided, ref: "plan-8 plan review round 1 HARVEST (plan-review-round-1.md): Task 4's Interfaces note named the transferable pattern for every parallel-stream plan"}
