@@ -165,16 +165,28 @@ session-relocation tools; worktrees are plain directories.
 
 ## Open questions / risks
 
-- Two process-doctrine amendments are proposed and tracked agent-side, both
-  from this session's reviews: the plan-close step order (the salvage is a
-  snapshot, so anything the close writes afterwards is absent from the
-  archive - it must be the last write, and a re-salvage is owed if anything
-  follows it), and independence of verification tooling (a reviewer
-  reproducing an implementer's empirical claim must build its instruments
-  where the implementer could not have written, because agents in one session
-  share a filesystem and converge on the same scratch paths). Both are
-  recorded in the project ledger already; the doctrine change itself is the
-  owner's call because that file is shared beyond this project.
+- Two process-doctrine amendments were ADOPTED this session on the owner's
+  authorization, both from this session's reviews, both mirrored into the
+  shared collection with their manifest rows updated:
+  - **Plan-close step 3** now names the salvage the LAST write into the
+    scratch rather than a numbered step, adds a re-salvage duty for
+    close-generated work, and carries a `diff -r` of scratch against salvaged
+    copy as the handle at the plan-close and session-close gates. The check
+    was fire-verified here (planted file -> DIFFERS, removed -> current) and
+    both closed plans read current.
+  - **Controller duty, §4**: independent verification needs independent
+    INSTRUMENTS, not just an independent context - a reviewer reproducing an
+    implementer's empirical claim builds its harness where the implementer
+    could not have written.
+  Both carry the SAME deferred revisit, on the owner's instruction: a later
+  branch-and-pull-request execution model may change or void them, and the
+  revisit must CHECK rather than assume - worktree and PR isolation separates
+  repo state, while the instruments in question lived outside the repo in a
+  shared scratch directory that separate worktrees still shared. The
+  structural alternative for the salvage class (track the scratch from the
+  start instead of snapshotting it) is recorded as deferred to that same
+  discussion, because it forces a commit-cadence decision for half-written
+  subagent artifacts during a run.
 - Briefs are the one artifact four-eyes does not cover by construction, and
   five controller-brief defects were found downstream this session (a site
   enumeration off by one, a file count contradicting its own enumeration, a

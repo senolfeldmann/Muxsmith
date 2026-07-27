@@ -4391,9 +4391,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 close-fix delta verdict H7 (close-fix-verdict-delta.md): the reviewer measured the salvaged progress.md at 30 lines against the live tracker's 32 - the salvage had run at 18:13 and the close then produced four commits, two review rounds and three owner rulings. Re-salvaged as the last write of the close; the durable residue had survived only because a ledger occurrence happened to carry it"}
+    - {date: "2026-07-27", kind: decided, ref: "owner-authorized adoption into the process doctrine (SI-1), plan-close step 3: the salvage is named the LAST write into the scratch rather than a numbered step, a re-salvage duty covers close-generated work, and a diff -r of scratch against salvaged copy at the plan-close and session-close gates is the handle - because the list had silently assumed the plan's work is finished when its close begins. The structural alternative (track the scratch from the start instead of snapshotting) is recorded as deferred, revisited together with the branch-and-pull-request execution-model change"}
 - id: deleting-a-named-thing-sweeps-its-name
   kind: pattern
   tier: 1
