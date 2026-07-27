@@ -5,16 +5,17 @@ Release downloads live on the
 All 1.0-era builds are **unsigned**: your OS will warn before the first
 launch. The sections below show the one-time steps per OS. Verify
 downloads against the release's `SHA256SUMS`, with the files beside it:
-`sha256sum -c SHA256SUMS` on Linux, `shasum -a 256 -c SHA256SUMS` on
-macOS, and in PowerShell on Windows
-`Get-FileHash muxsmith-<version>-windows-x86_64.msi -Algorithm SHA256`
-compared against that file's line in `SHA256SUMS`.
+`sha256sum --ignore-missing -c SHA256SUMS` on Linux,
+`shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS, and in
+PowerShell on Windows `Get-FileHash <file> -Algorithm SHA256` compared
+against that file's line in `SHA256SUMS` (the comparison is
+case-insensitive).
 
 Every install ships two programs: **Muxsmith** (the GUI) and
 **`muxsmith`** (the command-line tool). The AppImage is the practical
 exception: it carries both binaries inside a single self-contained
-file, so only the GUI is directly runnable - use the deb, rpm or
-tar.gz if you want the CLI on your PATH.
+file, so only the GUI is directly runnable - deb/rpm put `muxsmith` on
+PATH; the tar.gz carries both binaries for you to place.
 
 <!-- When code signing lands (registered ROADMAP trigger), the
      SmartScreen and Gatekeeper sections below shrink to the signed-app

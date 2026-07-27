@@ -19,9 +19,10 @@ it as a recommended dependency; on Windows/macOS install it yourself
 | `muxsmith-__VERSION__-linux-x86_64.tar.gz` | portable, CLI + GUI |
 
 Verify downloads: put `SHA256SUMS` beside the files and run
-`sha256sum -c SHA256SUMS` on Linux, `shasum -a 256 -c SHA256SUMS` on
-macOS, or in PowerShell on Windows
-`Get-FileHash <file> -Algorithm SHA256` compared against that file's
-line in `SHA256SUMS`.
+`sha256sum --ignore-missing -c SHA256SUMS` on Linux,
+`shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS, or in
+PowerShell on Windows `Get-FileHash <file> -Algorithm SHA256` compared
+against that file's line in `SHA256SUMS` (the comparison is
+case-insensitive).
 
 ---
