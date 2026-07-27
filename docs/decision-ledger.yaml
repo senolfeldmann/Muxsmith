@@ -4094,21 +4094,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
-- id: proc-sweep-surface-completeness
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "A firing positive control proves a sweep PATTERN is valid, never that its SEARCH SURFACE is complete - the two are separate obligations, and only the first is covered by break-and-watch. A claim of the form 'exactly these N refs/sites' binds only over an explicitly named complete surface; for house-YAML citations that surface is by construction the four files ledger-lint hardcodes. Close-section bullets that enumerate repo state owe the same grep-with-control discipline as task steps - they are written last and swept least."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
-    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
 - id: ci-additive-only-check-numstat
   kind: pattern
   tier: 1

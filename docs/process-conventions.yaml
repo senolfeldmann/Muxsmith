@@ -591,3 +591,19 @@ entries:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 completion report (task-4-report.md): third instance - the aliased cp silently left the target un-overwritten, caught only because the next check re-read the file instead of assuming the copy; fixed with command cp -f < /dev/null; third strict-fit event, promoted at count 3"}
+- id: proc-sweep-surface-completeness
+  kind: pattern
+  tier: 2
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A firing positive control proves a sweep PATTERN is valid, never that its SEARCH SURFACE is complete - the two are separate obligations, and only the first is covered by break-and-watch. A claim of the form 'exactly these N refs/sites' binds only over an explicitly named complete surface; for house-YAML citations that surface is by construction the four files ledger-lint hardcodes. Close-section bullets that enumerate repo state owe the same grep-with-control discipline as task steps - they are written last and swept least."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 3
+  count: 3
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "joblog-datebomb-fix verdict Medium (joblog-datebomb-fix-verdict.md): the sweep claimed 33 hits / 3 files workspace-wide, actual 34 / 4 - e2e/smoke.spec.ts:481 missed because the non-Rust sweep returned a FALSE empty; benign hit, but the figure propagated into the commit message and progress ledger; third strict-fit event, promoted at count 3"}
