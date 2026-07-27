@@ -1,6 +1,7 @@
 # Plan 8 design: packaging / release pipeline
 
-Status: DRAFT 2026-07-22, fix round 1 applied 2026-07-23. Numbering starts
+Status: DRAFT 2026-07-22, fix round 1 applied 2026-07-23; amendment log at
+the end (A1, 2026-07-23). Numbering starts
 at **D75** per the ROADMAP Plan-8 kickoff block; D65-D74 is Plan 7.5's
 parallel reservation (its design uses D65-D72 - counted from its spec's
 `^## D` headings; no collision either way). Last pre-existing ADR is D64
@@ -1331,7 +1332,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-      - name: Read pinned node version from mise.toml (D85: no mise in release legs)
+      - name: "Read pinned node version from mise.toml (D85: no mise in release legs)"
         id: node
         shell: bash
         run: echo "version=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
@@ -2023,3 +2024,38 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
   `"Senol Feldmann"`.
 - No step publishes, edits or un-drafts a release; no test tag is ever
   pushed (D77/D79/D81).
+
+---
+
+## Amendment log
+
+**A1 (2026-07-23, controller-ruled internal technical fork).** Task 4's
+verbatim transcription surfaced that section 2's fence was not loadable
+YAML: the step name
+`Read pinned node version from mise.toml (D85: no mise in release legs)`
+stood as a plain (unquoted) scalar containing `": "`, which YAML forbids -
+PyYAML 6.0.3 and Psych both reject at that line (implementer memo:
+`.superpowers/sdd/plan-8/task-4-report.md`), so section 11's
+verbatim-transcription mandate and the plan's parse check could not both
+hold. **Ruling: Option A** - the scalar is double-quoted; the step-name
+string, its Actions UI label and the D85 pointer stay byte-identical, only
+YAML quoting changes. One fence line changed; no decision content moved,
+so no D-entry; the G4/G5 fire-tests and every R-block observable are
+untouched (none quotes the YAML line, only the name string, which is
+unchanged). Verification, run against the amended fence (extracted as
+fence lines 1-222 = the region between the section-2 code-fence markers):
+
+```
+$ python3 -c "import yaml; yaml.safe_load(open('fence-post.yml')); print('yaml-ok')"
+yaml-ok                        (PyYAML 6.0.3)
+
+$ grep -cnP '^\s*(-\s+)?[a-z_-]+:\s+[^"'"'"'|>&*\[{].*:\s' fence-post.yml
+0                              (no other unquoted ": " scalar remains)
+```
+
+The zero is fire-verified: the identical grep against the pre-fix fence
+returned exactly one hit, fence line 94 (the defective step name), and the
+pre-fix PyYAML run rejected at that same line/column ("mapping values are
+not allowed here", line 94, column 59) - check red before green, delta
+`diff` between the two extracts shows the single quoted line and nothing
+else.
