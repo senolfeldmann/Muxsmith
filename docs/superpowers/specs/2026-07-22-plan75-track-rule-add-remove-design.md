@@ -804,6 +804,13 @@ end.
    > Remove deletes the selected rule without confirmation, legal down
    > to zero rules per 4.5), detail editor per rule,
 
+   **Superseded 2026-07-27:** the owner's wording ruling (commit
+   `406e91b`) replaced "invalid until filled, announced by validation"
+   with "incomplete until filled, announced by a validation warning"
+   and expanded the zero-rule clause with its 4.5 consequences. The
+   quoted block above is the wording this document mandated and Task 4
+   was graded against; the shipped spec text is authoritative.
+
    The rest of the item (save semantics, inline markers) is unchanged.
 
 2. **Spec 5.2, diagnostics table: add the missing
@@ -833,7 +840,7 @@ end.
    `drop` remain a `NoTrackRules` error") and needs no table row to be
    citable. The wholesale table-staleness question is the round-1
    review's controller watch item
-   (`.superpowers/sdd/plan-7.5/design-review-round-1.md` HARVEST),
+   (`docs/process-journal/artifacts/plan-7.5-sdd/design-review-round-1.md` HARVEST),
    outside this plan's scope.
 
 **Self-contradiction sweep (spec-wide, for the two amendments):**
@@ -1117,7 +1124,7 @@ event-level witness for the keydown-suppression layer.**
   `onHelpKeydown`; with the entire Enter/Space branch removed, all 9
   help-mode cases and all 62 e2e tests stay green, and the pin state
   cannot discriminate the routes (both pin `view-editor`).
-- **Evidence.** `.superpowers/sdd/plan-7.5/task-2-verdict.md` - Q1,
+- **Evidence.** `docs/process-journal/artifacts/plan-7.5-sdd/task-2-verdict.md` - Q1,
   findings M1/M2, fire-verification rounds A-D (round B2 decisive).
 - **Ruling.** Controller, internal technical fork, recorded as ledger
   entry `redundant-layers-need-mechanism-witness`: case 9 gains an
