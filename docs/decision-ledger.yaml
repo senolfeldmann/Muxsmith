@@ -3263,20 +3263,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-14", kind: decided, ref: "plan-5.7 T4 verdict wire-format check (all 5 role arms empirically rendered, both languages)"}
-- id: proc-subagent-commit-trailer-set
-  kind: non-decision
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "Which trailer set subagent worktree commits carry is unsettled: Co-Authored-By present on all plan-5.7 stream commits, Claude-Session inconsistent (controller commits carry it, subagent commits vary)."
-  steelman: null
-  blocked_on: "owner/controller convention call on the next commit-policy touch"
-  status: blocked
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-14", kind: deferred, ref: "plan-5.7 whole-branch verdict I1"}
 - id: ci-provenance-carrying-comments
   kind: pattern
   tier: 1

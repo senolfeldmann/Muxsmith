@@ -632,3 +632,18 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: decided, ref: "owner ruling 7 at the plan-8 rehearsal round (plan-8 progress.md), after a Windows-only clippy red went unobserved through five consecutive CI failure runs; the whole-branch reviewer then established the command empirically (green in 1.34s warm, fire-verified red by un-gating the ParamValue import) and BUILDING.md landed it in bcb67f3, deleting the superseded comment-level rule"}
+- id: agent-commit-trailer-set
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "Every agent-authored commit in this repo carries EXACTLY ONE trailer, `Co-Authored-By: Claude <model> <noreply@anthropic.com>`, and no `Claude-Session` line. Three parts, all owner-ruled 2026-07-28. (1) MANDATORY, because agent commits run under the human's git identity and this trailer is the ONLY marker of agent provenance - six session-16 process commits lack it and consequently read as his own work. (2) The model name is CANONICAL and carries no context-window suffix: the suffix is what produced three cases of one model spelled two ways (Opus 5 / Opus 5 (1M context), Sonnet 5 / Sonnet, Opus 4.8 / Opus 4.8 (1M context)) and it informs nobody. (3) The string is DERIVED FROM THE DISPATCH, never written as a literal in a plan or brief: proc-03 already requires an explicit model parameter at every dispatch, so the trailer names that model - a brief that hardcodes a model name contradicts the dispatch that assigns a different one, which is exactly what plan 8 shipped when its Global Constraints mandated one model verbatim for tasks other tiers executed. `Claude-Session` is dropped: it stood at 131 of 686 commits and zero of the last twelve, it is a claude.ai URL meaningless to any other reader of a public repo, and the commit-to-session link is carried better by the per-session journal entry and the transcript manifest. History is not rewritten - the six trailer-less commits and the eight historical spellings stay as they are."
+  steelman: "A generic identity-only trailer would be maintenance-free and could never drift. Rejected because it loses which tier built what, and that is precisely the signal the process journal and the research programme read back."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-14", kind: deferred, ref: "plan-5.7 whole-branch verdict I1 opened the question as proc-subagent-commit-trailer-set: Co-Authored-By on every plan-5.7 stream commit, Claude-Session inconsistent between controller and subagent commits, blocked on a convention call"}
+    - {date: "2026-07-28", kind: decided, ref: "owner ruling at the plan-8.5 close blocked-pool sweep, which surfaced the entry because two commit-policy-adjacent rules had landed the same session (dispatch-restates-the-standing-commit-grant, concurrent-writers-need-pathspec-scoped-commits). Decided on measured state: 680 of 686 commits carry Co-Authored-By, 131 carry Claude-Session and none of the last twelve, and eight distinct trailer values exist including three models spelled two ways"}
