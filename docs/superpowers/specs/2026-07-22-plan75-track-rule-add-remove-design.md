@@ -633,7 +633,12 @@ activation controls in the content area. In help mode:
   `preventDefault()`ed - so the native button activation click is never
   synthesized - and pins. This is the shipped D52 keydown shape, inside
   the ruled boundary (the channels the boundary keeps LIVE are typing
-  and keyboard select changes, which the buttons do not have).
+  and keyboard select changes, which the buttons do not have). The
+  closure is redundant, not single-layer (recorded post-T2): were the
+  synthesis not prevented, the synthesized click would itself be
+  stopped by the capture-phase click listener - T2 rounds B/B2 measured
+  exactly that - which is why case 9 carries an event-level witness for
+  the keydown layer specifically (section 5, witness extension).
 
 Both mutation paths into the model are therefore closed in help mode by
 the existing capture-phase delegation, with no new listener and no
@@ -908,10 +913,79 @@ and suppression assertion in the SAME test and harness):
 9. Outside help mode: click Add -> row count +1; focus Add, press
    Enter -> +1 again (both channels demonstrably mutate - the
    non-vacuity controls). Toggle help mode on: click Add -> count
-   unchanged and `view-editor` pinned; focus Add, press Enter -> count
-   unchanged. Add, not Remove, carries the assertions deliberately:
-   Remove is disabled without a selection, so a suppression check
-   against it could pass vacuously.
+   unchanged and the sidebar shows the `view-editor` topic (topic
+   identity only, NOT pin evidence: in the editor view the unpinned
+   fallback renders the same topic, so the row count carries the
+   suppression evidence - T2 verdict M1/round D); focus Add, press
+   Enter -> count unchanged. Add, not Remove, carries the assertions
+   deliberately: Remove is disabled without a selection, so a
+   suppression check against it could pass vacuously.
+
+   **Witness extension (amendment 1, 2026-07-22, post-T2; controller
+   ruling `redundant-layers-need-mechanism-witness`).** The Enter half
+   above is over-determined: Enter on a focused `<button>` synthesizes
+   a click, which the capture-phase click listener stops, so the
+   unchanged count cannot attribute the closure to the keydown layer,
+   and T2 round B2 proved that layer unguarded repo-wide (the entire
+   Enter/Space branch removed leaves all 62 e2e tests green). The pin
+   cannot discriminate either: both routes pin `view-editor` (T2 Q1).
+   Case 9 therefore additionally carries an EVENT-LEVEL WITNESS,
+   mirroring the I1 sibling's own mechanism witness (`attemptDrag`
+   dispatches a synthetic `dragstart` with
+   `{ bubbles: true, cancelable: true }` and reads
+   `defaultPrevented` - the shipped in-file precedent this extension
+   copies):
+
+   - Helper, module level beside `attemptDrag`:
+
+     ```ts
+     function probeEnterKeydown(page: Page): Promise<boolean> {
+       return page.evaluate(() => {
+         const add = document.querySelector('[data-testid="editor-rule-add"]')!;
+         const keydown = new KeyboardEvent("keydown", {
+           key: "Enter",
+           bubbles: true,
+           cancelable: true,
+         });
+         add.dispatchEvent(keydown);
+         return keydown.defaultPrevented;
+       });
+     }
+     ```
+
+     `cancelable: true` is load-bearing: without it `preventDefault()`
+     is a no-op and the witness is structurally red on correct code.
+     No rAF flush (unlike `attemptDrag`): the value is event state read
+     synchronously after the synchronous dispatch, no rendering is
+     involved.
+   - Step, outside help mode (after the Enter mutation control):
+     `expect(await probeEnterKeydown(page)).toBe(false)` - the paired
+     absence control (no help-mode keydown listener registered), then
+     re-assert the row count is unchanged by the probe: the dispatch is
+     untrusted (`isTrusted: false`), so the browser runs no activation
+     behavior on it, and this count assertion tests that premise
+     instead of assuming it.
+   - Step, inside help mode (after the landed Enter suppression
+     assertions): `expect(await probeEnterKeydown(page)).toBe(true)` -
+     THE witness. Discrimination is structural: `onHelpKeydown`
+     (registered capture-phase on `document`, `App.vue` `watch(helpMode)`
+     block) is the ONLY keydown listener in `src/` (grep-verified, both
+     trees), its Escape branch calls no `preventDefault`, and the click
+     layer never sees a keydown - so a `defaultPrevented` Enter keydown
+     is attributable to exactly the Enter/Space branch. Recorded side
+     effect: the probe pins `view-editor`, which the landed click half
+     already pinned; no landed assertion reads pin state afterward.
+   - **Acceptance criterion (the fix-round fire-test):** with the
+     Enter/Space branch alone neutralized - both the T2 round-B shape
+     (its `preventDefault`/`stopPropagation` removed) and the round-B2
+     shape (the whole branch removed) - the inside-phase witness
+     assertion FAILS while every previously-landed assertion stays
+     green; restored, the full file passes. The outside-phase `false`
+     control and the inside-phase `true` assertion form the same
+     discriminating pair as the I1 sibling's
+     outside-`dragstartPrevented: false` / inside-`true`.
+   - The landed contract assertions stay exactly as landed; the
+     extension is additive within the same test.
 
 **Gate ripple, enumerated (the D62/D55 duty):**
 
@@ -1030,3 +1104,48 @@ interaction D71, diagnostics landing D65/D69, e2e and gate ripple
 section 5, spec amendment section 4, serialization surface section 3);
 the five owner rulings are recorded as D65-D69 and folded throughout.
 No NEEDS_CONTEXT item leaves this design.
+
+---
+
+**Amendment 1 (mid-run, 2026-07-22, post-T2): case 9 gains an
+event-level witness for the keydown-suppression layer.**
+
+- **Defect.** Case 9's Enter half was over-determined and its assumed
+  separate guard false: Enter on a focused `<button>` synthesizes a
+  click that the capture-phase click listener stops, so the
+  unchanged-count assertion cannot attribute the closure to
+  `onHelpKeydown`; with the entire Enter/Space branch removed, all 9
+  help-mode cases and all 62 e2e tests stay green, and the pin state
+  cannot discriminate the routes (both pin `view-editor`).
+- **Evidence.** `.superpowers/sdd/plan-7.5/task-2-verdict.md` - Q1,
+  findings M1/M2, fire-verification rounds A-D (round B2 decisive).
+- **Ruling.** Controller, internal technical fork, recorded as ledger
+  entry `redundant-layers-need-mechanism-witness`: case 9 gains an
+  event-level witness so a single layer's death becomes observable.
+- **Change.** Section 5 case 9: witness extension appended (the
+  `probeEnterKeydown` helper mirroring the I1 `attemptDrag` precedent -
+  synthetic cancelable Enter keydown dispatched at the Add button,
+  `defaultPrevented` read synchronously; outside-phase `false` control
+  with a probe-side-effect count guard; inside-phase `true` witness;
+  acceptance criterion: the witness fails under the round-B and
+  round-B2 neutralizations while every landed assertion stays green).
+  Landed contract assertions unchanged.
+- **Dependent-sentence sweep.** Changed beyond the case-9 block: case
+  9's click-half phrase ("`view-editor` pinned" -> "sidebar shows the
+  `view-editor` topic", scoped as topic identity per M1/round D);
+  D71's keydown bullet (single-layer attribution widened to the
+  measured redundant closure, pointing at the witness). Walked and
+  verified-unaffected: D71's closing outcome claim ("Both mutation
+  paths into the model are therefore closed", an outcome the T2 rounds
+  re-verified); section
+  8's "nine cases in the two named files" (the witness extends case 9,
+  adding no tenth case and no third file); section 8's zero-production-
+  code enumeration (the witness is test-side only); the section-5 gate
+  ripple (unchanged - no new ids, files, or catalogs); trigger 4
+  (unrelated core-severity trigger). Feasibility anchors: `attemptDrag`
+  (`e2e/help-mode.spec.ts`, module-level helper) is the shipped
+  in-repo precedent for synthetic-dispatch + `defaultPrevented`
+  witnessing; `onHelpKeydown` is the sole keydown listener in `src/`
+  (grep over both the main tree and worktree `plan75-a`; registered
+  capture-phase on `document`, `App.vue` `watch(helpMode)` block, its
+  Escape branch calling no `preventDefault`).
