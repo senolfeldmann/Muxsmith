@@ -4437,3 +4437,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 owner-wording delta verdict, reviewer self-disclosure (owner-wording-verdict-delta.md): the fix-round implementer had written its shim and its copy of the upstream shasum to the exact scratchpad paths the reviewer had used minutes earlier, so the reviewer's first tamper-matrix re-run executed the implementer's instrument while it believed it was reproducing independently. Caught only because an error string changed between the two sessions; re-fetched upstream to a clean path, diffed untampered, rebuilt the shim in isolation, re-ran everything"}
+- id: concurrent-writers-need-pathspec-scoped-commits
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: process
+  statement: "Two agents writing in ONE working tree share one git INDEX, so 'stage only your own paths' does not isolate them: a bare `git commit` commits everything staged, including a co-writer's in-flight work. The isolating form is a pathspec-scoped commit (`git commit -- <your paths>`), which ignores the rest of the index; worktrees isolate by construction and are the answer when the work is large enough to earn them. Trigger is readable: your dispatch tells an agent to commit while another agent is live in the same tree. Repair, when it happens and nothing was pushed: `git reset --soft HEAD~1`, then re-commit pathspec-scoped, and verify the co-writer's paths are restored to their pre-incident staged state rather than assumed to be."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5, the plan-amendment author running beside the Task-3 implementer: it staged only its own path, and its bare `git commit` (86bfd69) swept in the co-writer's staged draft-body.md anyway. Self-disclosed rather than smoothed over, repaired by soft reset plus a pathspec-scoped re-commit (29ef17b, verified to touch one file), 86bfd69 left unreferenced, nothing pushed; the co-writer's change was restored to its staged pre-incident state and it committed its own work afterwards"}
