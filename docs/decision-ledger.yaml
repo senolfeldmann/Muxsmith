@@ -4306,3 +4306,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "gh run list 2026-07-27: five consecutive failure conclusions (windows leg) from 2026-07-22 17:32 onward, spanning the S21 close push and this session's two pushes, unnoticed until plan-8's choreographed watch step; the watch earned its keep, the unwatched pushes are the violation instances"}
+- id: e2e-preview-needs-fresh-dist
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "pnpm test:e2e drives vite preview over the gitignored dist/ and rebuilds only the two e2e harness bundles - after ANY help/**.md or catalog edit, pnpm build must precede test:e2e or the sidebar/content compares fail spuriously (expected side reads the .md fresh from disk, rendered side serves the stale bundle). playwright.config.ts's own comment names the precondition; the per-commit gate order (build before test:e2e) satisfies it, a standalone test:e2e does not."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "wording-fix report (wording-fix-report.md): first run 4 failed / 58 passed, all help-mode sidebar compares old-vs-new wording; pnpm build flipped dist/ to current, re-run 62/62; root cause named from the config's own comment"}
