@@ -1958,3 +1958,19 @@ the draft preserved. The mid-tier model resolution updated by owner
 correction: Opus 5 (freshly released). Remaining for the next session:
 both plan closes and the plan-8 whole-branch review; a server-overload
 window forced two agent resumptions (no work lost, timings polluted).
+
+## 2026-07-27 | Session 22 final: model tiering re-instantiated | session 22 (Peter, Fable 5)
+
+Closing owner ruling of the session: the controller loop moves OFF the
+top model - follow-up sessions run the controller on Opus 5 (owner
+judgment: the freshly released Opus 5 is genuinely better), and Fable 5
+is reserved for the most important moments only: design and plan
+four-eyes rounds (author + reviewer incl. delta/amendment rounds),
+plan-close whole-branch reviews incl. their delta re-reviews, and
+four-eyes decision documents. Mid tier (task implementers, every task
+reviewer, fixes, scoped re-reviews, recon) stays Opus 5; plan-carried
+transcription stays Sonnet 5; the explicit per-dispatch model parameter
+and spawn-model resumption rules are unchanged - inheritance cuts both
+ways now, since an Opus controller would otherwise silently pull the
+top-tier roles down. Recorded as proc-03's tenth occurrence; the
+session then closed per the standard gate (journal, handoff, memory).
