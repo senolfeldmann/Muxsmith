@@ -94,6 +94,25 @@ CI (`.github/workflows/ci.yml`) runs the same five-part Rust gate plus
 push/PR (nine parts total); `cargo deny check` runs as an
 independent job.
 
+### Reproducing a release bundle locally
+
+Release bundles add the CLI as a bundled sidecar via a build-flavor
+overlay (`src-tauri/tauri.bundle.conf.json`); plain `pnpm exec tauri
+build` deliberately omits it so dev/test builds need no staging step.
+To reproduce what CI ships:
+
+```bash
+cargo build --release -p muxsmith-cli
+triple="$(rustc -vV | sed -n 's/^host: //p')"
+mkdir -p src-tauri/binaries
+cp "target/release/muxsmith$( [ "$(uname -o 2>/dev/null)" = Msys ] && echo .exe )" \
+   "src-tauri/binaries/muxsmith-$triple$( [ "$(uname -o 2>/dev/null)" = Msys ] && echo .exe )"
+pnpm exec tauri build --ci -c src-tauri/tauri.bundle.conf.json
+```
+
+Do not change `bundle.windows.wix.upgradeCode` in `tauri.conf.json`:
+it is Muxsmith's permanent MSI upgrade identity (design D86).
+
 ## Tooling quirks
 
 - vue-tsc + `withDefaults` with `T | null`-typed props has a known quirk

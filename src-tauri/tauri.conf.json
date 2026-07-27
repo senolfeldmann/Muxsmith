@@ -30,13 +30,34 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi", "dmg", "deb", "rpm", "appimage"],
+    "publisher": "Şenol Feldmann",
+    "copyright": "Copyright (c) 2026 Şenol Feldmann",
+    "homepage": "https://github.com/senolfeldmann/Muxsmith",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "category": "Video",
+    "shortDescription": "Rule-based bulk MKV muxing tool",
+    "longDescription": "Declare how your MKVs should look. Muxsmith forges the whole library into shape - one profile, hundreds of files, zero clicking.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "wix": {
+        "upgradeCode": "9262b417-b687-5ea3-ace1-18b9d51b215f",
+        "language": ["en-US"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "linux": {
+      "deb": { "section": "video", "recommends": ["mkvtoolnix"] },
+      "rpm": { "recommends": ["mkvtoolnix"] }
+    }
   }
 }
