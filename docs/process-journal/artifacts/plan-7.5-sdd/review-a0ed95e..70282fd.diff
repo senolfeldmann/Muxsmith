@@ -1,0 +1,59 @@
+# Review package: a0ed95e..70282fd4c5539ca0a41665ea29ede9afec6f186e
+
+## Commits
+70282fd spec: 8.2 names the rule grid's Add/Remove affordance; 5.2 gains the missing EmptyMatchExpression row (plan-7.5 design section 4, amendments 1-2)
+
+## Files changed
+ docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index fafecfc..80526e4 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -274,20 +274,21 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
+ | `IgnoredFile` | info | extension matches but `input.pattern` does not |
+ | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
+ | `UnknownExtension` | warning | a `profile.input.extensions` entry, or a locator's `extensions` entry (track rule, `chapters`, `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output; still used for matching, so a typo silently excludes candidates; skipped (not raised) when the capability query is unavailable; `extension`/`known` params carry the offender and the accepted set (4.2, 4.6) |
+ | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`); a `raw:`-prefixed name opts out (4.4, 9.2) |
+ | `RawProperty` | info | a match condition uses a `raw:`-prefixed property: an explicit opt-in that bypasses the capability checks and matches untyped; `property` carries the bare name (config-time; 4.4, 9.2) |
+ | `RawOnKnownProperty` | warning | `raw:` applied to a model property with special matching semantics (`language`, `codec_kind`), degrading it to byte-literal untyped equality (config-time; 4.4, 9.2) |
+ | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+ | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+ | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
++| `EmptyMatchExpression` | warning | a rule's `match` expression has no conditions at all (no exact/substring/regex/any/not): it would match every track of its source (config-time; suppressed when the emptiness is a present-but-empty top-level `any`/`not` list, which already raises its own `EmptyMatchList` for the same node) |
+ | `UnknownPropertySkew` | warning | a `raw:`-opted property was consumed at plan time and matched untyped; `property`/`found_version`/`pinned` params report the property and the runtime-vs-pinned schema versions, one code covering both a genuinely newer schema and a same-version untyped match (9.2) |
+ | `SchemaDrift` | info | at least one source file's `identification_format_version` exceeds the build-time pinned schema version; `found_version`/`pinned` params carry both versions; emitted once per batch when planning concludes (9.2) |
+ | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
+ | `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
+ | `WorkerPanicked` | n/a (job-error token, not a rendered diagnostic) | a queue worker thread panicked while running a job (a bug in this crate, never an mkvmerge failure); the job is reported `Failed`. Not a batch `Diagnostic`: carried as a `worker-panicked: job N` token in `JobOutcome.errors` (and its `--json` job encoding) instead, rendered through this same catalog entry at presentation time (6) |
+ 
+ ### 5.3 Suggestion engine
+ 
+ Contract: for `AmbiguousRule` and `OverlappingRules`, generate candidate refinements by diffing the properties of the conflicting tracks across **all** affected files, then simulate each candidate against the cached identification data of the **entire batch**. Emit only refinements that (a) resolve every instance of the conflict batch-wide and (b) introduce no new diagnostic for any file. If no single refinement satisfies both, report that explicitly and list the files requiring different resolutions.
+ 
+@@ -364,21 +365,21 @@ muxsmith schema                      # print the profile JSON Schema
+ 
+ - Flags override profile-stored run inputs.
+ - Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors.
+ - `--json` emits the structured report for scripting; default output is human-readable rendering of the same data, including suggestion YAML fragments.
+ - `muxsmith schema` is a supported user feature, not only a debug aid (D47): the README's "Using the CLI" section documents redirecting its output to a file and binding it in editor settings (`yaml.schemas` in VS Code, the equivalent `lspconfig` block for Neovim/Helix) for autocompletion and inline validation while hand-authoring a profile.
+ 
+ ### 8.2 GUI
+ 
+ Three views, modeled on mkvtoolnix-gui:
+ 
+-1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
++1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder; Add appends an empty rule - invalid until filled, announced by validation - selects it and opens its detail editor; Remove deletes the selected rule without confirmation, legal down to zero rules per 4.5), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
+ 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
+ 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.
+ 
+ App settings (not profile data): mkvmerge path override, default parallelism. Stored in the platform config directory.
+ 
+ First-run and startup: detect mkvtoolnix (PATH, then platform-standard install locations, then configured override); if missing, per-OS installation guidance. Minimum supported mkvtoolnix version is fixed during implementation and enforced with a clear error.
+ 
+ ### 8.3 Self-explanation and help mode
+ 
+ Baseline discoverability: every non-obvious control carries a tooltip; views carry small inline explanations where a first-time user would otherwise guess. The UI must be usable without reading external documentation.

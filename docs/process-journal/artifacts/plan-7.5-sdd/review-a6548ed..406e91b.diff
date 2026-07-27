@@ -1,0 +1,143 @@
+# Review package: 406e91bb9c413fa60e9cdf72e54d3d2479586fb3~1..406e91bb9c413fa60e9cdf72e54d3d2479586fb3
+
+## Commits
+406e91b help+spec: owner-ruled wording fix (plan-7.5 owner pass)
+
+## Files changed
+ docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md | 2 +-
+ help/de/batch-suggestion-card.md                        | 2 +-
+ help/de/editor-tracks-rules.md                          | 4 ++--
+ help/en/batch-suggestion-card.md                        | 2 +-
+ help/en/editor-tracks-rules.md                          | 4 ++--
+ 5 files changed, 7 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index 80526e4..f15e30f 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -365,21 +365,21 @@ muxsmith schema                      # print the profile JSON Schema
+ 
+ - Flags override profile-stored run inputs.
+ - Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors.
+ - `--json` emits the structured report for scripting; default output is human-readable rendering of the same data, including suggestion YAML fragments.
+ - `muxsmith schema` is a supported user feature, not only a debug aid (D47): the README's "Using the CLI" section documents redirecting its output to a file and binding it in editor settings (`yaml.schemas` in VS Code, the equivalent `lspconfig` block for Neovim/Helix) for autocompletion and inline validation while hand-authoring a profile.
+ 
+ ### 8.2 GUI
+ 
+ Three views, modeled on mkvtoolnix-gui:
+ 
+-1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder; Add appends an empty rule - invalid until filled, announced by validation - selects it and opens its detail editor; Remove deletes the selected rule without confirmation, legal down to zero rules per 4.5), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
++1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder; Add appends an empty rule - incomplete until filled, announced by a validation warning - selects it and opens its detail editor; Remove deletes the selected rule without confirmation, legal down to zero rules (per 4.5: `unmatched: keep` = passthrough, `drop` = NoTrackRules)), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
+ 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
+ 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.
+ 
+ App settings (not profile data): mkvmerge path override, default parallelism. Stored in the platform config directory.
+ 
+ First-run and startup: detect mkvtoolnix (PATH, then platform-standard install locations, then configured override); if missing, per-OS installation guidance. Minimum supported mkvtoolnix version is fixed during implementation and enforced with a clear error.
+ 
+ ### 8.3 Self-explanation and help mode
+ 
+ Baseline discoverability: every non-obvious control carries a tooltip; views carry small inline explanations where a first-time user would otherwise guess. The UI must be usable without reading external documentation.
+diff --git a/help/de/batch-suggestion-card.md b/help/de/batch-suggestion-card.md
+index 6e9f73f..d99de9a 100644
+--- a/help/de/batch-suggestion-card.md
++++ b/help/de/batch-suggestion-card.md
+@@ -1,17 +1,17 @@
+ # Vorschlagskarte
+ 
+ Ein Probelauf kann einen Konflikt finden, den das Einengen des Match einer Regel beheben würde: Eine Regel passt auf mehrere Spuren, obwohl sie auf genau eine passen muss, oder mehrere Regeln beanspruchen dieselbe Spur. Der Bericht schlägt die Korrektur dann als Vorschlagskarte vor. Die Karte benennt die betroffene Regel über ihren Konfigurationspfad (zum Beispiel `tracks[2].match`) und zeigt als YAML die Match-Bedingung, die der Vorschlag dieser Regel hinzufügen würde: derselbe Text, den auch die CLI für diesen Vorschlag ausgibt, mit einer Kommentarzeile, die ihn als Ergänzung kennzeichnet. Das Fragment ist eine Vorschau dieser Ergänzung, nicht der künftige Inhalt der Regel; Anwenden ergänzt den bestehenden Match der Regel um die Bedingung.
+ 
+ ## Kopieren oder Anwenden
+ 
+ **Kopieren** legt das YAML-Fragment in die Zwischenablage, damit du es selbst in das Profil einfügen kannst.
+ 
+-**Anwenden** erledigt den ganzen Weg mit einem Klick: Es lädt das Profil frisch von der Festplatte, wendet die Einengung an und speichert die Profildatei sofort wieder auf die Festplatte. Es gibt keinen separaten Bestätigungs- oder Speicherschritt; nach Anwenden ist die Datei auf der Festplatte geändert. Gespeichert wird kanonisch, Kommentare und Formatierung der Datei bleiben also nicht erhalten (siehe das Editor-Thema).
++**Anwenden** erledigt den ganzen Weg mit einem Klick: Es lädt das Profil frisch von der Festplatte, wendet die Einengung an und speichert die Profildatei sofort wieder auf die Festplatte. Es gibt keinen separaten Bestätigungs- oder Speicherschritt; nach Anwenden ist die Datei auf der Festplatte geändert. Gespeichert wird kanonisch, Kommentare und Formatierung der Datei bleiben also nicht erhalten (siehe das Thema Editor-Ansicht).
+ 
+ ## Was Anwenden nie tut
+ 
+ Ein angewendeter Vorschlag engt immer nur den Match der einen betroffenen Regel ein. Er ordnet nie Regeln um, fasst nie eine andere Regel an und lockert nie einen Match. Wiederholtes Anwenden endet deshalb garantiert, statt zu pendeln; Konflikte, für die der Bericht keinen Vorschlag macht, bleiben bestehen und brauchen eine manuelle Änderung.
+ 
+ ## Nach dem Anwenden
+ 
+ Der Bericht auf dem Bildschirm wird nicht aktualisiert: Er zeigt weiter den Stand von vor dem Anwenden. Führe den Probelauf erneut aus, um die Wirkung zu sehen; die angewendete Änderung übersteht diesen nächsten Probelauf garantiert.
+diff --git a/help/de/editor-tracks-rules.md b/help/de/editor-tracks-rules.md
+index d774a6f..32df18a 100644
+--- a/help/de/editor-tracks-rules.md
++++ b/help/de/editor-tracks-rules.md
+@@ -3,21 +3,21 @@
+ Das Regelraster ist das Herz eines Profils: eine geordnete Liste von Regeln, von denen jede genau eine Spur pro Quelldatei auswählt und optional deren Eigenschaften ändert. Jede Rasterzeile fasst eine Regel zusammen - Quelle, Match-Ausdruck, Optional-Flag, Änderungen.
+ 
+ ## Reihenfolge ist Ausgabereihenfolge
+ 
+ Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeile, um sie umzuordnen; die neue Rasterreihenfolge ist die neue Ausgabereihenfolge. Eine Einschränkung: unter `Nicht zugeordnet: keep` behalten die Quellspuren ihre Quellreihenfolge am Anfang der Ausgabe, nur Spender-Spuren folgen in Regelreihenfolge - siehe das Thema Nicht zugeordnet (Spuren).
+ 
+ ## Eine Regel bearbeiten
+ 
+ Klicke eine Zeile an, um sie auszuwählen; das Detailpanel unter dem Raster bearbeitet die ausgewählte Regel - ihre Quelle (die Quelldatei oder ein externer Spender), ihren Match-Ausdruck, das Optional-Flag und die Eigenschaftsänderungen.
+ 
+-Die Schaltfläche Hinzufügen hängt eine neue, leere Regel am Ende der Liste an, wählt sie aus und öffnet ihr Detailpanel. Eine Warnung markiert diese neue Regel, bis du ihren Match-Ausdruck ausgefüllt hast.
++Die Schaltfläche Hinzufügen hängt eine neue, leere Regel am Ende der Liste an, wählt sie aus und öffnet ihr Detailpanel. Eine Warnung im Detailpanel markiert die neue Regel, bis du ihren Match-Ausdruck ausgefüllt hast.
+ 
+-Die Schaltfläche Entfernen löscht die ausgewählte Regel; sie bleibt gesperrt, solange keine Zeile ausgewählt ist. Entfernen verlangt keine Bestätigung - wie jede andere Änderung im Editor betrifft es nur das Modell, und die Datei auf der Festplatte ändert sich erst, wenn du speicherst (siehe das Editor-Thema).
++Die Schaltfläche Entfernen löscht die ausgewählte Regel; die Schaltfläche bleibt gesperrt, solange keine Zeile ausgewählt ist. Entfernen verlangt keine Bestätigung - wie jede andere Änderung im Editor betrifft es nur das Modell, und die Datei auf der Festplatte ändert sich erst, wenn du speicherst (siehe das Thema Editor-Ansicht).
+ 
+ ## Genau eine Spur pro Regel
+ 
+ Jede Regel muss pro Quelldatei genau eine Spur ergeben. Zwei Kandidaten sind ein Mehrdeutigkeitsfehler - verenge den Match-Ausdruck (die Vorschlagskarten in der Stapel-Ansicht können dir das Verengen abnehmen). Null Kandidaten sind ebenfalls ein Fehler, außer die Regel ist `Optional` - siehe das Thema Optional.
+ 
+ ## Wann die Liste leer sein darf
+ 
+ Eine leere Regelliste ist nur unter `Nicht zugeordnet: keep` erlaubt - ein reiner Passthrough-Remux. Unter `drop` ist mindestens eine Regel erforderlich, sonst würde jede Spur verworfen. Auch die letzte Regel darf entfernt werden; die dann leere Liste ist genau der hier beschriebene Zustand.
+diff --git a/help/en/batch-suggestion-card.md b/help/en/batch-suggestion-card.md
+index 1bea667..1dab0fa 100644
+--- a/help/en/batch-suggestion-card.md
++++ b/help/en/batch-suggestion-card.md
+@@ -1,17 +1,17 @@
+ # Suggestion card
+ 
+ A dry run can find a conflict that narrowing one rule's match would fix: a rule matches several tracks where it must match exactly one, or several rules claim the same track. The report then proposes the fix as a suggestion card. The card names the affected rule by its config path (for example `tracks[2].match`) and shows, as YAML, the match constraint the suggestion would add to that rule: the same text the CLI prints for this suggestion, whose leading comment line marks it as an addition. The fragment is a preview of that addition, not the rule's future content; Apply merges the constraint into the rule's existing match.
+ 
+ ## Copy or apply
+ 
+ **Copy** puts the YAML fragment on the clipboard so you can paste it into the profile yourself.
+ 
+-**Apply** performs the whole round trip in one click: it loads the profile fresh from disk, applies the narrowing, and saves the profile file back to disk immediately. There is no separate confirmation or save step; after Apply, the file on disk has changed. Saving rewrites the file canonically, so comments and formatting in it are not preserved (see the Editor topic).
++**Apply** performs the whole round trip in one click: it loads the profile fresh from disk, applies the narrowing, and saves the profile file back to disk immediately. There is no separate confirmation or save step; after Apply, the file on disk has changed. Saving rewrites the file canonically, so comments and formatting in it are not preserved (see the Editor view topic).
+ 
+ ## What apply will never do
+ 
+ An applied suggestion only ever narrows the match of the one conflicted rule. It never reorders rules, never touches any other rule, and never loosens a match. Applying suggestions repeatedly is therefore guaranteed to terminate instead of oscillating; conflicts the report offers no suggestion for remain and need a manual edit.
+ 
+ ## After applying
+ 
+ The report on screen is not refreshed: it still shows the state from before the apply. Run the dry run again to see the effect; the applied change is guaranteed to survive that next dry run.
+diff --git a/help/en/editor-tracks-rules.md b/help/en/editor-tracks-rules.md
+index b92ddc5..01d9619 100644
+--- a/help/en/editor-tracks-rules.md
++++ b/help/en/editor-tracks-rules.md
+@@ -3,21 +3,21 @@
+ The rules grid is the heart of a profile: an ordered list of rules, each selecting exactly one track per source file and optionally changing its properties. Each grid row summarizes one rule - source, match expression, optional flag, changes.
+ 
+ ## Order is output order
+ 
+ The row order defines the output track order. Drag a row to reorder; the new grid order is the new output order. One caveat: under `Unmatched: keep`, primary tracks keep their source order at the front of the output and only donor tracks follow in rule order - see the Unmatched (tracks) topic.
+ 
+ ## Editing a rule
+ 
+ Click a row to select it; the detail panel below the grid edits the selected rule - its source (the primary file or an external donor), its match expression, the optional flag, and the property changes.
+ 
+-The Add button appends a new empty rule at the end of the list, selects it, and opens its detail panel. A warning flags that new rule until you fill in its match expression.
++The Add button appends a new empty rule at the end of the list, selects it, and opens its detail panel. A warning in its detail panel flags the new rule until you fill in its match expression.
+ 
+-The Remove button deletes the selected rule; it stays unavailable until a row is selected. Removing asks no confirmation - like every other change in the editor it touches the model only, and the file on disk changes when you save (see the Editor topic).
++The Remove button deletes the selected rule; the button stays unavailable until a row is selected. Removing asks no confirmation - like every other change in the editor it touches the model only, and the file on disk changes when you save (see the Editor view topic).
+ 
+ ## Exactly one track per rule
+ 
+ Each rule must resolve to exactly one track per source file. Two candidate tracks is an ambiguity error - narrow the match expression (the suggestion cards on the Batch view can do that narrowing for you). Zero candidates is an error too, unless the rule is `Optional` - see the Optional topic.
+ 
+ ## When the list may be empty
+ 
+ An empty rule list is legal only under `Unmatched: keep` - a pure passthrough remux. Under `drop` at least one rule is required, since otherwise every track would be dropped. Removing the last rule is allowed; the empty list it leaves behind is exactly the state described here.

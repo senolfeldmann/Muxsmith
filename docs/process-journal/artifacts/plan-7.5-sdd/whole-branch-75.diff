@@ -1,0 +1,803 @@
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index fafecfc..80526e4 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -281,6 +281,7 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+ | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+ | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
++| `EmptyMatchExpression` | warning | a rule's `match` expression has no conditions at all (no exact/substring/regex/any/not): it would match every track of its source (config-time; suppressed when the emptiness is a present-but-empty top-level `any`/`not` list, which already raises its own `EmptyMatchList` for the same node) |
+ | `UnknownPropertySkew` | warning | a `raw:`-opted property was consumed at plan time and matched untyped; `property`/`found_version`/`pinned` params report the property and the runtime-vs-pinned schema versions, one code covering both a genuinely newer schema and a same-version untyped match (9.2) |
+ | `SchemaDrift` | info | at least one source file's `identification_format_version` exceeds the build-time pinned schema version; `found_version`/`pinned` params carry both versions; emitted once per batch when planning concludes (9.2) |
+ | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
+@@ -371,7 +372,7 @@ muxsmith schema                      # print the profile JSON Schema
+ 
+ Three views, modeled on mkvtoolnix-gui:
+ 
+-1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
++1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder; Add appends an empty rule - invalid until filled, announced by validation - selects it and opens its detail editor; Remove deletes the selected rule without confirmation, legal down to zero rules per 4.5), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
+ 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
+ 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.
+ 
+diff --git a/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md b/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md
+index b644681..3aeec02 100644
+--- a/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md
++++ b/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md
+@@ -633,7 +633,12 @@ activation controls in the content area. In help mode:
+   `preventDefault()`ed - so the native button activation click is never
+   synthesized - and pins. This is the shipped D52 keydown shape, inside
+   the ruled boundary (the channels the boundary keeps LIVE are typing
+-  and keyboard select changes, which the buttons do not have).
++  and keyboard select changes, which the buttons do not have). The
++  closure is redundant, not single-layer (recorded post-T2): were the
++  synthesis not prevented, the synthesized click would itself be
++  stopped by the capture-phase click listener - T2 rounds B/B2 measured
++  exactly that - which is why case 9 carries an event-level witness for
++  the keydown layer specifically (section 5, witness extension).
+ 
+ Both mutation paths into the model are therefore closed in help mode by
+ the existing capture-phase delegation, with no new listener and no
+@@ -908,10 +913,79 @@ and suppression assertion in the SAME test and harness):
+ 9. Outside help mode: click Add -> row count +1; focus Add, press
+    Enter -> +1 again (both channels demonstrably mutate - the
+    non-vacuity controls). Toggle help mode on: click Add -> count
+-   unchanged and `view-editor` pinned; focus Add, press Enter -> count
+-   unchanged. Add, not Remove, carries the assertions deliberately:
+-   Remove is disabled without a selection, so a suppression check
+-   against it could pass vacuously.
++   unchanged and the sidebar shows the `view-editor` topic (topic
++   identity only, NOT pin evidence: in the editor view the unpinned
++   fallback renders the same topic, so the row count carries the
++   suppression evidence - T2 verdict M1/round D); focus Add, press
++   Enter -> count unchanged. Add, not Remove, carries the assertions
++   deliberately: Remove is disabled without a selection, so a
++   suppression check against it could pass vacuously.
++
++   **Witness extension (amendment 1, 2026-07-27, post-T2; controller
++   ruling `redundant-layers-need-mechanism-witness`).** The Enter half
++   above is over-determined: Enter on a focused `<button>` synthesizes
++   a click, which the capture-phase click listener stops, so the
++   unchanged count cannot attribute the closure to the keydown layer,
++   and T2 round B2 proved that layer unguarded repo-wide (the entire
++   Enter/Space branch removed leaves all 62 e2e tests green). The pin
++   cannot discriminate either: both routes pin `view-editor` (T2 Q1).
++   Case 9 therefore additionally carries an EVENT-LEVEL WITNESS,
++   mirroring the I1 sibling's own mechanism witness (`attemptDrag`
++   dispatches a synthetic `dragstart` with
++   `{ bubbles: true, cancelable: true }` and reads
++   `defaultPrevented` - the shipped in-file precedent this extension
++   copies):
++
++   - Helper, module level beside `attemptDrag`:
++
++     ```ts
++     function probeEnterKeydown(page: Page): Promise<boolean> {
++       return page.evaluate(() => {
++         const add = document.querySelector('[data-testid="editor-rule-add"]')!;
++         const keydown = new KeyboardEvent("keydown", {
++           key: "Enter",
++           bubbles: true,
++           cancelable: true,
++         });
++         add.dispatchEvent(keydown);
++         return keydown.defaultPrevented;
++       });
++     }
++     ```
++
++     `cancelable: true` is load-bearing: without it `preventDefault()`
++     is a no-op and the witness is structurally red on correct code.
++     No rAF flush (unlike `attemptDrag`): the value is event state read
++     synchronously after the synchronous dispatch, no rendering is
++     involved.
++   - Step, outside help mode (after the Enter mutation control):
++     `expect(await probeEnterKeydown(page)).toBe(false)` - the paired
++     absence control (no help-mode keydown listener registered), then
++     re-assert the row count is unchanged by the probe: the dispatch is
++     untrusted (`isTrusted: false`), so the browser runs no activation
++     behavior on it, and this count assertion tests that premise
++     instead of assuming it.
++   - Step, inside help mode (after the landed Enter suppression
++     assertions): `expect(await probeEnterKeydown(page)).toBe(true)` -
++     THE witness. Discrimination is structural: `onHelpKeydown`
++     (registered capture-phase on `document`, `App.vue` `watch(helpMode)`
++     block) is the ONLY keydown listener in `src/` (grep-verified, both
++     trees), its Escape branch calls no `preventDefault`, and the click
++     layer never sees a keydown - so a `defaultPrevented` Enter keydown
++     is attributable to exactly the Enter/Space branch. Recorded side
++     effect: the probe pins `view-editor`, which the landed click half
++     already pinned; no landed assertion reads pin state afterward.
++   - **Acceptance criterion (the fix-round fire-test):** with the
++     Enter/Space branch alone neutralized - both the T2 round-B shape
++     (its `preventDefault`/`stopPropagation` removed) and the round-B2
++     shape (the whole branch removed) - the inside-phase witness
++     assertion FAILS while every previously-landed assertion stays
++     green; restored, the full file passes. The outside-phase `false`
++     control and the inside-phase `true` assertion form the same
++     discriminating pair as the I1 sibling's
++     outside-`dragstartPrevented: false` / inside-`true`.
++   - The landed contract assertions stay exactly as landed; the
++     extension is additive within the same test.
+ 
+ **Gate ripple, enumerated (the D62/D55 duty):**
+ 
+@@ -1030,3 +1104,48 @@ interaction D71, diagnostics landing D65/D69, e2e and gate ripple
+ section 5, spec amendment section 4, serialization surface section 3);
+ the five owner rulings are recorded as D65-D69 and folded throughout.
+ No NEEDS_CONTEXT item leaves this design.
++
++---
++
++**Amendment 1 (mid-run, 2026-07-27, post-T2): case 9 gains an
++event-level witness for the keydown-suppression layer.**
++
++- **Defect.** Case 9's Enter half was over-determined and its assumed
++  separate guard false: Enter on a focused `<button>` synthesizes a
++  click that the capture-phase click listener stops, so the
++  unchanged-count assertion cannot attribute the closure to
++  `onHelpKeydown`; with the entire Enter/Space branch removed, all 9
++  help-mode cases and all 62 e2e tests stay green, and the pin state
++  cannot discriminate the routes (both pin `view-editor`).
++- **Evidence.** `.superpowers/sdd/plan-7.5/task-2-verdict.md` - Q1,
++  findings M1/M2, fire-verification rounds A-D (round B2 decisive).
++- **Ruling.** Controller, internal technical fork, recorded as ledger
++  entry `redundant-layers-need-mechanism-witness`: case 9 gains an
++  event-level witness so a single layer's death becomes observable.
++- **Change.** Section 5 case 9: witness extension appended (the
++  `probeEnterKeydown` helper mirroring the I1 `attemptDrag` precedent -
++  synthetic cancelable Enter keydown dispatched at the Add button,
++  `defaultPrevented` read synchronously; outside-phase `false` control
++  with a probe-side-effect count guard; inside-phase `true` witness;
++  acceptance criterion: the witness fails under the round-B and
++  round-B2 neutralizations while every landed assertion stays green).
++  Landed contract assertions unchanged.
++- **Dependent-sentence sweep.** Changed beyond the case-9 block: case
++  9's click-half phrase ("`view-editor` pinned" -> "sidebar shows the
++  `view-editor` topic", scoped as topic identity per M1/round D);
++  D71's keydown bullet (single-layer attribution widened to the
++  measured redundant closure, pointing at the witness). Walked and
++  verified-unaffected: D71's closing outcome claim ("Both mutation
++  paths into the model are therefore closed", an outcome the T2 rounds
++  re-verified); section
++  8's "nine cases in the two named files" (the witness extends case 9,
++  adding no tenth case and no third file); section 8's zero-production-
++  code enumeration (the witness is test-side only); the section-5 gate
++  ripple (unchanged - no new ids, files, or catalogs); trigger 4
++  (unrelated core-severity trigger). Feasibility anchors: `attemptDrag`
++  (`e2e/help-mode.spec.ts`, module-level helper) is the shipped
++  in-repo precedent for synthetic-dispatch + `defaultPrevented`
++  witnessing; `onHelpKeydown` is the sole keydown listener in `src/`
++  (grep over both the main tree and worktree `plan75-a`; registered
++  capture-phase on `document`, `App.vue` `watch(helpMode)` block, its
++  Escape branch calling no `preventDefault`).
+diff --git a/e2e/editor-rule-add-remove.spec.ts b/e2e/editor-rule-add-remove.spec.ts
+new file mode 100644
+index 0000000..9e4c2ca
+--- /dev/null
++++ b/e2e/editor-rule-add-remove.spec.ts
+@@ -0,0 +1,362 @@
++/**
++ * Plan 7.5 (D65-D70, D72): the Add/Remove affordance on the bespoke track-rule
++ * grid. Two harnesses in one file, matching the two questions the design asks:
++ *
++ * - Cases 1-5 use the component mount harness (`mount.ts`, the Task 11/13b
++ *   sibling pattern): the model is injected as a prop and read back via
++ *   `readModel`, and `EditorView`'s `watch(model)` revalidation is gated on
++ *   `currentPath`, which a bare mount never sets -- so these cases exercise
++ *   the grid, the selection and the two mutations with no IPC mock at all.
++ * - Cases 6-8 drive the real served app with `installTauriMocks` (the
++ *   `editor-markers.spec.ts` pattern): they pin the WIRE truth (what
++ *   `validate_profile_model` is actually invoked with) and where core's
++ *   verified diagnostics for the skeleton and the zero-rule state land in the
++ *   editor (marker anchor + severity class, the diagnostics panel, and the
++ *   Save gate's severity behaviour).
++ *
++ * Mock-queue mechanics (`mocks.ts`): entries are consumed per call and the
++ * last one repeats, so each mocked case queues two `validate_profile_model`
++ * responses -- the open's own model assignment fires the first, the Add or
++ * Remove model swap fires the second.
++ *
++ * Diagnostic text is asserted through the en catalog binding (`en(code)`),
++ * never through a fixture's `rendered` field: that field is wire ballast no
++ * frontend surface displays (`e2e-diagnostic-rendered-is-wire-ballast`,
++ * `docs/decision-ledger.yaml`; `src/ipc.ts` documents the non-display and
++ * `DiagnosticsPanel.vue` renders Fluent over `code`/`params`), present in
++ * the fixtures below only because the `Diagnostic` type requires it.
++ */
++import { expect, test } from "@playwright/test";
++import type { Page } from "@playwright/test";
++import type { FluentVariable } from "@fluent/bundle";
++import { mountComponent, readModel } from "./mount";
++import { installTauriMocks, resolveWith } from "./mocks";
++import type { RecordedInvoke } from "./mocks";
++import { en } from "./i18n-en";
++import type { Diagnostic, LoadProfileDocument, MkvmergeInfo, ReportDocument } from "../src/ipc";
++import type { Profile } from "../src/bindings/profile";
++
++/** `getByRole(role, name(id))` with exact matching -- mirrors the sibling
++ *  specs' own helper (Playwright's default role-name match is a substring). */
++function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
++  return { name: en(id, args), exact: true };
++}
++
++const MKVMERGE_INFO: MkvmergeInfo = { path: "/usr/bin/mkvmerge", version: "90.0.0" };
++
++// The two rules differ by `match.exact.type`, a real matchable property with
++// real values -- the Task 11/13b fixture shape, not hand-rolled markers.
++const twoRuleProfile: Profile = {
++  profile_version: 1,
++  input: { pattern: ".*", extensions: ["mkv"] },
++  tracks: {
++    rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
++  },
++};
++
++const oneRuleProfile: Profile = {
++  profile_version: 1,
++  input: { pattern: ".*", extensions: ["mkv"] },
++  tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++};
++
++/** The clean first validate response every mocked case below shares: the
++ *  open's own revalidation resolves with nothing to report, so a marker or a
++ *  panel row in the assertions can only have come from the case's own
++ *  second (post-mutation) response. */
++const cleanReport: ReportDocument = {
++  config_diagnostics: [],
++  batch_diagnostics: [],
++  files: [],
++  suggestions: [],
++  mkvmerge_found: true,
++};
++
++function loadedDoc(profile: Profile): LoadProfileDocument {
++  return { ...cleanReport, profile };
++}
++
++function reportWith(diagnostic: Diagnostic): ReportDocument {
++  return { ...cleanReport, config_diagnostics: [diagnostic] };
++}
++
++function marker(page: Page, path: string) {
++  return page.locator(`[data-diag-path="${path}"]`);
++}
++
++/** The profile carried by the LAST recorded `validate_profile_model` call --
++ *  the wire truth, not a UI echo. `undefined` while no call is recorded yet,
++ *  so it is pollable. */
++function lastValidatedProfile(recorded: RecordedInvoke[]): Profile | undefined {
++  const calls = recorded.filter((r) => r.cmd === "validate_profile_model");
++  const last = calls[calls.length - 1];
++  return last === undefined ? undefined : (last.args as { profile: Profile }).profile;
++}
++
++test.describe("editor rule add/remove (D65-D70, D72)", () => {
++  test("Add appends the empty skeleton as a new last row, in the DOM and in the held model", async ({
++    page,
++  }) => {
++    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
++
++    const rows = page.getByTestId("editor-rule-row");
++    await expect(rows).toHaveCount(2);
++
++    await page.getByTestId("editor-rule-add").click();
++    await expect(rows).toHaveCount(3);
++
++    // Row-cell layout of the grid: 0 ordinal, 1 the select button (its text
++    // is `sourceSummary`), 2 match summary, 3 the disabled optional
++    // checkbox, 4 changes summary.
++    const newRow = rows.nth(2);
++    await expect(newRow.getByRole("cell").nth(0)).toHaveText("3");
++    // `sourceSummary`'s fallback for an absent `source`: `SOURCE_KEYWORDS[0]`
++    // (`src/bindings/keywords.ts`), a real profile-format token.
++    await expect(newRow.getByTestId("editor-rule-select")).toHaveText("primary");
++    await expect(newRow.getByRole("cell").nth(2)).toHaveText("");
++    await expect(newRow.getByRole("cell").nth(4)).toHaveText("");
++    await expect(newRow.getByRole("checkbox")).not.toBeChecked();
++
++    // Anti-vacuity: the held MODEL gained exactly the skeleton, not just a
++    // row that renders like one.
++    const model = (await readModel(page)) as Profile;
++    expect(model.tracks.rules).toHaveLength(3);
++    expect(model.tracks.rules[2]).toEqual({ match: {} });
++  });
++
++  test("Add auto-selects the new rule and opens its detail panel", async ({ page }) => {
++    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
++
++    await page.getByTestId("editor-rule-add").click();
++
++    const newRow = page.getByTestId("editor-rule-row").nth(2);
++    await expect(newRow.getByTestId("editor-rule-select")).toHaveAttribute("aria-current", "true");
++
++    // The panel opens purely reactively (`v-if="selectedRule"`); it renders
++    // the four `trackRule` fields through the real registry.
++    const panel = page.getByTestId("editor-rule-detail");
++    await expect(panel).toBeVisible();
++    await expect(panel.getByRole("combobox", name("editor-track-rule-source"))).toBeVisible();
++    await expect(panel.getByRole("group", name("editor-track-rule-match-expr"))).toBeVisible();
++    await expect(panel.getByRole("checkbox", name("editor-track-rule-optional"))).toBeVisible();
++    await expect(panel.getByRole("group", name("editor-track-rule-changes"))).toBeVisible();
++  });
++
++  test("Remove is disabled without a selection and enabled once a row is selected", async ({
++    page,
++  }) => {
++    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
++
++    const remove = page.getByTestId("editor-rule-remove");
++    await expect(remove).toBeDisabled();
++
++    await page.getByTestId("editor-rule-select").first().click();
++    await expect(remove).toBeEnabled();
++  });
++
++  test("Remove deletes the selected rule and clears the selection", async ({ page }) => {
++    await mountComponent(page, { component: "EditorView", props: { modelValue: twoRuleProfile } });
++
++    const rows = page.getByTestId("editor-rule-row");
++    await expect(rows).toHaveCount(2);
++    await expect(rows.nth(0)).toContainText("video");
++
++    await page.getByTestId("editor-rule-select").first().click();
++    await page.getByTestId("editor-rule-remove").click();
++
++    // The RIGHT rule went: the selected one is gone, the other one stayed.
++    await expect(rows).toHaveCount(1);
++    await expect(rows.filter({ hasText: "video" })).toHaveCount(0);
++    await expect(rows.nth(0)).toContainText("audio");
++
++    // Selection cleared (D66): no row is current, the panel closed.
++    await expect(page.locator('[data-testid="editor-rule-select"][aria-current="true"]')).toHaveCount(0);
++    await expect(page.getByTestId("editor-rule-detail")).toHaveCount(0);
++
++    const model = (await readModel(page)) as Profile;
++    expect(model.tracks.rules).toHaveLength(1);
++  });
++
++  test("Remove works down to zero rules and Add recovers from zero in one click", async ({
++    page,
++  }) => {
++    await mountComponent(page, { component: "EditorView", props: { modelValue: oneRuleProfile } });
++
++    const editor = page.getByTestId("view-editor");
++    const rows = page.getByTestId("editor-rule-row");
++    await expect(rows).toHaveCount(1);
++
++    await page.getByTestId("editor-rule-select").first().click();
++    await page.getByTestId("editor-rule-remove").click();
++
++    // The zero-rule state is legal (D69, `core-83-zero-rule-keep-passthrough`):
++    // no guard, no floor. The grid keeps its caption and headers, and Add
++    // stays there, so the state is recoverable.
++    await expect(rows).toHaveCount(0);
++    await expect(editor.locator("caption")).toContainText(en("editor-tracks-rules"));
++    await expect(page.getByRole("columnheader").first()).toHaveText(en("editor-track-rule-order"));
++    const add = page.getByTestId("editor-rule-add");
++    await expect(add).toBeVisible();
++
++    await add.click();
++    await expect(rows).toHaveCount(1);
++    await expect(rows.nth(0).getByTestId("editor-rule-select")).toHaveAttribute(
++      "aria-current",
++      "true",
++    );
++    await expect(page.getByTestId("editor-rule-detail")).toBeVisible();
++  });
++
++  test("Add wires the skeleton onto the wire and core's empty-match warning lands in the open panel and the diagnostics list, Save stays enabled", async ({
++    page,
++  }) => {
++    const PROFILE_PATH = "/profiles/add-skeleton.yaml";
++    // The verified emission for `{ match: {} }` beside an exact-match rule
++    // (design section 1, run through the repo's own CLI): exactly one
++    // warning-severity `empty-match-expression` at `tracks[1].match`.
++    const warningReport = reportWith({
++      code: "empty-match-expression",
++      severity: "warning",
++      config_path: "tracks[1].match",
++      params: {},
++      rendered: "empty-match-expression",
++    });
++
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        load_profile: [resolveWith(loadedDoc(oneRuleProfile))],
++        validate_profile_model: [resolveWith(cleanReport), resolveWith(warningReport)],
++      },
++    });
++
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PROFILE_PATH }))).toBeVisible();
++    await expect(editor.getByTestId("editor-rule-row")).toHaveCount(1);
++
++    await editor.getByTestId("editor-rule-add").click();
++
++    // (a) Wire truth: the appended member on the LAST validated payload is
++    // the skeleton itself, not a UI echo of one.
++    await expect.poll(() => lastValidatedProfile(recorded)?.tracks.rules.length).toBe(2);
++    const validatedRules = lastValidatedProfile(recorded)?.tracks.rules;
++    expect(validatedRules?.[1]).toEqual({ match: {} });
++
++    // (b) The warning's marker renders at its exact anchor INSIDE the
++    // auto-opened detail panel (the nested Match `SectionWidget`'s own
++    // legend, D57 exact-string anchoring).
++    const panel = editor.getByTestId("editor-rule-detail");
++    await expect(panel).toBeVisible();
++    await expect(panel.locator('[data-diag-path="tracks[1].match"]')).toHaveClass(
++      /\bdiag-marker--warning\b/,
++    );
++
++    // (c) The exact-anchoring negative: the grid ROW marker anchors the bare
++    // `tracks[1]` and therefore does NOT fire for a `tracks[1].match`
++    // diagnostic. (b) above is this assertion's in-test positive control --
++    // the same marker layer demonstrably renders for the deeper path.
++    await expect(marker(page, "tracks[1]")).toHaveCount(0);
++
++    // (d) The never-filtered diagnostics panel lists the code, rendered
++    // through the en catalog (the message is placeable-free, so no args).
++    await expect(
++      editor
++        .locator('section[aria-labelledby="editor-diagnostics-heading"] li')
++        .filter({ hasText: en("empty-match-expression") }),
++    ).toHaveCount(1);
++
++    // (e) D65's warning-severity consequence: the save gate is
++    // error-severity only, so a fresh skeleton is guided, not save-blocked.
++    // Pinned deliberately -- a future core severity change fails here.
++    await expect(editor.getByTestId("editor-save")).toBeEnabled();
++  });
++
++  test("Removing the last rule under tracks.unmatched drop surfaces the no-track-rules error at the caption and disables Save", async ({
++    page,
++  }) => {
++    const PROFILE_PATH = "/profiles/zero-rules-drop.yaml";
++    const dropProfile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { unmatched: "drop", rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const errorReport = reportWith({
++      code: "no-track-rules",
++      severity: "error",
++      config_path: "tracks.rules",
++      params: {},
++      rendered: "no-track-rules",
++    });
++
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        load_profile: [resolveWith(loadedDoc(dropProfile))],
++        validate_profile_model: [resolveWith(cleanReport), resolveWith(errorReport)],
++      },
++    });
++
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PROFILE_PATH }))).toBeVisible();
++
++    // Selection is a pure UI write (`selectRule` touches only
++    // `selectedIndex`), so it consumes none of the scripted queue.
++    await editor.getByTestId("editor-rule-select").first().click();
++    await editor.getByTestId("editor-rule-remove").click();
++
++    await expect(editor.getByTestId("editor-rule-row")).toHaveCount(0);
++    await expect(marker(page, "tracks.rules")).toHaveClass(/\bdiag-marker--error\b/);
++    await expect(editor.getByTestId("editor-save")).toBeDisabled();
++  });
++
++  test("Removing the last rule under tracks.unmatched keep surfaces the passthrough info at the caption and leaves Save enabled", async ({
++    page,
++  }) => {
++    const PROFILE_PATH = "/profiles/zero-rules-keep.yaml";
++    const keepProfile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { unmatched: "keep", rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const infoReport = reportWith({
++      code: "passthrough-profile",
++      severity: "info",
++      config_path: "tracks.rules",
++      params: {},
++      rendered: "passthrough-profile",
++    });
++
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
++        load_profile: [resolveWith(loadedDoc(keepProfile))],
++        validate_profile_model: [resolveWith(cleanReport), resolveWith(infoReport)],
++      },
++    });
++
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PROFILE_PATH }))).toBeVisible();
++
++    await editor.getByTestId("editor-rule-select").first().click();
++    await editor.getByTestId("editor-rule-remove").click();
++
++    // Zero rules under `keep` is a sanctioned pure-passthrough profile
++    // (`core-83-zero-rule-keep-passthrough`): info severity, and saving it
++    // stays possible.
++    await expect(editor.getByTestId("editor-rule-row")).toHaveCount(0);
++    await expect(marker(page, "tracks.rules")).toHaveClass(/\bdiag-marker--info\b/);
++    await expect(editor.getByTestId("editor-save")).toBeEnabled();
++  });
++});
+diff --git a/e2e/help-mode.spec.ts b/e2e/help-mode.spec.ts
+index 5d6d962..9424f05 100644
+--- a/e2e/help-mode.spec.ts
++++ b/e2e/help-mode.spec.ts
+@@ -92,6 +92,41 @@ function attemptDrag(
+   );
+ }
+ 
++/**
++ * Dispatches a synthetic Enter `keydown` at the rule-grid Add button and
++ * reports whether anything preventDefaulted it -- the event-level witness for
++ * the keydown-suppression layer (design amendment 1, ruling
++ * `redundant-layers-need-mechanism-witness`), mirroring `attemptDrag` above:
++ * dispatch the event yourself, read the event's own state, do not infer the
++ * mechanism from a downstream observable.
++ *
++ * It exists because the row count cannot attribute the closure: Enter on a
++ * focused `<button>` synthesizes a click, which the capture-phase click
++ * listener stops anyway, so the keyboard channel stays closed even with
++ * `onHelpKeydown`'s Enter/Space branch deleted outright. `defaultPrevented`
++ * discriminates, because `onHelpKeydown` (capture-phase on `document`) is the
++ * ONLY keydown listener in `src/`, its Escape branch preventDefaults nothing,
++ * and the click layer never sees a keydown at all.
++ *
++ * `cancelable: true` is load-bearing: on a non-cancelable event
++ * `preventDefault()` is a no-op, which would leave the witness structurally red
++ * against correct code. No rAF flush (unlike `attemptDrag`): the value is event
++ * state read synchronously after a synchronous dispatch, with no rendering in
++ * between.
++ */
++function probeEnterKeydown(page: Page): Promise<boolean> {
++  return page.evaluate(() => {
++    const add = document.querySelector('[data-testid="editor-rule-add"]')!;
++    const keydown = new KeyboardEvent("keydown", {
++      key: "Enter",
++      bubbles: true,
++      cancelable: true,
++    });
++    add.dispatchEvent(keydown);
++    return keydown.defaultPrevented;
++  });
++}
++
+ test.describe("help mode (D52)", () => {
+   test("toggle opens the sidebar on the active view's topic; the nav stays live and swaps it; a click in <main> is suppressed; Esc exits", async ({
+     page,
+@@ -167,6 +202,108 @@ test.describe("help mode (D52)", () => {
+     await expect(sidebar).toBeVisible();
+     await expect(toggle).toHaveAttribute("aria-pressed", "true");
+   });
++
++  /**
++   * Plan 7.5 (D71): the rule-grid Add/Remove buttons are unannotated
++   * activation controls in the content area, so help mode covers them BY
++   * CONSTRUCTION -- the shipped capture-phase delegation (`onHelpClick`,
++   * `onHelpKeydown` in App.vue) closes both mutation channels with no new
++   * listener and no button-side condition. This case is that conformance
++   * claim's proof, in the I1 sibling's shape below: the mutation controls
++   * (help OFF) and the suppression assertions (help ON) share one test and
++   * one harness, so a broken fixture cannot let the suppression halves pass
++   * vacuously.
++   *
++   * Add, not Remove, carries the assertions deliberately: Remove is disabled
++   * without a selection, so a suppression check against it could pass
++   * vacuously -- a disabled button mutates nothing in either mode.
++   */
++  test("the rule-grid Add button mutates outside help mode; both activation channels are suppressed inside it", async ({
++    page,
++  }) => {
++    const EDITOR_PROFILE_PATH = "/profiles/add-to-me.yaml";
++    const report: ReportDocument = {
++      config_diagnostics: [],
++      batch_diagnostics: [],
++      files: [],
++      suggestions: [],
++      mkvmerge_found: true,
++    };
++    const oneRuleProfile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++    };
++
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(EDITOR_PROFILE_PATH)],
++        load_profile: [resolveWith({ ...report, profile: oneRuleProfile } satisfies LoadProfileDocument)],
++        validate_profile_model: [resolveWith(report)],
++      },
++    });
++    await page.goto("/");
++
++    await page.getByTestId("nav-editor").click();
++    await page.getByTestId("editor-open").click();
++    const rows = page.getByTestId("editor-rule-row");
++    const add = page.getByTestId("editor-rule-add");
++    await expect(rows).toHaveCount(1);
++
++    // Controls (help mode OFF): BOTH activation channels genuinely append a
++    // rule here, so neither unchanged-count assertion below can pass for the
++    // trivial reason that this fixture's Add never mutates at all.
++    await add.click();
++    await expect(rows).toHaveCount(2);
++    await add.focus();
++    await page.keyboard.press("Enter");
++    await expect(rows).toHaveCount(3);
++
++    // The witness's paired absence control: with no help-mode keydown listener
++    // registered, nothing preventDefaults the synthetic Enter.
++    expect(await probeEnterKeydown(page)).toBe(false);
++    // The probe's own side effect, tested rather than assumed: a synthetic
++    // keydown is untrusted (`isTrusted: false`), so the browser runs no
++    // activation behavior on it and the probe itself appends no rule.
++    await expect(rows).toHaveCount(3);
++
++    const sidebar = page.getByTestId("help-sidebar");
++    await page.getByTestId("help-toggle").click();
++    await expect(sidebar).toBeVisible();
++
++    // Help mode ON, pointer channel: the capture-phase click listener
++    // preventDefaults and stopPropagations before `@click="addRule"` can run,
++    // and pins the nearest annotated ancestor -- the view root's
++    // `view-editor`, since the buttons themselves carry no `data-help-id`
++    // (D71's fallthrough). The sidebar assertion checks topic IDENTITY only
++    // and is NOT evidence that the listener ran: `pinnedId ?? hoverId ??
++    // VIEW_TOPICS[activeView]` resolves to `view-editor` in this view whether
++    // the click pinned it, the pointer merely hovered it, or the listener
++    // never saw it -- the row count is what carries the suppression evidence.
++    await add.click();
++    await expect(rows).toHaveCount(3);
++    expect(await sidebar.innerHTML()).toBe(await normalizeInPage(page, topicMarkup("view-editor")));
++
++    // Help mode ON, keyboard channel: `onHelpKeydown` intercepts Enter while
++    // `helpTarget()` resolves through that same ancestor walk and
++    // preventDefaults it, so the browser never synthesizes the button's
++    // activation click. The channels `help-mode-suppression-pointer-scope`
++    // deliberately keeps live are typing and keyboard select changes, neither
++    // of which a button has.
++    await add.focus();
++    await page.keyboard.press("Enter");
++    await expect(rows).toHaveCount(3);
++
++    // THE witness: the unchanged count above is over-determined (the
++    // synthesized click is stopped by the click layer regardless), so the
++    // keydown layer gets its own event-level assertion -- the discriminating
++    // counterpart to the `false` control before help mode was switched on,
++    // exactly the pair the I1 sibling reads off `dragstartPrevented`. Recorded
++    // side effect: the probe pins `view-editor`, which the click half above
++    // already pinned, and no assertion after this point reads pin state.
++    expect(await probeEnterKeydown(page)).toBe(true);
++  });
+ });
+ 
+ /**
+diff --git a/help/de/editor-tracks-rules.md b/help/de/editor-tracks-rules.md
+index b701598..d774a6f 100644
+--- a/help/de/editor-tracks-rules.md
++++ b/help/de/editor-tracks-rules.md
+@@ -10,10 +10,14 @@ Die Zeilenreihenfolge definiert die Spurreihenfolge der Ausgabe. Ziehe eine Zeil
+ 
+ Klicke eine Zeile an, um sie auszuwählen; das Detailpanel unter dem Raster bearbeitet die ausgewählte Regel - ihre Quelle (die Quelldatei oder ein externer Spender), ihren Match-Ausdruck, das Optional-Flag und die Eigenschaftsänderungen.
+ 
++Die Schaltfläche Hinzufügen hängt eine neue, leere Regel am Ende der Liste an, wählt sie aus und öffnet ihr Detailpanel. Eine Warnung markiert diese neue Regel, bis du ihren Match-Ausdruck ausgefüllt hast.
++
++Die Schaltfläche Entfernen löscht die ausgewählte Regel; sie bleibt gesperrt, solange keine Zeile ausgewählt ist. Entfernen verlangt keine Bestätigung - wie jede andere Änderung im Editor betrifft es nur das Modell, und die Datei auf der Festplatte ändert sich erst, wenn du speicherst (siehe das Editor-Thema).
++
+ ## Genau eine Spur pro Regel
+ 
+ Jede Regel muss pro Quelldatei genau eine Spur ergeben. Zwei Kandidaten sind ein Mehrdeutigkeitsfehler - verenge den Match-Ausdruck (die Vorschlagskarten in der Stapel-Ansicht können dir das Verengen abnehmen). Null Kandidaten sind ebenfalls ein Fehler, außer die Regel ist `Optional` - siehe das Thema Optional.
+ 
+ ## Wann die Liste leer sein darf
+ 
+-Eine leere Regelliste ist nur unter `Nicht zugeordnet: keep` erlaubt - ein reiner Passthrough-Remux. Unter `drop` ist mindestens eine Regel erforderlich, sonst würde jede Spur verworfen.
++Eine leere Regelliste ist nur unter `Nicht zugeordnet: keep` erlaubt - ein reiner Passthrough-Remux. Unter `drop` ist mindestens eine Regel erforderlich, sonst würde jede Spur verworfen. Auch die letzte Regel darf entfernt werden; die dann leere Liste ist genau der hier beschriebene Zustand.
+diff --git a/help/en/editor-tracks-rules.md b/help/en/editor-tracks-rules.md
+index 262b327..b92ddc5 100644
+--- a/help/en/editor-tracks-rules.md
++++ b/help/en/editor-tracks-rules.md
+@@ -10,10 +10,14 @@ The row order defines the output track order. Drag a row to reorder; the new gri
+ 
+ Click a row to select it; the detail panel below the grid edits the selected rule - its source (the primary file or an external donor), its match expression, the optional flag, and the property changes.
+ 
++The Add button appends a new empty rule at the end of the list, selects it, and opens its detail panel. A warning flags that new rule until you fill in its match expression.
++
++The Remove button deletes the selected rule; it stays unavailable until a row is selected. Removing asks no confirmation - like every other change in the editor it touches the model only, and the file on disk changes when you save (see the Editor topic).
++
+ ## Exactly one track per rule
+ 
+ Each rule must resolve to exactly one track per source file. Two candidate tracks is an ambiguity error - narrow the match expression (the suggestion cards on the Batch view can do that narrowing for you). Zero candidates is an error too, unless the rule is `Optional` - see the Optional topic.
+ 
+ ## When the list may be empty
+ 
+-An empty rule list is legal only under `Unmatched: keep` - a pure passthrough remux. Under `drop` at least one rule is required, since otherwise every track would be dropped.
++An empty rule list is legal only under `Unmatched: keep` - a pure passthrough remux. Under `drop` at least one rule is required, since otherwise every track would be dropped. Removing the last rule is allowed; the empty list it leaves behind is exactly the state described here.
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index 3f9b2f3..fa6c1eb 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -439,6 +439,41 @@ function onDrop(index: number) {
+ function onDragEnd() {
+   dragIndex = null;
+ }
++
++// --- Plan 7.5 (D65-D70, D72): Add/Remove for track rules -----------------
++//
++// Add appends the EMPTY SKELETON `{ match: {} }` (D65) -- invalid-until-
++// filled, guided by the existing diagnostics plumbing rather than by a
++// prefilled guess; it auto-selects the new rule, so the detail panel opens
++// purely reactively (`v-if="selectedRule"`), with no focus call anywhere
++// (D67). Both mutations are the same immutable whole-model rebuild every
++// other mutation in this view performs.
++function addRule() {
++  if (!model.value) return;
++  const next = [...rules.value, { match: {} }];
++  model.value = {
++    ...model.value,
++    tracks: { ...model.value.tracks, rules: next },
++  };
++  selectedIndex.value = next.length - 1;
++}
++
++// Selection clears after removal, same rationale as `onDrop` above: indices
++// after the removed rule shift by one, so a retained index would silently
++// point at a different rule -- selection maps to an identity, not a
++// position. Remove works down to zero rules; the zero-rule state is legal
++// and surfaced by core's own diagnostics (D69), so the editor holds no
++// guard against it.
++function removeSelectedRule() {
++  if (selectedIndex.value === null || !model.value) return;
++  const next = [...rules.value];
++  next.splice(selectedIndex.value, 1);
++  model.value = {
++    ...model.value,
++    tracks: { ...model.value.tracks, rules: next },
++  };
++  selectedIndex.value = null;
++}
+ </script>
+ 
+ <template>
+@@ -596,6 +631,21 @@ function onDragEnd() {
+             </tr>
+           </tbody>
+         </table>
++        <button
++          type="button"
++          data-testid="editor-rule-add"
++          @click="addRule"
++        >
++          {{ $t("editor-action-add") }}
++        </button>
++        <button
++          type="button"
++          data-testid="editor-rule-remove"
++          :disabled="selectedIndex === null"
++          @click="removeSelectedRule"
++        >
++          {{ $t("editor-action-remove") }}
++        </button>
+       </fieldset>
+ 
+       <section
