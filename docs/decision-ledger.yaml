@@ -4276,3 +4276,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 progress.md (T3 'review dispatching' line): the controller wrote the intention, the dispatch never happened, and the merge chain idled waiting on a phantom review until a ledger re-read caught it; reviewer dispatched on discovery, correction line appended"}
+- id: cfg-gated-uses-need-cfg-gated-imports
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "An import whose only uses sit inside cfg-gated code carries the SAME cfg gate (or lives inside the gated scope) - an ungated import over gated uses is clippy-red under -D warnings exactly on the platforms the gate excludes, invisible to every local single-platform gate run."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "CI run 30260189439 windows-2025 leg (ci-watch-2afa39d.log + gh log-failed): plan-7 commit 900db87 imported ParamValue ungated in src-tauri lib.rs's test module with platform-gated uses; Windows clippy red across five pushes; fix dispatched"}
+- id: proc-push-ci-conclusion-observed
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "The local nine-part gate covers ONE platform; the 3-OS matrix exists only in CI. Every push therefore gets its CI CONCLUSION observed (gh run watch, or a checked gh run list conclusion before the next push/claim) - 'pushed, CI running' without a later conclusion check is how a red leg survives unnoticed across pushes. Trigger is readable: you are writing a gh-log push entry. Handle: the entry gets its conclusion appended when known, and a session-close with unobserved conclusions names them as open."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "gh run list 2026-07-27: five consecutive failure conclusions (windows leg) from 2026-07-22 17:32 onward, spanning the S21 close push and this session's two pushes, unnoticed until plan-8's choreographed watch step; the watch earned its keep, the unwatched pushes are the violation instances"}
