@@ -4246,9 +4246,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 stream-A merge gate (gate-merge-A8.log + pre-merge control run): joblog collision_appends_a_numeric_suffix pre-creates dirs stamped 20260710-120000Z and expects them to collide; 17 days later D35's prune removes them before the collision - failed identically on pre-merge base, latent since plan 5.5; fix dispatched"}
+    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 joblog-fix verdict section 2 + H4 (joblog-datebomb-fix-verdict.md): four sites (joblog.rs:70, run.rs:1340/:1499/:1510) pass stale stamps as create's run_id ARGUMENT, safe only via the implicit prune-before-leaf invariant; on next touch of either file state that invariant in a comment at the first such site - a second create against the same root re-creates the class silently. Three of the four sit outside the plan-8 pathset, which is why this is recorded rather than fixed"}
 - id: redundant-layers-need-mechanism-witness
   kind: pattern
   tier: 1

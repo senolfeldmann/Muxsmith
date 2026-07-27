@@ -793,6 +793,15 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   at run time via jdx/mise-action. Supersedes the routed pre-1.0
   supply-chain finding (the SHA pin covers the action JS, not the mise
   binary it downloads). Structural, hence post-1.0, not a pre-tag patch.
+  **Rider, gated on the next ci.yml-touching change whichever it is** (this
+  item is the expected carrier; an earlier ci.yml edit inherits the duty -
+  the edit is the trigger): ci.yml's dated Plan-5.5 comment block cites a
+  BUILDING.md section by a title that no longer exists, deleted when the
+  cross-target lint rule became gate part 6 (commit bcb67f3). Nothing there
+  is false, but the pointer is ungreppable. Exact replacement, so nobody
+  re-derives it: `# legs, matching the cross-target clippy gate part
+  (BUILDING.md, Rust gate part 6; cfg-gated items can differ per platform).`
+  (Plan-8 whole-branch delta F1, 2026-07-27.)
 - NDJSON `--json-events` stream; `--fail-fast=now` (deferred pre-Plan-5).
 - Joblog atomic writes (settings half was hardened in the Plan-5 fix
   wave). The AppState.active poison-recovery half of this line was
