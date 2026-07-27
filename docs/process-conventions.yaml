@@ -416,8 +416,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 8
+  count: 9
   occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 verdict minor (task-4-verdict.md): the step-2 transcription diff compared a file to an extraction produced by the same tooling path - tautological, no reachable red by construction; the claim held anyway via the independent three-source hash equality, which is the falsifiable form the step should have been"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 T1 review HARVEST (task-1-verdict.md): the reviewer's own first probe round mutated two of three targets; the third diff's empty result proved nothing until a second mutation exercised it - per-assertion probing added to this statement on that evidence"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "D49 review F7, and the reason the statement now names documents as well as plans: D49's 'no test asserts the wire change' rested on `grep -rn '\"edit\"'`, which cannot match an unquoted TS object key - e2e/smoke.spec.ts:177 carries `edit: null`. The conclusion happened to survive (that fixture is inert against `edit: unknown`), so the defect was in the METHOD while the result was right, which is precisely the state an absence-check cannot distinguish. The D49 reviewer's framing, adopted verbatim into the statement: nobody re-runs a negative"}
@@ -499,8 +500,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 8
+  count: 9
   occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 verdict minor (task-4-verdict.md): the task report asserted ten observed outputs over its own nine-row enumeration, and the controller relayed the ten unrecomputed into the review dispatch - trigger-1 silent in a report, borrowed number propagated one hop; caught by the reviewer recount"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 verdict minor + HARVEST 2 (task-5-verdict.md): the consuming-line sweep cleared the script-checks set (ROADMAP) but missed BUILDING.md:92-96, which enumerates CI jobs and names cargo deny check as THE independent job - the new check joined two sets and only one was swept; deferred to whole-branch (stream-A file, escalation owed); statement widened to multi-set membership"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 plan review round 1 HARVEST (plan-review-round-1.md): first review since promotion with ZERO count defects - 13/13 Tier-2 line refs exact, 4/4 transcriptions byte-clean, every count independently recomputed and confirmed (incl. 17-of-47); the reviewer names the measured-at-authoring + re-verify-at-execution-tree discipline as having held against the plan-7 defect classes"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "ROADMAP Plan-6 re-cut asserted '(6 / 5 / 1 / 8)' over '20 named inputs'; recounted to 16 because Plan 6 listed 2 inputs, not 6. Found by the plan-6 design implementer, fixed in fdcdcba; the ROADMAP now numbers every input so the split recounts (design §7 item 9)"}
