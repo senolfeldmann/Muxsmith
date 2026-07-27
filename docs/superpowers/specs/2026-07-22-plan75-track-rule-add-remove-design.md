@@ -921,7 +921,7 @@ and suppression assertion in the SAME test and harness):
    deliberately: Remove is disabled without a selection, so a
    suppression check against it could pass vacuously.
 
-   **Witness extension (amendment 1, 2026-07-22, post-T2; controller
+   **Witness extension (amendment 1, 2026-07-27, post-T2; controller
    ruling `redundant-layers-need-mechanism-witness`).** The Enter half
    above is over-determined: Enter on a focused `<button>` synthesizes
    a click, which the capture-phase click listener stops, so the
@@ -1107,7 +1107,7 @@ No NEEDS_CONTEXT item leaves this design.
 
 ---
 
-**Amendment 1 (mid-run, 2026-07-22, post-T2): case 9 gains an
+**Amendment 1 (mid-run, 2026-07-27, post-T2): case 9 gains an
 event-level witness for the keydown-suppression layer.**
 
 - **Defect.** Case 9's Enter half was over-determined and its assumed
