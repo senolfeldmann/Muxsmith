@@ -4137,21 +4137,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: decided, ref: "plan-8 plan review round 1 HARVEST (plan-review-round-1.md): Task 4's Interfaces note named the transferable pattern for every parallel-stream plan"}
-- id: proc-noninteractive-file-ops-in-agents
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "Agent shell steps that mutate-and-restore files (fire-tests, fixture swaps) use alias-proof non-interactive forms - `command cp -f` / `/usr/bin/cp -f`, `command rm -f` - because a user shell's interactive aliases (cp -i, rm -i) block a subagent to its tool timeout mid-restore, leaving the tree mutated until manual recovery. Restoration is then verified against a pre-mutation backup, not assumed."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
 - id: proc-readonly-reviewer-falsification
   kind: pattern
   tier: 1
@@ -4236,3 +4221,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 design amendment A1 (delta review round 3, design-review-round-1.md): the frozen section-2 fence carried an unquoted ': ' scalar through four review rounds; T4's parse check hit it, controller ruled Option A, author amended with red-green parse proof; the design reviewer's own harvest names the missed parser load"}
+- id: inline-wrapper-keeps-try-scope
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: cross
+  statement: "Unwrapping a one-call convenience API into its internals (yaml.safe_load -> Loader()+get_single_data, requests.get -> Session()+send, json.load -> decoder instance) silently moves work the convenience call did INSIDE its implicit error handling - construction included - outside your try-block; everything the convenience call covered moves inside yours. Trigger is readable: you are inlining a wrapper to reach its internals."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 verdict minor + HARVEST 1 (task-5-verdict.md): the inlined PyYAML loader constructor sat outside the parse try, so yaml.ReaderError escapes as a traceback instead of the clean does-not-parse violation (still exit 1; pre-existing on master, reproduced there); whole-branch triage carries the fix decision"}
