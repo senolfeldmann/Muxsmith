@@ -4235,3 +4235,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 verdict minor + HARVEST 1 (task-5-verdict.md): the inlined PyYAML loader constructor sat outside the parse try, so yaml.ReaderError escapes as a traceback instead of the clean does-not-parse violation (still exit 1; pre-existing on master, reproduced there); whole-branch triage carries the fix decision"}
+- id: shell-dialect-assumptions-in-agent-scripts
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Agent-side shell snippets that use bash-isms (PIPESTATUS, arrays, [[ ]]-only behavior) run under an explicit bash invocation (bash -c or a bash heredoc), never in the ambient user shell - the interactive shell here is zsh, and a dialect mismatch aborts a script mid-way, which is worst inside a mutate-then-restore fire-test (the abort lands between mutation and restore). Companion of proc-noninteractive-file-ops-in-agents: both are ambient-user-shell hazards for fire-tests."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T2 implementer report concern 2 (task-2-report.md): bash PIPESTATUS under zsh aborted a fire-test before its restore step, leaving tauri config mutated for one turn; caught immediately, restored via /usr/bin/cp -f with sha256 confirmation, committed blobs re-verified from git show"}
