@@ -15,6 +15,9 @@ Pinned via `rust-toolchain.toml` (currently 1.96.1, with `rustfmt` and
 `clippy`); `rustup` on a rustup-managed system installs and switches to it
 automatically the first time you run `cargo` in this repo. No manual step.
 
+The pre-push gate's cross-target clippy part needs the Windows target's
+standard library once per machine: `rustup target add x86_64-pc-windows-msvc`.
+
 ### System libraries (Tauri's native shell)
 
 Tauri needs a platform webview plus a few native headers to compile
@@ -64,10 +67,11 @@ pnpm build            # vue-tsc type-check + production frontend build
 
 `pnpm build` only builds the frontend bundle (`dist/`); it does not invoke
 `cargo tauri build`. Building the desktop bundle itself
-(`pnpm exec tauri build`) is out of scope for local development and not
-part of the CI gate yet.
+(`pnpm exec tauri build`) is not part of the CI gate; release bundles are
+built by `release.yml` on `v*` tags and manual dispatch, and "Reproducing a
+release bundle locally" below covers the local invocation.
 
-### The Rust gate (five parts, run from the repo root, workspace-wide)
+### The Rust gate (six parts, run from the repo root, workspace-wide)
 
 ```bash
 cargo fmt --all --check
@@ -75,11 +79,19 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo deny check
+cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
 ```
 
 `#![deny(missing_docs)]` gates presence of rustdoc comments; the `cargo doc`
 run above is what gates their *correctness* (broken intra-doc links and
 other rustdoc warnings), which presence-only enforcement cannot catch.
+
+The cross-target clippy run (part 6) type-checks the workspace for Windows
+without linking, so it runs on any OS. It catches what a host-only clippy
+cannot see - cfg-gated imports and Windows-only lints - the class that went
+CI-red twice in Plan 5 and sat unobserved for five runs in Plan 8 (an
+in-tree comment is not a gate; owner ruling S22). CI needs no equivalent
+step: its Windows leg runs clippy natively.
 
 ### Frontend checks
 
@@ -89,10 +101,12 @@ pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
 pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same five-part Rust gate plus
-`pnpm lint`, `pnpm build`, `pnpm check:i18n`, and `pnpm test:e2e` on every
-push/PR (nine parts total); `cargo deny check` runs as an
-independent job.
+CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-5 natively on all
+three OS legs (its Windows leg covers natively what part 6 cross-checks
+from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and
+`pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`
+and `scripts/ledger-lint.py` (house-knowledge invariants, Plan-8 rider)
+run as independent jobs.
 
 ### Reproducing a release bundle locally
 
@@ -136,10 +150,3 @@ tooling stock-take, 2026-07-08):
 - `sccache`: no compile-time pain at this workspace size.
 - `cargo-outdated`: Renovate/Dependabot replaces it once activated.
 - Coverage tooling (cargo-llvm-cov): revisit at v1.x planning (ROADMAP).
-
-## Cross-target lint rule
-
-Before the first push that hits a new OS leg in CI: run clippy
-cross-target locally (`-D warnings` workspaces need cfg-gated imports for
-cfg-gated tests) - two Windows-CI red rounds of exactly this class in
-Plan 5.
