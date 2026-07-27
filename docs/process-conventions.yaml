@@ -588,8 +588,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "S22 close (gh-log final entry): the CONTROLLER itself hit the interactive cp alias on the handoff snapshot copy (2-minute tool timeout), redone with command cp -f - post-promotion instance showing the rule binds controller-side shell use too, not only subagent briefs"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 completion report (task-4-report.md): third instance - the aliased cp silently left the target un-overwritten, caught only because the next check re-read the file instead of assuming the copy; fixed with command cp -f < /dev/null; third strict-fit event, promoted at count 3"}
