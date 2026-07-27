@@ -19,9 +19,9 @@ Requirements
 - For muxsmith-gui: webkitgtk 4.1 and gtk3
     Debian/Ubuntu:  libwebkit2gtk-4.1-0 (and libgtk-3-0)
     Fedora:         webkit2gtk4.1
-- glibc from Ubuntu 22.04 (2022) or newer; any current distribution
-  qualifies. If this archive does not run on your system, the AppImage
-  from the same release bundles its dependencies.
+- glibc 2.35 or newer (the version in Ubuntu 22.04, 2022); any current
+  distribution qualifies. If this archive does not run on your system,
+  the AppImage from the same release bundles its dependencies.
 
 Docs and source: https://github.com/senolfeldmann/Muxsmith
 Install notes:   https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md

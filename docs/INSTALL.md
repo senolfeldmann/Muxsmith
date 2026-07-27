@@ -3,12 +3,17 @@
 Release downloads live on the
 [GitHub releases page](https://github.com/senolfeldmann/Muxsmith/releases).
 All 1.0-era builds are **unsigned**: your OS will warn before the first
-launch. The sections below show the one-time step per OS. Verify
-downloads against the release's `SHA256SUMS`
-(`sha256sum -c SHA256SUMS` with the files beside it).
+launch. The sections below show the one-time steps per OS. Verify
+downloads against the release's `SHA256SUMS`, with the files beside it:
+`sha256sum -c SHA256SUMS` on Linux, and in PowerShell on Windows
+`Get-FileHash muxsmith-<version>-windows-x86_64.msi -Algorithm SHA256`
+compared against that file's line in `SHA256SUMS`.
 
 Every install ships two programs: **Muxsmith** (the GUI) and
-**`muxsmith`** (the command-line tool).
+**`muxsmith`** (the command-line tool). The AppImage is the practical
+exception: it carries both binaries inside a single self-contained
+file, so only the GUI is directly runnable - use the deb, rpm or
+tar.gz if you want the CLI on your PATH.
 
 <!-- When code signing lands (registered ROADMAP trigger), the
      SmartScreen and Gatekeeper sections below shrink to the signed-app
@@ -30,7 +35,7 @@ for an unsigned build.
 `C:\Program Files\Muxsmith`. The installer does **not** modify PATH.
 To call `muxsmith` from any terminal, add that folder to your user PATH:
 Settings > System > About > Advanced system settings > Environment
-Variables > select `Path` > Edit > New >
+Variables > select `Path` under **User variables** > Edit > New >
 `C:\Program Files\Muxsmith` > OK, then open a new terminal.
 
 ## macOS
@@ -56,8 +61,12 @@ Open the dmg and drag **Muxsmith** to Applications.
 PATH. To call it as `muxsmith`, link it once:
 
 ```sh
-sudo ln -s /Applications/Muxsmith.app/Contents/MacOS/muxsmith /usr/local/bin/muxsmith
+sudo mkdir -p /usr/local/bin && sudo ln -s /Applications/Muxsmith.app/Contents/MacOS/muxsmith /usr/local/bin/muxsmith
 ```
+
+Without `sudo`: add the directory to your PATH instead by appending
+`export PATH="/Applications/Muxsmith.app/Contents/MacOS:$PATH"` to your
+shell profile.
 
 ## Linux
 
@@ -77,7 +86,7 @@ yourself:
 
 - **mkvtoolnix** (provides `mkvmerge`; required for every mux/dry run):
   `sudo apt install mkvtoolnix` / `sudo dnf install mkvtoolnix`
-- **GUI only, deb/rpm/tar.gz:** webkitgtk 4.1 and gtk3
+- **GUI only:** webkitgtk 4.1 and gtk3
   (`libwebkit2gtk-4.1-0` on Debian/Ubuntu, `webkit2gtk4.1` on Fedora) -
   the deb/rpm declare these as hard dependencies; the AppImage bundles
   them; for the tar.gz install them via your package manager.
