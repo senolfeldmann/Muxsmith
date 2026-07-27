@@ -14,4 +14,4 @@ Jede Änderung prüft das ganze Profil im Hintergrund neu; der Meldungsbereich b
 
 Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung der Datei auf der Festplatte bleiben nicht erhalten, und Felder auf ihrem Standardwert werden weggelassen statt zurückgeschrieben. Das Format folgt der Dateiendung; ein YAML-Profil bleibt YAML. Ist dir ein von Hand kommentiertes Profil wichtig, lege vorher eine Kopie an oder stelle es unter Versionskontrolle.
 
-Die Schaltfläche Anwenden auf einer Vorschlagskarte in der Stapel-Ansicht speichert auf dieselbe Weise: ein kanonisches Neuschreiben, dieselben Regeln (siehe das Thema zur Vorschlagskarte).
+Die Schaltfläche Anwenden auf einer Vorschlagskarte in der Stapel-Ansicht speichert auf dieselbe Weise: ein kanonisches Neuschreiben, dieselben Regeln (siehe das Thema Vorschlagskarte).

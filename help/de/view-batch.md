@@ -13,7 +13,7 @@ Nach einem Probelauf erhält jede passende Datei eine eigene Tabelle: eine Zeile
 
 ## Meldungen
 
-Meldungen haben drei Schweregrade: Fehler, Warnungen und Hinweise. Die Zusammenfassungszeile zählt sie über Profil, Stapel und alle Dateien. Fehler blockieren das Starten; Warnungen und Hinweise nicht. Schlägt der Bericht konkrete Korrekturen vor, erscheinen sie als Vorschlagskarten unter der Dateiliste (siehe das Thema zur Vorschlagskarte).
+Meldungen haben drei Schweregrade: Fehler, Warnungen und Hinweise. Die Zusammenfassungszeile zählt sie über Profil, Stapel und alle Dateien. Fehler blockieren das Starten; Warnungen und Hinweise nicht. Schlägt der Bericht konkrete Korrekturen vor, erscheinen sie als Vorschlagskarten unter der Dateiliste (siehe das Thema Vorschlagskarte).
 
 ## Wann Starten gesperrt ist
 
