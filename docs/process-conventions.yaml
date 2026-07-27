@@ -416,8 +416,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 9
+  count: 10
   occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 T2 review round D (task-2-verdict.md): the help-ON sidebar assertion passes with the pin removed (the unpinned fallback is already view-editor) while the committed comment claims it evidences the listener ran - a no-reachable-red assertion wearing an evidence claim; one-sentence comment fix in the fix round"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 verdict minor (task-4-verdict.md): the step-2 transcription diff compared a file to an extraction produced by the same tooling path - tautological, no reachable red by construction; the claim held anyway via the independent three-source hash equality, which is the falsifiable form the step should have been"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 T1 review HARVEST (task-1-verdict.md): the reviewer's own first probe round mutated two of three targets; the third diff's empty result proved nothing until a second mutation exercised it - per-assertion probing added to this statement on that evidence"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 execution plan, two vacuous verification steps found in one review. F9: task 6's 'prove the reuse is real' pipes grep through `sed -n '/apply_suggestion/,$p'`, whose range can never open on that input - the reviewer ran it and got 0 lines, so the step passes for ANY implementation including a clobbering one. F15: task 1 step 5 greps for \"D47's catalog table\", which wraps across lines :278/:279, so the grep matches nothing before OR after the fix it claims to verify. Both steps were the plan's own checks on the two findings it most needed to catch"}

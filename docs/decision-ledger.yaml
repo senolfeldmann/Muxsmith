@@ -4249,3 +4249,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T2 implementer report concern 2 (task-2-report.md): bash PIPESTATUS under zsh aborted a fire-test before its restore step, leaving tauri config mutated for one turn; caught immediately, restored via /usr/bin/cp -f with sha256 confirmation, committed blobs re-verified from git show"}
+- id: test-fixture-dates-outside-retention-windows
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "A test fixture carrying an ABSOLUTE timestamp that must survive a retention/prune mechanism is a calendar time bomb: green at authoring, red the day the fixture ages past the window. Fixture stamps that must count as fresh derive from now (make_run_id(SystemTime::now()) or equivalent); absolute stamps are reserved for fixtures that TEST the aging path. The sweep triggers when a retention mechanism lands OR when such a fixture is written - running the suite cannot catch it (it is green until the calendar moves)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 stream-A merge gate (gate-merge-A8.log + pre-merge control run): joblog collision_appends_a_numeric_suffix pre-creates dirs stamped 20260710-120000Z and expects them to collide; 17 days later D35's prune removes them before the collision - failed identically on pre-merge base, latent since plan 5.5; fix dispatched"}
+- id: redundant-layers-need-mechanism-witness
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "Where two independent layers cover the same user-visible contract, an outcome-level test cannot detect one layer's death - the survivor masks it. Measuring a layer's coverage takes a deliberate branch-removal probe run against the COVERAGE SET (the whole suite), not against the case under construction; keeping the redundancy honest takes an event-level witness per layer, or an explicit recorded decision that outcome coverage suffices."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T2 review Q1 + M-findings + HARVEST L2 (task-2-verdict.md): removing the entire Enter/Space keydown branch left all 62 e2e green - the mechanism is unguarded repo-wide while the click-capture layer masks it; the report had claimed a separate guard from inspection, refuted by the reviewer's coverage-set run; design amendment routed for the event-level witness"}
