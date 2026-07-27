@@ -1,7 +1,7 @@
 # Plan 8 design: packaging / release pipeline
 
 Status: DRAFT 2026-07-22, fix round 1 applied 2026-07-23; amendment log at
-the end (A1, 2026-07-23). Numbering starts
+the end (A1, 2026-07-23; A2 and A3, 2026-07-27). Numbering starts
 at **D75** per the ROADMAP Plan-8 kickoff block; D65-D74 is Plan 7.5's
 parallel reservation (its design uses D65-D72 - counted from its spec's
 `^## D` headings; no collision either way). Last pre-existing ADR is D64
@@ -1576,6 +1576,10 @@ One added line in the JS/Tauri block: `src-tauri/binaries/`.
 
 ## 4. Documentation artifacts (verbatim)
 
+**Superseded in part 2026-07-27:** the tree is authoritative for this
+prose at eight sites; the blocks below are the wording the transcription
+was graded against (amendment A3).
+
 ### 4.1 `docs/INSTALL.md` (D75/D82, new, complete)
 
 ````markdown
@@ -2086,3 +2090,44 @@ ever fails, the answer is code-page work, not transliteration. Sites
 updated by this amendment: D86 decision text (:941-943 fallback clause,
 :958 language value), section 3.1 fence, section 11 (frozen-literal list,
 fallback bullet), section 8 R8 parenthetical, section 9 trigger 7 premise.
+
+**A3 (2026-07-27, controller ruling on the review's design-bookkeeping
+finding).** Section 4's verbatim blocks are **superseded by the tree** at
+eight sites. The owner's rendered-surface wording pass (`e477e37`,
+`4716b0c`) and the review fix round it triggered (`e61264f`) changed that
+shipped prose after this document froze it. **The tree is authoritative
+for it**; section 4 stays byte-unchanged because it is the wording the
+task-4 transcription was graded against - the same rule applied at the
+plan-7.5 close and to the plan's own frozen fences. The sites, each
+verified by content by extracting the section-4 fences and diffing them
+against the post-fix tree (the extractor reports the size of every
+extraction, so an empty one cannot pass as a clean diff):
+
+- **4.1 `docs/INSTALL.md`** (fence 83 lines vs tree 94), six contiguous
+  divergent regions: (1) "the one-time step per OS" -> "steps";
+  (2) the single-command checksum sentence -> the three OS-specific
+  commands, `sha256sum --ignore-missing -c` and
+  `shasum -a 256 --ignore-missing -c` and PowerShell
+  `Get-FileHash <file>`, the last with its comparison named
+  case-insensitive; (3) the "two programs" claim gains the AppImage
+  exception, whose tail names deb/rpm as the formats that put `muxsmith`
+  on PATH and the tar.gz as carrying both binaries to place; (4) the
+  Windows PATH walk-through names the **User variables** pane; (5) the
+  macOS symlink creates `/usr/local/bin` first and gains the no-sudo PATH
+  alternative (one ruling, two adjacent regions); (6) the Linux
+  GUI-dependency bullet drops its contradicting format list.
+- **4.2 release-body template** (fence 24 lines vs tree 28), one region:
+  the same checksum sentence in the draft-body wording. The rehearsal
+  banner is NOT superseded - its fence diffs clean, and `git log` over
+  the same range shows no commit touching that file.
+- **4.3 `packaging/linux-tarball-README.txt`** (fence 27 lines vs tree
+  27), one region: the glibc requirement names the floor as 2.35 instead
+  of by distribution.
+
+Sections 4.4 (`BUILDING.md` rider) and 4.5 (`README.md` rider) are not
+superseded. **Eight, not the seven the review verdict reported:** its 4.1
+figure of five hunks reproduces at neither zero nor three lines of diff
+context (six and four respectively), while its extraction sizes (83 vs 93
+pre-fix) reproduce exactly - the divergence is confirmed, only its hunk
+grouping was not. `e61264f` deepened two existing regions and created no
+new one.
