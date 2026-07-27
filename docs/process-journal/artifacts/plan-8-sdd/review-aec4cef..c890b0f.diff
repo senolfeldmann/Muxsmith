@@ -1,0 +1,208 @@
+# Review package: aec4cef..c890b0f9372517d7a716390fb76101b66f94e24a
+
+## Commits
+c890b0f release: INSTALL.md + draft-body/rehearsal-banner templates + tar.gz README + README placeholder rider (D75/D77/D79/D88, design section 4 verbatim)
+
+## Files changed
+ .github/release/draft-body.md       | 24 +++++++++++
+ .github/release/rehearsal-banner.md |  6 +++
+ README.md                           |  5 ++-
+ docs/INSTALL.md                     | 83 +++++++++++++++++++++++++++++++++++++
+ packaging/linux-tarball-README.txt  | 27 ++++++++++++
+ 5 files changed, 144 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/.github/release/draft-body.md b/.github/release/draft-body.md
+new file mode 100644
+index 0000000..8bff336
+--- /dev/null
++++ b/.github/release/draft-body.md
+@@ -0,0 +1,24 @@
++Muxsmith __VERSION__ - unsigned builds; read the install note for your OS
++before first launch: [Windows](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#windows)
++| [macOS](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#macos)
++| [Linux](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#linux)
++
++**Runtime requirement:** Muxsmith drives `mkvmerge` from
++[MKVToolNix](https://mkvtoolnix.download/). The deb/rpm packages declare
++it as a recommended dependency; on Windows/macOS install it yourself
++(details in the install notes).
++
++| Artifact | For |
++|---|---|
++| `muxsmith-__VERSION__-windows-x86_64.msi` | Windows 10/11, Intel/AMD |
++| `muxsmith-__VERSION__-windows-arm64.msi` | Windows 11 on ARM |
++| `muxsmith-__VERSION__-macos-arm64.dmg` | macOS 11+, Apple Silicon |
++| `muxsmith-__VERSION__-linux-x86_64.deb` | Debian/Ubuntu |
++| `muxsmith-__VERSION__-linux-x86_64.rpm` | Fedora & co. |
++| `muxsmith-__VERSION__-linux-x86_64.AppImage` | any Linux distro |
++| `muxsmith-__VERSION__-linux-x86_64.tar.gz` | portable, CLI + GUI |
++
++Verify downloads: put `SHA256SUMS` beside the files and run
++`sha256sum -c SHA256SUMS`.
++
++---
+diff --git a/.github/release/rehearsal-banner.md b/.github/release/rehearsal-banner.md
+new file mode 100644
+index 0000000..9c96dc6
+--- /dev/null
++++ b/.github/release/rehearsal-banner.md
+@@ -0,0 +1,6 @@
++> **REHEARSAL DRAFT - not a release.** Created by a workflow_dispatch
++> rehearsal run to exercise draft-release assembly (D79). No git tag
++> exists for this draft. Inspect body, assets and checksums, then
++> delete this draft.
++
++---
+diff --git a/README.md b/README.md
+index cfdf541..7146981 100644
+--- a/README.md
++++ b/README.md
+@@ -89,21 +89,24 @@ Validation announces the passthrough with an info notice (`passthrough-profile`)
+ - **Collision protection twice over**: an `on_collision` policy for outputs, plus a guard that refuses to overwrite any file that is also a mux *source*.
+ - **A parallel job engine** with per-job logs: every run persists the full command line and output of every job (auto-pruned after 14 days). Exit codes mean something; `--fail-fast` exists.
+ - **Scriptable everything**: every command takes `--json` and emits a structured report. `muxsmith schema` prints the profile's JSON Schema.
+ - **Two surfaces, one core**: the CLI and the desktop GUI (Tauri + Vue) share the same Rust engine - same profiles, same semantics, same logs.
+ - **Localized**: English today, German landing for 1.0; diagnostics are structured, prose is generated per locale.
+ 
+ ## 📦 Install
+ 
+ Muxsmith needs **mkvmerge >= 86.0** on the PATH or in a standard install location (it ships with [MKVToolNix](https://mkvtoolnix.download/)).
+ 
+-<!-- placeholder(1.0): release artifacts per OS (msi/dmg/deb/rpm/AppImage) once the packaging pipeline lands -->
++<!-- placeholder(1.0): Install section - artifact table per OS (msi x2 /
++     dmg / deb / rpm / AppImage / tar.gz, naming per Plan-8 D89) linking
++     docs/INSTALL.md, which already carries the per-OS unsigned-install
++     steps; drop the WIP banner in the same pass -->
+ 
+ Until packaged releases land, build from source:
+ 
+ ```console
+ $ cargo build --release -p muxsmith-cli   # the muxsmith CLI binary
+ $ pnpm install && pnpm exec tauri build   # the desktop GUI
+ ```
+ 
+ Toolchain versions are pinned in the repo (`rust-toolchain.toml`, `mise.toml`); [BUILDING.md](BUILDING.md) is the full developer document, including the quality gate the project runs on.
+ 
+diff --git a/docs/INSTALL.md b/docs/INSTALL.md
+new file mode 100644
+index 0000000..c821962
+--- /dev/null
++++ b/docs/INSTALL.md
+@@ -0,0 +1,83 @@
++# Installing Muxsmith
++
++Release downloads live on the
++[GitHub releases page](https://github.com/senolfeldmann/Muxsmith/releases).
++All 1.0-era builds are **unsigned**: your OS will warn before the first
++launch. The sections below show the one-time step per OS. Verify
++downloads against the release's `SHA256SUMS`
++(`sha256sum -c SHA256SUMS` with the files beside it).
++
++Every install ships two programs: **Muxsmith** (the GUI) and
++**`muxsmith`** (the command-line tool).
++
++<!-- When code signing lands (registered ROADMAP trigger), the
++     SmartScreen and Gatekeeper sections below shrink to the signed-app
++     reality; keep the CLI/PATH halves. -->
++
++## Windows
++
++Artifact: `muxsmith-<version>-windows-x86_64.msi` (Intel/AMD) or
++`muxsmith-<version>-windows-arm64.msi` (Windows on ARM, e.g. Snapdragon
++laptops). The installer is per-machine and installs to
++`C:\Program Files\Muxsmith`.
++
++**SmartScreen:** because the installer is unsigned, Windows shows
++"Windows protected your PC" with no run button. Click **More info**,
++then **Run anyway**. The publisher shows as unknown; that is expected
++for an unsigned build.
++
++**CLI:** `muxsmith.exe` is installed next to the app in
++`C:\Program Files\Muxsmith`. The installer does **not** modify PATH.
++To call `muxsmith` from any terminal, add that folder to your user PATH:
++Settings > System > About > Advanced system settings > Environment
++Variables > select `Path` > Edit > New >
++`C:\Program Files\Muxsmith` > OK, then open a new terminal.
++
++## macOS
++
++Artifact: `muxsmith-<version>-macos-arm64.dmg` (Apple Silicon,
++macOS 11+). There is currently no Intel build.
++
++Open the dmg and drag **Muxsmith** to Applications.
++
++**Gatekeeper:** the app is unsigned and not notarized.
++
++- **macOS 15 (Sequoia) and newer:** double-click Muxsmith once; macOS
++  blocks it. Open **System Settings > Privacy & Security**, scroll to
++  the security section, and click **Open Anyway** next to the Muxsmith
++  entry, then confirm. This is needed once.
++- **macOS 11-14:** Control-click (or right-click) Muxsmith.app and
++  choose **Open**, then **Open** again in the dialog. Once is enough.
++- **Terminal alternative** (any version):
++  `xattr -d com.apple.quarantine /Applications/Muxsmith.app`
++
++**CLI:** the command-line tool is inside the app bundle at
++`/Applications/Muxsmith.app/Contents/MacOS/muxsmith`. Nothing touches
++PATH. To call it as `muxsmith`, link it once:
++
++```sh
++sudo ln -s /Applications/Muxsmith.app/Contents/MacOS/muxsmith /usr/local/bin/muxsmith
++```
++
++## Linux
++
++Artifacts (x86_64):
++
++- `muxsmith-<version>-linux-x86_64.deb` - Debian/Ubuntu: `sudo apt install ./muxsmith-<version>-linux-x86_64.deb`
++- `muxsmith-<version>-linux-x86_64.rpm` - Fedora & co.: `sudo dnf install ./muxsmith-<version>-linux-x86_64.rpm`
++- `muxsmith-<version>-linux-x86_64.AppImage` - any distro: `chmod +x` the file, then run it
++- `muxsmith-<version>-linux-x86_64.tar.gz` - portable archive with both binaries; see its
++  `README.txt`
++
++No gatekeeping dialog exists on Linux. deb/rpm install both `muxsmith`
++and `muxsmith-gui` to `/usr/bin` (already on PATH). The deb/rpm packages
++declare **mkvtoolnix** as a recommended dependency; the AppImage and
++tar.gz do not manage dependencies, so install the runtime requirements
++yourself:
++
++- **mkvtoolnix** (provides `mkvmerge`; required for every mux/dry run):
++  `sudo apt install mkvtoolnix` / `sudo dnf install mkvtoolnix`
++- **GUI only, deb/rpm/tar.gz:** webkitgtk 4.1 and gtk3
++  (`libwebkit2gtk-4.1-0` on Debian/Ubuntu, `webkit2gtk4.1` on Fedora) -
++  the deb/rpm declare these as hard dependencies; the AppImage bundles
++  them; for the tar.gz install them via your package manager.
+diff --git a/packaging/linux-tarball-README.txt b/packaging/linux-tarball-README.txt
+new file mode 100644
+index 0000000..8fbc0a1
+--- /dev/null
++++ b/packaging/linux-tarball-README.txt
+@@ -0,0 +1,27 @@
++Muxsmith - portable Linux archive (x86_64)
++==========================================
++
++Contents:
++  muxsmith       command-line tool
++  muxsmith-gui   desktop app (Tauri/GTK)
++  LICENSE        MIT license
++  README.txt     this file
++
++This archive "just runs": no installation step. Run the tools from this
++directory (./muxsmith --help, ./muxsmith-gui) or put the directory on
++your PATH / symlink the binaries into ~/.local/bin.
++
++Requirements
++------------
++- mkvtoolnix (provides mkvmerge) - required for every dry run and mux:
++    Debian/Ubuntu:  sudo apt install mkvtoolnix
++    Fedora:         sudo dnf install mkvtoolnix
++- For muxsmith-gui: webkitgtk 4.1 and gtk3
++    Debian/Ubuntu:  libwebkit2gtk-4.1-0 (and libgtk-3-0)
++    Fedora:         webkit2gtk4.1
++- glibc from Ubuntu 22.04 (2022) or newer; any current distribution
++  qualifies. If this archive does not run on your system, the AppImage
++  from the same release bundles its dependencies.
++
++Docs and source: https://github.com/senolfeldmann/Muxsmith
++Install notes:   https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md

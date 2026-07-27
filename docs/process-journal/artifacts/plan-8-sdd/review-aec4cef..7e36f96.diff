@@ -1,0 +1,61 @@
+# Review package: aec4cef..7e36f96
+
+## Commits
+7e36f96 release: version-sync guard script; tauri.conf.json inherits the Cargo workspace version (D87); G1-G3 fire-verified
+
+## Files changed
+ scripts/check-version-sync.sh | 25 +++++++++++++++++++++++++
+ src-tauri/tauri.conf.json     |  1 -
+ 2 files changed, 25 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/scripts/check-version-sync.sh b/scripts/check-version-sync.sh
+new file mode 100755
+index 0000000..85afd04
+--- /dev/null
++++ b/scripts/check-version-sync.sh
+@@ -0,0 +1,25 @@
++#!/usr/bin/env bash
++# Version-sync guard (Plan 8, D87). Usage:
++#   scripts/check-version-sync.sh          # consistency only
++#   scripts/check-version-sync.sh vX.Y.Z   # consistency + tag equality
++# Asserts: Cargo workspace version == package.json version;
++# tauri.conf.json declares NO version (it inherits Cargo's);
++# with an argument: the tag is exactly v<version>.
++set -euo pipefail
++
++fail() { echo "version-sync: $*" >&2; exit 1; }
++
++cargo_v="$(awk '/^\[workspace.package\]/{f=1;next} /^\[/{f=0} f && /^version = /{gsub(/version = |"/,""); print; exit}' Cargo.toml)"
++[ -n "$cargo_v" ] || fail "could not parse [workspace.package] version from Cargo.toml"
++
++pkg_v="$(jq -r .version package.json)"
++[ "$cargo_v" = "$pkg_v" ] || fail "Cargo.toml ($cargo_v) != package.json ($pkg_v)"
++
++tauri_has_v="$(jq 'has("version")' src-tauri/tauri.conf.json)"
++[ "$tauri_has_v" = "false" ] || fail "src-tauri/tauri.conf.json declares 'version'; it must inherit from Cargo.toml (D87)"
++
++if [ "$#" -ge 1 ]; then
++  [ "$1" = "v$cargo_v" ] || fail "tag $1 != v$cargo_v"
++fi
++
++echo "version-sync: OK ($cargo_v)"
+diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
+index 98dac77..da5be48 100644
+--- a/src-tauri/tauri.conf.json
++++ b/src-tauri/tauri.conf.json
+@@ -1,14 +1,13 @@
+ {
+   "$schema": "https://schema.tauri.app/config/2",
+   "productName": "Muxsmith",
+-  "version": "0.1.0",
+   "identifier": "io.github.senolfeldmann.muxsmith",
+   "build": {
+     "beforeDevCommand": "pnpm dev",
+     "beforeBuildCommand": "pnpm build",
+     "devUrl": "http://localhost:5173",
+     "frontendDist": "../dist"
+   },
+   "app": {
+     "windows": [
+       {

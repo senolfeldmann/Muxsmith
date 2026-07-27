@@ -1,0 +1,1031 @@
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push less than a minute ago
+
+JOBS
+* deny (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  * Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  * Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Install mkvtoolnix (gated integration tests, Linux)
+  * Install mkvtoolnix (gated integration tests, Windows)
+  * Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  * Install pinned Rust toolchain
+  * Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Install mkvtoolnix (gated integration tests, Linux)
+  * Install mkvtoolnix (gated integration tests, Windows)
+  * Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (macos-15) (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  * Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Install mkvtoolnix (gated integration tests, Linux)
+  * Install mkvtoolnix (gated integration tests, Windows)
+  * Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push less than a minute ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Install mkvtoolnix (gated integration tests, Linux)
+  * Install mkvtoolnix (gated integration tests, Windows)
+  * Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  * Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Install mkvtoolnix (gated integration tests, Linux)
+  * Install mkvtoolnix (gated integration tests, Windows)
+  * Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (macos-15) (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 1 minute ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  * Install mkvtoolnix (gated integration tests, Windows)
+  * Install mkvtoolnix (gated integration tests, macOS)
+  * Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (macos-15) (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  * Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  * Install frontend dependencies
+  * Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (macos-15) (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  * Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (macos-15) (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+✓ test (macos-15) in 2m29s (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+
+ANNOTATIONS
+! The following taps are not trusted:
+  aws/tap
+
+Homebrew is currently ignoring formulae, casks and commands from these taps because tap trust is required.
+Untap them with:
+  brew untap aws/tap
+Trust specific formulae, casks and commands with:
+  brew trust --formula <user>/<tap>/<formula>
+  brew trust --cask <user>/<tap>/<cask>
+  brew trust --command <user>/<tap>/<command>
+Whole-tap trust is broader and includes all current and future formulae,
+casks and commands from the listed taps. Trust whole taps with:
+  brew trust aws/tap
+To disable trust checks:
+  export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+This is not recommended and will be removed in a later release.
+For more information, see:
+  https://docs.brew.sh/Tap-Trust
+
+test (macos-15): .github#8
+
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (ubuntu-26.04) (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  ✓ TS bindings are not stale
+  ✓ i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  * Run cargo test --workspace
+  * cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+✓ test (macos-15) in 2m29s (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+
+ANNOTATIONS
+! The following taps are not trusted:
+  aws/tap
+
+Homebrew is currently ignoring formulae, casks and commands from these taps because tap trust is required.
+Untap them with:
+  brew untap aws/tap
+Trust specific formulae, casks and commands with:
+  brew trust --formula <user>/<tap>/<formula>
+  brew trust --cask <user>/<tap>/<cask>
+  brew trust --command <user>/<tap>/<command>
+Whole-tap trust is broader and includes all current and future formulae,
+casks and commands from the listed taps. Trust whole taps with:
+  brew trust aws/tap
+To disable trust checks:
+  export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+This is not recommended and will be removed in a later release.
+For more information, see:
+  https://docs.brew.sh/Tap-Trust
+
+test (macos-15): .github#8
+
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 4 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ test (ubuntu-26.04) in 4m4s (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  ✓ TS bindings are not stale
+  ✓ i18n completeness gate
+  ✓ Install Playwright Chromium
+  ✓ Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+✓ test (macos-15) in 2m29s (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+
+ANNOTATIONS
+! The following taps are not trusted:
+  aws/tap
+
+Homebrew is currently ignoring formulae, casks and commands from these taps because tap trust is required.
+Untap them with:
+  brew untap aws/tap
+Trust specific formulae, casks and commands with:
+  brew trust --formula <user>/<tap>/<formula>
+  brew trust --cask <user>/<tap>/<cask>
+  brew trust --command <user>/<tap>/<command>
+Whole-tap trust is broader and includes all current and future formulae,
+casks and commands from the listed taps. Trust whole taps with:
+  brew trust aws/tap
+To disable trust checks:
+  export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+This is not recommended and will be removed in a later release.
+For more information, see:
+  https://docs.brew.sh/Tap-Trust
+
+test (macos-15): .github#8
+
+Refreshing run status every 30 seconds. Press Ctrl+C to quit.
+
+* master ci · 30261258685
+Triggered via push about 4 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ test (ubuntu-26.04) in 4m4s (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  ✓ TS bindings are not stale
+  ✓ i18n completeness gate
+  ✓ Install Playwright Chromium
+  ✓ Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+* test (windows-2025) (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  * Assert no gated tests silently skip (mkvmerge missing)
+  * Run pnpm lint
+  * Run pnpm build
+  * TS bindings are not stale
+  * i18n completeness gate
+  * Install Playwright Chromium
+  * Playwright smoke (GUI e2e)
+  * Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  * Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+✓ test (macos-15) in 2m29s (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+
+ANNOTATIONS
+! The following taps are not trusted:
+  aws/tap
+
+Homebrew is currently ignoring formulae, casks and commands from these taps because tap trust is required.
+Untap them with:
+  brew untap aws/tap
+Trust specific formulae, casks and commands with:
+  brew trust --formula <user>/<tap>/<formula>
+  brew trust --cask <user>/<tap>/<cask>
+  brew trust --command <user>/<tap>/<command>
+Whole-tap trust is broader and includes all current and future formulae,
+casks and commands from the listed taps. Trust whole taps with:
+  brew trust aws/tap
+To disable trust checks:
+  export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+This is not recommended and will be removed in a later release.
+For more information, see:
+  https://docs.brew.sh/Tap-Trust
+
+test (macos-15): .github#8
+
+✓ master ci · 30261258685
+Triggered via push about 5 minutes ago
+
+JOBS
+✓ deny in 47s (ID 89961423789)
+  ✓ Set up job
+  ✓ Build EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Run EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ ledger-lint in 10s (ID 89961423825)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ ledger-lint (house YAML invariants)
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ test (ubuntu-26.04) in 4m4s (ID 89961423830)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  ✓ Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  ✓ TS bindings are not stale
+  ✓ i18n completeness gate
+  ✓ Install Playwright Chromium
+  ✓ Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ test (windows-2025) in 5m12s (ID 89961423910)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  ✓ Install mkvtoolnix (gated integration tests, Windows)
+  - Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+✓ test (macos-15) in 2m29s (ID 89961423924)
+  ✓ Set up job
+  ✓ Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Install pinned Rust toolchain
+  ✓ Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  - Install mkvtoolnix (gated integration tests, Linux)
+  - Install mkvtoolnix (gated integration tests, Windows)
+  ✓ Install mkvtoolnix (gated integration tests, macOS)
+  - Install Tauri Linux build dependencies
+  ✓ Run jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+  ✓ Install frontend dependencies
+  ✓ Run cargo fmt --all --check
+  ✓ Run cargo clippy --workspace --all-targets -- -D warnings
+  ✓ Run cargo test --workspace
+  ✓ cargo doc (rustdoc warnings as errors)
+  ✓ Assert no gated tests silently skip (mkvmerge missing)
+  ✓ Run pnpm lint
+  ✓ Run pnpm build
+  - TS bindings are not stale
+  - i18n completeness gate
+  - Install Playwright Chromium
+  - Playwright smoke (GUI e2e)
+  ✓ Post Run Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+  ✓ Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+  ✓ Complete job
+
+ANNOTATIONS
+! The following taps are not trusted:
+  aws/tap
+
+Homebrew is currently ignoring formulae, casks and commands from these taps because tap trust is required.
+Untap them with:
+  brew untap aws/tap
+Trust specific formulae, casks and commands with:
+  brew trust --formula <user>/<tap>/<formula>
+  brew trust --cask <user>/<tap>/<cask>
+  brew trust --command <user>/<tap>/<command>
+Whole-tap trust is broader and includes all current and future formulae,
+casks and commands from the listed taps. Trust whole taps with:
+  brew trust aws/tap
+To disable trust checks:
+  export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+This is not recommended and will be removed in a later release.
+For more information, see:
+  https://docs.brew.sh/Tap-Trust
+
+test (macos-15): .github#8
+
+CI WATCH EXIT: 0

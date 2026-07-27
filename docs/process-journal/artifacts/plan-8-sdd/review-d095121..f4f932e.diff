@@ -1,0 +1,38 @@
+# Review package: d095121..f4f932e
+
+## Commits
+f4f932e fix(gui): gate ParamValue test import with cfg(unix)
+
+## Files changed
+ src-tauri/src/lib.rs | 3 +++
+ 1 file changed, 3 insertions(+)
+
+## Diff
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index a5a8f85..0e8884d 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -581,20 +581,23 @@ pub fn run() {
+             run::get_job_log,
+         ])
+         .on_window_event(run::on_close_requested)
+         .run(tauri::generate_context!())
+         .expect("error while running muxsmith-gui");
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    // Only the #[cfg(unix)] fake-script test consumes the param type; an
++    // unconditional import fails clippy -D warnings on Windows (unused).
++    #[cfg(unix)]
+     use crate::error::ParamValue;
+     use std::process::Command;
+ 
+     /// Mirrors `muxsmith-core`'s identical `fake_mkvmerge` test helper
+     /// (`crates/muxsmith-core/tests/mkvmerge_runtime.rs`): a fake
+     /// `mkvmerge` that answers `--version` with a fixed line and fails
+     /// every other invocation, so the mkvmerge-resolution branches
+     /// (`Mkvmerge::detect`) are tested deterministically without a real
+     /// mkvmerge on the test machine.
+     #[cfg(unix)]

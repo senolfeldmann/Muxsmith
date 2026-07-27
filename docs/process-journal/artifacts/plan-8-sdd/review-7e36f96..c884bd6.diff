@@ -1,0 +1,138 @@
+# Review package: 7e36f96..c884bd6233355deedf1e89f808619b711f01af1b
+
+## Commits
+c884bd6 release: bundle metadata + pinned upgradeCode (D86); CLI sidecar via build-flavor overlay, staging dir ignored, local repro documented (D82)
+
+## Files changed
+ .gitignore                       |  1 +
+ BUILDING.md                      | 19 +++++++++++++++++++
+ src-tauri/tauri.bundle.conf.json |  5 +++++
+ src-tauri/tauri.conf.json        | 25 +++++++++++++++++++++++--
+ 4 files changed, 48 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/.gitignore b/.gitignore
+index c4e57c3..c47b200 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,16 +6,17 @@ gh-log.md
+ # docs/process-journal/artifacts/handoffs/ at plan closes; never committed live
+ /HANDOFF.md
+ 
+ # parallel SDD worktree streams
+ .worktrees/
+ 
+ # JS/Tauri frontend
+ node_modules/
+ dist/
+ src-tauri/gen/
++src-tauri/binaries/
+ 
+ # Task 12: Playwright + the e2e mock harness build (never ships in the
+ # Tauri binary -- see e2e/vite.harness.config.ts)
+ e2e/.generated/
+ playwright-report/
+ test-results/
+diff --git a/BUILDING.md b/BUILDING.md
+index e83af34..baaaf48 100644
+--- a/BUILDING.md
++++ b/BUILDING.md
+@@ -87,20 +87,39 @@ other rustdoc warnings), which presence-only enforcement cannot catch.
+ pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
+ pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
+ pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
+ ```
+ 
+ CI (`.github/workflows/ci.yml`) runs the same five-part Rust gate plus
+ `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and `pnpm test:e2e` on every
+ push/PR (nine parts total); `cargo deny check` runs as an
+ independent job.
+ 
++### Reproducing a release bundle locally
++
++Release bundles add the CLI as a bundled sidecar via a build-flavor
++overlay (`src-tauri/tauri.bundle.conf.json`); plain `pnpm exec tauri
++build` deliberately omits it so dev/test builds need no staging step.
++To reproduce what CI ships:
++
++```bash
++cargo build --release -p muxsmith-cli
++triple="$(rustc -vV | sed -n 's/^host: //p')"
++mkdir -p src-tauri/binaries
++cp "target/release/muxsmith$( [ "$(uname -o 2>/dev/null)" = Msys ] && echo .exe )" \
++   "src-tauri/binaries/muxsmith-$triple$( [ "$(uname -o 2>/dev/null)" = Msys ] && echo .exe )"
++pnpm exec tauri build --ci -c src-tauri/tauri.bundle.conf.json
++```
++
++Do not change `bundle.windows.wix.upgradeCode` in `tauri.conf.json`:
++it is Muxsmith's permanent MSI upgrade identity (design D86).
++
+ ## Tooling quirks
+ 
+ - vue-tsc + `withDefaults` with `T | null`-typed props has a known quirk
+   (surfaced in Plan 5, task 11; details in the archived task-11 report,
+   docs/process-journal/artifacts/plan-5-sdd/). Check there before fighting
+   a TS error on a withDefaults call.
+ 
+ ## Documentation standard
+ 
+ - Rustdoc states MEANING, not a name echo: what the item is for, its
+diff --git a/src-tauri/tauri.bundle.conf.json b/src-tauri/tauri.bundle.conf.json
+new file mode 100644
+index 0000000..762e0c9
+--- /dev/null
++++ b/src-tauri/tauri.bundle.conf.json
+@@ -0,0 +1,5 @@
++{
++  "bundle": {
++    "externalBin": ["binaries/muxsmith"]
++  }
++}
+diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
+index da5be48..9b60ba2 100644
+--- a/src-tauri/tauri.conf.json
++++ b/src-tauri/tauri.conf.json
+@@ -23,20 +23,41 @@
+         "style-src": "'self'",
+         "img-src": "'self'",
+         "connect-src": "ipc: http://ipc.localhost",
+         "base-uri": "'none'",
+         "form-action": "'none'"
+       }
+     }
+   },
+   "bundle": {
+     "active": true,
+-    "targets": "all",
++    "targets": ["msi", "dmg", "deb", "rpm", "appimage"],
++    "publisher": "Şenol Feldmann",
++    "copyright": "Copyright (c) 2026 Şenol Feldmann",
++    "homepage": "https://github.com/senolfeldmann/Muxsmith",
++    "license": "MIT",
++    "licenseFile": "../LICENSE",
++    "category": "Video",
++    "shortDescription": "Rule-based bulk MKV muxing tool",
++    "longDescription": "Declare how your MKVs should look. Muxsmith forges the whole library into shape - one profile, hundreds of files, zero clicking.",
+     "icon": [
+       "icons/32x32.png",
+       "icons/128x128.png",
+       "icons/128x128@2x.png",
+       "icons/icon.icns",
+       "icons/icon.ico"
+-    ]
++    ],
++    "windows": {
++      "wix": {
++        "upgradeCode": "9262b417-b687-5ea3-ace1-18b9d51b215f",
++        "language": ["en-US"]
++      }
++    },
++    "macOS": {
++      "minimumSystemVersion": "11.0"
++    },
++    "linux": {
++      "deb": { "section": "video", "recommends": ["mkvtoolnix"] },
++      "rpm": { "recommends": ["mkvtoolnix"] }
++    }
+   }
+ }

@@ -4051,7 +4051,7 @@ entries:
   count: 3
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T6 rehearsal report concern 6 (task-6-report.md): R1 wants the gate-green log to name the FOUND CI RUN but the emitter echoes only the SHA - an observable/emitter wording mismatch that survived the checklist walk because both mention the gate; one-line design/checklist alignment at the whole-branch fix wave"}
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 M1 (design-review-round-1.md): checklist R5's updater-glob observable had no producing step in the section-2 workflow that section 11 freezes - unexecutable as written; the reviewer's over-restriction analysis names the one-line authoring check; fix round resolves"}
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 M1 (docs/process-journal/artifacts/plan-8-sdd/design-review-round-1.md): checklist R5's updater-glob observable had no producing step in the section-2 workflow that section 11 freezes - unexecutable as written; the reviewer's over-restriction analysis names the one-line authoring check; fix round resolves"}
     - {date: "2026-07-23", kind: reinforced, ref: "plan-8 fix round (author report): applying the walk to all ten checklist items caught a SECOND emitter-less observable the review had not flagged (R1's 'pick assertion visibly ran'), fixed in the same round via pick's stderr log - the handle catches beyond the instance that motivated it"}
 - id: deps-first-party-pinned-over-convenience
   kind: pattern
@@ -4080,7 +4080,7 @@ entries:
   promoted_at: null
   count: 2
   occurrences:
-    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 m3 (design-review-round-1.md): a gh-help quote in the design was not verbatim against the live command output; harvest names the pattern (decorative corroboration got less rigor than the immaculate load-bearing verification in the same document); fix round corrects"}
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 design review round 1 m3 (docs/process-journal/artifacts/plan-8-sdd/design-review-round-1.md): a gh-help quote in the design was not verbatim against the live command output; harvest names the pattern (decorative corroboration got less rigor than the immaculate load-bearing verification in the same document); fix round corrects"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T1 verdict m1 + HARVEST H2 (task-1-verdict.md): the report typeset the conclusion NO-WARNINGS-OR-ERRORS inside a $-command block, making an unfalsifiable claim look like a measurement; claim true, form corrected by rule - statement widened to output blocks"}
 - id: e2e-diagnostic-rendered-is-wire-ballast
   kind: pattern
@@ -4095,7 +4095,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (docs/process-journal/artifacts/plan-7.5-sdd/plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
 - id: ci-additive-only-check-numstat
   kind: pattern
   tier: 1
@@ -4109,7 +4109,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 m1 (plan-review-round-1.md): Task 5 Step 5's grep-based additive-only check named defective, numstat idiom prescribed; reviewer flags the shape as a conventions candidate on recurrence"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 m1 (docs/process-journal/artifacts/plan-8-sdd/plan-review-round-1.md): Task 5 Step 5's grep-based additive-only check named defective, numstat idiom prescribed; reviewer flags the shape as a conventions candidate on recurrence"}
 - id: plan-interfaces-absent-by-construction
   kind: pattern
   tier: 1
@@ -4123,7 +4123,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-27", kind: decided, ref: "plan-8 plan review round 1 HARVEST (plan-review-round-1.md): Task 4's Interfaces note named the transferable pattern for every parallel-stream plan"}
+    - {date: "2026-07-27", kind: decided, ref: "plan-8 plan review round 1 HARVEST (docs/process-journal/artifacts/plan-8-sdd/plan-review-round-1.md): Task 4's Interfaces note named the transferable pattern for every parallel-stream plan"}
 - id: proc-readonly-reviewer-falsification
   kind: pattern
   tier: 1
@@ -4207,7 +4207,7 @@ entries:
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 design amendment A1 (delta review round 3, design-review-round-1.md): the frozen section-2 fence carried an unquoted ': ' scalar through four review rounds; T4's parse check hit it, controller ruled Option A, author amended with red-green parse proof; the design reviewer's own harvest names the missed parser load"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 design amendment A1 (delta review round 3, docs/process-journal/artifacts/plan-8-sdd/design-review-round-1.md): the frozen section-2 fence carried an unquoted ': ' scalar through four review rounds; T4's parse check hit it, controller ruled Option A, author amended with red-green parse proof; the design reviewer's own harvest names the missed parser load"}
 - id: inline-wrapper-keeps-try-scope
   kind: pattern
   tier: 1
@@ -4422,3 +4422,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 wording fix round (wording-fix-round-report.md, implementer's own process note): the brief prescribed two commits but never restated SI-4, so the implementer committed while explicitly flagging the tension with its standing instruction and justifying the override from the SDD workflow and its own predecessor commits. Correct outcome, reached by reasoning that the dispatch should have made unnecessary"}
+- id: reviewer-instruments-live-where-the-implementer-cannot-write
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A reviewer reproducing an implementer's empirical claim builds its instruments at a path the implementer could not have written - a fresh directory, not the shared session scratchpad both agents default to. Independence of CONTEXT is not independence of TOOLING: agents in one session share a filesystem, converge on the same obvious scratch paths, and a re-run that silently executes the implementer's own harness produces agreement by construction. Same shape as re-running someone else's search pattern, one level up: the agreement is guaranteed rather than earned. Trigger is readable: you are about to reproduce a claim using a file you did not create in this pass."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 owner-wording delta verdict, reviewer self-disclosure (owner-wording-verdict-delta.md): the fix-round implementer had written its shim and its copy of the upstream shasum to the exact scratchpad paths the reviewer had used minutes earlier, so the reviewer's first tamper-matrix re-run executed the implementer's instrument while it believed it was reproducing independently. Caught only because an error string changed between the two sessions; re-fetched upstream to a clean path, diffed untampered, rebuilt the shim in isolation, re-ran everything"}

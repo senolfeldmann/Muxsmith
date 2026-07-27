@@ -1,0 +1,366 @@
+   Compiling muxsmith-gui v0.1.0 (/home/senol/Git/Muxsmith/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.56s
+   Compiling muxsmith-gui v0.1.0 (/home/senol/Git/Muxsmith/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.20s
+     Running unittests src/lib.rs (target/debug/deps/muxsmith_cli-0ee7dc9eaca28592)
+
+running 36 tests
+test commands::run::tests::job_exit_code_folds_worst_state ... ok
+test commands::run::tests::finished_failed_renders_exit_code ... ok
+test commands::run::tests::a_jump_past_several_thresholds_renders_each_one_in_order ... ok
+test commands::run::tests::finished_failed_without_an_exit_code_falls_back_to_n_a ... ok
+test commands::run::tests::finished_cancelled_renders_without_duration_or_code ... ok
+test commands::run::tests::finished_ok_renders_duration ... ok
+test commands::run::tests::finished_warning_renders_count_and_duration ... ok
+test commands::run::tests::finished_warning_with_exactly_one_warning_renders_singular ... ok
+test commands::tests::per_file_diagnostics_do_not_repeat_the_filename_the_header_prints ... ok
+test commands::tests::batch_summary_renders_the_plural_form_for_two_or_more_matched_files ... ok
+test commands::tests::per_file_diagnostics_print_errors_before_warnings ... ok
+test commands::tests::batch_summary_renders_the_singular_form_for_one_matched_file ... ok
+test commands::validate::tests::summary_renders_the_singular_form_for_exactly_one_of_each_severity ... ok
+test commands::run::tests::started_line_renders_1_based_index_total_and_output ... ok
+test i18n::tests::message_missing_in_requested_locale_falls_back_per_message ... ok
+test i18n::tests::numeric_diagnostic_params_list_is_mirrored_to_ts_side ... ok
+test commands::run::tests::thresholds_track_independently_per_job_index ... ok
+test i18n::tests::diagnostic_with_file_includes_the_file_path ... ok
+test commands::run::tests::warning_and_error_events_render_a_notice_line_with_the_text ... ok
+test i18n::tests::invalid_locale_falls_back_to_en_and_renders ... ok
+test commands::validate::tests::summary_renders_the_plural_form_for_two_or_more ... ok
+test commands::run::tests::repeated_or_regressing_percent_does_not_reprint ... ok
+test commands::run::tests::summary_line_counts_every_state ... ok
+test commands::run::tests::progress_prints_only_at_25_50_75_crossings ... ok
+test i18n::tests::diagnostic_without_file_omits_it_and_still_renders ... ok
+test i18n::tests::unknown_message_id_falls_back_to_raw_id ... ok
+test i18n::tests::suggestion_partition_overflow_branch_renders_singular_and_plural ... ok
+test i18n::tests::suggestions_capped_renders_singular_and_plural ... ok
+test i18n::tests::de_request_renders_de_message ... ok
+test i18n::tests::unknown_tag_renders_en_chain ... ok
+test i18n::tests::suggestion_partition_group_branch_renders_singular_and_plural ... ok
+test i18n::tests::unsupported_source_donor_variant_names_the_donor_file ... ok
+test i18n::tests::unsupported_source_kind_omitted_falls_back_to_primary_variant ... ok
+test i18n::tests::unsupported_source_primary_variant_renders_exactly_as_before ... ok
+test i18n::tests::unknown_property_skew_renders_property_and_versions ... ok
+test i18n::tests::region_qualified_de_resolves_de_row ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/muxsmith-7b8783f3fc9d7f12)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/catalog_completeness.rs (target/debug/deps/catalog_completeness-a5607c889ef18128)
+
+running 4 tests
+test every_diag_code_renders_without_leftover_placeholders ... ok
+test every_diag_code_has_a_catalog_message ... ok
+test every_cli_ftl_key_is_a_diag_code_or_allowlisted ... ok
+test invalid_changes_language_diagnostic_renders_without_placeholder_leak ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cli_schema.rs (target/debug/deps/cli_schema-2eb468e6f1c19037)
+
+running 3 tests
+test no_args_shows_usage_and_fails ... ok
+test keyword_domains_project_as_closed_enums_not_bare_strings ... ok
+test schema_prints_json_schema_and_exits_zero ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/cli_validate.rs (target/debug/deps/cli_validate-a9cd71cd377cb821)
+
+running 5 tests
+test missing_file_is_parse_error_exit_two ... ok
+test json_output_is_machine_readable ... ok
+test invalid_profile_exits_two_and_renders_messages ... ok
+test valid_profile_exits_zero_with_ok_message ... ok
+test warnings_only_exits_one ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/dry_run_cli.rs (target/debug/deps/dry_run_cli-54d882b8b8c9cf2d)
+
+running 11 tests
+test dry_run_json_emits_a_document_on_profile_load_failure ... ok
+test dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing ... ok
+test dry_run_json_emits_a_document_when_the_language_query_fails ... ok
+test dry_run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure ... ok
+test dry_run_human_surfaces_config_diagnostics_when_mkvmerge_missing ... ok
+test dry_run_surfaces_config_time_invalid_regex ... ok
+test dry_run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent ... ok
+test dry_run_plans_a_single_file ... ok
+test dry_run_json_surfaces_empty_plan_batch_report ... ok
+test dry_run_json_diagnostics_all_carry_rendered_text ... ok
+test dry_run_on_collision_flag_overrides_default_error_policy ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running tests/run_cli.rs (target/debug/deps/run_cli-8fdc519ddc028141)
+
+running 11 tests
+test missing_profile_file_exits_two_before_any_planning ... ok
+test run_json_emits_a_document_on_profile_load_failure ... ok
+test run_json_surfaces_the_mkvmerge_not_found_document ... ok
+test run_json_emits_a_document_when_the_language_query_fails ... ok
+test bad_regex_profile_with_missing_mkvmerge_exits_two_without_executing_a_job ... ok
+test run_human_mode_surfaces_config_diagnostics_on_a_language_query_failure ... ok
+test run_json_on_specs_empty_from_a_bad_regex_still_emits_a_document_with_empty_jobs ... ok
+test bad_regex_profile_exits_two_without_executing_a_job ... ok
+test run_json_on_specs_empty_from_an_empty_source_dir_exits_clean_with_a_zeroed_summary ... ok
+test run_human_mode_speaks_on_an_empty_source_dir_instead_of_staying_silent ... ok
+test run_json_on_a_real_mux_reports_a_populated_jobs_array_and_summary ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/run_live.rs (target/debug/deps/run_live-1945c38dbfb39221)
+
+running 4 tests
+test live_run_muxes_two_sources_and_reports_exit_zero ... ok
+test readme_passthrough_recipe_with_title_template_survives_dry_run_and_run ... ok
+test zero_rule_keep_profile_is_a_pure_passthrough ... ok
+test live_run_rerun_with_on_collision_skip_exits_one_and_leaves_outputs_untouched ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+     Running unittests src/lib.rs (target/debug/deps/muxsmith_core-d69417be6a729fbb)
+
+running 119 tests
+test capability::runtime::tests::language_index_from_rows_builds_directly ... ok
+test capability::runtime::tests::platform_candidates_are_verified_against_mkvtoolnix_packaging ... ok
+test capability::runtime::tests::version_pair_parses_two_component_version ... ok
+test capability::runtime::tests::version_pair_rejects_unparseable_string ... ok
+test capability::runtime::tests::version_pair_parses_three_component_version ... ok
+test capability::tests::codec_kind_is_virtual_matchable ... ok
+test capability::runtime::tests::parses_list_languages_into_normalizer ... ok
+test capability::tests::matchable_types_from_generated_table ... ok
+test capability::tests::attachment_properties_are_defined ... ok
+test capability::tests::settable_maps_to_mkvmerge_options ... ok
+test capability::runtime::tests::parses_list_types_extensions ... ok
+test capability::tests::value_domains_are_closed_for_type_and_codec_kind ... ok
+test executor::job::tests::delete_partial_failure_surfaces_into_errors ... ok
+test executor::job::tests::exit_one_is_warning_with_captured_lines_and_output_kept ... ok
+test executor::job::tests::progress_lines_surface_as_percent ... ok
+test executor::job::tests::exit_zero_is_ok_and_output_kept ... ok
+test executor::job::tests::exit_two_is_failed_and_partial_deleted ... ok
+test executor::job::tests::killed_under_cancel_is_cancelled_and_partial_deleted ... ok
+test executor::job::tests::pre_spawn_cancellation_skips_spawn_and_deletes_nothing ... ok
+test executor::job::tests::parent_dir_created_before_spawn ... ok
+test discovery::tests::resolve_locator_matches_by_identifier ... ok
+test executor::spawn::tests::resolve_wait_passes_the_raw_code_through_when_not_killed ... ok
+test executor::spawn::tests::resolve_wait_returns_none_when_killed_even_if_the_os_reports_a_code ... ok
+test identify::tests::absent_attachments_and_chapters_default_empty ... ok
+test identify::tests::attachment_get_exposes_match_properties ... ok
+test identify::tests::attachment_with_wrong_typed_id_is_dropped ... ok
+test identify::tests::display_is_a_terse_phrase_not_the_debug_dump ... ok
+test identify::tests::attachment_without_properties_key_has_no_uid ... ok
+test identify::tests::chapters_non_numeric_num_entries_is_skipped_not_erroring ... ok
+test executor::spawn::tests::read_next_line_survives_non_utf8_bytes_without_truncating ... ok
+test identify::tests::get_unifies_toplevel_and_nested_properties ... ok
+test identify::tests::parses_tracks_and_container ... ok
+test executor::spawn::tests::fake_killer_ends_stream_and_wait_returns_none ... ok
+test executor::job::tests::spawn_failure_is_failed_but_keeps_preexisting_output ... ok
+test identify::tests::prop_value_from_json_scalars_only ... ok
+test identify::tests::parses_attachments_with_optional_fields ... ok
+test executor::spawn::tests::live_killer_then_wait_returns_none ... ok
+test executor::queue::tests::poisoned_mutex_recovers_state_written_before_the_panic ... ok
+test matcher::tests::absent_non_boolean_property_still_does_not_match ... ok
+test executor::spawn::tests::fake_spawner_scripts_lines_and_exit ... ok
+test matcher::tests::absent_boolean_property_compares_equal_to_false ... ok
+test executor::queue::tests::worker_count_is_capped_at_spec_count ... ok
+test discovery::tests::duplicate_identifier_is_warned ... ok
+test matcher::tests::any_and_not_recurse ... ok
+test matcher::tests::exact_matches_type_and_flags ... ok
+test discovery::tests::non_recursive_scan_skips_subdirs ... ok
+test matcher::tests::b8_raw_language_is_byte_literal_no_normalization ... ok
+test executor::queue::tests::sequential_fifo_order_and_events ... ok
+test identify::tests::unrecognized_container_is_not_identifiable ... ok
+test discovery::tests::multiple_identifier_matches_uses_first ... ok
+test matcher::tests::lang_eq_canonical_forms_match ... ok
+test matcher::tests::lang_eq_preserves_meaningful_distinctions ... ok
+test matcher::tests::b5_raw_unknown_present_matches_untyped ... ok
+test matcher::tests::b6_raw_absent_unknown_does_not_match_no_false_when_absent ... ok
+test matcher::tests::empty_expression_matches_everything ... ok
+test matcher::tests::matches_is_generic_over_matchable ... ok
+test matcher::tests::language_normalizes_iso_and_bcp47_against_both_fields ... ok
+test matcher::tests::attachment_matching_uses_the_same_algebra ... ok
+test discovery::tests::symlinked_directory_is_not_recursed_into ... ok
+test matcher::tests::language_falls_back_to_raw_compare_when_unknown ... ok
+test matcher::tests::numeric_exact_compares_across_int_and_float ... ok
+test matcher::tests::present_boolean_property_still_matches_its_real_value ... ok
+test executor::queue::tests::jobs_n_bounds_concurrency ... ok
+test matcher::tests::codec_kind_is_codec_id_prefix_match ... ok
+test planner::tests::chapter_source_variants_serialize_to_the_expected_kind_tagged_shape ... ok
+test planner::tests::duplicate_signature_diagnostic_is_a_regression_not_a_collapse ... ok
+test planner::tests::primary_attachments_variants_serialize_to_the_expected_kind_tagged_shape ... ok
+test planner::tests::title_action_variants_serialize_to_the_expected_kind_tagged_shape ... ok
+test matcher::tests::b7_raw_int_float_cross_compare ... ok
+test profile::match_expr::tests::empty_expression_reports_empty ... ok
+test profile::match_expr::tests::parses_flat_expression ... ok
+test discovery::tests::broken_symlink_is_skipped_silently ... ok
+test profile::lint::tests::disjoint_exact_values_are_not_flagged ... ok
+test profile::lint::tests::identical_exact_rules_are_provable_overlap ... ok
+test profile::lint::tests::external_source_rules_are_skipped ... ok
+test profile::match_expr::tests::parses_nested_any_and_not ... ok
+test profile::match_expr::tests::rejects_unknown_keys ... ok
+test profile::match_expr::tests::scalar_type_names ... ok
+test profile::lint::tests::rules_with_substring_are_skipped ... ok
+test profile::lint::tests::rules_with_negations_or_regex_are_skipped ... ok
+test profile::lint::tests::subset_conditions_are_provable_overlap ... ok
+test profile::lint::tests::reversed_direction_overlap_is_flagged ... ok
+test profile::lint::tests::rules_with_any_are_skipped ... ok
+test discovery::tests::multi_hop_symlink_chain_is_discovered ... ok
+test report::tests::all_keys_are_unique ... ok
+test report::tests::all_keys_match_serde_encoding ... ok
+test report::tests::diag_code_keys_are_kebab_case ... ok
+test report::tests::diagnostic_builder_sets_fields ... ok
+test report::tests::f2_codes_are_registered_with_keys ... ok
+test report::tests::diagnostic_serializes_with_snake_case_severity_and_kebab_code ... ok
+test report::tests::plan2_codes_are_registered_with_keys ... ok
+test report::tests::severity_orders_info_warning_error ... ok
+test report::tests::with_severity_overrides_constructor_severity ... ok
+test report::tests::with_claimants_populates_structural_field_and_json_from_one_slice ... ok
+test report::tests::worst_severity_picks_error_over_warning ... ok
+test template::tests::case_sensitive_flag_controls_inline_i ... ok
+test template::tests::double_braces_are_literal ... ok
+test template::tests::empty_name_with_filter_is_empty_field ... ok
+test template::tests::lone_closing_brace_is_literal_and_lone_open_is_error ... ok
+test template::tests::int_filter_keeps_single_zero ... ok
+test template::tests::int_filter_on_missing_field_renders_empty ... ok
+test template::tests::parses_fields_and_filters ... ok
+test template::tests::rejects_unknown_filter_and_unclosed_brace ... ok
+test template::tests::renders_literal_with_filters ... ok
+test discovery::tests::scans_primaries_and_extracts_named_groups ... ok
+test template::tests::regex_mode_escapes_interpolated_values ... ok
+test matcher::tests::substring_is_case_insensitive_and_regex_is_literal ... ok
+test discovery::tests::discovers_symlinked_primary_file ... ok
+test template::tests::regex_mode_matches_spec_examples ... ok
+test executor::queue::tests::worker_panic_is_reported_as_failed_not_cancelled ... ok
+test executor::queue::tests::cancel_job_kills_exactly_that_job_others_continue ... ok
+test executor::queue::tests::no_fail_fast_continues_past_failure ... ok
+test executor::queue::tests::soft_fail_fast_cancels_queued_but_not_inflight ... ok
+test executor::queue::tests::outcomes_index_aligned ... ok
+test executor::queue::tests::cancel_job_during_spawn_window_is_not_lost ... ok
+test executor::queue::tests::cancel_job_before_dequeue_skips_start_but_still_reports_finished ... ok
+test executor::queue::tests::jobs_far_exceeding_spec_count_still_completes_with_correct_outcomes ... ok
+test executor::queue::tests::fail_fast_triggers_on_a_non_first_failing_job ... ok
+test executor::queue::tests::cancel_kills_inflight_and_cancels_queued ... ok
+
+test result: ok. 119 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/command.rs (target/debug/deps/command-43fef9a9fc92f49b)
+
+running 15 tests
+test attachments_drop_all_on_primary ... ok
+test attachments_keep_all_emits_no_flag_on_primary ... ok
+test add_files_emit_global_attach_file ... ok
+test attachments_subset_on_primary_no_attachments_on_donor ... ok
+test chapters_drop_emits_no_chapters_on_every_group_and_no_global_flag ... ok
+test boolean_and_string_value_encoding ... ok
+test chapters_external_emits_global_chapters_and_no_chapters_on_every_group ... ok
+test donor_ordering_keep_mode_with_mixed_none_and_some_assignments ... ok
+test donor_ordering_drop_mode_with_mixed_none_and_some_assignments ... ok
+test global_and_single_video_group ... ok
+test keep_unmatched_donor_trails_primary_track_order ... ok
+test keep_unmatched_suppresses_primary_selection_flags ... ok
+test unmatched_donor_rule_opens_no_input_group ... ok
+test per_track_properties_and_multi_group ... ok
+test tags_dropped_emit_flags_on_every_group ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/command_integration.rs (target/debug/deps/command_integration-048105ec572b419e)
+
+running 4 tests
+test reference_example_end_to_end ... ok
+mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit
+'/tmp/.tmpqMHPUK/primary.mkv': Using the demultiplexer for the format 'Matroska'.
+'/tmp/.tmpqMHPUK/donor.mkv': Using the demultiplexer for the format 'Matroska'.
+'/tmp/.tmpqMHPUK/primary.mkv' track 0: Using the output module for the format 'text subtitles'.
+'/tmp/.tmpqMHPUK/primary.mkv' track 1: Using the output module for the format 'text subtitles'.
+'/tmp/.tmpqMHPUK/donor.mkv' track 0: Using the output module for the format 'text subtitles'.
+The file '/tmp/.tmpqMHPUK/out/out.mkv' has been opened for writing.
+Progress: 0%Progress: 100%The cue entries (the index) are being written...
+Multiplexing took 0 seconds.
+test live_keep_donor_trails_primary ... ok
+mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit
+mkvmerge v100.0 ('Do Hot Girls Like Chords') 64-bit
+'/tmp/.tmpiGtidG/source.mkv': Using the demultiplexer for the format 'Matroska'.
+'/tmp/.tmpJ8DAka/source.mkv': Using the demultiplexer for the format 'Matroska'.
+'/tmp/.tmpiGtidG/source.mkv' track 0: Using the output module for the format 'text subtitles'.
+'/tmp/.tmpJ8DAka/source.mkv' track 0: Using the output module for the format 'text subtitles'.
+The file '/tmp/.tmpJ8DAka/out/source.mkv' has been opened for writing.
+The file '/tmp/.tmpiGtidG/out/source.mkv' has been opened for writing.
+Progress: 0%Progress: 0%Progress: 100%Progress: 100%The cue entries (the index) are being written...
+The cue entries (the index) are being written...
+Multiplexing took 0 seconds.
+Multiplexing took 0 seconds.
+test live_attachment_and_changes_round_trip ... ok
+test live_mkvmerge_accepts_planned_command ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/executor_events.rs (target/debug/deps/executor_events-06fe96e0dc99f74e)
+
+running 2 tests
+test job_event_wire_shapes ... ok
+test output_line_captures_every_non_tick_line_verbatim ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/executor_live.rs (target/debug/deps/executor_live-dd174456cff43bcb)
+
+running 1 test
+test live_gui_mode_progress_reaches_100_percent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/executor_no_hang_live.rs (target/debug/deps/executor_no_hang_live-62585019097b01b6)
+
+running 1 test
+test run_job_survives_a_non_utf8_line_and_a_pipe_filling_tail_without_hanging ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/identify_live.rs (target/debug/deps/identify_live-60f89362867f18ac)
+
+running 1 test
+test identifies_and_caches_a_real_file ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/joblog.rs (target/debug/deps/joblog-506bd2e7805432b1)
+
+running 12 tests
+test default_runs_root_appends_muxsmith_runs ... ok
+test run_id_timestamp_rejects_garbage_and_out_of_range_calendar_values ... ok
+test a_job_with_zero_events_never_gets_a_file ... ok
+test run_id_timestamp_round_trips_make_run_id_and_tolerates_the_collision_suffix ... ok
+test make_run_id_formats_utc_as_compact_stamp ... ok
+test collision_appends_a_numeric_suffix ... FAILED
+test a_failed_job_file_write_makes_finish_err_but_summary_still_writes ... ok
+test create_prunes_run_dirs_older_than_14_days_by_name_only ... ok
+test full_lifecycle_writes_job_and_summary_files ... ok
+test prune_stale_runs_boundary_is_exactly_14_days ... ok
+test prune_stale_runs_leaves_a_stale_named_symlink_and_its_target_untouched ... ok
+test skipped_job_without_started_still_writes_a_record_with_empty_lines ... ok
+
+failures:
+
+---- collision_appends_a_numeric_suffix stdout ----
+
+thread 'collision_appends_a_numeric_suffix' (65405) panicked at crates/muxsmith-core/tests/joblog.rs:147:5:
+assertion `left == right` failed
+  left: "/tmp/.tmpey6bs0/runs/20260710-120000Z"
+ right: "/tmp/.tmpey6bs0/runs/20260710-120000Z-2"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    collision_appends_a_numeric_suffix
+
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p muxsmith-core --test joblog`
+GATE EXIT: 101

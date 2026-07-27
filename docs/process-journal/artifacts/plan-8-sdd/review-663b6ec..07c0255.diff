@@ -1,0 +1,67 @@
+# Review package: 07c0255bdecc4add16640c162ddb606fabe3e603~1..07c0255bdecc4add16640c162ddb606fabe3e603
+
+## Commits
+07c0255 fix(msi): set the WiX database code page to 1254 so the Windows installer builds
+
+## Files changed
+ src-tauri/tauri.conf.json      |  2 +-
+ src-tauri/wix/locale-en-US.wxl | 23 +++++++++++++++++++++++
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
+index 9b60ba2..cf37938 100644
+--- a/src-tauri/tauri.conf.json
++++ b/src-tauri/tauri.conf.json
+@@ -42,21 +42,21 @@
+     "icon": [
+       "icons/32x32.png",
+       "icons/128x128.png",
+       "icons/128x128@2x.png",
+       "icons/icon.icns",
+       "icons/icon.ico"
+     ],
+     "windows": {
+       "wix": {
+         "upgradeCode": "9262b417-b687-5ea3-ace1-18b9d51b215f",
+-        "language": ["en-US"]
++        "language": { "en-US": { "localePath": "wix/locale-en-US.wxl" } }
+       }
+     },
+     "macOS": {
+       "minimumSystemVersion": "11.0"
+     },
+     "linux": {
+       "deb": { "section": "video", "recommends": ["mkvtoolnix"] },
+       "rpm": { "recommends": ["mkvtoolnix"] }
+     }
+   }
+diff --git a/src-tauri/wix/locale-en-US.wxl b/src-tauri/wix/locale-en-US.wxl
+new file mode 100644
+index 0000000..28c7c11
+--- /dev/null
++++ b/src-tauri/wix/locale-en-US.wxl
+@@ -0,0 +1,23 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++  MSI database code page for the en-US build.
++
++  The publisher "Şenol Feldmann" (U+015E) and the LICENSE text embedded into
++  WixUIExtension's LicenseAgreementDlg are not representable in Windows-1252,
++  which is what tauri-bundler derives from languages.json for en-US. WiX v3
++  light.exe then rejects the link with LGHT0311 and names WixLocalization/@Codepage
++  as one of the supported places to change it.
++
++  Windows-1254 (Turkish) is an ANSI code page - required, because
++  Package/@SummaryCodepage rejects non-ANSI values (LGHT0349) - it is
++  ASCII-compatible, and it carries Ş at 0xDE. Every other string in this
++  installer is pure ASCII, so 1254 differs from 1252 only where it has to.
++
++  tauri-bundler appends its default locale strings for every Id this file does
++  not already define, so overriding TauriCodepage here keeps TauriLanguage
++  (1033) and the UI strings on the bundler's defaults.
++-->
++<WixLocalization Culture="en-us" Codepage="1254"
++                 xmlns="http://schemas.microsoft.com/wix/2006/localization">
++  <String Id="TauriCodepage">1254</String>
++</WixLocalization>

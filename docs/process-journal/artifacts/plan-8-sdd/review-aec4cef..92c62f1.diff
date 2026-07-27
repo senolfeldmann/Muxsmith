@@ -1,0 +1,162 @@
+# Review package: aec4cef..92c62f1
+
+## Commits
+92c62f1 ci: ledger-lint job (Plan 8 rider, S22 ruling) + per-entry duplicate-key check via SafeLoader subclass; fixture fire-verified
+
+## Files changed
+ .github/workflows/ci.yml | 17 ++++++++++++++++
+ scripts/ledger-lint.py   | 51 +++++++++++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 65 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7a95704..36ade0d 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -153,10 +153,27 @@ jobs:
+         if: runner.os == 'Linux'
+         run: pnpm test:e2e
+ 
+   deny:
+     # Supply-chain gate (advisories, licenses, bans, sources). Cheap; runs on
+     # Linux always, independent of the test matrix trim.
+     runs-on: ubuntu-26.04
+     steps:
+       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+       - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
++
++  ledger-lint:
++    # House-knowledge structural integrity (scripts/ledger-lint.py):
++    # count==occurrences, refs present, blocked/tier fields, duplicate
++    # ids, per-entry duplicate keys. Rider on Plan 8 by controller
++    # ruling (ROADMAP "Ledger hygiene", 2026-07-22 S22) - additive job
++    # only; D83's "ci.yml is not modified" is scoped to the release
++    # pipeline and holds. PyYAML pinned; the interpreter floats with
++    # the runner image (same recorded shape as brew above).
++    runs-on: ubuntu-26.04
++    steps:
++      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
++      - name: ledger-lint (house YAML invariants)
++        run: |
++          python3 -m venv "$RUNNER_TEMP/ledger-lint-venv"
++          "$RUNNER_TEMP/ledger-lint-venv/bin/pip" install PyYAML==6.0.3
++          "$RUNNER_TEMP/ledger-lint-venv/bin/python" scripts/ledger-lint.py
+diff --git a/scripts/ledger-lint.py b/scripts/ledger-lint.py
+index a916aae..a3189ac 100755
+--- a/scripts/ledger-lint.py
++++ b/scripts/ledger-lint.py
+@@ -8,31 +8,34 @@ to core-47-with-severity-builder on 2026-07-13 without bumping the derived
+ count, and it survived every hand-check until an ad-hoc validator found it on
+ 2026-07-16 (the day this script was written). See the ledger-lint ROADMAP entry.
+ 
+ Checks, per the ROADMAP spec plus duplicate-id (silent shadowing):
+   1. count == len(occurrences)        - the anti-fabrication core; count is
+                                          DERIVED, so any mismatch is a defect.
+   2. every occurrence carries a ref    - no empty/absent citation.
+   3. status: blocked => blocked_on set - a blocked entry names its blocker.
+   4. tier: 2 => promoted_at is not null - a promoted entry records its count.
+   5. id is unique across all four files - a duplicate silently shadows.
++  6. no duplicate key in any mapping  - YAML's later-key-wins swallows a
++                                         doubled field (observed: a second
++                                         `steelman:` inside one entry).
+ 
+ Exit 0 clean, 1 on any violation.
+ 
+ House-pattern note: scripts/ otherwise holds check-i18n.mjs (Node), which is
+ deliberately line-based because no Fluent parser exists. That reason does NOT
+ transfer to YAML - a real parser exists (PyYAML), and a linter whose whole job
+ is to be trusted must not itself be a fragile line parser. So this is Python,
+ a deliberate and recorded divergence, not an oversight. Requires PyYAML; run
+ with the project's mise-managed python (`python3 scripts/ledger-lint.py`).
+-CI wiring is a separate step (it adds a Python leg to a Rust+Node matrix) and
+-rides the next CI-touching plan, per the ROADMAP.
++CI wiring exists: the ci.yml `ledger-lint` job runs this script on every push
++and pull request (Plan 8 rider, ROADMAP 'Ledger hygiene' ruling 2026-07-22).
+ """
+ 
+ import sys
+ from pathlib import Path
+ 
+ try:
+     import yaml
+ except ModuleNotFoundError:
+     sys.exit("ledger-lint: PyYAML is required (pip install pyyaml, or use the mise python)")
+ 
+@@ -40,34 +43,76 @@ except ModuleNotFoundError:
+ # root (this script's parent's parent) so the check runs from any cwd.
+ REPO = Path(__file__).resolve().parent.parent
+ FILES = [
+     "docs/conventions.yaml",
+     "docs/process-conventions.yaml",
+     "docs/product-boundaries.yaml",
+     "docs/decision-ledger.yaml",
+ ]
+ 
+ 
++class DuplicateKeyLoader(yaml.SafeLoader):
++    """SafeLoader that records duplicate mapping keys instead of losing them.
++
++    `construct_mapping` is PyYAML's documented extension point for this: the
++    raw mapping node still carries every key node with its line mark, while
++    the dict built from it keeps only the last value per key - which is
++    exactly how a doubled field passes unnoticed. Duplicates are collected,
++    not raised, so one run reports every duplicate in the file. Applies to
++    every mapping at any depth, which is a superset of per-entry scoping and
++    simpler than tracking entry boundaries in the loader.
++    """
++
++    def __init__(self, stream):
++        super().__init__(stream)
++        self.duplicate_keys = []  # (key, first line, duplicate line), 1-based
++
++    def construct_mapping(self, node, deep=False):
++        first_line = {}
++        for key_node, _value_node in node.value:
++            key = self.construct_object(key_node, deep=deep)
++            try:
++                previous = first_line.get(key)
++            except TypeError:  # unhashable key (a mapping/sequence key)
++                continue
++            line = key_node.start_mark.line + 1
++            if previous is None:
++                first_line[key] = line
++            else:
++                self.duplicate_keys.append((key, previous, line))
++        return super().construct_mapping(node, deep=deep)
++
++
+ def main() -> int:
+     violations = []
+     seen_ids = {}  # id -> file where first defined
+ 
+     for rel in FILES:
+         path = REPO / rel
+         try:
+-            doc = yaml.safe_load(path.read_text())
++            text = path.read_text()
+         except FileNotFoundError:
+             violations.append(f"{rel}: file not found")
+             continue
++
++        loader = DuplicateKeyLoader(text)
++        try:
++            doc = loader.get_single_data()
+         except yaml.YAMLError as exc:
+             violations.append(f"{rel}: does not parse ({exc})")
+             continue
++        finally:
++            loader.dispose()
++
++        # 6. no duplicate key in any mapping
++        for key, first, dup in loader.duplicate_keys:
++            violations.append(f"{rel}: duplicate key '{key}' (lines {first} and {dup})")
+ 
+         entries = (doc or {}).get("entries")
+         if not isinstance(entries, list):
+             violations.append(f"{rel}: no top-level 'entries' list")
+             continue
+ 
+         for idx, entry in enumerate(entries):
+             eid = entry.get("id", f"<entry #{idx}, no id>")
+ 
+             # 5. unique id across all files

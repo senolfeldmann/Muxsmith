@@ -1,0 +1,58 @@
+# Review package: 89782cd..c06b8dd3ef8bb7b710b4a4c2ce70ca15ec5ec92d
+
+## Commits
+c06b8dd fix(joblog): derive the collision fixture's run id from the clock
+
+## Files changed
+ crates/muxsmith-core/tests/joblog.rs | 23 +++++++++++++++--------
+ 1 file changed, 15 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/crates/muxsmith-core/tests/joblog.rs b/crates/muxsmith-core/tests/joblog.rs
+index d9dca9d..94f2204 100644
+--- a/crates/muxsmith-core/tests/joblog.rs
++++ b/crates/muxsmith-core/tests/joblog.rs
+@@ -134,28 +134,35 @@ fn full_lifecycle_writes_job_and_summary_files() {
+     );
+ }
+ 
+ /// Step 1, case 2: a collision on `runs_root/<run_id>` (pre-created) makes
+ /// `create` fall back to `<run_id>-2`; a further collision on that falls
+ /// back to `<run_id>-3`.
+ #[test]
+ fn collision_appends_a_numeric_suffix() {
+     let dir = tempfile::tempdir().unwrap();
+     let runs_root = dir.path().join("runs");
+-    std::fs::create_dir_all(runs_root.join("20260710-120000Z")).unwrap();
+-
+-    let logger = RunLogger::create(&runs_root, "20260710-120000Z", &[]).unwrap();
+-    assert_eq!(logger.dir(), runs_root.join("20260710-120000Z-2"));
+-
+-    std::fs::create_dir_all(runs_root.join("20260710-120000Z-2")).unwrap();
+-    let logger2 = RunLogger::create(&runs_root, "20260710-120000Z", &[]).unwrap();
+-    assert_eq!(logger2.dir(), runs_root.join("20260710-120000Z-3"));
++    // Derived from the clock, never a literal stamp: `create` prunes run
++    // dirs outside D35's 14-day window BEFORE it looks for a collision, so
++    // an absolute stamp stops colliding the day the calendar passes it
++    // (ledger: test-fixture-dates-outside-retention-windows). Absolute
++    // stamps belong only in fixtures that TEST the aging path, e.g.
++    // `create_prunes_run_dirs_older_than_14_days_by_name_only` below.
++    let run_id = make_run_id(SystemTime::now());
++    std::fs::create_dir_all(runs_root.join(&run_id)).unwrap();
++
++    let logger = RunLogger::create(&runs_root, &run_id, &[]).unwrap();
++    assert_eq!(logger.dir(), runs_root.join(format!("{run_id}-2")));
++
++    std::fs::create_dir_all(runs_root.join(format!("{run_id}-2"))).unwrap();
++    let logger2 = RunLogger::create(&runs_root, &run_id, &[]).unwrap();
++    assert_eq!(logger2.dir(), runs_root.join(format!("{run_id}-3")));
+ }
+ 
+ /// Step 1, case 3 (D25 skipped-job case): a job cancelled per-job before
+ /// dequeue emits `Finished{Cancelled}` WITHOUT a prior `Started`. The writer
+ /// must still produce a `job-<index>.json` record for it, with an empty
+ /// `lines` array and a `null` (absent) `started_at`.
+ #[test]
+ fn skipped_job_without_started_still_writes_a_record_with_empty_lines() {
+     let dir = tempfile::tempdir().unwrap();
+     let runs_root = dir.path().join("runs");
