@@ -500,8 +500,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 9
+  count: 10
   occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T2 verdict minor (task-2-verdict.md): the report evidence block dropped a line (count 9 not 8) and the controller again relayed the stale count into the review dispatch - second borrowed-count hop the same day; controller handle adopted: dispatches reference the artifact, never restate its numbers"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 verdict minor (task-4-verdict.md): the task report asserted ten observed outputs over its own nine-row enumeration, and the controller relayed the ten unrecomputed into the review dispatch - trigger-1 silent in a report, borrowed number propagated one hop; caught by the reviewer recount"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 verdict minor + HARVEST 2 (task-5-verdict.md): the consuming-line sweep cleared the script-checks set (ROADMAP) but missed BUILDING.md:92-96, which enumerates CI jobs and names cargo deny check as THE independent job - the new check joined two sets and only one was swept; deferred to whole-branch (stream-A file, escalation owed); statement widened to multi-set membership"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 plan review round 1 HARVEST (plan-review-round-1.md): first review since promotion with ZERO count defects - 13/13 Tier-2 line refs exact, 4/4 transcriptions byte-clean, every count independently recomputed and confirmed (incl. 17-of-47); the reviewer names the measured-at-authoring + re-verify-at-execution-tree discipline as having held against the plan-7 defect classes"}
