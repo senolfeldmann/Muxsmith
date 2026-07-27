@@ -117,12 +117,11 @@ help-topic-h1-scheme.
 
 ## Current state (verified)
 
-- master ef1f2f3 at this writing (journal entry committed; the close
-  commit with this snapshot follows), clean; last watched CI run
-  30261258685 (dbd0dc3) SUCCESS - first full-matrix green since 07-22.
-  Later local commits are pushed with the close; their CI conclusion is
-  an OPEN observation for the next session (proc-push-ci-conclusion-
-  observed).
+- master bac7fee at the final close, clean, pushed. Watched CI
+  conclusions: 30261258685 (dbd0dc3), 30268338147 (663b6ec) and
+  30272193732 (c999090) all SUCCESS; the run on the final close push
+  (bac7fee) is the one OPEN conclusion observation for the next session
+  (proc-push-ci-conclusion-observed; gh-log carries the entry).
 - Plan 7.5: tasks 1-4 complete, whole-branch verdict READY, AND the
   owner wording pass is executed (commit 406e91b, reviewed APPROVED -
   all in-session owner rulings). Remaining: the plan CLOSE only
