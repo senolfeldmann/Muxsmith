@@ -313,14 +313,15 @@ entries:
   source: human
   nature: operational
   domain: ci
-  statement: "Release-tag packaging artifacts (msi/dmg/deb/rpm/AppImage) remain deferred until go-public, because tags trigger the full 3-OS matrix and paid minutes while the repo is private."
+  statement: "Release-tag packaging artifacts ship: a v* tag runs release.yml, which builds the four native legs (windows x64+arm64 msi, macos arm64 dmg, linux x64 deb/rpm/AppImage plus a hand-packed tar.gz) and attaches the eight artifacts with SHA256SUMS to a DRAFT release the owner publishes manually. The original deferral rested on paid-minute cost while the repo was private; the repo went public 2026-07-10 and standard runners are free, so that premise no longer holds and the entry records the shipped mechanism instead."
   steelman: null
-  blocked_on: "Plan 8 (packaging/release pipeline; the go-public half cleared 2026-07-10, re-pointed by the plan-6 close sweep - the work is Plan 8's by the 2026-07-15 re-cut)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: deferred, ref: "memo D29"}
+    - {date: "2026-07-27", kind: decided, ref: "Plan 8 executed and closed: release.yml plus the bundle config landed (merges b093c3e, fcb0795, cd9c56a, 2afa39d; WiX code-page fix 07c0255) and the workflow_dispatch rehearsal passed R1-R10 on runs 30272619000 + 30273529210. Found stale by the plan-7.5 close blocked-pool sweep, which asks whether the deferred work landed regardless of the blocking condition - it had"}
 - id: proc-latitude-clause-boundary
   kind: restraint
   tier: 2

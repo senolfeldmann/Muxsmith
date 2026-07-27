@@ -2373,15 +2373,16 @@ entries:
   kind: restraint
   tier: 1
   domain: ci
-  statement: "CI must not fetch a floating mise binary at run time: jdx/mise-action downloads and executes the latest mise release, contradicting the pin-everything doctrine. The restraint is recorded although current CI (mise-action without a version pin, ci.yml:L73) still violates it; dropping mise from CI is deferred to post-1.0."
+  statement: "CI must not fetch a floating mise binary at run time: jdx/mise-action downloads and executes the latest mise release, contradicting the pin-everything doctrine. The restraint is recorded although current CI (mise-action without a version pin, ci.yml:L73) still violates it; dropping mise from CI is deferred to post-1.0. The count has now reached the agent-emergent promotion threshold and the entry stays Tier 1 DELIBERATELY: a Tier-2 entry binds every agent immediately, and this rule is knowingly violated by ci.yml under a recorded deferral, so promotion follows the removal work, not the counter."
   steelman: "jdx/mise-action is the convenient, currently-green way to get the pinned runtimes in CI."
   blocked_on: "internal - kept until the release stabilizes; removal tracked in ROADMAP v1.x"
   status: blocked
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-12", kind: decided, ref: "CONVENTIONS.md Restraints (b38a46f) / idiomacy routed-out ci.yml:L73"}
     - {date: "2026-07-12", kind: deferred, ref: "CONVENTIONS.md Restraints note / ROADMAP c38a197"}
+    - {date: "2026-07-27", kind: reinforced, ref: "Plan 8 D85: the release legs install node and pnpm through pinned setup actions and run NO mise at all - the first CI surface in this repo built mise-free by design, which is the restraint applied rather than merely recorded. ci.yml itself still uses mise-action, so the entry stays blocked on the v1.x removal"}
 - id: testing-self-skip-idiom
   kind: pattern
   tier: 1
