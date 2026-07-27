@@ -160,3 +160,20 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
+
+  ledger-lint:
+    # House-knowledge structural integrity (scripts/ledger-lint.py):
+    # count==occurrences, refs present, blocked/tier fields, duplicate
+    # ids, per-entry duplicate keys. Rider on Plan 8 by controller
+    # ruling (ROADMAP "Ledger hygiene", 2026-07-22 S22) - additive job
+    # only; D83's "ci.yml is not modified" is scoped to the release
+    # pipeline and holds. PyYAML pinned; the interpreter floats with
+    # the runner image (same recorded shape as brew above).
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: ledger-lint (house YAML invariants)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ledger-lint-venv"
+          "$RUNNER_TEMP/ledger-lint-venv/bin/pip" install PyYAML==6.0.3
+          "$RUNNER_TEMP/ledger-lint-venv/bin/python" scripts/ledger-lint.py

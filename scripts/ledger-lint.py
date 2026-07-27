@@ -15,6 +15,9 @@ Checks, per the ROADMAP spec plus duplicate-id (silent shadowing):
   3. status: blocked => blocked_on set - a blocked entry names its blocker.
   4. tier: 2 => promoted_at is not null - a promoted entry records its count.
   5. id is unique across all four files - a duplicate silently shadows.
+  6. no duplicate key in any mapping  - YAML's later-key-wins swallows a
+                                         doubled field (observed: a second
+                                         `steelman:` inside one entry).
 
 Exit 0 clean, 1 on any violation.
 
@@ -24,8 +27,8 @@ transfer to YAML - a real parser exists (PyYAML), and a linter whose whole job
 is to be trusted must not itself be a fragile line parser. So this is Python,
 a deliberate and recorded divergence, not an oversight. Requires PyYAML; run
 with the project's mise-managed python (`python3 scripts/ledger-lint.py`).
-CI wiring is a separate step (it adds a Python leg to a Rust+Node matrix) and
-rides the next CI-touching plan, per the ROADMAP.
+CI wiring exists: the ci.yml `ledger-lint` job runs this script on every push
+and pull request (Plan 8 rider, ROADMAP 'Ledger hygiene' ruling 2026-07-22).
 """
 
 import sys
@@ -47,6 +50,38 @@ FILES = [
 ]
 
 
+class DuplicateKeyLoader(yaml.SafeLoader):
+    """SafeLoader that records duplicate mapping keys instead of losing them.
+
+    `construct_mapping` is PyYAML's documented extension point for this: the
+    raw mapping node still carries every key node with its line mark, while
+    the dict built from it keeps only the last value per key - which is
+    exactly how a doubled field passes unnoticed. Duplicates are collected,
+    not raised, so one run reports every duplicate in the file. Applies to
+    every mapping at any depth, which is a superset of per-entry scoping and
+    simpler than tracking entry boundaries in the loader.
+    """
+
+    def __init__(self, stream):
+        super().__init__(stream)
+        self.duplicate_keys = []  # (key, first line, duplicate line), 1-based
+
+    def construct_mapping(self, node, deep=False):
+        first_line = {}
+        for key_node, _value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                previous = first_line.get(key)
+            except TypeError:  # unhashable key (a mapping/sequence key)
+                continue
+            line = key_node.start_mark.line + 1
+            if previous is None:
+                first_line[key] = line
+            else:
+                self.duplicate_keys.append((key, previous, line))
+        return super().construct_mapping(node, deep=deep)
+
+
 def main() -> int:
     violations = []
     seen_ids = {}  # id -> file where first defined
@@ -54,13 +89,23 @@ def main() -> int:
     for rel in FILES:
         path = REPO / rel
         try:
-            doc = yaml.safe_load(path.read_text())
+            text = path.read_text()
         except FileNotFoundError:
             violations.append(f"{rel}: file not found")
             continue
+
+        loader = DuplicateKeyLoader(text)
+        try:
+            doc = loader.get_single_data()
         except yaml.YAMLError as exc:
             violations.append(f"{rel}: does not parse ({exc})")
             continue
+        finally:
+            loader.dispose()
+
+        # 6. no duplicate key in any mapping
+        for key, first, dup in loader.duplicate_keys:
+            violations.append(f"{rel}: duplicate key '{key}' (lines {first} and {dup})")
 
         entries = (doc or {}).get("entries")
         if not isinstance(entries, list):
