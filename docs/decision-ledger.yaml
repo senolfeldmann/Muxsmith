@@ -4262,3 +4262,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: decided, ref: "plan-7.5 T2 review Q1 + M-findings + HARVEST L2 (task-2-verdict.md): removing the entire Enter/Space keydown branch left all 62 e2e green - the mechanism is unguarded repo-wide while the click-capture layer masks it; the report had claimed a separate guard from inspection, refuted by the reviewer's coverage-set run; design amendment routed for the event-level witness"}
+- id: proc-ledger-records-facts-not-intentions
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A progress-ledger line records a COMPLETED action, never an intention: 'review dispatching' is not a dispatch, and a wait-on-X state is re-verified against the ledger's fact lines (does a dispatch id/result exist?), not against the controller's memory of having meant to. Write the line after the action's result returns, or write 'about to X' and follow it with the fact line in the same work unit - an intention line without its fact line is the stall signal to grep for at every wait point."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 progress.md (T3 'review dispatching' line): the controller wrote the intention, the dispatch never happened, and the merge chain idled waiting on a phantom review until a ledger re-read caught it; reviewer dispatched on discovery, correction line appended"}
