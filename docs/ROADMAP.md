@@ -418,18 +418,24 @@ Must be resolved before the first tagged release; none blocks Plan 6 work.
   `Contents/MacOS` each carry an embedded signature blob (the arm64
   linker's ad-hoc signature), but the bundle has **no
   `_CodeSignature/CodeResources`** - it is not sealed as a bundle - and
-  `bundle.macOS` configures no `signingIdentity`. Hypothesis to confirm on
-  the Mac before any fix: a quarantined bundle whose executable looks
-  signed while the bundle carries no seal fails Gatekeeper validation,
-  which produces "damaged" rather than the "unidentified developer" prompt
-  that `docs/INSTALL.md` documents - so the documented Settings >
-  Open Anyway flow cannot appear at all. One-command confirmation:
-  `xattr -dr com.apple.quarantine` on the installed app, then launch.
-  Candidate fix: ad-hoc sign the bundle at build time
-  (`codesign --force --deep --sign -`), which needs no Apple account,
-  no certificate and no notarization, and is therefore NOT the code
-  signing the S22 ruling deferred - but it IS a change to the "unsigned on
-  all three OS at 1.0" wording and wants an explicit owner decision.
+  `bundle.macOS` configures no `signingIdentity`. **CONFIRMED on the owner's Mac 2026-07-27**: `xattr -dr
+  com.apple.quarantine` on the installed app makes it launch. So the chain
+  holds - a quarantined bundle whose executable looks signed while the
+  bundle carries no seal fails Gatekeeper validation, which produces
+  "damaged" instead of the "unidentified developer" prompt
+  `docs/INSTALL.md` documents, and the documented Settings > Open Anyway
+  flow therefore never appears. The app itself is sound; the packaging
+  state is the defect.
+  Candidate fix, mechanism verified at the vendor's current docs rather
+  than from memory: set `bundle.macOS.signingIdentity` to the
+  pseudo-identity `"-"`, Tauri's documented ad-hoc form - one config line,
+  no Apple account, no certificate, no notarization, so NOT the code
+  signing the S22 ruling deferred. The same docs state ad-hoc signing
+  still requires the user to whitelist the app in Privacy & Security,
+  which is exactly the flow INSTALL.md already describes. It IS a change
+  to the "unsigned on all three OS at 1.0" wording and wants an explicit
+  owner decision; the result then needs its own verification (quarantine a
+  freshly built bundle, observe which of the two dialogs appears).
   Whatever lands, `docs/INSTALL.md`'s macOS section is re-verified against
   the real flow afterwards.
 - **BLOCKER-adjacent: the dmg's pre-mount license (SLA) mis-renders the
@@ -443,6 +449,20 @@ Must be resolved before the first tagged release; none blocks Plan 6 work.
   installer, copyright): Windows was fixed by pinning the installer
   database code page, and nobody then asked whether the macOS installer
   carries the same sink. It does.
+  **Parity input (SI-3, read at the source):** mkvtoolnix's
+  `packaging/macos/build.sh` builds its dmg with a plain
+  `hdiutil create -srcfolder ... -volname ...` and attaches NO license
+  agreement - no SLA or LPic resource exists anywhere in its macOS
+  packaging. The pre-mount click-through is therefore not parity; it is a
+  Tauri default we opted into via `licenseFile`, and MIT requires no
+  acceptance step. Dropping it removes the defect class instead of
+  repairing it. **Constraint any fix must respect:** `bundle.licenseFile`
+  is GLOBAL, not per-OS, and the Windows license dialog - which the same
+  walk-through confirmed correct - is fed from it, so deleting the key
+  outright would take the working Windows dialog with it. (Second parity
+  note from the same file: mkvtoolnix DOES codesign both the .app contents
+  and the dmg when an identity is configured, and re-signs after
+  `install_name_tool` invalidates the signature.)
 - **Release-body OS links break into separate paragraphs** - confirmed on
   the rendered draft, which is what the deferred owner wording item asked.
   `.github/release/draft-body.md` lines 2-4 begin with `|`, and GitHub
