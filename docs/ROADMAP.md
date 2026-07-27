@@ -379,7 +379,9 @@ action:
 - The Intel-dmg request fires (the macOS x64 trigger above) -> add a
   `macos-x86_64` leg on `macos-15-intel`, extend D89's asset set and D77's
   body table, and decide universal-vs-second-dmg then (D78 records why
-  universal lost at arm64-only scale). (Plan-8 design trigger 5.)
+  universal lost at arm64-only scale). Per the owner's 2026-07-27 call the
+  work is a v1.x commitment in its own right, so this trigger only
+  accelerates it. (Plan-8 design trigger 5.)
 - A user asks for a portable Windows build -> the mkvtoolnix Windows-7z
   parity gap becomes a v1.x candidate: a `windows-x86_64.zip` from the
   existing msi leg's binaries, D88-style. (Plan-8 design trigger 6.)
@@ -436,8 +438,12 @@ action:
 - First external-user complaint about unsigned-install hurdles (or a
   comparable adoption signal) -> re-evaluate code signing/notarization
   per OS. (Plan-8 kickoff ruling F1, 2026-07-22 S22.)
-- A macOS Intel (x64) user asks for a build -> add the x64 dmg leg to
-  the release matrix. (Plan-8 kickoff ruling F4, 2026-07-22 S22.)
+- A macOS Intel (x64) user asks for a build -> PULL FORWARD the v1.x Intel
+  entry below rather than treat the request as the decision. Superseded in
+  its gating role by the owner's 2026-07-27 call: Intel support is wanted
+  regardless of whether anyone asks and is a 1.x commitment, so a real
+  request only changes its timing. (Plan-8 kickoff ruling F4, 2026-07-22
+  S22.)
 - Next core/planner-touching plan -> run the D49 G1/G2 removal experiment
   (mutate delta_for's AddExact arm to re-stringify, run the suite: G1+G2+G3
   all fail -> they stay for good; only G3 fails -> G1/G2 are removal
@@ -858,6 +864,29 @@ polish entry.
 
 Deferred with reasons; source: Plan-5 whole-branch triage (ledger, archived
 at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
+
+- **macOS on Intel: serve x64 users (owner call 2026-07-27, 1.x)**. The
+  1.0 matrix is Apple-Silicon only (D78, ruled at the plan-8 kickoff). The
+  owner wants Intel Macs served - not gated on someone asking, which is how
+  it was recorded until now, but as a 1.x commitment. Two routes, and which
+  one is buildable decides:
+  - **A second x64 dmg leg** on the `macos-15-intel` runner label (verified
+    to exist in the plan-8 design's runner survey). Simplest: one more
+    matrix leg, one more artifact, each binary native to its arch. Costs a
+    ninth release artifact and a row in every doc table that enumerates the
+    set.
+  - **A universal binary** (`universal-apple-darwin`): one dmg for both
+    arches, no wrong-download mistakes. **Reopens D78**, which rejected it
+    at arm64-only scale for doubling binary size for every arm64 user and
+    needing both toolchains. The wrinkle to check first: the CLI sidecar
+    ships via `externalBin`, whose file naming is target-triple-keyed, so a
+    universal build needs both sidecar binaries staged - that, not the lipo
+    step, is where this route gets expensive.
+  Decide at the 1.x planning round with an SI-3 parity read (what does
+  mkvtoolnix ship for macOS today - one universal dmg or two?) and with the
+  ad-hoc signing of Plan 8.5 already in place, since it applies to any new
+  leg. Whichever route wins carries the D78 amendment as a task rather than
+  diverging from it silently.
 
 - **UI polish pass ("schick machen") - deliberate 1.x item (owner ruling
   2026-07-21, S20)**: v1's visual bar is a reasonably good, usable layout;
