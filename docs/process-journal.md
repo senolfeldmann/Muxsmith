@@ -2183,3 +2183,86 @@ with the owner rather than being automated into a green tick.
 **Open threads.** The owner's two acceptance steps R8 and R10, with the
 preserved draft release as their input, and one deferred wording item he
 inspects on the rendered draft himself.
+
+## 2026-07-28 | Plan 8.5 complete and closed (macOS packaging fixes) | session 23 (Peter, Opus 5 1M)
+
+Scope: the whole package, kickoff to close, commits `f627105..HEAD`. Plan
+authored and reviewed on the top tier; every task implementer, task reviewer
+and fix dispatch on the mid tier; controller loop mid.
+
+**Why it existed.** Plan 8's rehearsal passed every machine-checkable
+acceptance item and reserved two for the governing human on real hardware. He
+ran them, and the first human execution of the documented install path found
+three defects, two of them 1.0 blockers: the macOS app would not launch at
+all, its dmg showed a licence dialog whose text garbled at the publisher's
+non-ASCII character, and the release body's three OS links rendered as three
+paragraphs. Every one of those had been green by machine.
+
+**Decisions and their why.**
+
+- **Ad-hoc signing, not the deferred code signing.** The bundle carried no
+  `_CodeSignature` seal while its binaries carried the arm64 linker's
+  automatic ad-hoc signature, which is the state Gatekeeper reports as
+  "damaged" rather than as an unidentified developer. Ad-hoc signing the
+  bundle is one config line, needs no Apple account and does not reopen the
+  1.0 unsigned ruling in substance - but it made that ruling's WORDING untrue,
+  so the same package swept every live site stating it.
+- **The dmg licence was removed, not repaired.** Reading mkvtoolnix's own
+  macOS packaging under the standing parity duty settled it: it attaches no
+  licence agreement at all, so the click-through was a Tauri default we had
+  opted into rather than parity, and MIT requires no acceptance step. The
+  governing human's tiebreaker (fix the rendering instead, if removal needed
+  contortions) never fired: a platform config file CAN clear an inherited key,
+  established at the pinned CLI's source and reproduced empirically by three
+  different agents with three instruments.
+- **A serial, worktree-free cut**, argued in the plan rather than defaulted:
+  three config/doc tasks do not amortize four worktree setups plus a merge
+  gate each, and two of the three share files anyway.
+
+**What the process caught.**
+
+- **A plan that classified a site and never commissioned it.** Task 1's review
+  found a live design line still carrying the old wording. The plan's own
+  table named that site; no step edited it. It contradicted the install docs
+  in the same commit and falsified a completeness sentence standing seventeen
+  lines above it. The implementer was right not to touch it unbidden - the
+  miss was that the step should have returned NEEDS_CONTEXT when its own
+  classification named a site with no edit behind it.
+- **A stale enumeration, three times in one day, in two files.** An amendment
+  log's membership was listed in a document header and in the plan's normative
+  constraints line; every append staled them. Ruled: remove the enumeration,
+  do not maintain it. The replacement is stronger than what it replaced - it
+  gained a temporal clause ("at the log's state at execution time") on exactly
+  the axis the list kept failing.
+- **A check that would have passed on the broken artifact.** Task 4's reviewer
+  parsed the Mach-O load commands of both the fixed and the defective binary
+  and found a valid signature blob in both, because the linker always ad-hoc
+  signs. A binary-level check would have gone green on the defect. The bundle
+  seal is the only discriminator at that layer, and it is what the plan
+  checked.
+- **A count that was never a count.** The rehearsal's log-line assertion came
+  from converting an earlier plan's per-leg presence check into a number, then
+  reusing that number for a different set. It read 8 against an expected 4;
+  the runner echoes each step's source beside its output. The recorded fix is
+  to restore the presence shape, not to patch the number.
+- **Nine controller-brief defects across the session**, every one caught by
+  the agent receiving it - including a claim about macOS that Apple's own man
+  page refuted, and a "no consumer" sweep claim that was false as phrased and
+  true in substance.
+
+**Friction.** Two agents in one working tree share one git index, which
+"stage only your own paths" does not isolate: a bare commit swept a
+co-writer's staged file into an unrelated commit. Disclosed, repaired by soft
+reset and a pathspec-scoped re-commit, and ledgered - with the sharper lesson
+the whole-branch review drew out, that a serial ruling binds the controller's
+dispatch concurrency too, not merely the plan's task order. The incident
+followed the first mid-plan concurrent dispatch immediately.
+
+**Deltas.** The pre-push gate went red once on a test that then passed four
+times, including in isolation. No Rust changed in this plan and CI had run the
+identical code green hours earlier. Recorded as a ruled 1.x fix with its
+candidate named and explicitly labelled as removing a known race class rather
+than as a confirmed fix for a cause still unestablished.
+
+**Open threads.** The governing human deletes the rehearsal draft; that step
+is his by design, as it was in Plan 8.
