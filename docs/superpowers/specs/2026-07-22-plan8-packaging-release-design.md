@@ -309,11 +309,13 @@ ruling, with the macOS mechanics corrected per brief-note 2:
   "More info" -> "Run anyway"), unknown-publisher framing, per-machine
   install to `C:\Program Files\Muxsmith` (verified template default),
   manual PATH step for the CLI.
-- **macOS**: unsigned and not notarized; macOS 15+: first open is blocked,
-  then System Settings > Privacy & Security > "Open Anyway" (Apple
-  citation in section 0, note 2); macOS 11-14: Control-click -> Open; alternative
-  for terminal users: `xattr -d com.apple.quarantine`; CLI location inside
-  the app bundle and the manual PATH step.
+- **macOS**: ad-hoc signed - no Apple developer identity, not notarized -
+  so macOS treats it as coming from an unidentified developer; macOS 15+:
+  first open is blocked, then System Settings > Privacy & Security >
+  "Open Anyway" (Apple citation in section 0, note 2); macOS 11-14:
+  Control-click -> Open; alternative for terminal users:
+  `xattr -d com.apple.quarantine`; CLI location inside the app bundle and
+  the manual PATH step.
 - **Linux**: no gatekeeping hurdle (ruling text: "Linux none"); AppImage
   `chmod +x`; mkvtoolnix runtime installation per distro; deb/rpm already
   place both binaries on PATH.
@@ -2155,7 +2157,13 @@ pseudo-identity, re-verified at v2.tauri.app/distribute/sign/macos
 2026-07-27: no Apple account, certificate or notarization; the Privacy &
 Security whitelist step remains) joins the D86 config surface. D75's
 "all three OS ship unsigned at 1.0" wording is superseded in part - see
-the note in D75. Fence bookkeeping, same rule as A3 (frozen graded
+the note in D75. D75's own macOS outline bullet also restated the
+superseded wording ("unsigned and not notarized") and was missed at this
+amendment's first pass (Plan 8.5 Task 1 review round 1); it is corrected
+in place to match `docs/INSTALL.md`'s Gatekeeper substance - live
+decision prose, not a frozen fence, so the tree is directly authoritative.
+This completes the Step-4 classification's D75 sub-entry (ruling text +
+outline bullet). Fence bookkeeping, same rule as A3 (frozen graded
 material stays byte-unchanged, the tree is authoritative): section 3.1
 is superseded by the tree at the macOS block; 4.1 and 4.2, already
 tree-authoritative per A3, changed wording again (INSTALL.md intro and
