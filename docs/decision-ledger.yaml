@@ -4099,14 +4099,15 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "A quote-existence check against wrapped Markdown/prose must be whitespace-tolerant (or normalize whitespace first) before its 'not found' is trusted - a line-based grep false-negatives on soft-wrapped sentences. The make-the-check-fire discipline applies to the checker's own tooling: confirm the pattern against a known-present wrapped quote before accepting an absence."
+  statement: "Text-verification tooling against prose/documents anchors on CONTENT, never on line positions: quote-existence checks are whitespace-tolerant (line-based greps false-negative on soft-wrapped sentences), and block re-extractions key on structural anchors like code fences (fixed line ranges produce phantom deltas once surrounding edits shift them). The make-the-check-fire discipline applies to the checker's own tooling: confirm the pattern against a known-present case before trusting an absence - and treat a surprising one-line delta as a tooling suspect before a finding. (Statement widened from quote-greps to extraction tooling on the second occurrence's evidence.)"
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-23", kind: decided, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section, reviewer self-lesson): the D54 closure sentence false-negatived under a line-based grep because the prose wraps; found only when the reviewer switched to a whitespace-tolerant pattern"}
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 PLAN delta review HARVEST (plan-review-round-1.md round-2 section): a fixed-line-range fence extraction produced a phantom one-line delta (a swept-in closing fence) during the transcription re-diff; the anchor-based re-run confirmed byte-exactness; reviewer routes it here as the same tooling family"}
 - id: e2e-diagnostic-rendered-is-wire-ballast
   kind: pattern
   tier: 1
