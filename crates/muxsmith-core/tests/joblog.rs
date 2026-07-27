@@ -141,14 +141,21 @@ fn full_lifecycle_writes_job_and_summary_files() {
 fn collision_appends_a_numeric_suffix() {
     let dir = tempfile::tempdir().unwrap();
     let runs_root = dir.path().join("runs");
-    std::fs::create_dir_all(runs_root.join("20260710-120000Z")).unwrap();
+    // Derived from the clock, never a literal stamp: `create` prunes run
+    // dirs outside D35's 14-day window BEFORE it looks for a collision, so
+    // an absolute stamp stops colliding the day the calendar passes it
+    // (ledger: test-fixture-dates-outside-retention-windows). Absolute
+    // stamps belong only in fixtures that TEST the aging path, e.g.
+    // `create_prunes_run_dirs_older_than_14_days_by_name_only` below.
+    let run_id = make_run_id(SystemTime::now());
+    std::fs::create_dir_all(runs_root.join(&run_id)).unwrap();
 
-    let logger = RunLogger::create(&runs_root, "20260710-120000Z", &[]).unwrap();
-    assert_eq!(logger.dir(), runs_root.join("20260710-120000Z-2"));
+    let logger = RunLogger::create(&runs_root, &run_id, &[]).unwrap();
+    assert_eq!(logger.dir(), runs_root.join(format!("{run_id}-2")));
 
-    std::fs::create_dir_all(runs_root.join("20260710-120000Z-2")).unwrap();
-    let logger2 = RunLogger::create(&runs_root, "20260710-120000Z", &[]).unwrap();
-    assert_eq!(logger2.dir(), runs_root.join("20260710-120000Z-3"));
+    std::fs::create_dir_all(runs_root.join(format!("{run_id}-2"))).unwrap();
+    let logger2 = RunLogger::create(&runs_root, &run_id, &[]).unwrap();
+    assert_eq!(logger2.dir(), runs_root.join(format!("{run_id}-3")));
 }
 
 /// Step 1, case 3 (D25 skipped-job case): a job cancelled per-job before
