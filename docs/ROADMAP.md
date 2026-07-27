@@ -203,6 +203,50 @@ package per format, both binaries (recorded divergence); the tar.gz
 carries both binaries as already ruled. Homebrew-Cask distribution is
 a v1.x entry below.
 
+## Plan 8.5: macOS packaging fixes (pre-1.0, owner rulings 2026-07-27)
+
+The three findings of the owner's R8 walk-through, as their own small
+package rather than folded into Plan 9: packaging domain, its own
+verification loop (a rehearsal re-run plus a second walk-through on real
+Apple-Silicon hardware), and that human latency is worth incurring early
+rather than at the tag.
+
+**KICKOFF RULINGS (owner, 2026-07-27), binding:**
+
+1. **Ad-hoc signing YES.** `bundle.macOS.signingIdentity` gets Tauri's
+   documented pseudo-identity `"-"`. This does NOT reopen the S22
+   unsigned-at-1.0 ruling in substance - no Apple account, no certificate,
+   no notarization - but it DOES change that ruling's wording, and the
+   ruling text is updated in the same change rather than left contradicting
+   the tree. Acceptance: quarantine a freshly built bundle and observe that
+   the "unidentified developer" dialog appears where "damaged" appeared, so
+   the flow `docs/INSTALL.md` documents is the flow that occurs.
+2. **The dmg's pre-mount license goes away.** Owner's words: mounting a dmg
+   and being met with a license dialog is odd under MIT. Preferred route:
+   drop it for macOS only, keeping the Windows dialog that the same
+   walk-through confirmed correct. **Owner tiebreaker, binding, so the
+   implementer does not have to weigh it:** if removing it for macOS while
+   keeping it on Windows turns out to need contortions, do NOT build the
+   contortion - fix the rendering on the macOS side instead. KISS decides,
+   not completeness.
+   The empirical question this cascade turns on (established at the vendor
+   reference, not from memory): there is NO per-platform license key -
+   `bundle.license` and `bundle.licenseFile` are global, and no
+   DmgConfig/WixConfig/NsisConfig/Deb/Rpm/AppImage section carries a
+   license property. The documented lever is a platform-specific config
+   file that overrides the bundle section, which is the same overlay
+   mechanism this project already uses for the CLI sidecar (D82). Whether
+   an overlay can CLEAR an inherited key, rather than only set one, is the
+   thing to test first - and its answer picks the branch above.
+3. **The release-body OS links** are joined onto one line (confirmed broken
+   on the rendered draft; the same treatment covers the two other wrapped
+   regions in that file).
+
+Vehicle: one four-eyes plan, no separate design document - both design
+questions are owner-ruled above and the third item is a one-line text fix,
+so a design round would have nothing left to decide. Execution waits at the
+owner's plan-approval gate as usual.
+
 ## Plan 9: core/orchestration hoists + planner seam
 
 Orthogonal to every GUI plan; can run as a parallel worktree stream rather
