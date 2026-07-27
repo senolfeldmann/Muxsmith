@@ -2074,3 +2074,112 @@ had happened after the snapshot. The durable residue survived only because a
 ledger occurrence happened to carry it. Re-salvaged as the last write of the
 close and ledgered as a rule; whether the doctrine's plan-close step order
 changes is an owner question, since that file is shared beyond this project.
+
+## 2026-07-27 | Plan 8 complete and closed (packaging/release pipeline) | session 23 (Peter, Opus 5 1M)
+
+Scope: the plan-8 CLOSE (design, execution and the two rehearsal attempts are
+in the session-22 entries above). Whole-branch review on Fable 5; every
+implementer, task reviewer and fix dispatch on Opus 5; controller loop on
+Opus 5 1M - the first session under the re-instantiated tiering.
+
+**Decisions and their why.**
+
+- **The whole-branch range was pinned to a SHA, not to HEAD.** Two plans had
+  interleaved on master and the controller was writing process artifacts
+  throughout, so a HEAD-relative range would have shifted under the reviewer
+  mid-pass. Cheap, and it made the reviewer's own scoping check set
+  subtraction instead of archaeology.
+- **Frozen plan copies stay frozen.** The WiX fix changed configuration the
+  plan document quotes verbatim as a transcription target. Ruled the same way
+  as the plan-7.5 close hours earlier: the block stays byte-identical and a
+  supersession line carries the drift, because rewriting it would destroy the
+  record the implementer was graded against. One rule for the class, not two
+  precedents.
+- **The tenth gate part is a documented prerequisite, not a toolchain key.**
+  `rust-toolchain.toml` accepts a `targets` entry that would auto-install the
+  Windows target for every contributor. Rejected: the gate is run by whoever
+  pushes, while the key would cost every drive-by contributor a Windows
+  standard library they never need. BUILDING.md documents the one-time
+  `rustup target add` instead.
+- **A dangling pointer got a vehicle, not a dispatch.** Deleting BUILDING.md's
+  old cross-target-lint section left a ci.yml comment citing a title that no
+  longer exists. Nothing false, no behavior touched - but a comment should
+  point at something findable. Ruled: exact replacement text recorded on the
+  next ci.yml-touching change, whichever that turns out to be. The edit is
+  the trigger, not a particular plan.
+
+**What the process caught.**
+
+- **A regression the record had misfiled as inherited.** The linter's
+  `ReaderError` escape was recorded twice - in the progress tracker and in a
+  ledger occurrence - as "pre-existing on master". The whole-branch reviewer
+  opened the pre-plan-8 blob and disproved it: old master wrapped the parse
+  in its `try` and caught the class cleanly; the rider commit that inlined
+  the loader introduced the escape. The fix implementer then reproduced both
+  states independently rather than trusting either of us. Ledgered as a new
+  class: a provenance qualifier travels further than a number precisely
+  because it reads as context rather than data, so every figure in that same
+  chain got corrected en route while "pre-existing" did not.
+- **A dropped review minor.** Task 5's verdict carried three minors; two were
+  routed in the tracker and the third reached no routing line at all and
+  shipped. Its handle is mechanical and now recorded: at task close, every
+  non-clean finding in the verdict gets exactly one disposition line.
+- **A recorded correction list that had drifted.** Of seven recorded stale
+  sites, one was not stale, one pointed at the wrong document, and one real
+  site was on no list. The brief's locate-by-content instruction caught all
+  three; a bare line-number list would have propagated all three.
+- **Four defects in controller-authored briefs**, every one found downstream:
+  a site enumeration off by one, a file count contradicting its own
+  enumeration, a review brief contradicting itself between two sections, and
+  a Windows artifact filename that exists nowhere in the tree. Briefs are the
+  input to four-eyes and therefore the one artifact it does not cover.
+- **A controller claim refuted at the source.** The wording brief asserted
+  that `sha256sum` is absent from macOS. The implementer read Apple's own
+  `md5(1)` man page, found the GNU-mode aliases present on 13/14+ and absent
+  in a 2020 capture of the same page, and - unable to pin the introducing
+  version - stated the bracket instead of inventing one, withheld the clause,
+  and recommended `shasum -a 256` as the form covering the documented
+  macOS 11+ range. The owner ruled that in. The refutation produced a better
+  answer than a correct premise would have.
+- **A three-command claim verified at the parser, not the manual.** With
+  three checksum commands now naming one `SHA256SUMS` file, the sentence
+  asserts all three read that format. The implementer fetched the
+  `Digest::SHA` release macOS `shasum` runs, read its check-mode regex,
+  established that GNU text-mode's second space IS the mode symbol the regex
+  requires, and ran four malformed control lines to prove the acceptance was
+  not vacuous.
+
+**Process mechanics.** One top-tier whole-branch review plus its resumed
+delta re-review; one fix-wave implementer (18 edit sites, 3 commits, no
+premise refuted); one wording implementer resumed once for the owner's
+follow-up ruling, its independent reviewer, then a fix round on that
+reviewer's findings and a second delta re-review. The house-knowledge yield
+across both closes: nine new entries and eight existing ones touched by an
+occurrence, a correction or a re-point - 467 to 476 entries, counted by the
+linter rather than by hand.
+
+**One close duty that had grown since it was written.** The plan
+pre-registered a citation sweep to run with the salvage, with a dated
+snapshot of eight refs and an explicit warning that the number grows with
+every ledgered review round and that hits must be matched by entry id and
+ref text, never by line. At salvage it was ten. The rule earned its warning.
+Applied wider than the plan asked: nine further refs named plan-7 and
+plan-7.5 scratch files by bare basename, which stopped being unambiguous the
+moment three plans each owned a `design-review-round-1.md`. Nineteen refs
+re-pointed, zero bare basenames left, every target verified to resolve.
+
+**Friction.** Three writers shared one worktree for part of the session,
+which meant every dispatch had to name the concurrent files explicitly; no
+index collision actually occurred, but the coordination cost was real and a
+worktree per writer would have removed it. A `grep` bound to a
+gitignore-respecting shell function produced a false empty on a sweep of the
+git-ignored scratch tree.
+
+**Deltas.** The design's acceptance checklist reserved two items for a human
+(inspect the rehearsal draft release, then delete it). That held: the
+pipeline was proven end to end by machine, and the two judgement steps stayed
+with the owner rather than being automated into a green tick.
+
+**Open threads.** The owner's two acceptance steps R8 and R10, with the
+preserved draft release as their input, and one deferred wording item he
+inspects on the rendered draft himself.
