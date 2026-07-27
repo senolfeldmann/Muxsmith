@@ -439,6 +439,41 @@ function onDrop(index: number) {
 function onDragEnd() {
   dragIndex = null;
 }
+
+// --- Plan 7.5 (D65-D70, D72): Add/Remove for track rules -----------------
+//
+// Add appends the EMPTY SKELETON `{ match: {} }` (D65) -- invalid-until-
+// filled, guided by the existing diagnostics plumbing rather than by a
+// prefilled guess; it auto-selects the new rule, so the detail panel opens
+// purely reactively (`v-if="selectedRule"`), with no focus call anywhere
+// (D67). Both mutations are the same immutable whole-model rebuild every
+// other mutation in this view performs.
+function addRule() {
+  if (!model.value) return;
+  const next = [...rules.value, { match: {} }];
+  model.value = {
+    ...model.value,
+    tracks: { ...model.value.tracks, rules: next },
+  };
+  selectedIndex.value = next.length - 1;
+}
+
+// Selection clears after removal, same rationale as `onDrop` above: indices
+// after the removed rule shift by one, so a retained index would silently
+// point at a different rule -- selection maps to an identity, not a
+// position. Remove works down to zero rules; the zero-rule state is legal
+// and surfaced by core's own diagnostics (D69), so the editor holds no
+// guard against it.
+function removeSelectedRule() {
+  if (selectedIndex.value === null || !model.value) return;
+  const next = [...rules.value];
+  next.splice(selectedIndex.value, 1);
+  model.value = {
+    ...model.value,
+    tracks: { ...model.value.tracks, rules: next },
+  };
+  selectedIndex.value = null;
+}
 </script>
 
 <template>
@@ -596,6 +631,21 @@ function onDragEnd() {
             </tr>
           </tbody>
         </table>
+        <button
+          type="button"
+          data-testid="editor-rule-add"
+          @click="addRule"
+        >
+          {{ $t("editor-action-add") }}
+        </button>
+        <button
+          type="button"
+          data-testid="editor-rule-remove"
+          :disabled="selectedIndex === null"
+          @click="removeSelectedRule"
+        >
+          {{ $t("editor-action-remove") }}
+        </button>
       </fieldset>
 
       <section
