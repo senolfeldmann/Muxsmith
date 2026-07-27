@@ -746,7 +746,9 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   record, it wants ONE wholesale amendment batch on the next spec-touching
   plan, not one row per plan; the plan-7.5 design's amendment-2 row is the
   local symptom. (2026-07-22 S22, plan-7.5 design review round-1 harvest,
-  controller watch item.)
+  controller watch item.) Cheap recount method for the batch, proven in
+  the plan-7.5 plan review: extract the table's codes and the
+  `diag_codes!` members, `comm -23` the sorted sets.
 - **Cosmetic cleanup, one pass (sweep group K)**: duplicate section-header
   comment suggestions.rs:325 vs :291 (routed-items item 3, 2026-07-14);
   spec 5.2 NonUtf8Path row wording "per file" vs implemented "per path"

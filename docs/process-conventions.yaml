@@ -330,8 +330,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 8
+  count: 9
   occurrences:
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-7.5 plan review round 1 m2 (plan-review-round-1.md): Step 5 granted a comment permission that Step 6's permitted-delta enumeration over the same artifact omitted - an incomplete enumeration in a normative position at plan-step scale (the reviewer's framing: an enumeration is a dependency, sibling-step grants must be absorbed); fix round completes the enumeration"}
     - {date: "2026-07-15", kind: deferred, ref: "plan-5.8 task-4 brief R3 latitude exercised + first owner review (adoption declined, kept open)"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14 process review, round 2): unresolved design questions never reach an implementer; latitude clauses banned; NEEDS_CONTEXT decision memo is the channel; doctrine §3 amended"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 14, round 3): contested/tough defined by observable criteria replacing the controller-flag trigger; doctrine §7 amended"}
@@ -496,8 +497,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 6
+  count: 7
   occurrences:
+    - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 plan review round 1 HARVEST (plan-review-round-1.md): first review since promotion with ZERO count defects - 13/13 Tier-2 line refs exact, 4/4 transcriptions byte-clean, every count independently recomputed and confirmed (incl. 17-of-47); the reviewer names the measured-at-authoring + re-verify-at-execution-tree discipline as having held against the plan-7 defect classes"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "ROADMAP Plan-6 re-cut asserted '(6 / 5 / 1 / 8)' over '20 named inputs'; recounted to 16 because Plan 6 listed 2 inputs, not 6. Found by the plan-6 design implementer, fixed in fdcdcba; the ROADMAP now numbers every input so the split recounts (design §7 item 9)"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design D45 labelled its FieldWidget union '11 variants' while the union it sat above defined 10; self-caught during the review rounds and recounted mechanically (design :798-800), which the document itself notes happened 'forty lines from where it raised' the same defect against the ROADMAP"}
     - {date: "2026-07-16", kind: violated-corrected, ref: "plan-6 design D41 :278 said the save-surface note is 'Two new Fluent keys' while section 2's table (:1736) and its arithmetic (:1749, 'gui-editor.ftl carries 43: the 42 registry labels plus the save-surface note') both said one; the cross-reference beside it ('D47's catalog table') was dangling - D47 has no catalog table. Found at plan-authoring after four review rounds; Şenol ruled one key (session 16, plan-6 fork 2). Design amended by plan-6 task 1"}

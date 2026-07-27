@@ -4107,3 +4107,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-23", kind: decided, ref: "plan-7.5 delta review HARVEST (design-review-round-1.md round-2 section, reviewer self-lesson): the D54 closure sentence false-negatived under a line-based grep because the prose wraps; found only when the reviewer switched to a whitespace-tolerant pattern"}
+- id: e2e-diagnostic-rendered-is-wire-ballast
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "In e2e fixtures Diagnostic.rendered is type-required wire ballast: no frontend surface displays it (DiagnosticsPanel renders Fluent over code/params; ipc.ts documents the non-display). Diagnostic text assertions therefore go through the i18n-en catalog binding (en(code)), never the rendered field - an assertion against rendered fails on literal execution or passes vacuously."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-7.5 plan review round 1 M1 (plan-review-round-1.md): case 6(d) instructed asserting the panel 'lists the rendered text'; the trap produced a major in a carefully authored plan despite ipc.ts documenting it; reviewer proposes the convention note, fix round corrects the clause"}
