@@ -283,6 +283,16 @@ unsigned at 1.0; signing revisit is the already-registered ROADMAP trigger
 ("First external-user complaint about unsigned-install hurdles ...") and
 not design scope.
 
+**Superseded in part (2026-07-27, Plan 8.5 kickoff ruling 1; A4):** the
+macOS leg ships ad-hoc signed (`bundle.macOS.signingIdentity: "-"`), so
+that a quarantined install produces the documented "unidentified
+developer" flow instead of Gatekeeper's "damaged" refusal (owner R8
+walk-through finding). The ruling's substance - no Apple account, no
+certificate, no notarization, signing revisit stays the registered
+trigger - is unchanged; Windows and Linux stay unsigned. Every site
+restating the old wording was corrected in the same change (Plan 8.5
+Task 1 sweep table).
+
 **Decision (the design part: WHERE and WHAT).** A new committed file
 `docs/INSTALL.md` is the single home of the per-OS install documentation.
 Consumers: (a) the draft-release body template links its per-OS anchors
@@ -966,6 +976,13 @@ the brief):
   unsatisfiable on an arm64-only artifact (no Intel leg exists, D78);
   11.0 is the arm64 hardware floor, so `LSMinimumSystemVersion` stops
   lying.
+- `macOS.signingIdentity`: `"-"` - ad-hoc signing (added 2026-07-27,
+  Plan 8.5 ruling 1; A4): seals the bundle with
+  `_CodeSignature/CodeResources` so a quarantined install fails
+  Gatekeeper as "unidentified developer" instead of "damaged"; no Apple
+  account, certificate or notarization (the S22 signing trigger stays
+  registered). The section-3.1 fence predates this key and is superseded
+  by the tree at the macOS block (A4).
 - `macOS.dmg`: **not configured** - Tauri's default dmg window layout
   ships at 1.0. This is the presentation-token carve-out's territory
   (`latitude-carveout-presentation-tokens`), and the visual-polish pass
@@ -2131,3 +2148,18 @@ context (six and four respectively), while its extraction sizes (83 vs 93
 pre-fix) reproduce exactly - the divergence is confirmed, only its hunk
 grouping was not. `e61264f` deepened two existing regions and created no
 new one.
+
+**A4 (2026-07-27, owner kickoff ruling 1, executed by Plan 8.5 Task 1).**
+`bundle.macOS.signingIdentity: "-"` (Tauri's documented ad-hoc
+pseudo-identity, re-verified at v2.tauri.app/distribute/sign/macos
+2026-07-27: no Apple account, certificate or notarization; the Privacy &
+Security whitelist step remains) joins the D86 config surface. D75's
+"all three OS ship unsigned at 1.0" wording is superseded in part - see
+the note in D75. Fence bookkeeping, same rule as A3 (frozen graded
+material stays byte-unchanged, the tree is authoritative): section 3.1
+is superseded by the tree at the macOS block; 4.1 and 4.2, already
+tree-authoritative per A3, changed wording again (INSTALL.md intro and
+Gatekeeper lines, draft-body title line); 4.5's README-rider fence is
+now also superseded by the tree ("unsigned-install" -> "install-hurdle").
+Section 11's frozen-literal list is read with this amendment: the
+signingIdentity literal is frozen alongside the 3.1 literals.

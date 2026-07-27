@@ -179,7 +179,10 @@ plan shares; orthogonal to all GUI work.
 
 **KICKOFF 2026-07-22 (S22, parallel with Plan 7.5 by owner call)** - owner
 rulings, binding for the design: UNSIGNED artifacts on all three OS at
-1.0 (per-OS install-hurdle documentation ships with the release docs;
+1.0 [superseded in part 2026-07-27, Plan 8.5 ruling 1: macOS ships
+ad-hoc signed via `bundle.macOS.signingIdentity: "-"` - still no Apple
+account, certificate or notarization; Windows and Linux stay unsigned]
+(per-OS install-hurdle documentation ships with the release docs;
 signing revisit is a registered trigger below); NO auto-updater at 1.0
 (v1.x); a `v*` tag builds bundles and attaches them to a DRAFT GitHub
 release - the owner publishes manually; artifact matrix: Windows x64 +

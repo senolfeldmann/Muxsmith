@@ -359,6 +359,8 @@ This is a transcription task with a fidelity duty, not an authoring task: design
      steps; drop the WIP banner in the same pass -->
 ```
 
+**Superseded 2026-07-27 (Plan 8.5 Task 1):** the comment now reads "per-OS install-hurdle steps" - the fence above is the wording this plan mandated before the macOS ad-hoc-signing ruling; frozen transcription targets are not rewritten.
+
 This is a rider edit, not a resolution: the comment stays a `placeholder(1.0)`, and the placeholder count stays 4:
 
 ```bash

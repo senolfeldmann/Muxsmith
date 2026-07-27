@@ -1,4 +1,4 @@
-Muxsmith __VERSION__ - unsigned builds; read the install note for your OS
+Muxsmith __VERSION__ - builds carry no developer identity; read the install note for your OS
 before first launch: [Windows](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#windows)
 | [macOS](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#macos)
 | [Linux](https://github.com/senolfeldmann/Muxsmith/blob/master/docs/INSTALL.md#linux)

@@ -2,8 +2,10 @@
 
 Release downloads live on the
 [GitHub releases page](https://github.com/senolfeldmann/Muxsmith/releases).
-All 1.0-era builds are **unsigned**: your OS will warn before the first
-launch. The sections below show the one-time steps per OS. Verify
+No 1.0-era build carries a developer identity - the Windows installers
+are unsigned, the macOS app is ad-hoc signed (no Apple certificate, no
+notarization) - so your OS will warn before the first launch. The
+sections below show the one-time steps per OS. Verify
 downloads against the release's `SHA256SUMS`, with the files beside it:
 `sha256sum --ignore-missing -c SHA256SUMS` on Linux,
 `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS, and in
@@ -47,7 +49,9 @@ macOS 11+). There is currently no Intel build.
 
 Open the dmg and drag **Muxsmith** to Applications.
 
-**Gatekeeper:** the app is unsigned and not notarized.
+**Gatekeeper:** the app is ad-hoc signed - no Apple developer identity,
+not notarized - so macOS treats it as coming from an unidentified
+developer.
 
 - **macOS 15 (Sequoia) and newer:** double-click Muxsmith once; macOS
   blocks it. Open **System Settings > Privacy & Security**, scroll to
