@@ -410,6 +410,51 @@ action:
 ## Pre-1.0 release gates
 
 Must be resolved before the first tagged release; none blocks Plan 6 work.
+
+- **BLOCKER: the macOS dmg's app does not launch - "the app is damaged"**
+  (owner R8 walk-through on real Apple-Silicon hardware, 2026-07-27; the
+  first human execution of the documented install path). Measured on the
+  rehearsal artifact from the Linux side: the two Mach-O binaries in
+  `Contents/MacOS` each carry an embedded signature blob (the arm64
+  linker's ad-hoc signature), but the bundle has **no
+  `_CodeSignature/CodeResources`** - it is not sealed as a bundle - and
+  `bundle.macOS` configures no `signingIdentity`. Hypothesis to confirm on
+  the Mac before any fix: a quarantined bundle whose executable looks
+  signed while the bundle carries no seal fails Gatekeeper validation,
+  which produces "damaged" rather than the "unidentified developer" prompt
+  that `docs/INSTALL.md` documents - so the documented Settings >
+  Open Anyway flow cannot appear at all. One-command confirmation:
+  `xattr -dr com.apple.quarantine` on the installed app, then launch.
+  Candidate fix: ad-hoc sign the bundle at build time
+  (`codesign --force --deep --sign -`), which needs no Apple account,
+  no certificate and no notarization, and is therefore NOT the code
+  signing the S22 ruling deferred - but it IS a change to the "unsigned on
+  all three OS at 1.0" wording and wants an explicit owner decision.
+  Whatever lands, `docs/INSTALL.md`'s macOS section is re-verified against
+  the real flow afterwards.
+- **BLOCKER-adjacent: the dmg's pre-mount license (SLA) mis-renders the
+  publisher name** (same walk-through). `bundle.licenseFile` is
+  `../LICENSE`, whose copyright line carries `Ş` as UTF-8 `c5 9e`
+  (verified by hexdump). Observed: the name garbles at that character and
+  the first three letters of the following word render bold - consistent
+  with a style-run table keyed on offsets that the two-byte character
+  shifts, not merely a wrong code page. **This is the third sink the WiX
+  diagnosis named** (publisher, the LICENSE text inlined into the
+  installer, copyright): Windows was fixed by pinning the installer
+  database code page, and nobody then asked whether the macOS installer
+  carries the same sink. It does.
+- **Release-body OS links break into separate paragraphs** - confirmed on
+  the rendered draft, which is what the deferred owner wording item asked.
+  `.github/release/draft-body.md` lines 2-4 begin with `|`, and GitHub
+  renders them as their own blocks instead of one line. Fix: join the three
+  links onto one line (the same question applies to the two other wrapped
+  regions in that file). (Owner R8 inspection, 2026-07-27.)
+- **CLOSED by the same walk-through**: the `ansicpg1252` residual recorded
+  at the plan-8 close (whether the Windows installer's license dialog
+  renders `Ş` correctly, unverifiable without real hardware) is resolved -
+  the owner reports the Windows install correct throughout, license dialog
+  and Programs-and-Features publisher included. The upstream cosmetic
+  concern does not materialize.
 **Plan 5.5 EXECUTED AND CLOSED 2026-07-12** (30 tasks incl. seven added
 in-flight by review routings and Şenol gate decisions; commits
 e8e85d9..close; per-task verdicts + whole-branch review in the salvaged
