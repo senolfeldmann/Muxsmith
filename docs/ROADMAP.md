@@ -315,6 +315,42 @@ action:
   and re-pointed both; the plan's own close-actions bullet and this entry
   keep the pre-salvage path deliberately, because they record what the
   trigger said rather than pointing a reader at a live artifact.)
+- The `ubuntu-22.04` runner's deprecation or retirement is announced -> move
+  the Linux release leg to `ubuntu-24.04` AND record the raised glibc/webkit
+  floor in docs/INSTALL.md and the tar.gz README requirement line in the same
+  change. (Plan-8 design trigger 1, D85.)
+- A DATED windows-arm64 runner label appears (today only the undated
+  `windows-11-arm` is GA) -> pin it, closing D85's recorded deviation from
+  pin-everything. (Plan-8 design trigger 2.)
+- A `@tauri-apps/cli` / `tauri` major or minor bump lands -> re-verify the
+  four bundler facts the design pins at tauri-cli-v2.11.4 before the next
+  release: externalBin landing spots (msi INSTALLDIR, `Contents/MacOS`,
+  `/usr/bin`), the wix template's PATH-feature inertness, the config-version
+  to Cargo fallback, and `--bundles` value coverage. (Plan-8 design
+  trigger 3.)
+- The signing revisit fires (the unsigned-install-hurdle trigger above) ->
+  beside the per-OS signing config: shrink docs/INSTALL.md per its embedded
+  comment, and evaluate GitHub artifact attestations FIRST (D90's record).
+  (Plan-8 design trigger 4.)
+- The Intel-dmg request fires (the macOS x64 trigger above) -> add a
+  `macos-x86_64` leg on `macos-15-intel`, extend D89's asset set and D77's
+  body table, and decide universal-vs-second-dmg then (D78 records why
+  universal lost at arm64-only scale). (Plan-8 design trigger 5.)
+- A user asks for a portable Windows build -> the mkvtoolnix Windows-7z
+  parity gap becomes a v1.x candidate: a `windows-x86_64.zip` from the
+  existing msi leg's binaries, D88-style. (Plan-8 design trigger 6.)
+- A user asks for a German installer UI -> reopens D86's single-language
+  `wix.language` decision; the mechanism is a per-language map carrying a
+  locale file (amendment A2), and the cost is more msi artifacts or a
+  transform decision, which is why it waits for a request. (Plan-8 design
+  trigger 7.)
+- A tar.gz-equivalent bundler lands in Tauri, or cargo-dist earns its keep
+  for the archive leg -> revisit D88's hand-packed step. (Plan-8 design
+  trigger 8.)
+- The `gh` CLI on the runner images breaks a release-ops invocation (it
+  floats with the pinned runner image - the one unpinned tool in the path)
+  -> pin gh by direct versioned download in release.yml, same shape as every
+  other pin. (Plan-8 design trigger 9.)
 - A request for site-specific wording or tooltips on the editor's generic
   action keys (any site) -> reopens the shared-key question as an OWNER
   decision; the latent-coupling steelman recorded in
@@ -599,6 +635,8 @@ polish entry.
   **TRIGGER FIRED AND CONSUMED 2026-07-22 (S22)**: Plan 8's ledger-lint
   CI wiring (next bullet) is the ledger-lint touch; the extension rides
   the same Plan-8 rider task.
+  **DONE 2026-07-27** (Plan 8 Task 5, commit 92c62f1): per-entry
+  duplicate-key check via a SafeLoader subclass, fixture fire-verified.
 - **RESOLVED 2026-07-16 (session 16, owner-disposed per entry; commit e24759b).**
   The 2026-07-15 blocked-pool audit (report:
   `docs/process-journal/artifacts/2026-07-15-ledger-blocked-pool-audit.md`,
@@ -622,12 +660,20 @@ polish entry.
   plan close is the right one. The deeper `blocked_on` redesign is not taken
   now; the sweep addresses the symptom, and whether the condition mechanism
   needs redesign can be revisited if the sweep keeps finding much stale.
-- **Open rider: the audit covered only `decision-ledger.yaml`.** The other
-  three house files carry 12 more `status: blocked` entries never swept
-  (product-boundaries 6, conventions 3, process-conventions 3). The new
-  plan-close sweep step covers all four going forward; a one-off sweep of
-  these 12 is a small owner-disposition task whenever convenient (not
-  blocking).
+- **Rider CLOSED 2026-07-27 (plan-7.5 close sweep).** The 2026-07-15 audit
+  had covered only `decision-ledger.yaml`, leaving 12 `status: blocked`
+  entries in the other three house files never swept (product-boundaries 6,
+  conventions 3, process-conventions 3). The plan-7.5 close ran the
+  plan-close sweep over all four files - 24 blocked entries, the recorded
+  12 among them, counts matching per file. Result: one entry re-pointed
+  (`core-84-regex-recompile`, whose `blocked_on` read "later cleanup pass",
+  a non-event justification of the same class the 2026-07-15 audit
+  re-pointed twice; now the v1.x entry plus its promotion trigger); one
+  flagged for resolution at the Plan-8 close (`ci-13-packaging-deferred`,
+  blocked on Plan 8, whose work has landed - and whose statement still
+  carries the stale "while the repo is private" premise); one occurrence
+  owed to `ci-16-mise-not-ci` from D85's mise-free release legs. Everything
+  else stays legitimately blocked on a real future vehicle.
 
 - **`ledger-lint` script (v1.x, or a rider on the next plan that touches
   `scripts/`)**: the ledger's anti-fabrication rule -
@@ -655,6 +701,15 @@ polish entry.
   bundled with the duplicate-key extension (entry above). The rider enters
   the plan brief at plan authoring; not a design amendment (nothing in the
   plan-8 design depends on it).**
+  **DONE 2026-07-27** (Plan 8 Task 5, commit 92c62f1): a `ledger-lint` CI
+  job with a pinned PyYAML in a throwaway venv, green on the pinned head
+  (run 30276189309). A red ledger now mechanically blocks a release
+  rehearsal, since the release guard consumes the ci-run conclusion.
+  Rider from the plan-8 whole-branch review (commit ecab53a): the inlined
+  loader construction had moved outside the parse `try`, so a file with an
+  illegal control character raised a traceback instead of the linter's own
+  does-not-parse line - introduced by the wiring commit itself, not
+  pre-existing, and fixed with the fire test that proves both states.
   **PREDICTION CONFIRMED 2026-07-16, and the entry is now evidence-backed
   rather than precautionary.** An ad-hoc validator of exactly this shape,
   written to check two new entries, found a real pre-existing defect on its
