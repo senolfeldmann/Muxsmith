@@ -603,8 +603,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
+    - {date: "2026-07-27", kind: reinforced, ref: "wording-fix verdict HARVEST H3 (wording-fix-verdict.md): a tree-wide old-string zero can never pass without NAMED exclusions (frozen SDD records, the mandating plan doc) plus a fire-check of each zero against BASE - deliberate provenance exclusions are part of the explicitly named surface, not a hole in it"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix report secondary note (wording-fix-report.md): grep -rIl reported the stale dist/ bundle clean because -I classified minified JS as binary - a flag silently excluding files from the sweep surface is the same false-empty class; grep -a is the surface-preserving form for build-output sweeps"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 plan review round 1 M1 (plan-review-round-1.md): the plan-close salvage bullet pre-registered 'exactly these two' design-review refs after a one-file-scoped sweep with a firing control; the reviewer's four-file sweep found five (three would have dangled after salvage); fix round completes the surface"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
