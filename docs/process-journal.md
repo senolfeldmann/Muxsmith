@@ -1974,3 +1974,103 @@ and spawn-model resumption rules are unchanged - inheritance cuts both
 ways now, since an Opus controller would otherwise silently pull the
 top-tier roles down. Recorded as proc-03's tenth occurrence; the
 session then closed per the standard gate (journal, handoff, memory).
+
+## 2026-07-27 | Plan 7.5 complete and closed | session 23 (Peter, Opus 5 1M)
+
+Scope: the plan-7.5 CLOSE only (execution is covered by the three session-22
+entries above), commits 7302e1b..bd7dba9 plus the controller's house/ROADMAP
+commits. First session under the re-instantiated model tiering: controller
+loop on Opus 5 1M, top tier (Fable 5) reserved for the whole-branch review,
+Opus 5 for every implementer, task reviewer and fix dispatch.
+
+**Decisions and their why.**
+
+- **Frozen text is not corrected, it is annotated.** Two documents quoted the
+  spec sentence the owner reworded on 07-26/27 as a verbatim mandate block.
+  Rewriting them would have destroyed the record Task 4's transcription check
+  graded against, so each block stays byte-identical and carries a one-line
+  supersession note. Ruled here, then applied unchanged to plan 8's frozen
+  workflow fences hours later, so the house has one rule for the class rather
+  than two precedents.
+- **Which citations move at salvage, and which do not.** The SDD directory is
+  git-ignored during execution and salvaged into the tracked tree at the
+  close, which strands every citation of the old path. Ruling: live pointers
+  move; records of what a trigger *said* keep the pre-salvage path, because
+  re-pointing them would falsify the record. The close-fix review then
+  narrowed that boundary correctly: a PRESENT-TENSE claim about where the
+  tracker lives is not a record, it is a pointer a public-repo reader cannot
+  follow, so both such claims keep their original wording and gain the
+  salvaged twin (the house's evidentiary-citation form: original verbatim,
+  qualifier, live twin).
+- **Blocked-pool sweep** (plan-close gate step 1b) over all four
+  house-knowledge files, 24 blocked entries. One re-pointed off "a later
+  cleanup pass" - a non-event justification, the exact shape the 2026-07-15
+  audit re-pointed twice before. One flagged for resolution at the plan-8
+  close (blocked on Plan 8, whose work has landed). The 2026-07-16 rider
+  asking for a one-off sweep of the three non-ledger files is closed by this
+  pass; its recorded 6/3/3 split matched the sweep exactly.
+
+**What the process caught.**
+
+- Three defects in controller-authored briefs, all found downstream: a site
+  enumeration off by one (the implementer's `git grep` found eight tracked
+  sites against the brief's seven), a verification clause naming three files
+  where its own enumeration named two, and a review brief whose Output
+  section asked for two adjudications while its Dimensions section listed
+  three. Briefs are the one artifact four-eyes does not cover by
+  construction, and this is what that costs.
+- **A census that four layers carried and nobody measured twice.** The
+  controller measured 13 English cross-references, 11 conformant; the
+  implementer "reproduced independently" and matched exactly; the number then
+  entered a commit message and a review brief. The tree holds 14 and 12. The
+  cause is structural: the pattern `see the [^)]*topic` cannot match a title
+  containing parentheses, and the implementer had reproduced the pattern, not
+  the measurement - agreement was guaranteed by construction. The close-fix
+  reviewer found it, and the implementer then found a second instance of the
+  same class in its own German list. Ledgered as a violated-corrected
+  occurrence on the sweep-surface rule. The edit set was unaffected: the two
+  deviating sites were always the only ones.
+- **A scope boundary working as designed.** The DE wording addendum told the
+  implementer explicitly not to touch the English counterparts. It found the
+  English pair carried the same defect in a different form (casing rather
+  than a preposition), did not edit them, and reported. The owner then ruled
+  the English alignment. A boundary whose premise is wrong should surface the
+  premise, not swallow it.
+
+**Process mechanics.** One implementer (Opus 5), resumed three times - twice
+for owner rulings that arrived mid-task, once for the review delta - and one
+independent reviewer (Opus 5), resumed once for the delta. Four product
+commits plus the salvage and the controller's house/ROADMAP work. The
+whole-branch review had already returned READY in session 22; this session
+executed only the close.
+
+**Friction.** `grep` on this dev machine is bound to a shell function that
+honours `.gitignore`, so the controller's own first sweep for rehearsal
+evidence in the git-ignored SDD tree returned a false empty and briefly
+implied that evidence had never been written. Ledgered, with the refinement
+the plan-8 reviewer measured: only the rooted recursive form is affected,
+which is exactly the form used to prove a non-existence. Three writers shared
+one worktree for part of the session, which needed explicit disjointness
+instructions in every dispatch; no index collision actually occurred.
+
+**Deltas.** The plan pre-registered the owner's rendered-surface pass as "the
+complete set: the two topic files; this plan changes no catalog value and no
+other user-facing string". The pass that ran touched five files across both
+locales, because the cross-reference-form question is tree-wide rather than
+plan-scoped. The whole-branch triage had flagged exactly that ("touches files
+outside the plan set"), so the pre-registration was caught before it bound
+anything - but a "complete set" enumerated at plan-authoring time is a claim
+about the future, and this one was too narrow.
+
+**Open threads.** Plan 8 is READY after its own fix wave and delta re-review;
+its close waits on the owner's rendered-surface pass review and on the two
+owner actions the design reserves for a human (inspecting and then deleting
+the rehearsal draft release).
+
+**One more, found by the close-fix reviewer at the very end.** The salvage had
+run before the close finished, so the public archive held a 30-line tracker
+against the live 32 - four commits, two review rounds and three owner rulings
+had happened after the snapshot. The durable residue survived only because a
+ledger occurrence happened to carry it. Re-salvaged as the last write of the
+close and ledgered as a rule; whether the doctrine's plan-close step order
+changes is an owner question, since that file is shared beyond this project.

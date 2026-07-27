@@ -4379,3 +4379,17 @@ entries:
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "controller session-23 close work: grep -rl over .superpowers/ and docs/ for two rehearsal run ids returned only the handoff snapshot, implying the rehearsal evidence had never been written to an artifact; command grep on the same pattern found 12 hits in task-6-report.md. The false empty would have read as a write-at-creation violation that had not occurred"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-8 whole-branch verdict HARVEST 5 (whole-branch-verdict.md): the reviewer tested the brief's warning and found the single-file explicit-path form unaffected, narrowing the trap to the rooted -r sweep; it used command grep throughout regardless"}
+- id: salvage-is-the-last-close-write
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "The SDD salvage copies a snapshot, so everything the close writes into the scratch AFTER it - the last tracker lines, a fix round's report, a delta verdict, the governing human's rulings - is absent from the public archive and survives only by accident elsewhere. Salvage is therefore the LAST write of the close, run after the final tracker line and before the journal entry; if any scratch write happens after a salvage, the salvage is re-run and the file count re-verified in the new commit. Trigger is readable: you are about to append to the scratch and a salvage commit already exists for this plan."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 close-fix delta verdict H7 (close-fix-verdict-delta.md): the reviewer measured the salvaged progress.md at 30 lines against the live tracker's 32 - the salvage had run at 18:13 and the close then produced four commits, two review rounds and three owner rulings. Re-salvaged as the last write of the close; the durable residue had survived only because a ledger occurrence happened to carry it"}
