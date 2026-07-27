@@ -1172,3 +1172,27 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   above: FOLDED INTO PLAN 7 (S20 owner scope call; see the Plan 7 anchor;
   ledger i18n-12; design D55 rule 5). (T4 verdict harvest H1, 2026-07-14;
   plan-5.8 design-review harvest, 2026-07-14)
+
+## Test flakiness
+
+- **`dry_run_json_emits_a_document_when_the_language_query_fails` failed once
+  under load, then passed four times** (Plan 8.5 pre-push gate, 2026-07-28).
+  Observed: the ten-part gate's `cargo test --workspace` reported
+  `mkvmerge_found: false` where the test requires `true` - i.e. `locate()`
+  behaved as if the fake mkvmerge on the test's `PATH` were absent. Not
+  reproducible since: green in isolation, and green in three subsequent
+  `cargo test --workspace` runs (the last with exit 0, zero `test result:
+  FAILED` lines, 39 suites ok, the FAILED pattern fire-controlled against the
+  red log). No Rust file changed in Plan 8.5 - measured, zero `.rs`/`Cargo.*`
+  paths in `f627105..HEAD` - and CI had run this suite green on the identical
+  Rust hours earlier, so the plan did not introduce it.
+  The test writes an executable shell script into a tempdir and immediately
+  execs it through a `PATH` set to that dir alone
+  (`support::fake_mkvmerge_that_fails_queries`). **No mechanism is claimed
+  here** - a write-then-exec race under parallel load is the obvious suspect
+  and is exactly the kind of guess this project does not record as a finding.
+  Trigger: the next time this test, or any other fake-binary test using that
+  helper, fails without a code change -> that second data point is worth a
+  systematic-debugging pass; a single non-reproducible failure is not.
+  Recorded rather than chased because chasing a one-in-five flake with no
+  second observation costs more than it can currently prove.
