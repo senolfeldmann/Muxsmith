@@ -14,4 +14,4 @@ Every edit re-validates the whole profile in the background, so the diagnostics 
 
 Saving rewrites the file from the model: comments, key order and formatting of the file on disk are not preserved, and fields left at their default are omitted rather than written back. The output format follows the file's extension, so a YAML profile stays YAML. If a hand-commented profile matters to you, keep a copy or put it under version control before saving over it.
 
-The Apply button on a suggestion card in the Batch view saves the same way: one canonical rewrite, same rules (see the suggestion card topic).
+The Apply button on a suggestion card in the Batch view saves the same way: one canonical rewrite, same rules (see the Suggestion card topic).

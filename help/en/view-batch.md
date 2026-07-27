@@ -13,7 +13,7 @@ After a dry run, every matched file gets its own table: one row per track rule, 
 
 ## Diagnostics
 
-Findings come in three severities: errors, warnings and info notices. The summary line counts them across the profile, the batch and every file. Errors block Run; warnings and info notices do not. When the report proposes concrete fixes, they appear as suggestion cards below the file list (see the suggestion card topic).
+Findings come in three severities: errors, warnings and info notices. The summary line counts them across the profile, the batch and every file. Errors block Run; warnings and info notices do not. When the report proposes concrete fixes, they appear as suggestion cards below the file list (see the Suggestion card topic).
 
 ## When Run is disabled
 
