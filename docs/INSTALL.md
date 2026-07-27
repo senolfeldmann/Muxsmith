@@ -5,7 +5,8 @@ Release downloads live on the
 All 1.0-era builds are **unsigned**: your OS will warn before the first
 launch. The sections below show the one-time steps per OS. Verify
 downloads against the release's `SHA256SUMS`, with the files beside it:
-`sha256sum -c SHA256SUMS` on Linux, and in PowerShell on Windows
+`sha256sum -c SHA256SUMS` on Linux, `shasum -a 256 -c SHA256SUMS` on
+macOS, and in PowerShell on Windows
 `Get-FileHash muxsmith-<version>-windows-x86_64.msi -Algorithm SHA256`
 compared against that file's line in `SHA256SUMS`.
 
