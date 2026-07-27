@@ -4161,6 +4161,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
+    - {date: "2026-07-23", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
