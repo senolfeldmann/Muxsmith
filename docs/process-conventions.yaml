@@ -607,7 +607,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 7
+  count: 8
   occurrences:
     - {date: "2026-07-27", kind: reinforced, ref: "wix-fix report channel (a) (wix-fix-report.md): the ruled fallback assumed the non-ASCII sink set was publisher+copyright; the empirical set was publisher+LICENSE-inlined-into-the-msi, copyright never reaches WiX - wrong in both directions, so the fallback branch was dead on arrival; the A/B run enumerated the real surface before any remediation shipped"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix verdict HARVEST H3 (wording-fix-verdict.md): a tree-wide old-string zero can never pass without NAMED exclusions (frozen SDD records, the mandating plan doc) plus a fire-check of each zero against BASE - deliberate provenance exclusions are part of the explicitly named surface, not a hole in it"}
@@ -616,6 +616,7 @@ entries:
     - {date: "2026-07-27", kind: reinforced, ref: "plan-8 plan delta review n3 + HARVEST (plan-review-round-1.md round-2 section): the rule-first fix's own snapshot command missed one live basename (plan-review-brief; zero hits today, rule covers it) - a rule-plus-snapshot conversion owes the snapshot's enumeration the same surface scrutiny; advisory, no round"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "joblog-datebomb-fix verdict Medium (joblog-datebomb-fix-verdict.md): the sweep claimed 33 hits / 3 files workspace-wide, actual 34 / 4 - e2e/smoke.spec.ts:481 missed because the non-Rust sweep returned a FALSE empty; benign hit, but the figure propagated into the commit message and progress ledger; third strict-fit event, promoted at count 3"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 close-fix review MEDIUM 1 (close-fix-verdict.md): the English help cross-reference census was reported as 13 sites / 11 conformant by four consecutive layers (controller measurement, implementer report, eb4608b commit message, review brief); the tree holds 14 / 12. The pattern see the [^)]*topic cannot match a parenthesized title, so help/en/editor-tracks-rules.md:7 was invisible - the implementer's independent reproduction inherited the identical blind spot, which is why a second run of the same pattern is not a second measurement"}
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 owner-wording verdict, reviewer self-audit (owner-wording-verdict.md): its first completeness sweep returned four clean empties because the pathspec list was passed unquoted to git grep and zsh does not word-split, so one nonsense pathspec was searched - the SURFACE collapsed silently while the pattern was fine. Caught by re-running with explicit arguments; every figure in the verdict comes from the re-run. A second self-instance in the same pass: a fence extractor assuming four backticks against a three-backtick fence"}
 - id: gate-includes-cross-target-lint-for-the-unrun-os
   kind: pattern
   tier: 2

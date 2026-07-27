@@ -4394,3 +4394,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-7.5 close-fix delta verdict H7 (close-fix-verdict-delta.md): the reviewer measured the salvaged progress.md at 30 lines against the live tracker's 32 - the salvage had run at 18:13 and the close then produced four commits, two review rounds and three owner rulings. Re-salvaged as the last write of the close; the durable residue had survived only because a ledger occurrence happened to carry it"}
+- id: deleting-a-named-thing-sweeps-its-name
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Deleting or renaming a NAMED artifact - a document section, a heading, a job, a gate part - makes its NAME a second sweep surface beside its content: who points at it by title. A count sweep and a content sweep both come back clean while a title citation elsewhere goes dangling, because the rule survives and only its label moved. Trigger is readable: you are removing something that has a name other text could call it by. One grep per name, over the tracked tree, before the deletion ships."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 whole-branch delta F1 (whole-branch-verdict-delta.md, reviewer's own self-accounting): the fix wave deleted BUILDING.md's 'Cross-target lint rule' section after the reviewer's adjudication-2 sweep had checked the neighbouring ci.yml comment block for the gate-part COUNT but not for the section TITLE; ci.yml:92's present-tense rationale still cites the deleted title, now ungreppable. Recorded with its exact replacement on the next-ci.yml-touch vehicle"}
+- id: dispatch-restates-the-standing-commit-grant
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A dispatch that expects the subagent to commit restates this repo's standing commit-and-push authorization in the dispatch text, because the subagent inherits a global never-commit-without-being-asked default and cannot see a project grant that lives in the HANDOFF or an implementer preamble it was not given. Naming the commit form ('two commits, unsigned, explicit staging') is not the same as authorizing it: the agent then has to reason its way past a standing prohibition, and an agent that resolves that correctly is one that could equally have resolved it by refusing. Trigger is readable: your dispatch contains the word commit."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 wording fix round (wording-fix-round-report.md, implementer's own process note): the brief prescribed two commits but never restated SI-4, so the implementer committed while explicitly flagging the tension with its standing instruction and justifying the override from the SDD workflow and its own predecessor commits. Correct outcome, reached by reasoning that the dispatch should have made unnecessary"}
