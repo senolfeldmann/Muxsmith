@@ -3113,7 +3113,7 @@ entries:
   kind: non-decision
   tier: 1
   domain: core
-  statement: "The four-copy planning pipeline (~100 lines across cli dry_run.rs/run.rs and src-tauri lib.rs/run.rs) and the never-decided injectable-planner-seam interface (S4/S5/S6) are one question: a shared core plan_pipeline() IS the seam. Left undecided whether to do the hoist as an idiomacy-fix wave now or fold it into the Plan 6 profile-editor design."
+  statement: "The four-copy planning pipeline (MEASURED 2026-07-27 at 260 lines / 199 non-comment for the load-to-plan stretch, 322/246 including the specs gate, across cli dry_run.rs/run.rs and src-tauri lib.rs/run.rs; the '~100 lines' this entry carried until then was an estimated net CUT from an earlier analysis, restated here as the size of the duplication - wrong by a factor of 2.5 to 3) and the never-decided injectable-planner-seam interface (S4/S5/S6) are one question: a shared core plan_pipeline() IS the seam. Left undecided whether to do the hoist as an idiomacy-fix wave now or fold it into the Plan 6 profile-editor design."
   steelman: null
   blocked_on: "Plan 9 (internal): the vehicle half is settled (own plan, NOT folded into the editor design); the seam INTERFACE stays open as Plan 9's design question"
   status: blocked

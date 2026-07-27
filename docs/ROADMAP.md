@@ -249,6 +249,67 @@ owner's plan-approval gate as usual.
 
 ## Plan 9: core/orchestration hoists + planner seam
 
+**RECON 2026-07-27 (session 23), inventory at
+`.superpowers/sdd/plan-9/recon-inventory.md`, 1119 lines.** Read it before
+designing; the anchor's own figures were measured and several are wrong.
+
+Corrections to what this anchor and the ledger claim:
+
+- The duplication is **260 lines (199 non-comment)** for the load-to-plan
+  stretch, or 322/246 counting the specs gate - not the "~100 lines" the
+  ledger entry `core-121` states. That figure originated as an estimated net
+  CUT in an earlier analysis and was restated as the size of the
+  duplication; off by a factor of 2.5 to 3.
+- The `MUXSMITH_RUNS_ROOT` gate is at
+  `crates/muxsmith-cli/src/commands/run.rs:330-335`, not the `run.rs:306`
+  cited below.
+- "Four copies", "eight IpcError render sites", "the single eprintln in
+  queue.rs" and the JobsView line range all check out.
+
+Findings that change what the design has to decide:
+
+- **The four copies differ in seven DELIBERATE ways and six accidental
+  ones**, enumerated and classified in the inventory. A hoist is safe only
+  where a difference is a parameter; the seven deliberate ones include
+  locate-vs-detect, a semantic split on `mkvmerge_found` the CLI cannot
+  express, and a specs gate that exists on only two of the four. The design
+  decides which become parameters and which stay separate - it does not get
+  to discover them.
+- **The chief accident: `profile::validate::config_diagnostics` has existed
+  since Plan 5.6 T11, and only the four NON-pipeline callers were migrated.**
+  All four pipeline copies still inline `validate::validate` plus
+  `lint::provable_overlaps`. The earlier hoist was half done, which is a
+  large part of why there are four copies to begin with.
+- **The GUI's copy of the runs-root seam has no consumer at all.** Only five
+  CLI test sites set the variable. Deleting is a candidate outcome, not
+  merely hoisting.
+- **`JobOutcome.errors` reaches no GUI surface and no CLI human output.** On
+  a worker panic the CLI's human arm prints only `exit_code`, which is
+  `None`, so the user sees `n/a`. The `worker-panicked` message exists in
+  both locales and is looked up by nothing but the catalog-completeness
+  test. This is a user-visible hole, not the cosmetic item the entry implies.
+- **Bare `raw:` with an empty property name is silently never-matching**, not
+  merely unvalidated: the rule emits an info diagnostic, then `get("")`
+  returns false at match time, so the rule quietly matches nothing. Neither
+  a rejection code nor its severity is fixed anywhere, and no ledger entry
+  exists for it.
+- **The `config_diagnostics` ordering gap is wider than recorded** - the
+  GUI's `validate_profile` is the direct analogue of CLI `validate` and
+  returns unsorted - and "ordering is cosmetic" is not obviously true,
+  because `BatchView.vue:225` indexes `config_diagnostics[0]`.
+- **The D23 re-check may be closeable without building anything**: the
+  deviation was already adjudicated in round 2 of the plan-5 whole-branch
+  review ("the implemented form is strictly better than my literal
+  wording"), and the divergent branch is unreachable from the UI because the
+  Run button is disabled by the same flag that gates it. What is missing is
+  a test and a ledger entry recording the correction's form, not a fix.
+- **The untested part of `start_run` is precisely its composition** -
+  acquire, blocking plan, Soft/Ready, commit, runner thread - since
+  everything not needing an `AppHandle` is already factored out. No Vitest,
+  no `tauri::test`, and the Playwright mount harness globs only the editor
+  widgets, so `JobsView` and `BatchView` cannot be mounted as they stand.
+
+
 Orthogonal to every GUI plan; can run as a parallel worktree stream rather
 than in sequence.
 
