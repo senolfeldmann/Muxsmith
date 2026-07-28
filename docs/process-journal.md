@@ -2440,3 +2440,47 @@ the contract. Vehicle recorded on the tracker for the plan close.
 own close actions carry a promotion sweep of five owner-ruled ledger entries
 whose statements describe a tree that does not exist until the work lands.
 Framework-side follow-ups are tracked agent-side.
+
+## 2026-07-28 | Session 24 close, addendum: the gate ruling | session 24 (Peter, Opus 5)
+
+Appended after the session-close entry above, because the work it records
+happened after it. The journal is append-only, so this is a second entry
+rather than an edit to the first.
+
+**A deferral got a vehicle by re-running the checklist instead of asserting
+it.** The session-close sweep was first reported as clean. Re-run as an actual
+checklist, it surfaced one item living only in the chat scroll: whether the
+ten-part gate binds a push whose diff is documentation and house YAML only.
+The controller had raised it mid-session, the owner had not ruled, and nothing
+carried it. Recorded as a blocked non-decision with both sides' arguments, so
+the eventual ruling would not have to re-derive them.
+
+**The owner then ruled it, and the measurement reversed the recommendation.**
+The first recommendation was a path-scoped exception: a positive allowlist of
+doc paths checked mechanically against the diff, so "it is only docs" would be
+a comparison rather than a judgement. Then the cost side was measured instead
+of estimated: the full ten parts take **11 seconds** on an unchanged tree with
+warm caches (`cargo test --workspace` 3-4s and `pnpm test:e2e` 4s dominate;
+fmt, both clippy runs and `cargo doc` measure 0s). A docs-only push is by
+definition the unchanged-tree case, so the exception would have bought 11
+seconds and cost an arguable boundary. Recommendation withdrawn before the
+owner acted on it; he ruled the gate exception-free.
+
+The measurement itself was doubted first - four seconds for a Playwright suite
+looked like a failed command measured as a fast one - and re-run capturing
+exit codes and output. It held: `62 passed (2.8s)`. Both the doubt and the
+re-run were right to happen; a suspicious number is a tooling suspect before
+it is a fact.
+
+**What the question actually exposed.** `ledger-lint` is not one of the ten
+parts. It is the only check a documentation-or-YAML push can turn red, and it
+ran only in CI, after the push. It is now a pre-push duty by owner ruling. Its
+appearance in BUILDING.md's gate block waits for the plan close, together with
+the rustdoc private-items flag: the running plan quotes the ten-part gate
+verbatim and every task verifies against that wording, so editing it mid-plan
+would put two versions of the contract in circulation. The rule binds from the
+ruling; only its home waits.
+
+**Recorded as 1.x**: making CI itself path-aware so a doc change does not run
+the full three-OS matrix, with the two known traps named in the entry rather
+than left for that round to rediscover.

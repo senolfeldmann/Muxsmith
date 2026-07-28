@@ -1047,6 +1047,15 @@ executes against. **Vehicle: done at the Plan 9 close**, in the same pass as
 the close actions, or by whichever plan next touches BUILDING.md - whichever
 comes first.
 
+**A second edit rides the same pass** (owner ruling 2026-07-28): the gate
+block gains `python3 scripts/ledger-lint.py` as an ELEVENTH part. It is
+already binding as a pre-push duty from that ruling (Tier-2
+`ledger-lint-runs-before-every-push`) - what waits for the close is only its
+appearance in BUILDING.md's list, for the same don't-fork-the-contract reason.
+Both edits touch the same block, so they are one change; the plan's own
+"ten-part gate" wording is updated in the same pass, and any count that says
+ten is recomputed.
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML
