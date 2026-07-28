@@ -1,7 +1,7 @@
 # Plan 9 design: core/orchestration hoists + planner seam
 
-Status: DRAFT 2026-07-28; every amendment is recorded in the `## Amendment
-log` section at the end. Numbering starts at **D91** per the Plan-9 brief.
+Status: DRAFT 2026-07-28, fix round 1 applied 2026-07-28; every amendment
+is recorded in the `## Amendment log` section at the end. Numbering starts at **D91** per the Plan-9 brief.
 Verified 2026-07-28 against the current tree: a repo-wide grep for `D91`
 (excluding `.git`, `.worktrees`, `node_modules`, generated output and the
 brief itself) returns exactly one hit, a hypothetical mention in
@@ -86,7 +86,7 @@ Each checked against the tree or a live run before anything was built on it.
 
 | # | Brief/anchor statement | Reality |
 |---|---|---|
-| 1 | Recon inventory "1119 lines" (brief section 2.3, ROADMAP RECON block) | `wc -l` on the file reports **1120**. Off by one, no content consequence; noted so the figure is not re-imported. |
+| 1 | Recon inventory "1119 lines" (brief section 2.3, ROADMAP RECON block) | **The brief's and ROADMAP's figure is correct; this design's first draft mis-corrected it.** The draft asserted "`wc -l` reports 1120", attributing a reader-tool's line count to a command that was never run. Measured in fix round 1 (2026-07-28): `wc -l` and `awk 'END{print NR}'` both report **1119**, trailing newline present (`tail -c 1 \| xxd` = `0a`). Inverted rather than dropped so notes 2-5 keep their numbers and the mis-correction stays on record: an evidence line may only contain output that was pasted, not recalled. |
 | 2 | Fork 16 premise (and ROADMAP anchor): BatchView "reads config_diagnostics[0] **to detect** a parse failure" and "one consumer **depends on the order** and moves in the same change" | **Partially refuted with evidence.** The detection is `!doc.profile` (`BatchView.vue:218-226`); index 0 is only the *fetch* of the explaining diagnostic. On that envelope the vector is always a **singleton**: `load_profile_body`'s `Err` arm builds `config_only_document(&[d], ...)` from exactly one diagnostic (`src-tauri/src/lib.rs:316-320`), and `load::from_file` can only produce `DiagCode::ParseError` - its two Diagnostic constructors are `load.rs:62` (I/O arm) and `load.rs:71` (deserialize arm), both `ParseError`. A one-element vector cannot be reordered, so **the central sort changes no BatchView behavior**. The ruled change is still made (D103) - code-keyed fetch is the robust form and the ruling is binding - but it is a hardening, not a behavior-preserving migration. |
 | 3 | Fork 17 premise / ruling 7: "the mount-glob widening for `JobsView.vue` is the only test-harness work in scope" | **Insufficient as literally stated, surfaced rather than silently complied with or expanded.** The mount harness passes `spec.props` once, statically (`e2e/mount-entry.ts`, `h(Comp, { ...spec.props, ... })`); `JobsView`'s reset logic only runs on a *change* of the `pendingRun` prop, and its divergent branch (the reason ruling 7 exists) needs a *second* dispatch while `runActive` is true. A glob-only widening therefore makes JobsView mountable but the ruled test unwritable. D104 adds the minimal extra harness affordance (a reactive props hook, `window.__muxsmithSetProps__`) and records it as a deliberate, surfaced deviation from the brief's "only the glob" wording - the alternative satisfies the letter and defeats the item's purpose. No other harness work is added; the two OUT items stay untouched. |
 | 4 | Recon 1.3 D-2: CLI `Some(false)` means "absent from PATH" | Slight simplification, no consequence for the ruling: `Mkvmerge::locate` maps a spawn failure to `NotFound` but passes `NonZero`/`Parse` errors through (`capability/runtime.rs:94-104`), and both CLI copies match `Err(_)` - so the CLI's `Some(false)` already covers "found but `--version` unusable" too. This *narrows* the semantic gap D92 has to close: on both surfaces the honest reading is "no usable mkvmerge was resolved"; only `TooOld` is GUI-exclusive. |
@@ -245,10 +245,10 @@ pub fn plan_pipeline(
 Internal step order is exactly the recon's S1-S7, byte-behavior-preserving:
 `load::from_file` (S1); `profile::validate::config_diagnostics(&profile)`
 (S2 - this **is** the ruled A-1 funnel migration: all four copies stop
-inlining `validate::validate` + `lint::provable_overlaps`; after this
-change `git grep -n "lint::provable_overlaps" -- crates src-tauri` must hit
-only `profile/validate.rs` and `lint.rs` themselves, a check fire-verified
-per section 8's rules); `resolve_mkvmerge()` (S3); `mkv.list_languages()`
+inlining `validate::validate` + `lint::provable_overlaps`; the migration's
+completion check is stated exactly once, as acceptance observable 1 in
+section 7, and is not restated here, per the ledger rule
+`design-states-a-completion-check-once`); `resolve_mkvmerge()` (S3); `mkv.list_languages()`
 (S4); `RunInputs { source: source.unwrap_or_else(|| PathBuf::from(".")),
 output, on_collision }` (S5, see D95); `LiveIdentifier { cache, mkv: &mkv }`
 (S6, see D93 for the borrow change); `plan_batch(&profile, &run, &mut
@@ -588,6 +588,11 @@ The ledger entry `exec-43-runsroot-debug-gated` already carries the ruled
 statement and the hoist-as-steelman; the plan close's promotion funnel
 handles it (ROADMAP close action), nothing for this design to add.
 
+**Rejected mechanics alternative:** keeping a trivial `resolve_runs_root`
+wrapper that merely forwards to `default_runs_root()` - the name would
+promise resolution logic that no longer exists, and an empty indirection at
+three call sites is exactly the shape this plan deletes elsewhere.
+
 ## D98: The worker-panic payload travels as a new typed `JobOutcome.panic` field; the `errors` token and `delete_partial_failed` stay unchanged; the `eprintln!` is deleted
 
 **Decision (ruling 4's mechanics; closes forks 8, 9 and 12).**
@@ -613,10 +618,10 @@ as today, and **deletes the `eprintln!` at `queue.rs:396`** - after which
 core contains zero stdio calls (re-verified 2026-07-28: `grep -rn
 "eprintln!\|println!\|print!(" crates/muxsmith-core/src` returns the one
 call plus a comment mention in `lib.rs:23`; control: the same grep over
-`crates/muxsmith-cli/src` returns hits in three files). Every other
-`JobOutcome` constructor sets `panic: None`; the compiler enumerates them
-(the three `job.rs` producers, `finish`, the CLI test helper, the e2e
-fixtures via the TS type below).
+`crates/muxsmith-cli/src` returns hits in six files - `main.rs` and
+`commands/{mod,validate,identify,dry_run,run}.rs`, measured 2026-07-28).
+`recover_panicked_worker` is the only constructor that sets `Some`; every
+other `JobOutcome` constructor the compiler flags sets `panic: None`.
 
 **Wire-contract memo (recorded here at decision time):** the serialized
 `JobOutcome` gains `panic` in: `--json` `jobs[]` entries (`run_document`),
@@ -625,7 +630,7 @@ and `summary.json` (D26). Mirrors updated in the same change:
 `src/ipc.ts` `JobOutcome` gains `panic: string | null` (required, so
 `vue-tsc`/the e2e type-check forces every fixture literal - the
 `JobOutcome`/`RunJobEntry` object literals in `e2e/smoke.spec.ts`'s
-live-run and german-locale scenarios - to add `panic: null`);
+live-run scenario - to add `panic: null`);
 `JobLogRecord` in `ipc.ts` and the Rust `JobRecord`
 (`executor/joblog.rs:160-172`) gain the same field
 (`panic: Option<&'a str>` via `outcome.panic.as_deref()`), so the payload
@@ -787,6 +792,12 @@ worker writes no output line); the history **table** is also unchanged
 (the ruling names the live job row; the persisted `job-<index>.json` gains
 the payload via D98, so history-side triage reads the record).
 
+**Rejected mechanics alternative:** a dedicated new GUI key (e.g.
+`jobs-row-panicked`) instead of reusing `worker-panicked` - it would
+duplicate the very catalog entry spec 5.2 promises the rendering through,
+in a second file, with a second pair of locale texts to keep in sync, while
+`diagnostics.ftl` is already bundled by the frontend.
+
 ## D101: `EmptyRawProperty`, error severity, emitted from the shared `raw:` funnel for all validate arms; matcher and planner unchanged
 
 **Decision (ruling 5's mechanics; closes forks 13 and 14).**
@@ -844,6 +855,11 @@ kept, since there is nothing further to check on an empty name) and the
 value-level regex compile check still runs afterwards, correctly: an
 uncompilable pattern is a second, independent config error).
 
+**Rejected mechanics alternative:** an empty-name check at each of the two
+validate call sites instead of inside the shared funnel - two copies of the
+same predicate that can drift independently, the exact per-copy-divergence
+defect class this plan removes at pipeline scale.
+
 At **match time** and **planning time**: unchanged, deliberately.
 `matcher.rs:95`/`:186` keep returning never-match for the empty name
 (`item.get("")` answers `None` in every `Matchable`), and
@@ -867,7 +883,14 @@ severity on the GUI: the Batch view's Run gate counts error-severity
 diagnostics (`hasErrors` over `diagnosticCounts`), so such a profile can no
 longer start a GUI run and its editor Save gate behaves like any other
 error - stated here so the exit-code acceptance is understood to include
-the GUI gating, not discovered in review.
+the GUI gating, not discovered in review. That gate consequence has **no
+test coverage today**: no e2e scenario feeds `BatchView.vue` an
+error-severity config diagnostic, and none asserts `batch-run` disabled
+(the only `toBeDisabled` on an error gate is the editor Save test, a
+different view). This plan does not add one - new GUI test scenarios are
+outside the ruled scope - so the gap rides the v1.x "GUI test harness for
+the run path" ROADMAP item, and is named here rather than papered over
+with a claimed producer.
 
 Tests pinned by acceptance (section 7): one validate-level assertion per
 arm (an `exact` map with key `raw:`, a `substring` map with key `raw:`,
@@ -894,9 +917,12 @@ pub fn severity_sorted(diags: &[Diagnostic]) -> Vec<&Diagnostic>
 ```
 
 in `report/mod.rs`; the CLI's `pub(crate) severity_sorted`
-(`commands/mod.rs:21-25`) becomes a one-line delegate to it (or a
-re-export), so exactly one ordering definition exists
-(`core-derive-dont-restate`). The per-diagnostic JSON mapping factors into
+(`commands/mod.rs:21-25`) is deleted and replaced by the re-export
+`pub(crate) use muxsmith_core::report::severity_sorted;` in
+`commands/mod.rs` - the signature is identical (`&[Diagnostic] ->
+Vec<&Diagnostic>`), so every `use crate::commands::severity_sorted` call
+site compiles unchanged and exactly one ordering definition exists with
+zero wrapper code (`core-derive-dont-restate`). The per-diagnostic JSON mapping factors into
 a private `rendered_diag(d, renderer)` used by both `rendered_diags` (kept
 for the unsorted arrays and the CLI `validate` path) and the builders'
 sorted iteration - no second rendering implementation.
@@ -918,9 +944,16 @@ would silently change surfaces nobody ruled on (per-file diagnostics carry
 resolution-order meaning in the human dry-run rendering). Recorded here so
 the non-uniformity is a decision, not an accident.
 
+**Rejected mechanics alternative:** sorting inside `rendered_diags` itself -
+one edit instead of two, but it would silently widen the sort to every
+`rendered_diags` consumer (the per-file `diagnostics` arrays,
+`batch_diagnostics`, and the CLI `validate` envelope), exactly the
+beyond-the-ruling scope creep the boundary paragraph above declines.
+
 **Consumers of the new order, swept:** CLI `validate` is unaffected (it
-sorts its own flat `{diagnostics: [...]}` envelope already; a delegated
-sort is idempotent). CLI human printing is unaffected (its `severity_sorted`
+sorts its own flat `{diagnostics: [...]}` envelope already, now through the
+re-exported core `severity_sorted` with identical ordering, and that
+envelope never passes through the two builders). CLI human printing is unaffected (its `severity_sorted`
 loops predate the builders). CLI `--json` `config_diagnostics` becomes
 sorted, closing the `cli-08` parity gap; existing CLI JSON tests assert
 membership (`.iter().any(...)` shapes in `dry_run_cli.rs`/`run_cli.rs`),
@@ -962,6 +995,21 @@ diagnostics led by anything else - strictly more detection than today, no
 lost case. Section 0 note 2 records the corrected premise: this is
 hardening (the ruled form), not a behavior dependency being migrated - the
 singleton could never be reordered by D102.
+
+**Rejected mechanics alternatives:** a severity-keyed fetch (`find(d =>
+d.severity === "error")`) - severity does not identify a parse failure, so
+any future error-severity diagnostic in that envelope would masquerade as
+one - and a `[0]`-fallback behind the code-keyed find, which would
+reintroduce the positional read the ruling removes.
+
+**Coverage, stated plainly:** the branch this entry edits has no e2e
+producer today - no scenario resolves `load_profile` with a parse-error
+document (the only `profile: null` fixture, in `e2e/help-mode.spec.ts`,
+carries empty `config_diagnostics` and exercises the contract-violation
+`console.error` branch, not the fetch), and this plan adds none, since new
+GUI test scenarios are outside the ruled scope. The change's correctness
+rests on the singleton-envelope evidence above; coverage rides the v1.x
+"GUI test harness for the run path" ROADMAP item.
 
 ## D104: The D23 item ships as three mount-harness tests plus a GUI-panic render test, a widened mount glob with a reactive-props hook, and a Tier-1 ledger entry recording the correction's form
 
@@ -1290,8 +1338,9 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
 - `raw_opt_in_diagnostic`'s three-branch form as written; no matcher or
   planner change (D101).
 - `report::severity_sorted`'s contract and its exclusive application to
-  `config_diagnostics` in the two builders; the CLI helper delegates;
-  per-file and batch arrays stay unsorted (D102).
+  `config_diagnostics` in the two builders; the CLI helper is deleted in
+  favor of the D102 `pub(crate) use` re-export; per-file and batch arrays
+  stay unsorted (D102).
 - `BatchView`'s `find` predicate keys on `"parse-error"` exactly (D103).
 - The mount-glob entries, `resolvePath` branches, the `__muxsmithSetProps__`
   hook, the spec-local mock composition, and the four assertions of D104;
@@ -1371,16 +1420,23 @@ recorded measurement), not a state someone must notice.
 5. **Empty bare `raw:`.** Emitters: the two per-arm validate tests plus
    the non-empty control (D101); `muxsmith validate` on a profile with a
    bare `raw:` key exits 2 and renders the en/de text verbatim (subprocess
-   test); the catalog fixture row renders without placeholder leaks; the
-   GUI Run gate disables on the same profile (covered by the existing
-   `hasErrors` path, whose e2e already exercises error-severity
-   config diagnostics).
+   test); the catalog fixture row renders without placeholder leaks. The
+   GUI Run-gate consequence (D101) deliberately has NO emitter in this
+   plan: no e2e feeds BatchView an error-severity config diagnostic today
+   and adding one is outside the ruled scope, so that consequence is a
+   stated, uncovered behavior riding the v1.x GUI-test-harness item - it
+   is not claimed as acceptance.
 6. **Central sort + BatchView.** Emitters: the discriminating order test of
    D102 (`[B, D, C, A]`); CLI `validate --json` and `dry-run --json` now
    agree on ordering for one mixed-severity fixture (subprocess
    assertion); `BatchView.vue` contains no `config_diagnostics[0]` read
-   (grep, fire-verified against today's `:225` hit) and the apply-suggestion
-   parse-failure e2e path still surfaces the parse diagnostic.
+   (grep, fire-verified against today's `:225` hit). The branch D103 edits
+   has NO e2e producer today: no scenario resolves `load_profile` with a
+   parse-error document (the only `profile: null` fixture, in
+   `help-mode.spec.ts`, carries empty diagnostics and exercises the
+   contract-violation branch), and this plan adds none; D103's correctness
+   rests on the singleton-envelope evidence recorded there, and coverage
+   rides the v1.x GUI-test-harness item.
 7. **D23 item.** Emitters: the three ordering tests plus the panic-render
    test in `e2e/jobsview-reset.spec.ts` (D104), green under `pnpm
    test:e2e`; the `gui-d23-reset-gating-form` ledger entry exists and
@@ -1394,4 +1450,45 @@ recorded measurement), not a state someone must notice.
 
 ## Amendment log
 
-(empty at first draft; appended per fix round)
+**Round 1 (2026-07-28), against
+`.superpowers/sdd/plan-9/design-review-round-1.md`; all nine findings
+fixed, none disputed:**
+
+- **I-1:** deleted D91's inline funnel-migration grep (unreachable green:
+  its predicted survivor set named `lint.rs`, which the qualified string
+  never reaches, and missed the `dry_run.rs:21` doc-comment survivor) and
+  the dangling "per section 8's rules" reference; D91 now cites acceptance
+  observable 1 as the single stated completion check, per the new ledger
+  rule `design-states-a-completion-check-once`.
+- **I-2:** D101 now states the GUI Run-gate consequence as a real,
+  user-visible behavior with NO test coverage today (no e2e feeds
+  BatchView an error-severity config diagnostic or asserts `batch-run`
+  disabled), riding the v1.x GUI-test-harness item; acceptance 5 no longer
+  claims a producer for it.
+- **I-3:** acceptance 6's "apply-suggestion parse-failure e2e path" claim
+  replaced by the honest statement that the branch D103 edits has no e2e
+  producer (the only `profile: null` fixture carries empty diagnostics);
+  D103 gained the same coverage statement. No new e2e was added in either
+  fix - new test scenarios are outside the ruled scope.
+- **I-4:** D102's "one-line delegate (or a re-export)" latitude resolved to
+  the re-export: `pub(crate) use muxsmith_core::report::severity_sorted;`,
+  call sites unchanged; the two downstream references (the consumers-swept
+  paragraph, section 5's bullet) updated in the same sweep.
+- **M-1:** section 0 note 1 inverted: the recon/ROADMAP figure 1119 was
+  correct and the first draft's "1120" was a reader-tool count attributed
+  to `wc -l` without running it; the note now records the measured
+  1119 (`wc -l`, `awk`, trailing newline confirmed) and keeps notes 2-5
+  numbering stable.
+- **M-2:** D98's stdio-grep control corrected to the measured six files
+  for the quoted three-macro pattern (`main.rs`,
+  `commands/{mod,validate,identify,dry_run,run}.rs`).
+- **M-3:** the muddled `JobOutcome`-constructor enumeration replaced by
+  the semantic statement: `recover_panicked_worker` is the only
+  constructor setting `Some`; every other constructor the compiler flags
+  sets `panic: None`.
+- **M-4:** dropped "and german-locale" from the fixture-site claim; the
+  `JobOutcome`-shaped literals live in the live-run scenario only.
+- **M-5:** one labeled rejected-mechanics alternative added to each of
+  D97 (retained trivial wrapper), D100 (dedicated new GUI key), D101
+  (per-arm checks instead of the shared funnel), D102 (sorting inside
+  `rendered_diags`), D103 (severity-keyed fetch / `[0]` fallback).
