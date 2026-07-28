@@ -85,6 +85,8 @@ diag_codes! {
     RawProperty => "raw-property",
     /// A `raw:` prefix was applied to a property that IS in the capability model and has special matching semantics (`language` normalization, `codec_kind` aliasing); the prefix degrades it to byte-literal untyped equality, bypassing those semantics (config-time warning, spec 9.2).
     RawOnKnownProperty => "raw-on-known-property",
+    /// A `raw:`-prefixed match key with an empty bare property name (config-time; 4.4, 9.2): always a typo, never expressible intent - `get("")` can match nothing, so the rule would silently never match. Error severity, own code (ruled 2026-07-28): `UnknownProperty`'s message reads as nonsense with an empty name.
+    EmptyRawProperty => "empty-raw-property",
     /// `codec_kind` was used under a `substring`/`regex` condition; it is a curated alias and matchable only under `exact` (spec 4.4). Pattern-match `codec_id` instead. `condition` param names the misused condition.
     CodecKindExactOnly => "codec-kind-exact-only",
     /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender; closed-domain emitters also pass `allowed` (a hint sample), language emissions do not -- the catalog's language arm renders registry wording (D39).

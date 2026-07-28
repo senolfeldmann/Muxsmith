@@ -277,6 +277,47 @@ fn b4_raw_on_codec_kind_is_raw_on_known_property_warning() {
     assert!(!codes(&p).contains(&DiagCode::CodecKindExactOnly));
 }
 
+// D101: a `raw:` key whose bare property name is EMPTY is a config-time
+// error (`EmptyRawProperty`), emitted from the one funnel both validate arms
+// share, so the `exact` arm and the `substring`/`regex` arm are covered by
+// construction. Always a typo, never expressible intent: `get("")` answers
+// `None` in every `Matchable`, so the rule could never match. The
+// discriminating controls are B-2/B-3 directly above - a NON-empty `raw:`
+// key still yields `RawProperty` info - which is why no duplicate control is
+// written here (reuse before writing).
+
+#[test]
+fn empty_bare_raw_exact_is_empty_raw_property_error() {
+    let p = profile("  - match: { exact: { 'raw:': eng } }");
+    let diags = validate(&p);
+    let empties: Vec<_> = diags
+        .iter()
+        .filter(|d| d.code == DiagCode::EmptyRawProperty)
+        .collect();
+    assert_eq!(empties.len(), 1, "expected exactly one EmptyRawProperty");
+    assert_eq!(empties[0].severity, Severity::Error);
+    assert_eq!(empties[0].config_path, "tracks[0].match.exact.raw:");
+    let cs = codes(&p);
+    assert!(!cs.contains(&DiagCode::RawProperty));
+    assert!(!cs.contains(&DiagCode::UnknownProperty));
+}
+
+#[test]
+fn empty_bare_raw_substring_is_empty_raw_property_error() {
+    let p = profile("  - match: { substring: { 'raw:': en } }");
+    let diags = validate(&p);
+    let empties: Vec<_> = diags
+        .iter()
+        .filter(|d| d.code == DiagCode::EmptyRawProperty)
+        .collect();
+    assert_eq!(empties.len(), 1, "expected exactly one EmptyRawProperty");
+    assert_eq!(empties[0].severity, Severity::Error);
+    assert_eq!(empties[0].config_path, "tracks[0].match.substring.raw:");
+    let cs = codes(&p);
+    assert!(!cs.contains(&DiagCode::RawProperty));
+    assert!(!cs.contains(&DiagCode::UnknownProperty));
+}
+
 // D46: the `Keyword(String)` arm keeps its `String` so a misspelled keyword
 // stays reachable as InvalidKeyword (with `found`/`allowed`) instead of
 // falling through to serde's untagged-enum error.

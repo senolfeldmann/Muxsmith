@@ -1,0 +1,6 @@
+---
+source: crates/muxsmith-cli/tests/cli_validate.rs
+expression: "String::from_utf8(out).unwrap()"
+---
+[error] tracks[0].match.exact.raw:: The raw: prefix requires a property name: a bare "raw:" names no property, and the rule could never match any track. Add the property name after the colon (for example raw:dolby_complexity_index).
+1 error, 0 warnings, 0 infos.

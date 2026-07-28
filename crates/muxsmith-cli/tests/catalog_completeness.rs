@@ -62,6 +62,7 @@ fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
         DiagCode::UnknownProperty => vec![("property", "bogus_property")],
         DiagCode::RawProperty => vec![("property", "dolby_complexity_index")],
         DiagCode::RawOnKnownProperty => vec![("property", "language")],
+        DiagCode::EmptyRawProperty => vec![],
         DiagCode::CodecKindExactOnly => vec![("condition", "substring")],
         DiagCode::InvalidPropertyValue => vec![
             ("property", "type"),

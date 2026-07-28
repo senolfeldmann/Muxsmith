@@ -19,6 +19,7 @@ invalid-regex = Ungültiger regulärer Ausdruck: { $detail }
 unknown-property = Unbekannte Eigenschaft "{ $property }". Sie ist nicht Teil des mkvmerge-Identifikationsmodells.
 raw-property = Die Eigenschaft "{ $property }" wird mit einem raw:-Präfix verwendet; sie umgeht das Fähigkeitsmodell und wird untypisiert abgeglichen. Dies ist die Opt-in-Möglichkeit für Vorwärtskompatibilität mit einem neueren mkvmerge-Identifikationsschema.
 raw-on-known-property = Die Eigenschaft "{ $property }" ist eine bekannte Eigenschaft mit besonderer Abgleichsemantik; das raw:-Präfix umgeht diese (Sprachnormalisierung, codec_kind-Aliasing) und gleicht stattdessen byte-literal ab.
+empty-raw-property = Das raw:-Präfix erfordert einen Eigenschaftsnamen: ein bloßes "raw:" benennt keine Eigenschaft, und die Regel könnte nie auf eine Spur zutreffen. Ergänze den Eigenschaftsnamen nach dem Doppelpunkt (zum Beispiel raw:dolby_complexity_index).
 not-string-property = Die Eigenschaft "{ $property }" hat den Typ { $actual_type }; { $condition }-Bedingungen erfordern eine Zeichenketten-Eigenschaft.
 value-type-mismatch = Der Wert für "{ $property }" hat den Typ { $found }, erwartet wurde { $expected }.
 unknown-settable-property = "{ $property }" ist keine setzbare Spureigenschaft.

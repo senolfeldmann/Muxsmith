@@ -398,15 +398,21 @@ fn unknown_property(path: &str, prop: &str) -> Diagnostic {
 }
 
 /// The config-time diagnostic for a `raw:`-prefixed match property (D32, spec
-/// 9.2). `RawOnKnownProperty` (warning) when the bare name is one of the two
-/// capability properties with special matching semantics - `language`
-/// (ISO-639/BCP-47 normalization) and `codec_kind` (alias expansion), exactly
-/// the arms `matcher::exact_matches` special-cases - which `raw:` degrades to
-/// byte-literal equality; otherwise `RawProperty` (info), the visible escape
-/// valve announcing the untyped bypass. `path` keeps the literal
-/// `raw:`-prefixed key; the `property` param carries the stripped bare name.
+/// 9.2). `EmptyRawProperty` (error, D101) when the bare name is empty: a bare
+/// `raw:` names no property, so the rule could never match, and the
+/// diagnostic carries no `property` param - an empty-string one would render
+/// as visible nothing. `RawOnKnownProperty` (warning) when the bare name is
+/// one of the two capability properties with special matching semantics -
+/// `language` (ISO-639/BCP-47 normalization) and `codec_kind` (alias
+/// expansion), exactly the arms `matcher::exact_matches` special-cases -
+/// which `raw:` degrades to byte-literal equality; otherwise `RawProperty`
+/// (info), the visible escape valve announcing the untyped bypass. `path`
+/// keeps the literal `raw:`-prefixed key; the `property` param carries the
+/// stripped bare name.
 fn raw_opt_in_diagnostic(path: &str, bare: &str) -> Diagnostic {
-    if matches!(bare, "language" | "codec_kind") {
+    if bare.is_empty() {
+        Diagnostic::error(DiagCode::EmptyRawProperty, path.to_string())
+    } else if matches!(bare, "language" | "codec_kind") {
         Diagnostic::warning(DiagCode::RawOnKnownProperty, path.to_string()).with("property", bare)
     } else {
         Diagnostic::info(DiagCode::RawProperty, path.to_string()).with("property", bare)

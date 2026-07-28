@@ -21,7 +21,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
 import { mountComponent, readModel } from "./mount";
-import { en } from "./i18n-en";
+import { en, enAttr } from "./i18n-en";
 import type { FluentVariable } from "@fluent/bundle";
 import {
   JOB_EVENT_CHANNEL,
@@ -335,6 +335,60 @@ test.describe("batch view: dry run", () => {
     );
 
     await assertNoSeriousA11yViolations(page);
+  });
+
+  // D101 (amendment 1, ruling A): the Run gate is the GUI consequence of
+  // giving a bare `raw:` error severity, so it ships with this feature. What
+  // is new here is the ASSERTION, not the behavior: `hasErrors` gating exists
+  // today and the plural-counts fixture above already feeds BatchView an
+  // error-severity document, but nothing anywhere asserted `batch-run`
+  // disabled, so this scenario passes on the pre-D101 tree and carries no
+  // red-today claim. The red half of D101 is the core/CLI exit-code flip.
+  // The paired negative of the enabled assertion in the `jobs view: live run`
+  // flow below -- paired by assertion, not by location. Asserting the `title`
+  // (not just `disabled`) is what discriminates the errors reason from the
+  // other three `runDisabledReason` branches: the document's
+  // `mkvmerge_found: true` and the completed pick close the no-profile and
+  // mkvmerge-missing branches by construction, and no run is active.
+  const emptyRawReport: ReportDocument = {
+    config_diagnostics: [
+      {
+        code: "empty-raw-property",
+        severity: "error",
+        config_path: "tracks[0].match.exact.raw:",
+        params: {},
+        rendered: "empty-raw-property",
+      },
+    ],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  test("an error-severity config diagnostic disables Run with the errors tooltip (D101's Run gate)", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        validate_profile: [resolveWith(emptyRawReport)],
+      },
+    });
+
+    await page.goto("/");
+
+    const batch = page.getByTestId("view-batch");
+    // Picking the profile validates it (T7 flow); no dry-run click needed.
+    await batch.getByRole("button", name("batch-profile-pick")).click();
+    await expect(
+      batch.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+    ).toBeVisible();
+
+    const runButton = batch.getByTestId("batch-run");
+    await expect(runButton).toBeDisabled();
+    await expect(runButton).toHaveAttribute("title", enAttr("batch-run", "tooltip-errors"));
   });
 
   // Task 14 (D43, D49, apply-wiring routing): one-click apply. Two

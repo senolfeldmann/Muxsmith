@@ -12,6 +12,7 @@ invalid-regex = Invalid regular expression: { $detail }
 unknown-property = Unknown property "{ $property }". It is not part of the mkvmerge identification model.
 raw-property = Property "{ $property }" is used with a raw: prefix; it bypasses the capability model and is matched untyped. This is the opt-in for forward compatibility with a newer mkvmerge identification schema.
 raw-on-known-property = Property "{ $property }" is a known property with special matching semantics; the raw: prefix bypasses them (language normalization, codec_kind aliasing) and matches byte-literally instead.
+empty-raw-property = The raw: prefix requires a property name: a bare "raw:" names no property, and the rule could never match any track. Add the property name after the colon (for example raw:dolby_complexity_index).
 not-string-property = Property "{ $property }" has type { $actual_type }; { $condition } conditions require a string property.
 value-type-mismatch = Value for "{ $property }" has type { $found }, expected { $expected }.
 unknown-settable-property = "{ $property }" is not a settable track property.
