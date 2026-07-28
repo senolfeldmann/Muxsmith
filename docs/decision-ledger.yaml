@@ -4663,6 +4663,49 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: a-scripted-yaml-edit-anchors-inside-the-entrys-id-span
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A scripted edit to the house-knowledge files locates its target by finding the entry's `- id:` line first and editing only within that block; it never anchors on a key pair that repeats across entries (`promoted_at: N` plus `count: M` is the recurring trap, because both values are small integers shared by many entries). A first-match replace then silently edits a NEIGHBOURING entry - it decrements one entry's count and inflates another's - and the diff looks plausible in both places. Trigger is readable: your replacement string contains only schema keys and no id. Handle: id-scoped span, then edit; and run ledger-lint before committing, which is what catches it when the handle is skipped."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-3 harvest write (commit 5b38d59 message): a `promoted_at: 3` + `count: 12` replacement matched brief-drafts-verified-against-tree instead of proc-verification-step-must-be-falsifiable; both counts went wrong in opposite directions and ledger-lint reported both before the commit"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task-3 harvest write: identical shape one commit later, `promoted_at: 2` + `count: 9` matching proc-latitude-clause-boundary instead of latitude-carveout-zero-content-structural-forks. Repaired by an id-scoped line-addressed edit, which is the handle this entry records; the second instance is why it exists rather than staying a commit-message note"}
+- id: a-null-assertion-over-a-dynamic-map-proves-nothing-without-a-presence-check
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "An assertion that a key is NULL in a dynamically-indexed document proves nothing about the key's existence, because the index operation returns the null value for a MISSING key: `assert_eq!(v[\"k\"], Value::Null)` in serde_json passes identically whether the key is present-and-null or absent entirely - and the removal it exists to catch is exactly the absent case. Same shape in every dynamic-map idiom: `v[\"k\"].is_null()`, JS `obj.k === null`, Python `d.get(k) is None`. Trigger is readable: you are asserting a key's NULL value on a parsed document. Handle: assert presence separately (`contains_key`) or assert a non-null value; and if the point is that the key is always on the wire, the presence check IS the assertion."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 T3 review F3 (.superpowers/sdd/plan-9/task-3-verdict.md): the task report recommended assert_eq!(job[\"panic\"], Value::Null) as the fix for its own surfaced coverage gap, and the controller was one dispatch away from routing that recommendation as written. The reviewer measured it in a standalone crate (present-and-null and absent both compare equal to Null; contains_key separates them) and specified a payload-equality test plus a contains_key line instead; the implementer then re-measured it rather than borrowing the claim. A green test that cannot fail on the removal it targets would have closed the blocking finding on paper only"}
+- id: a-mutate-restore-step-restores-non-interactively-and-proves-it
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A step that mutates a tracked file in order to fire a check restores it with a NON-INTERACTIVE command (`command cp -f`, `git checkout --`, `install`) and ends with an explicit restoration proof (`diff -q`, `git status`). This shell aliases `cp` to its interactive form, so a bare `cp backup file` restore prompts for overwrite - a prompt no subagent can answer. The command then hangs to its timeout WITH THE TREE STILL MUTATED, which is the dangerous half: a hung restore reads as a slow step, and a later staging command can carry the mutation into a commit. Trigger is readable: your step plan contains a mutate-then-restore pair. Handle: non-interactive restore plus a proof line; never trust the restore command's exit status alone. Binds every fire-verification and every mutate-measure-restore experiment."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 3 report, controller item 2 (.superpowers/sdd/plan-9/task-3-report.md): the implementer mutated a catalog fixture to fire the placeholder-leak guard, then restored with a bare cp; the interactive alias blocked and the foreground run hung to its 600s timeout while the tree carried the mutation. Recovered with command cp -f and verified IDENTICAL, and the committed content matches the pre-mutation copy - but the same shape sits in Task 7's D49 experiment, whose whole protocol is mutate-measure-restore"}
 - id: a-house-rule-is-cited-by-id-and-file-never-by-commit-hash
   kind: pattern
   tier: 1
