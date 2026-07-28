@@ -328,44 +328,115 @@ Findings that change what the design has to decide:
   widgets, so `JobsView` and `BatchView` cannot be mounted as they stand.
 
 
-Orthogonal to every GUI plan; can run as a parallel worktree stream rather
-than in sequence.
+The "orthogonal to every GUI plan, can run as a parallel worktree stream"
+note this anchor carried since 2026-07-12 is moot: Plan 9 is the last
+planned package, so there is no concurrent plan to stream against. How its
+own TASKS run is the plan's judgement call under the doctrine's earn-the-
+overhead handle.
+
+**SCOPE RULED BY THE OWNER 2026-07-28 (S24 kickoff), on the recon above.**
+Eight of the ten named design inputs are IN; two are OUT and carry their
+vehicles. The per-item rulings below are binding design inputs, not
+suggestions: an item's ruled FORM (delete vs hoist, error vs warning, test
+vs fix) is settled, its mechanism is the design's question.
+
+IN:
 
 - Hoist the four-copy planning pipeline into a shared plan_pipeline() core
   fn - this IS the injectable-planner-seam (S4/S5/S6), spec 5.5/7
-  parity-critical (~100 lines); plan_pipeline consumes
-  profile::validate::config_diagnostics (landed Plan 5.6 T11). The seam
+  parity-critical; the duplication is 260 lines / 199 non-comment, NOT the
+  "~100" this bullet claimed until 2026-07-28 (see the RECON block above for
+  the measurement and for the seven deliberate divergences a hoist may only
+  turn into parameters). plan_pipeline consumes
+  profile::validate::config_diagnostics (landed Plan 5.6 T11), and migrating
+  the four still-inlined `validate::validate` + `lint::provable_overlaps`
+  pairs onto it is part of this item, not a separate one: the Plan-5.6 hoist
+  was half done and that is part of why four copies exist. The seam
   INTERFACE is this plan's design question (ledger
   core-121-planner-seam-and-hoist). (2026-07-12, idiomacy review triage)
-- The GUI test-harness question as ONE block - no Vitest component
-  harness, no tauri::test integration harness, start_run's orchestration
-  body untested ("to raise at merge time"; the merge gate passed without
-  it) (S4/S5/S6). (2026-07-11, docs-tree sweep)
 - Hoist run_batch into muxsmith_core::executor (the CLI inlines what
   src-tauri already factored). (2026-07-12, idiomacy review triage)
-- Hoist runs-root resolution to core (D26 debug-only seam duplicated CLI
-  vs src-tauri). (2026-07-12, idiomacy review triage)
-- Core logging facade replacing the single eprintln in queue.rs (T4-i1;
-  ledger exec-36). (2026-07-12, Plan 5.5 roll-up funnel)
-- Route JobOutcome.errors codes through the diagnostics catalog so
-  worker-panicked renders on live surfaces (T4-i2; ledger exec-37).
-  (2026-07-12, Plan 5.5 roll-up funnel)
-- Reject bare `raw:` with empty property name at validate (T16-m1).
-  (2026-07-12, Plan 5.5 roll-up funnel)
+- Runs-root (D26 debug-only seam): **DELETE the src-tauri copy, do NOT hoist
+  to core** (owner ruling 2026-07-28). The GUI copy has no consumer - only
+  five CLI test sites set MUXSMITH_RUNS_ROOT, and the src-tauri tests pass an
+  explicit path - and hoisting would move a cfg(debug_assertions) env read
+  out of the two binaries and into the library, on a semantics claim the
+  recon explicitly did not verify. The CLI gate stays as it is. Recorded as
+  an ADR with the hoist as its steelman. (2026-07-12, idiomacy review
+  triage; form ruled 2026-07-28)
+- The worker-panic path, as ONE item (owner ruling 2026-07-28): core's single
+  eprintln (T4-i1, ledger exec-36) and the never-rendered JobOutcome.errors
+  codes (T4-i2, ledger exec-37) are two views of one hole - core prints the
+  rich payload to a stream a bundled app has no console for, while the stable
+  `worker-panicked` token renders on no surface and its Fluent message is
+  looked up by nothing but the catalog-completeness test, so a panicked job
+  shows the CLI user `n/a` and the GUI user nothing. Ruled form: the payload
+  travels in the outcome and the SURFACES render it; **no logging facade in
+  core** (a dependency for one producer, rejected - the steelman is the four
+  silently-discarded failures in the recon's 4.3, which stay discarded).
+  Scope of the rendering: CLI human output renders the catalog message in
+  place of `n/a`, and the GUI job row carries the code in its failure state;
+  the RunHistory export stays as it is. (2026-07-12, Plan 5.5 roll-up
+  funnel; fused and ruled 2026-07-28)
+- Reject bare `raw:` with an empty property name at validate (T16-m1), at
+  **error severity with its own DiagCode** (owner ruling 2026-07-28) - not a
+  warning, and not reused UnknownProperty, whose message reads as nonsense
+  with an empty name. Today it emits an info diagnostic, exits 0, and then
+  `get("")` returns false at match time, so the rule silently never matches;
+  that is always a typo, never expressible intent. The exit-code change for
+  profiles that pass today is accepted deliberately, because pre-1.0 is the
+  cheap moment for it. Downstream obligations the new code carries: the
+  catalog-completeness fixture table, both locales' diagnostics.ftl, and the
+  spec's 5.2 severity table. No ledger entry existed for T16-m1; it gets
+  one. (2026-07-12, Plan 5.5 roll-up funnel; form ruled 2026-07-28)
 - Sort JSON config_diagnostics errors-first for validate parity (T9-m-iv;
-  ledger cli-08). (2026-07-12, Plan 5.5 roll-up funnel)
-- Re-check the final fix wave's self-flagged deviation from D23's frontend
-  contract (reset gated on runActive instead of "reset after resolve Ok" -
-  "worth a second look", never taken) (S12). (2026-07-11, docs-tree sweep;
-  re-pointed here from the Plan-6 anchor by owner call 2026-07-16 - the
-  plan-6 design review established it is run-path only, JobsView.vue:150-200,
-  touching nothing Plan 6 builds.)
+  ledger cli-08), **centrally in the two core document builders, not per
+  caller** (owner ruling 2026-07-28) - eight call sites would re-drift. The
+  gap is not CLI-internal: the GUI's validate_profile is the direct analogue
+  of CLI `validate` and returns unsorted for the same profile. One consumer
+  depends on the order and moves in the same change: BatchView.vue reads
+  config_diagnostics[0] to detect a parse failure and must key on the code
+  instead of the index. (2026-07-12, Plan 5.5 roll-up funnel; form ruled
+  2026-07-28)
+- The D23 frontend-contract item is a **test plus a ledger entry, not a code
+  fix** (owner ruling 2026-07-28). The recon established that round 2 of the
+  plan-5 whole-branch review already adjudicated the deviation ("the
+  implemented form is strictly better than my literal wording"), that the
+  divergent branch is unreachable from the UI because the same flag disables
+  the Run button, and that the event-ordering premise still holds in the
+  code. What is missing is coverage and a record of the correction's FORM
+  (gui-11 records the defect and "Corrected", not the form). The only
+  harness work in scope rides here: widen the Playwright mount glob to
+  JobsView.vue so the reset logic is mountable at all. (2026-07-11,
+  docs-tree sweep; re-pointed here from the Plan-6 anchor by owner call
+  2026-07-16; form ruled 2026-07-28)
+- Run the D49 G1/G2 removal experiment - the "next core/planner-touching
+  plan" trigger below fires with this plan. (Trigger consumed 2026-07-28.)
+
+OUT, with vehicles:
+
+- The GUI test-harness question as ONE block - no Vitest component harness,
+  no tauri::test integration harness, start_run's orchestration body
+  untested ("to raise at merge time"; the merge gate passed without it)
+  (S4/S5/S6). (2026-07-11, docs-tree sweep.) **A FIRM 1.x item by owner
+  ruling 2026-07-28, not trigger-gated**, vehicle: the v1.x entry "GUI test
+  harness for the run path" below. New test infrastructure is its own package
+  and does not block the tag; whether tauri::test's mock_builder even works
+  on the pinned Tauri version was not established. No trigger, deliberately:
+  the only event that would fire one is a run-path regression a component
+  test should have caught, which is exactly the notice-it-yourself shape a
+  trigger must not have. The cheap part that does land at 1.0 is the
+  mount-glob widening under the D23 item above.
 - One error-display funnel for IpcError rendering in the frontend: the
   plan-7 design review counted 8 scattered render sites each hand-rendering
   `$t(err.code, err.params)` (enumeration in its verdict file, salvaged
   with the plan-7 archive); a shared component/composable is the hoist.
   Discussion anchor, not a commitment. (2026-07-21, plan-7 design review
-  round 1 harvest.)
+  round 1 harvest.) **Deferred to 1.x by owner ruling 2026-07-28**, vehicle:
+  the v1.x entry "IpcError render funnel" below, with its trigger. It is
+  design work rather than a mechanical hoist because one of the eight
+  consumers is mixed: BatchView fills the same ref from a core Diagnostic as
+  well as from an IpcError.
 
 ## Triggers
 
@@ -388,7 +459,11 @@ action:
 - Plan 7, 8 or 9 starts -> consume the named design inputs in that plan's
   anchor. (Plan 6's instance of this trigger fired 2026-07-15 and was
   consumed at its brainstorming: the anchor was re-cut into Plans 6-9 and
-  the inputs distributed.)
+  the inputs distributed. **Plan 9's instance FIRED AND WAS CONSUMED
+  2026-07-28** at the S24 kickoff: all ten inputs were recon'd first, then
+  ruled item by item into the anchor's IN/OUT lists, and the two OUT items
+  received their v1.x vehicles in the same change. This retires the trigger:
+  no plan after 9 is planned.)
 - First real-world report of unwanted empty outputs, or a request to
   fail batches on empty plans -> IDEAS #5.
 - Next parity-audit round or output-plausibility work -> IDEAS #6.
@@ -510,7 +585,16 @@ action:
 - The attachment-context propertyMap type lookup is fixed properly
   (pre-existing flaw: track type tables used for attachment
   select/drop maps; Plan-9 capability/registry neighborhood) -> revisit
-  D58's path gate in the same change. (Plan-7 design trigger 7.)
+  D58's path gate in the same change. (Plan-7 design trigger 7. Did NOT fire
+  at the Plan 9 kickoff 2026-07-28: that fix is not among the ten inputs the
+  owner ruled into Plan 9, so despite the "Plan-9 neighborhood" wording this
+  trigger still waits for whichever change actually does the lookup fix.)
+- A NINTH IpcError render site is added anywhere in the frontend -> the v1.x
+  "IpcError render funnel" entry stops being a candidate and becomes the
+  answer: eight hand-rolled `$t(err.code, err.params)` alerts are the
+  established shape, and the ninth is where the pattern stops paying. Same
+  shape as the fake-mkvmerge three-copy and e2e `name()` helper triggers.
+  (Plan 9 kickoff, owner ruling 2026-07-28.)
 - A user asks for quieter UI / tooltip suppression -> the mkvtoolnix
   `uiDisableToolTips` parity gap becomes a v1.x candidate with precedent
   cited (plan-7 design section 3). (Plan-7 design trigger 8.)
@@ -527,7 +611,10 @@ action:
   (mutate delta_for's AddExact arm to re-stringify, run the suite: G1+G2+G3
   all fail -> they stay for good; only G3 fails -> G1/G2 are removal
   candidates as localizers). Runnable since D49 landed (T6); guards stay
-  until the run per proc-proposed-safeguard-stays. Disposition of the other
+  until the run per proc-proposed-safeguard-stays. **FIRED 2026-07-28**:
+  Plan 9 is core/planner-touching, so the experiment is an IN item of its
+  anchor above and the trigger is consumed by that plan's task, not by this
+  line. Disposition of the other
   plan-6 triggers at the close: trigger 2 SETTLED by measurement during T4
   (guard 2 fires in its literal-expected form, stays for good; recorded in
   the falsifiability entry); triggers 4 and 7 FIRED and were consumed
@@ -781,10 +868,13 @@ polish entry.
     dedupe when planning.
   - FOLDED INTO PLAN 9 (re-pointed from Plan 6 by the 2026-07-15 scope
     re-cut; they share the run/plan-orchestration territory of the planner
-    seam): the four-copy planning pipeline (~100 lines, spec 5.5/7
-    parity-critical - a shared plan_pipeline() IS the never-decided
-    injectable-planner-seam S4/S5/S6); run_batch hoist to
-    muxsmith_core::executor; runs-root resolution hoist to core.
+    seam): the four-copy planning pipeline (260 lines / 199 non-comment as
+    measured 2026-07-27, not the "~100" this line carried until 2026-07-28;
+    spec 5.5/7 parity-critical - a shared plan_pipeline() IS the
+    never-decided injectable-planner-seam S4/S5/S6); run_batch hoist to
+    muxsmith_core::executor; runs-root resolution - ruled 2026-07-28 as a
+    DELETION of the src-tauri copy rather than a hoist to core (see the Plan
+    9 anchor).
   - DEFERRED (tracked Plan-7; re-pointed 2026-07-15): the Fluent message-attribute
     reorganization (widget facets as .attribute vs suffixed siblings) -
     changes message IDs, needs coordinated frontend $ta + check-i18n parity
@@ -997,6 +1087,40 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   accidental destruction. Design note for the 1.x pass: the editor's
   single in-memory model (Plan 6) is the natural command/snapshot
   boundary.
+
+- **GUI test harness for the run path - firm 1.x item (owner ruling
+  2026-07-28, Plan 9 kickoff)**: not trigger-gated and not a candidate; it
+  is committed for 1.x and cut out of Plan 9 because new test
+  infrastructure is its own package. What is missing, measured by the Plan
+  9 recon: no Vitest and no @vue/test-utils in the tree, no tauri::test /
+  mock_builder, no src-tauri/tests directory, and start_run's orchestration
+  body - acquire, blocking plan, Soft/Ready, commit, runner thread - has no
+  test of its COMPOSITION, because everything in it that does not need an
+  AppHandle has already been factored out and is tested piecewise (40
+  #[test] in run.rs), while several of those tests simulate what start_run
+  does rather than invoke it. The frontend side is the same gap from the
+  other end: the only run-path e2e mocks start_run outright and drives job
+  events from the Playwright side, so the Rust body never executes there
+  either. Two routes for the 1.x round to decide: widen the existing
+  Playwright mount harness (its glob reaches only the editor widgets and
+  EditorView today, and it installs no IPC mock) versus introduce a real
+  component/integration harness (Vitest, and tauri::test's mock_builder for
+  the AppHandle problem - whether it works on the pinned Tauri version and
+  what it costs was NOT established and is the first thing to check).
+  Neither question has a ledger entry. At 1.0 only the mount-glob widening
+  for JobsView lands, under Plan 9's D23 item.
+
+- **IpcError render funnel (candidate, trigger-gated)**: eight frontend
+  sites hand-render `$t(err.code, err.params)` into a per-file alert; a
+  shared component or composable is the house one-funnel answer, and it
+  would have made D61's sweep enumerable by construction. Cut from Plan 9
+  by owner ruling 2026-07-28 as design work rather than a mechanical
+  hoist, because one consumer is mixed: BatchView fills the same
+  `ipcErrorParams` ref from a core Diagnostic (config_diagnostics[0]) as
+  well as from an IpcError, and the two wire types differ deliberately
+  (Diagnostic params stay Record<string, string>, IpcError params were
+  widened to string | number by D61). A funnel typed strictly to IpcError
+  has to move that path elsewhere. Trigger below: a ninth render site.
 - **deb/rpm hard Depends on mkvtoolnix (owner S22, 2026-07-22)**: 1.0
   ships Recommends (first-run detection + per-OS guidance carries the
   absent-mkvmerge case); revisit promoting to a hard Depends in 1.x.
