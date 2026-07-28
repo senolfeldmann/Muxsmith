@@ -77,19 +77,34 @@ pub fn fake_mkvmerge_that_fails_queries() -> tempfile::TempDir {
     dir
 }
 
-/// The one CLI-invocation funnel (D64, `cli-multilang-rendering`'s
-/// companion constraint): every integration test that runs the muxsmith
-/// binary builds its `Command` here. The funnel appends `--locale en`
-/// AFTER the caller's args: `--locale` is a per-subcommand argument
-/// (`cli.rs`), so it must follow the subcommand, which appending
-/// guarantees. Pinning rides the CLI's own contractual surface, never
-/// environment variables: `sys_locale` reads OS APIs, not env vars, on
-/// Windows and macOS (D64's rejected alternative). Post-sweep invariant:
-/// `cargo_bin("muxsmith")` appears nowhere outside this function.
+/// The en-pinned CLI-invocation funnel (D64, `cli-multilang-rendering`'s
+/// companion constraint): every integration test that asserts English
+/// muxsmith output invokes the binary through here. Its body is exactly
+/// the `"en"` delegation to [`muxsmith_localized`], which is the pinned
+/// path's single construction site and carries the argument mechanics;
+/// every caller's resulting argv is unchanged by that delegation. Pinning
+/// rides the CLI's own contractual surface, never environment variables:
+/// `sys_locale` reads OS APIs, not env vars, on Windows and macOS (D64's
+/// rejected alternative). Post-sweep invariant, at FILE level:
+/// `cargo_bin("muxsmith")` appears nowhere outside this file - once in
+/// [`muxsmith_localized`] for the pinned path, once in [`muxsmith_bare`]
+/// for its closed two-caller exception.
 pub fn muxsmith(args: &[&str]) -> Command {
+    muxsmith_localized(args, "en")
+}
+
+/// The pinned path's single construction site: builds the `muxsmith`
+/// binary's `Command`, adds `args`, then appends `--locale <locale>` LAST,
+/// so the flag follows the subcommand it belongs to (`--locale` is a
+/// per-subcommand argument, `cli.rs`, not a top-level one). [`muxsmith`] is
+/// this function's `"en"` delegation and states the D64 contract rationale
+/// and the file-level `cargo_bin` invariant once, for both; they are not
+/// repeated here. Call this directly only to pin a non-en locale, which is
+/// a test asserting that locale's rendered output.
+pub fn muxsmith_localized(args: &[&str], locale: &str) -> Command {
     let mut cmd = Command::cargo_bin("muxsmith").unwrap();
     cmd.args(args);
-    cmd.args(["--locale", "en"]);
+    cmd.args(["--locale", locale]);
     cmd
 }
 

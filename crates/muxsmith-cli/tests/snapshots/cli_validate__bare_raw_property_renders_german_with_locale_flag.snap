@@ -1,0 +1,6 @@
+---
+source: crates/muxsmith-cli/tests/cli_validate.rs
+expression: "String::from_utf8(out).unwrap()"
+---
+[Fehler] tracks[0].match.exact.raw:: Das raw:-Präfix erfordert einen Eigenschaftsnamen: ein bloßes "raw:" benennt keine Eigenschaft, und die Regel könnte nie auf eine Spur zutreffen. Ergänze den Eigenschaftsnamen nach dem Doppelpunkt (zum Beispiel raw:dolby_complexity_index).
+1 Fehler, 0 Warnungen, 0 Infos.

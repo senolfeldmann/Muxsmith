@@ -82,6 +82,35 @@ tracks:
     insta::assert_snapshot!(String::from_utf8(out).unwrap());
 }
 
+/// The de half of D101's catalog obligation, on the identical profile:
+/// `--locale de` renders the German message and the exit code is still 2.
+/// Invoked through [`support::muxsmith_localized`], not the en funnel: the
+/// funnel appends `--locale en` after the caller's args and clap rejects a
+/// repeated `--locale`, so passing `--locale de` through it would exit 2 on
+/// clap's own usage error - passing this test's `.code(2)` while
+/// snapshotting empty stdout. The SNAPSHOT is therefore the load-bearing
+/// assertion here, not the exit code.
+#[test]
+fn bare_raw_property_renders_german_with_locale_flag() {
+    let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { 'raw:': eng } }
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("bare-raw.yaml");
+    std::fs::write(&path, y).unwrap();
+    let out = support::muxsmith_localized(&["validate", path.to_str().unwrap()], "de")
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    insta::assert_snapshot!(String::from_utf8(out).unwrap());
+}
+
 #[test]
 fn json_output_is_machine_readable() {
     let out = support::muxsmith(&["validate", &fixture("bad.yaml"), "--json"])
