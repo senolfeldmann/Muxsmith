@@ -4618,17 +4618,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 plan amendment 1 delta review, finding A1-1 (.superpowers/sdd/plan-9/plan-review-round-1.md): the Run-gate e2e scenario added under the owner's tests-ship-with-the-feature ruling carried a fire-verification claim that it is red today. It is not - e2e/smoke.spec.ts:307 already feeds BatchView an error-severity document through pluralReport, and BatchView's hasErrors gate is existing behavior, so the scenario passes on the unmodified tree. What is genuinely absent is any assertion that batch-run is DISABLED. The new severity itself is proved by the task's core and CLI tests; the e2e mock supplies the severity by hand"}
-- id: plan-authoring-walks-the-trigger-list
+- id: a-triggers-condition-is-read-to-its-last-clause
   kind: pattern
   tier: 1
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Plan authoring and plan review walk the ROADMAP Triggers section against the plan's own content and name, per entry, whether this plan FIRES it. The gates that exist cover the other two cases only: the session-start gate catches triggers fired since the last session, the milestone gate catches those an irreversible action fires. A trigger whose condition is met by what a plan BUILDS - a fourth copy of something, a new file class, a second locale, a first consumer of a seam - belongs to none of them, and nothing else re-reads the list, so it fires silently and is discovered by accident if at all. Trigger is readable: you are authoring or reviewing a plan. Handle: walk the Triggers section against the plan's file and scope changes, and record the per-entry disposition in the plan."
+  statement: "Before recording a trigger as FIRED, read its condition to the end and check every clause of it against the tree, not the headline noun. A registered trigger's condition is written as one sentence whose qualifiers carry the whole meaning - 'a fourth spec file THAT NEEDS the helper', 'a bulk profile where regex compilation DOMINATES' - and a first-clause reading fires it early, which is worse than missing it: the tracker then says a registered condition was met when it was not, and the work that follows is justified by a fact nobody can reproduce. Trigger is readable: you are about to write FIRED next to a trigger entry. Handle: quote the condition in full and name the tree evidence for each clause separately."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
   count: 1
   occurrences:
-    - {date: "2026-07-28", kind: violated-corrected, ref: "Plan 9: Task 6 creates e2e/jobsview-reset.spec.ts, the FOURTH e2e spec file, which is exactly the registered condition of the name()-helper hoist trigger. Neither the plan author, the plan reviewer's coverage walk, nor the controller's own session-start trigger pass noticed - the coverage dimension walks the DESIGN against the plan, not the tracker. Found only because the owner asked the controller to grep this session's messages for a loose end about e2e; the owner then ruled the hoist done now (plan amendment 2) rather than deferred"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 plan amendment 2 delta review, finding A2-1 (.superpowers/sdd/plan-9/plan-review-round-1.md): the controller recorded the e2e name()-helper trigger as FIRED because Plan 9 creates a new e2e spec file, having read the condition as far as 'a FOURTH e2e spec file'. Its remaining clause is 'needs the local name() helper', and the plan's own step says the new spec uses testid and role selectors and consumes nothing; nine spec files exist today, so the count was wrong too - the trigger's 'fourth' counts helper copies, of which there are three. The owner had independently ruled the hoist done now, so the work stands on his ruling; the tracker note was corrected from fired to consumed-early"}
