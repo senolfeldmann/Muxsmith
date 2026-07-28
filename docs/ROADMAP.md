@@ -630,7 +630,15 @@ action:
   editor-rule-add-remove) are the established house pattern and hoisting now
   would touch every site; the fourth copy is where the pattern stops paying.
   (Plan-7.5 T1 review I4, 2026-07-27; same shape as the fake-mkvmerge
-  three-copy trigger above.)
+  three-copy trigger above.) **FIRED AND CONSUMED 2026-07-28**: Plan 9's
+  Task 6 creates `e2e/jobsview-reset.spec.ts`, the fourth spec file, and the
+  owner ruled the hoist done now rather than deferred (plan amendment 2). The
+  target was not an open question - the helper wraps `en()`, which already
+  lives in the shared `e2e/i18n-en.ts`. Found by grepping this session's own
+  messages for what had been mentioned and left unfinished, not by anything
+  in the plan-authoring or review passes: the trigger's condition is met by a
+  plan's CONTENT, and nothing walks the trigger list when a plan is written.
+  That gap is the ledger entry `plan-authoring-walks-the-trigger-list`.
 - fluent-vue or @fluent/bundle is bumped -> re-verify the `bundles`
   setter contract and the `$ta` global (D56/D55 rest on installed
   3.8.2's verified behavior). (Plan-7 design trigger 4.)
