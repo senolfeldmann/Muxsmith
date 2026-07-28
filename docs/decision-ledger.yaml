@@ -2651,14 +2651,15 @@ entries:
   kind: non-decision
   tier: 1
   domain: testing
-  statement: "have_mkvmerge/muxsmith/fake-stub helpers are duplicated 2-3x across CLI test files (each tests/*.rs is its own crate, no shared common module); applying the T5 consolidation to the CLI crate is deferred until the next CLI test file appears."
+  statement: "have_mkvmerge/muxsmith/fake-stub helpers are duplicated 2-3x across CLI test files (each tests/*.rs is its own crate). PREMISE CORRECTED at the plan-9 close blocked-pool sweep 2026-07-29: this entry said `no shared common module`, and one exists - crates/muxsmith-cli/tests/support/mod.rs, used by five CLI test files - so the barrier the deferral rested on is lower than recorded. The WORK has still not landed: fn have_mkvmerge is defined three times (dry_run_cli.rs, run_cli.rs, run_live.rs), measured at the sweep. The condition stands unchanged; applying the T5 consolidation to the CLI crate is deferred until the next CLI test file appears."
   steelman: null
   blocked_on: "internal: next CLI test file"
   status: blocked
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: deferred, ref: "whole-branch-review-verdict.md (Minor)"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-9 close blocked-pool sweep: 18 blocked entries across the four house files re-read. None had its condition fire and none had its deferred work land, so nothing was settled. This one was the single premise-stale entry - the shared support module it says does not exist has existed since aba7f4f - and its statement was corrected in place. Plan 9 added no new CLI test file, so its trigger did not fire either"}
 - id: testing-comment-fixture-convention
   kind: non-decision
   tier: 1
