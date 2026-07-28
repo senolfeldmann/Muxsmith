@@ -4663,6 +4663,20 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: core-docs-name-callers-illustratively-never-exclusively
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "A core doc that mentions a caller names it as a non-exclusive illustration ('the GUI shell emits each event to its frontend, the CLI renders its human milestone lines'), never as the definition of the parameter or the behavior ('on_event, the shell's window-emit'). The exclusive form is a time bomb: it is true until the item acquires its second caller, and the change that acquires it is exactly the change nobody re-reads the doc during. The illustrative form survives a third caller by construction. Trigger is readable: you are writing a core doc sentence that names a surface. Handle: state the property of the FUNCTION, then illustrate per surface in a parenthetical, and qualify the illustration with the channel it actually holds for (the CLI clause survives --json only because it says 'human milestone lines'). House precedent: JobEvent's doc in the same module."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 amendment 3 (design commit 08621cb) + its delta verdict (.superpowers/sdd/plan-9/amendment-3-verdict.md, dimension 1 ruling): run_batch's rustdoc carried the exclusive form from its src-tauri home and Task 2's hoist gave the function its second caller in the same commit, falsifying three passages at once. The restatement adopts the illustrative form the module's own JobEvent doc already used; the reviewer ruled the CLI clause true under --json on the 'human' qualifier and recorded that a future --json-events stream would not re-falsify it"}
 - id: a-dispatch-pins-the-tree-not-a-hash-the-controller-may-have-amended
   kind: pattern
   tier: 1
@@ -4674,8 +4688,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
+    - {date: "2026-07-28", kind: reinforced, ref: "plan-9 amendment-3 DELTA REVIEW, harvest: second instance in the same cycle - the review dispatch named the amendment commit 08621cb while a house-knowledge commit had already landed on top. Absorbed with no detour this time, because the brief had been rewritten to say read the FILES, not the hash; recorded as evidence that the handle works, not as a second failure"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-3 report, tree-state section (.superpowers/sdd/plan-9/amendment-3-report.md): the brief pinned HEAD e592f55, which the controller had already amended to 851ada1 to add the missing commit trailer. The author checked ancestry, found the cited commit was not an ancestor, diffed the two and established the trees were byte-identical before building on any premise - so a metadata-only re-commit cost a detour rather than a wrong result"}
 - id: an-import-removal-sweeps-the-doc-links-that-named-the-symbol
   kind: pattern
