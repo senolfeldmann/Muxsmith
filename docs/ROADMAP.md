@@ -265,7 +265,19 @@ questions are owner-ruled above and the third item is a one-line text fix,
 so a design round would have nothing left to decide. Execution waits at the
 owner's plan-approval gate as usual.
 
-## Plan 9: core/orchestration hoists + planner seam
+## Plan 9: core/orchestration hoists + planner seam - EXECUTED AND CLOSED 2026-07-29
+
+**Executed 2026-07-28/29** over sessions 24 to 26: seven tasks, five amendments
+(three design-side, two plan-only; amendment 5 is the first of this plan ruled
+by the controller rather than the owner), four task fix rounds, and a
+whole-branch fix round. Plan
+`docs/superpowers/plans/2026-07-28-plan-9-core-hoists-planner-seam.md`, design
+`docs/superpowers/specs/2026-07-28-plan9-core-hoists-planner-seam-design.md`
+(D91-D105, eight spec amendments S-1..S-8). The whole-branch review returned
+NEEDS_FIXES on two rustdoc claims the S-8 amendment had falsified, and READY
+after the fix wave. Salvage in `docs/process-journal/artifacts/plan-9-sdd/`.
+The anchor below is history; its open close items live in the close-action
+blocks at the end of this section.
 
 **RECON 2026-07-27 (session 23), inventory at
 `.superpowers/sdd/plan-9/recon-inventory.md`, 1119 lines.** Read it before
@@ -536,6 +548,20 @@ above use.
   verdict carries the exact replacement. The pre-existing message was off
   limits to the fix round, so this close action carries its licence.
 
+**The anchor's IN items against their commits (close bookkeeping, 2026-07-29).**
+Each ruled-IN item and where it landed: the planner seam and the four-copy hoist
+in `9bbe53d` + `fed55be` (Task 1); the `run_batch` hoist into core and the
+deletion of the src-tauri runs-root seam in `9b2843f` (Task 2); the worker-panic
+payload end to end, plus the amendment-3 rustdoc restatement, in `9e5e112` +
+`4e73739` (Task 3); `EmptyRawProperty` at error severity with its Run-gate e2e
+scenario in `d768657` + `3412fcc` (Task 4); the central errors-first sort and
+BatchView's code-keyed fetch with its parse-failure scenario in `e134fdc` +
+`17505d8` (Task 5); the D23 tests on the widened mount harness plus the `name()`
+hoist in `a2c1028` (Task 6); the D49 experiment measured and reported without a
+commit, by design (Task 7). The two OUT items received their v1.x vehicles at
+the S24 kickoff and are untouched by this plan. The whole-branch fix wave is
+`b40db26`, `96dbcf6`, `e255d40`.
+
 **A third text item, from the Task-6 review (LOW-1, 2026-07-29).** The
 spec-local IPC installer in `e2e/jobsview-reset.spec.ts` answers `start_run` and
 `list_runs` and throws on everything else, where the shared `installMockIPC`
@@ -728,7 +754,16 @@ action:
 - The D49 experiment lands on the only-G3 branch -> the owner rules on G1/G2
   removal at a plan close, against the `core-d49-g1g2-experiment` ledger
   entry; until ruled, the guards stay per `proc-proposed-safeguard-stays`.
-  (Plan-9 design trigger 4, D105.)
+  (Plan-9 design trigger 4, D105.) **NOT FIRED 2026-07-29, and its condition is
+  now unreachable as written:** Task 7 measured the anomaly branch, and the
+  reason was the instrument - the fenced mutation site also feeds the engine's
+  candidate construction, so the degraded candidates never reached the guards.
+  No re-run of D105's protocol can produce the only-G3 branch. The trigger
+  therefore waits on a condition nobody can meet, and re-aiming it at a
+  re-fenced experiment (mutating the applier site only, which the Task-7
+  reviewer measured turns all three guards red through their own assertions) is
+  an OPEN OWNER QUESTION raised at this close, not a controller call. Until
+  ruled, all three guards stay.
 - A NINTH IpcError render site is added anywhere in the frontend -> the v1.x
   "IpcError render funnel" entry stops being a candidate and becomes the
   answer: eight hand-rolled `$t(err.code, err.params)` alerts are the
@@ -754,7 +789,17 @@ action:
   until the run per proc-proposed-safeguard-stays. **FIRED 2026-07-28**:
   Plan 9 is core/planner-touching, so the experiment is an IN item of its
   anchor above and the trigger is consumed by that plan's task, not by this
-  line. Disposition of the other
+  line. **RUN AND CONSUMED 2026-07-29, outcome INCONCLUSIVE.** The two
+  outcomes this line enumerates are the design's two clean branches, and
+  neither occurred: measured G1 green, G2 red, G3 green, which is D105's
+  anomaly branch. The cause was measured and is the instrument, not the
+  guards - `delta_for` feeds both the engine's candidate construction and the
+  applier, and the engine re-validates its own candidates, so every degraded
+  candidate was replaced by its NOT-polarity twin before a guard could compare
+  anything. All three guards stay. Recorded in ledger
+  `core-d49-g1g2-experiment` with a controller-composed statement, because
+  D105 fixed wording for its two clean branches and none for the anomaly it
+  also mandated be recorded. Disposition of the other
   plan-6 triggers at the close: trigger 2 SETTLED by measurement during T4
   (guard 2 fires in its literal-expected form, stays for good; recorded in
   the falsifiability entry); triggers 4 and 7 FIRED and were consumed
