@@ -4576,3 +4576,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "plan-9 plan review round 1 HARVEST boundary note (.superpowers/sdd/plan-9/plan-review-round-1.md): the plan asserted two commits were doc-only and named its own artifact commit; the reviewer could not check any of it under the brief's blanket no-git rule and said so, bounding the risk by verifying present-tree consequences instead. The controller wrote that brief clause in all four of this cycle's briefs"}
+- id: gui-identification-cache-per-call-not-per-session
+  kind: restraint
+  tier: 1
+  source: human
+  nature: technical-code
+  domain: gui
+  statement: "The GUI does NOT hold an identification cache across commands. Each planning call constructs its own IdentifyCache and drops it, which is what all four pipeline copies did before the hoist; the seam takes no cache parameter and AppState holds no cache field. Owner ruling 2026-07-28: the sharing is overengineering at this scale. Spec 5.5's 'shared between dry-run and run' clause is amended to match rather than left contradicted, so a later reader does not find the spec promising a feature the product deliberately does not have."
+  steelman: "The plan-9 design had implemented the sharing precisely because spec 5.5 promised it and the tree never delivered it, and the cost it removes is real: without a shared cache a GUI dry-run followed by a run spawns `mkvmerge -J` once per file per command instead of once per file per session, so a large batch pays the identification twice. The owner accepted that cost knowingly; a measured complaint about planning latency on a large batch is what would reopen this."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "Owner ruling at the Plan 9 plan-approval gate, reversing design D93's GUI half before any code was written; routed into plan-9 amendment 1 (.superpowers/sdd/plan-9/amendment-1-brief.md), which carries the full scope: no caller-owned cache in the seam, LiveIdentifier keeps owning its cache, the two command_integration.rs test sites untouched, and the spec sentence amended in the design's spec-amendments section"}

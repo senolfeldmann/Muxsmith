@@ -650,3 +650,17 @@ entries:
   occurrences:
     - {date: "2026-07-14", kind: deferred, ref: "plan-5.7 whole-branch verdict I1 opened the question as proc-subagent-commit-trailer-set: Co-Authored-By on every plan-5.7 stream commit, Claude-Session inconsistent between controller and subagent commits, blocked on a convention call"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the plan-8.5 close blocked-pool sweep, which surfaced the entry because two commit-policy-adjacent rules had landed the same session (dispatch-restates-the-standing-commit-grant, concurrent-writers-need-pathspec-scoped-commits). Decided on measured state: 680 of 686 commits carry Co-Authored-By, 131 carry Claude-Session and none of the last twelve, and eight distinct trailer values exist including three models spelled two ways"}
+- id: tests-ship-with-the-feature-never-after
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "A package that creates a user-visible consequence ships the test for that consequence IN THE SAME package. Deferring the test to a later item is not an acceptable resolution of a missing producer, and neither is recording the gap honestly: honesty about an uncovered consequence closes a reporting defect, not the coverage defect underneath it. Trigger is readable: you are about to write 'no producer exists', 'coverage rides <later item>', or 'tests follow in <plan>' about behavior THIS package introduces. Handle: add the producer here, or establish that the consequence is not user-visible. The boundary this does NOT override: new test INFRASTRUCTURE (a harness, a runner, a framework) may still be deferred - what may not be deferred is a scenario the existing infrastructure can already express."
+  steelman: "Deferring keeps a package's scope where its owner cut it, and a recorded uncovered consequence is at least visible rather than silent - which is what the controller argued when it routed exactly this deferral. Rejected by the owner: writing the feature and handing in its test later is the practice the rule exists to prevent, and the scope argument proves too much, since every feature's tests can be argued out of scope by the same reasoning."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "Owner ruling at the Plan 9 plan-approval gate, overturning a controller routing: during the design fix round the controller routed the two producer-less acceptance observables (D101's GUI Run-gate consequence, D103's edited branch) as 'restate honestly, add no e2e tests'. Both scenarios fit the existing Playwright plus mock-IPC harness, so only the scenarios were missing. Routed into plan-9 amendment 1 (.superpowers/sdd/plan-9/amendment-1-brief.md)"}

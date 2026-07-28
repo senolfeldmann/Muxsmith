@@ -345,6 +345,26 @@ review, and two closed wording notes. Its four triggers are mirrored into the Tr
 `core-121`'s `blocked_on` clears at the plan close. The design is the
 executable contract for the plan; the v1 spec stays authoritative above it.
 
+**TWO LATER OWNER RULINGS, 2026-07-28, after both approvals** (routed as
+amendment 1, `.superpowers/sdd/plan-9/amendment-1-brief.md`; design and plan
+each amended by their own author and delta-reviewed by their own reviewer):
+
+1. **A feature's tests ship with the feature.** The two acceptance
+   observables recorded as having no producer - D101's GUI Run-gate
+   consequence and the branch D103 edits - get real e2e scenarios in THIS
+   plan. This overturns a controller routing, not an owner one: the fix round
+   had restated them honestly and added no tests. Both scenarios fit the
+   existing Playwright plus mock-IPC harness, so the infrastructure boundary
+   below is untouched - scenarios in, infrastructure still 1.x. Tier-2
+   `tests-ship-with-the-feature-never-after`.
+2. **The GUI identification session cache is out** as overengineering. Both
+   halves of D93 go: no caller-owned cache in the seam, no `AppState` field,
+   `LiveIdentifier` unchanged. Spec 5.5's "shared between dry-run and run"
+   clause is amended to describe what the product does rather than left
+   contradicted. Ledger `gui-identification-cache-per-call-not-per-session`
+   carries the accepted cost as its steelman: a GUI dry-run followed by a run
+   identifies every file twice.
+
 **SCOPE RULED BY THE OWNER 2026-07-28 (S24 kickoff), on the recon above.**
 Eight of the ten named design inputs are IN; two are OUT and carry their
 vehicles. The per-item rulings below are binding design inputs, not
