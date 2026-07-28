@@ -1067,29 +1067,35 @@ entries:
   occurrences:
     - {date: "2026-07-12", kind: decided, ref: "plan-5.5 task-4-verdict.md (concern 2)"}
 - id: exec-36-core-stderr-logging
-  kind: non-decision
+  kind: restraint
   tier: 1
+  source: human
+  nature: technical-code
   domain: executor
-  statement: "The single eprintln! in core (queue.rs) is the first direct stderr I/O in core; the idiomatic fix is a log/tracing facade the binaries route, deferred."
-  steelman: null
-  blocked_on: "Plan 9 (internal: core/orchestration hoists; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
-  status: blocked
+  statement: "Core does no direct stderr I/O. The single eprintln! in queue.rs goes away by moving the worker-panic payload into the JobOutcome for the surfaces to render (see exec-37), NOT by adding a log/tracing facade the binaries route: a dependency for one producer was rejected."
+  steelman: "A facade is the idiomatic Rust answer, and it would also give the four silently-discarded failures in the executor a voice (job.rs:113 create_dir_all, joblog.rs:131 remove_dir_all, spawn.rs:123 kill, spawn.rs:106-111 wait). Under this ruling those stay discarded, so a later fifth producer re-opens the question rather than being covered."
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "plan-5.5 task-4-verdict.md (I1) / whole-branch-verdict.md (I3)"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff): the facade is rejected and this item is fused with exec-37 into one worker-panic item, because the recon (.superpowers/sdd/plan-9/recon-inventory.md sections 4 and 5) showed core prints the rich payload to a stream a bundled app has no console for while the stable token renders nowhere - one hole seen twice"}
 - id: exec-37-panicked-msg-catalog
-  kind: non-decision
+  kind: pattern
   tier: 1
+  source: human
+  nature: product-scope
   domain: executor
-  statement: "The rich worker-panicked message renders on no live surface (only JSON carries the token); routing JobOutcome.errors codes through the diagnostics catalog was deferred."
-  steelman: null
-  blocked_on: "Plan 9 (internal: core/orchestration hoists; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
-  status: blocked
+  statement: "A worker panic is rendered to the user through the diagnostics catalog on the surfaces the user actually watches: the CLI human output renders the worker-panicked message in place of today's `n/a` exit code, and the GUI job row carries the code in its failure state. The RunHistory export stays raw-output-only. Scope ruled 2026-07-28; the JSON and persisted joblog already carry the token verbatim."
+  steelman: "Leaving it JSON-only is defensible on the ground that a worker panic is a bug report, not a user-facing condition, and that two GUI surfaces need a new field rather than just a renderer (JobRowData and the history row both drop errors before rendering). Rejected because the spec already promises presentation-time rendering through this catalog entry, and until then a panicked job shows the CLI user `n/a` and the GUI user nothing at all."
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "plan-5.5 task-4-verdict.md (I2) / whole-branch-verdict.md (I3)"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 5: three producers write a MIXED Vec<String> of catalog tokens and raw mkvmerge prose, no surface renders it, and the worker-panicked Fluent message is looked up by nothing but the CLI catalog-completeness test"}
 - id: exec-38-raw-output-event-variant
   kind: pattern
   tier: 1
@@ -1118,14 +1124,15 @@ entries:
   kind: pattern
   tier: 1
   domain: executor
-  statement: "The MUXSMITH_RUNS_ROOT override used by tests was shipping as an unconditional, undocumented env-var surface read in the release binary; gated behind #[cfg(debug_assertions)]."
-  steelman: null
+  statement: "The MUXSMITH_RUNS_ROOT override used by tests was shipping as an unconditional, undocumented env-var surface read in the release binary; gated behind #[cfg(debug_assertions)]. The seam exists ONCE, in the CLI: the src-tauri copy is deleted rather than hoisted to core (ruled 2026-07-28), because it has no consumer and a core-side gate would move the env read out of the binaries and into the library."
+  steelman: "Hoisting to core was the recorded plan (idiomacy review, two copies of one gate). Rejected: the only consumers are five CLI test sites, the src-tauri tests bypass the function with an explicit path, and the claim that the debug_assertions semantics apply identically to a core build was never verified."
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-10", kind: violated-corrected, ref: "plan-5 task-6-review-verdict.md (Minor 2) + commit f54cbab"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 3: producers at cli run.rs:331 and src-tauri run.rs:830, consumers only in crates/muxsmith-cli/tests (run_cli.rs:172, run_live.rs:110/245/370/468), negative result controlled"}
 - id: exec-49-runid-parser-to-core
   kind: pattern
   tier: 1
@@ -2796,17 +2803,20 @@ entries:
     - {date: "E5", kind: violated-corrected, ref: "whole-branch-review-verdict.md + commit db9f559"}
     - {date: "E5", kind: violated-corrected, ref: "commit 9009d34 (whole-branch ledger #10)"}
 - id: cli-08-config-diags-json-ordering
-  kind: non-decision
+  kind: pattern
   tier: 1
+  source: human
+  nature: technical-code
   domain: cli
-  statement: "The flat config_diags JSON is unsorted, inconsistent with validate's sorted JSON; sorting for parity was deferred because consumers key on the severity field and ordering is cosmetic. Same theme as cli-01 but a distinct, deliberately-deferred decision on a specific surface."
-  steelman: null
-  blocked_on: "Plan 9 (internal: core/orchestration hoists; re-pointed from Plan 6 by the 2026-07-15 scope re-cut)"
-  status: blocked
+  statement: "config_diagnostics is emitted errors-first, sorted CENTRALLY in core's two document builders (report/json.rs batch_document and config_only_document), not per caller - there are eight callers and per-caller sorting re-creates the drift. Ruled 2026-07-28. The one consumer that depends on the old order moves in the same change: BatchView reads config_diagnostics[0] to detect a parse failure and must key on the diagnostic's code instead of its index."
+  steelman: "The original deferral's reasoning was that consumers key on the severity field and ordering is cosmetic. It does not hold as stated: the GUI's validate_profile is the direct analogue of CLI validate and returns unsorted for the same profile, so the inconsistency is user-visible across surfaces, and at least one frontend consumer indexes the array rather than filtering it."
+  blocked_on: null
+  status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "E7", kind: deferred, ref: "task-9-verdict.md (iv) + whole-branch funnel"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 7: the array is built in exactly two core sites, always from the caller's collection-order vector, and all eight producing callers are unsorted"}
 - id: cli-10-run-exit-fold
   kind: pattern
   tier: 1
@@ -3118,11 +3128,12 @@ entries:
   blocked_on: "Plan 9 (internal): the vehicle half is settled (own plan, NOT folded into the editor design); the seam INTERFACE stays open as Plan 9's design question"
   status: blocked
   promoted_at: null
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-12", kind: deferred, ref: "ROADMAP L37"}
     - {date: "2026-07-12", kind: deferred, ref: "idiomacy-review-findings (four-copy hoist)"}
     - {date: "2026-07-15", kind: decided, ref: "Plan-6 scope re-cut (Şenol 2026-07-15, session-15 brainstorming start): reactivation condition fired and consumed; the hoist gets its own vehicle (ROADMAP Plan-9 anchor) rather than riding the editor design"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff): the hoist is IN Plan 9 and carries the half-done Plan-5.6 funnel migration with it - all four pipeline copies still inline validate::validate + lint::provable_overlaps while config_diagnostics has existed since 5.6 T11. The seam INTERFACE remains this plan's design question, so blocked_on stays until the design settles it"}
 - id: exec-40-persist-perjob-logs
   kind: pattern
   tier: 1
@@ -4479,3 +4490,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5 whole-branch verdict HARVEST: the plan was deliberately cut serial and no-worktree because its tasks share files, and the controller then dispatched a plan amendment alongside the live Task 3. The shared-index incident followed that first mid-plan concurrent dispatch immediately - see concurrent-writers-need-pathspec-scoped-commits for the mechanism"}
+- id: empty-bare-raw-property-rejected-at-validate
+  kind: pattern
+  tier: 1
+  source: human
+  nature: product-scope
+  domain: core
+  statement: "A `raw:` key with an EMPTY bare property name is rejected at validate with ERROR severity under its own DiagCode - not a warning, and not the existing UnknownProperty, whose message reads as nonsense with an empty name. Ruled 2026-07-28, lands in Plan 9. Today it emits an info diagnostic, exits 0, and then get(\"\") returns false at match time, so the rule silently never matches. The exit-code change for profiles that pass today is accepted deliberately: pre-1.0 is the cheap moment. The new code carries three downstream obligations - the CLI catalog-completeness fixture table, both locales' diagnostics.ftl, and the spec's 5.2 severity table."
+  steelman: "A warning would keep every profile that loads today loading, and reusing UnknownProperty would add no catalog key at all. Rejected because an empty bare name is always a typo rather than expressible intent, and the current behavior is the worst of both: visible as info, then silently non-matching at run time."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff). Origin: plan-5.5 task-16-verdict.md:36-37 (T16-m1, 'cosmetic wart') and whole-branch-verdict.md:92 (DEFER to Plan 6); the recon's section 6 established the never-matching consequence and that no ledger entry existed"}

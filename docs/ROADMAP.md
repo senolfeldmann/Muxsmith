@@ -438,6 +438,18 @@ OUT, with vehicles:
   consumers is mixed: BatchView fills the same ref from a core Diagnostic as
   well as from an IpcError.
 
+**A close action recorded at the ruling, so it is not left to anyone
+noticing:** the five ledger entries these rulings touched -
+`exec-36-core-stderr-logging`, `exec-37-panicked-msg-catalog`,
+`cli-08-config-diags-json-ordering`, `exec-43-runsroot-debug-gated` and the
+new `empty-bare-raw-property-rejected-at-validate` - now all carry
+`source: human`, so the promotion matrix promotes them at count 1. Promotion
+is deliberately deferred to THIS plan's close rather than skipped: until the
+work lands, each statement describes a tree that does not exist yet, and a
+Tier-2 entry is always-loaded and binds every task that reads it. At the
+close the roll-up funnel promotes them into their nature files, or records
+per entry why one stays Tier 1.
+
 ## Triggers
 
 Observable events with registered consequences - CONSULT AT EVERY
