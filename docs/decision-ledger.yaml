@@ -4697,14 +4697,15 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "A task returning NEEDS_CONTEXT MAY commit the part it finished, and should, when three conditions hold: the subset is complete against its own Files-list entries, it is green on the task's full verification bar, and it survives unchanged under EVERY option the decision memo enumerates. It then stages by path, names the omitted entries and the reason in the report, and the controller records the partial state in the run's tracker. Failing any of the three, the work stays uncommitted. Ground: the routing interval is real work time in which other writers commit into the same single-index tree, and leaving a finished, verified subset dirty across it is the larger risk - while a subset that some option would undo turns the commit into work the fix round has to unpick."
+  statement: "A task returning NEEDS_CONTEXT MAY commit the part it finished, and should, when three conditions hold: the subset is complete against its own Files-list entries, it is green on the task's full verification bar, and it survives unchanged under EVERY option the decision memo enumerates. It then stages by path, names the omitted entries and the reason in the report, and the controller records the partial state in the run's tracker. A FOURTH consideration, added 2026-07-29 from the case that first failed the other three: the plan's fenced commit message must stay TRUE of what is committed, so where that message names the very artifact the subset omits, the subset is uncommittable regardless of the first three - staging by path cannot repair a message, and editing a fenced message is an unrouted deviation. Note also that condition two is not always measurable: when the artifact that reddens the bar is the omitted one, measuring the subset green would require deleting the task's central artifact from the tree first. Failing any of the four, the work stays uncommitted. Ground: the routing interval is real work time in which other writers commit into the same single-index tree, and leaving a finished, verified subset dirty across it is the larger risk - while a subset that some option would undo turns the commit into work the fix round has to unpick."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "plan-9 Task 4: the implementer committed ten of eleven Files-list entries while returning NEEDS_CONTEXT on the German subprocess test, disclosed it as a judgment call, and the review adjudicated it acceptable and proposed the rule in this form. The interval was 34 minutes and four house and plan commits landed inside it"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-9 Task 6, the other side of the same rule one task after Task 4 set it: the task declined to commit and its reviewer ruled the reading right (.superpowers/sdd/plan-9/task-6-verdict.md adjudication 5). Two reasons, either sufficient - the bar could not be measured green for the subset, because the artifact that reddened it was the untracked spec file the subset omits; and the plan's fenced Task-6 commit message names the ruled D23 tests, i.e. exactly the omitted artifact. The fourth consideration in this statement comes from that second reason. The risk this entry exists to prevent did partly materialize: two commits landed in the 56-minute routing interval, neither touching e2e/"}
 - id: a-plan-that-pins-a-test-invocation-runs-it-once-first
   kind: pattern
   tier: 1
@@ -4902,9 +4903,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "plan-9 amendment 5: D104 item 2's assertion had no bearer, and Task 6 measured that the negated form does not rescue it (.superpowers/sdd/plan-9/task-6-report.md section 4.3). The amendment-5 reviewer then verified the mechanism from the pinned playwright-core source rather than from one run, enumerating the short-circuit list and firing a control on it, and sharpened why the pairing is load-bearing in situ (.superpowers/sdd/plan-9/amendment-5-verdict.md LOW-2 and INFO-1). The ruled replacement pairs toHaveCount(0) with jobs-empty visible, the v-else of the same condition"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-9 Task 6 review adjudication 6 (.superpowers/sdd/plan-9/task-6-verdict.md): the first real instance of the idiom in this tree, and the reviewer measured the clause this entry had only argued. Mutation M-e left runActive TRUE - the exact state item 2 must reject - and renamed the cancel-batch testid: toHaveCount(0) passed vacuously on the renamed control while the jobs-empty bearer failed and caught it. The bearer is what stands between item 2 and a silently vacuous assertion"}
 - id: a-state-assertion-presupposes-the-control-renders-so-walk-the-render-chain
   kind: pattern
   tier: 1

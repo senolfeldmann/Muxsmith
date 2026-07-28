@@ -536,6 +536,18 @@ above use.
   verdict carries the exact replacement. The pre-existing message was off
   limits to the fix round, so this close action carries its licence.
 
+**A third text item, from the Task-6 review (LOW-1, 2026-07-29).** The
+spec-local IPC installer in `e2e/jobsview-reset.spec.ts` answers `start_run` and
+`list_runs` and throws on everything else, where the shared `installMockIPC`
+also sets the OS-plugin platform global, forwards to the invoke recorder, and
+answers the `get_settings` family. The omission is measured harmless today - the
+only `platform()` consumer is outside `JobsView`'s subtree - and D104 fences the
+spec-local mock composition, so the code stands. What is missing is the
+disclosure: one sentence in that installer's doc comment naming what it
+deliberately omits relative to the shared one and why that is safe, so the day a
+new mounted read reaches it, the failure (one test throwing "unmocked command"
+while its three siblings stay green) reads as expected rather than as a puzzle.
+
 ## Triggers
 
 Observable events with registered consequences - CONSULT AT EVERY
@@ -750,6 +762,19 @@ action:
   committed-generated-plus-drift-check instance, own ledger entry at count
   2); trigger 6 needs no entry by design (drift check and registry fail by
   construction).
+
+- A FOURTH DECLARATION SITE of a `.generated/` harness-bundle path constant
+  appears -> export `HARNESS_PATH` and `MOUNT_HARNESS_PATH` from their owning
+  files (`e2e/mocks.ts`, `e2e/mount.ts`) and import them everywhere instead.
+  Three declaration sites exist today - those two plus
+  `e2e/jobsview-reset.spec.ts`, which had to re-declare both because neither
+  constant is exported and both owners were off Task 6's Files list. Same
+  three-copy shape as the fake-mkvmerge and `name()` triggers. **The condition
+  counts DECLARATION SITES, not consumers**, stated explicitly because the
+  `name()` trigger's recorded defect was exactly that mismatch between its prose
+  and what it counted. Readable event: you are typing
+  `resolve(import.meta.dirname, ".generated/` in a file that owns neither
+  constant. (Plan-9 Task-6 review INFO-2, 2026-07-29.)
 
 ## Pre-1.0 release gates
 

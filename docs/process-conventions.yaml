@@ -381,7 +381,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 4
-  count: 10
+  count: 11
   occurrences:
     - {date: "2026-07-28", kind: reinforced, ref: "plan-9 amendment-4 (author report section 3, confirmed by the delta verdict): the controller's dispatch asserted that the ruled sharpening leaves 'exactly one cargo_bin call site, in one function'. The author measured the file instead of transcribing the premise - muxsmith_bare keeps its own call inside its closed exception, so the file has two and D64's real invariant is FILE-level - refused the wording, and wrote the measured form into all three places the plan states it. The controller had made the same measurement earlier and compressed one file into one call site while writing"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict: the brief's anchor list summed 19, stated 20, real 21 - untagged arithmetic over the tree"}
@@ -393,6 +393,7 @@ entries:
     - {date: "2026-07-22", kind: violated-corrected, ref: "plan-7 T17 NEEDS_CONTEXT (task-17-report.md): the design/brief premise 'this tree's catalogs have no nested selects' - load-bearing for D55 rule 5's absolute select assertions - refuted at the source (three real counterexamples across cli/diagnostics/gui-batch catalogs); implementer stopped with a decision memo, controller re-verified on the tree and routed a design amendment (round 7)"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-3 brief: the controller wrote that src-tauri/src/run.rs sits on Task 3's exhaustive Files list, as the premise of an instruction about what a plan amendment would have to carry. It does not (plan :220-232; the nearest entry is the EXEMPLARY compiler-sweep line, conditional on JobOutcome literals). The design author refuted it while deciding it needed no src-tauri sentence, and the delta reviewer re-measured the list; moot for this amendment, load-bearing for the plan amendment that follows, which is why it was corrected before that dispatch rather than after"}
     - {date: "2026-07-28", kind: reinforced, ref: "plan-9 T2 report section 3.0, reproduced in the review (.superpowers/sdd/plan-9/task-2-verdict.md HARVEST): Task 1 had shifted src-tauri/src/run.rs, so every line number the plan's Task-2 steps cite was stale by construction. The implementer re-derived all five anchor sets from the tree before touching anything and located every edit by content; the reviewer re-measured them against the git objects and all five matched, with no brief premise failing. The plan had said the numbers would be stale - the discipline is that someone acted on it"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 Task 6 review brief: the controller wrote that THREE commits landed while the task was mid-flight. Two did (1e0dbd8, 18ef645); the third predated the task's NEEDS_CONTEXT return, which the task report itself records as its unchanged HEAD. Immaterial to the grade but load-bearing for the reviewer's risk weighing on the commit-decision adjudication, and the reviewer measured it rather than transcribing it (.superpowers/sdd/plan-9/task-6-verdict.md INFO-4)"}
 - id: brief-drafts-verified-against-tree
   kind: pattern
   tier: 2
