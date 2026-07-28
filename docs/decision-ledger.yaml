@@ -4677,6 +4677,34 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-4 verdict LOW-1 (.superpowers/sdd/plan-9/amendment-4-plan-verdict.md): the amendment justified NOT renumbering Task 4's steps with 'Task 4's executed report and review cite the current step numbers'. The report does; the review had not run - and could not dangle anyway, since it would read the amended plan. The decision stood on the report alone; only the rationale overclaimed"}
+- id: cargo-doc-is-no-evidence-for-a-doc-comment-in-a-test-target
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: testing
+  statement: "A `cargo doc` run is not evidence about a doc comment that lives in an integration-test target: cargo does not document `tests/`, so a broken intra-doc link there passes the rustdoc gate, every CI leg, and the pending --document-private-items change alike. Nothing in this repo can go red on it. Trigger is readable: you are citing a doc run as evidence for a doc comment, and the file it lives in sits under `tests/`. Handle: cite the link targets themselves (are they in scope at that site?) or drop the evidence line; do not upgrade the claim by re-running the same command."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 4 review MINOR-3 (.superpowers/sdd/plan-9/task-4-verdict.md): the fix-round report cited a green RUSTDOCFLAGS=-D warnings cargo doc run as evidence that the two new rustdocs in crates/muxsmith-cli/tests/support/mod.rs carry sound intra-doc links. The reviewer injected a link to a nonexistent item into that file and the same run finished with zero warnings, exit 0. The links happened to be sound; the evidence was not. The file already carried unchecked links before this task"}
+- id: a-returning-task-may-commit-the-subset-that-survives-every-option
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A task returning NEEDS_CONTEXT MAY commit the part it finished, and should, when three conditions hold: the subset is complete against its own Files-list entries, it is green on the task's full verification bar, and it survives unchanged under EVERY option the decision memo enumerates. It then stages by path, names the omitted entries and the reason in the report, and the controller records the partial state in the run's tracker. Failing any of the three, the work stays uncommitted. Ground: the routing interval is real work time in which other writers commit into the same single-index tree, and leaving a finished, verified subset dirty across it is the larger risk - while a subset that some option would undo turns the commit into work the fix round has to unpick."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 Task 4: the implementer committed ten of eleven Files-list entries while returning NEEDS_CONTEXT on the German subprocess test, disclosed it as a judgment call, and the review adjudicated it acceptable and proposed the rule in this form. The interval was 34 minutes and four house and plan commits landed inside it"}
 - id: a-plan-that-pins-a-test-invocation-runs-it-once-first
   kind: pattern
   tier: 1

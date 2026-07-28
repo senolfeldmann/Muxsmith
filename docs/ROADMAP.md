@@ -1077,20 +1077,34 @@ ten is recomputed.
 
 ## Docs accuracy
 
-- **D64's snapshot counts went stale when Plan 9 Task 4 added one**
-  (surfaced by that task, 2026-07-28, in a file no Plan-9 task may touch).
-  `docs/superpowers/specs/2026-07-21-plan7-help-i18n-design.md` D64 says the
-  funnel "covers all **11 insta snapshots**" and enumerates "`cli_validate.rs`
-  (1 constructor, 3 snapshots)". Recounted at that task:
-  `ls crates/*/tests/snapshots/*.snap | wc -l` -> 12, `cli_validate__*` -> 4.
-  Both numbers sit inside a dated measurement block, so one defensible reading
-  is that they are a historical record; the "covers **all** 11" phrasing is the
-  part that now reads as a live claim. **Vehicle: the Plan-9 close**, decided
-  there in one line - either requalify the sentence as a dated measurement or
-  recount it. D64's greppable invariant itself still holds, re-measured:
-  `cargo_bin("muxsmith")` appears in exactly one file. Amendment 4 keeps it
-  that way by construction (the new locale-pinned helper delegates rather than
-  adding a second call site).
+- **D64's snapshot claim went stale in COUNT and in KIND when Plan 9 Task 4
+  landed** (surfaced by that task, sharpened by its review, 2026-07-28; every
+  affected file is outside every Plan-9 task's Files list). Four sites, each
+  measured at the Task-4 review:
+  - `docs/superpowers/specs/2026-07-21-plan7-help-i18n-design.md:1505`
+    ("the 11 insta snapshots stay en-pinned"), `:1556` ("`cli_validate.rs`
+    (1 constructor, 3 snapshots)"), `:1563` ("covers all **11 insta
+    snapshots**").
+  - `docs/superpowers/plans/2026-07-21-plan-7-help-i18n.md:80` - the same
+    enumeration with its arithmetic spelled out ("5 helper call sites, 3
+    snapshots ... 3+3+4+1+0 = 11").
+
+  Recounted 2026-07-28 at commit `3412fcc`: 13 snapshots total
+  (`cli_validate` 5, `dry_run_cli` 3, `run_cli` 4, `run_live` 1, so
+  5+3+4+1+0 = 13), and `cli_validate.rs` now has 6 funnel call sites plus one
+  through the locale-parameterized helper. **The controller's first note here
+  said 12/4 and went stale within the hour, when the amendment-4 fix round
+  added the thirteenth - recorded because it is the same defect one level up.**
+
+  **The KIND half matters more than the count**: after amendment 4 the German
+  snapshot does not ride the `muxsmith` funnel at all, it rides
+  `muxsmith_localized`, so recounting to 13 would still assert a false
+  coverage claim. **Vehicle: the Plan-9 close**, and it needs TWO edits, not
+  one - the numbers, and a restated coverage sentence along the lines of
+  "every CLI-invoking snapshot test rides a pinned helper, the en funnel or
+  its locale-parameterized construction site". D64's actual invariant holds
+  unchanged, re-measured: `cargo_bin("muxsmith")` appears in exactly one file,
+  which amendment 4 preserves by construction.
 
 ## Ledger hygiene
 
