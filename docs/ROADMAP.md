@@ -334,6 +334,16 @@ planned package, so there is no concurrent plan to stream against. How its
 own TASKS run is the plan's judgement call under the doctrine's earn-the-
 overhead handle.
 
+**DESIGN OWNER-APPROVED 2026-07-28**:
+`docs/superpowers/specs/2026-07-28-plan9-core-hoists-planner-seam-design.md`
+(D91-D105), after one four-eyes review round (three blocking findings, five
+minor), one fix round, an APPROVED delta review, and two closed wording
+notes. Its four triggers are mirrored into the Triggers section below; its
+`gui-d23-reset-gating-form` ledger obligation is written;
+`core-d49-g1g2-experiment` waits for the experiment's measurement and
+`core-121`'s `blocked_on` clears at the plan close. The design is the
+executable contract for the plan; the v1 spec stays authoritative above it.
+
 **SCOPE RULED BY THE OWNER 2026-07-28 (S24 kickoff), on the recon above.**
 Eight of the ten named design inputs are IN; two are OUT and carry their
 vehicles. The per-item rulings below are binding design inputs, not
@@ -616,6 +626,25 @@ action:
   at the Plan 9 kickoff 2026-07-28: that fix is not among the ten inputs the
   owner ruled into Plan 9, so despite the "Plan-9 neighborhood" wording this
   trigger still waits for whichever change actually does the lookup fix.)
+- A JSON consumer asks to distinguish absent-from-too-old mkvmerge in a
+  report document (an issue, a script author's request) -> add the resolver
+  failure reason as a document field, the mechanism D92 designates (a reason
+  on `MkvmergeUnavailable` surfaced as an `mkvmerge_error` value), as an
+  additive wire change. Until then `mkvmerge_found: false` means "no usable
+  mkvmerge was resolved" on every surface. (Plan-9 design trigger 1, D92.)
+- A user-filed report about a stale partial output or an unexplained cleanup
+  failure arrives -> promote `delete_partial_failed` from a raw `errors`
+  pass-through to a catalog-rendered condition, using D98-D100's
+  typed-field-plus-catalog pattern as the template. (Plan-9 design trigger 2,
+  D98's recorded deferral.)
+- A user asks for collision-policy control in the GUI -> wire the existing
+  `on_collision` seam parameter to a Batch-view control; the pipeline needs
+  no change, the parameter is already there. (Plan-9 design trigger 3,
+  D91/D-3.)
+- The D49 experiment lands on the only-G3 branch -> the owner rules on G1/G2
+  removal at a plan close, against the `core-d49-g1g2-experiment` ledger
+  entry; until ruled, the guards stay per `proc-proposed-safeguard-stays`.
+  (Plan-9 design trigger 4, D105.)
 - A NINTH IpcError render site is added anywhere in the frontend -> the v1.x
   "IpcError render funnel" entry stops being a candidate and becomes the
   answer: eight hand-rolled `$t(err.code, err.params)` alerts are the

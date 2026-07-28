@@ -4532,3 +4532,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "plan-9 design review round 1 HARVEST (.superpowers/sdd/plan-9/design-review-round-1.md): observed twice in one design - D92 collapses mkvmerge_found's absent-vs-too-old distinction, D98 leaves delete_partial_failed unrouted - each paired with a section-6 trigger naming its reopening event. Reviewer flags it as a candidate convention if a third design repeats it"}
+- id: gui-d23-reset-gating-form
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "JobsView resets its live-run display BEFORE invoking start_run, gated on its own runActive flag (the `startingFresh` check), and the catch arm clears runActive only for a fresh start. That gating IS the adjudicated correct form of the D23 fix, not a deviation still open for review: the plan-5 whole-branch round-2 verdict ruled the literal 'reset after start_run resolves Ok' deterministically broken, because a soft-outcome run emits muxsmith://run-finished synchronously inside the Rust command before that command's promise resolves, so a post-await reset clobbers what onRunFinished just wrote. Recorded because gui-11 captures the original defect and its 'Corrected' state, never the FORM of the correction."
+  steelman: "The literal reading the review first proposed - reset only after start_run resolves Ok - is the more obvious ordering and needs no view-local flag as its source of truth. It fails on the documented event ordering above, and the divergent branch it would change is in any case unreachable from the UI, because the same runActive flag disables the Run button that produces a second dispatch."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-11", kind: decided, ref: "docs/process-journal/artifacts/plan-5-sdd/verdicts/whole-branch-review-verdict-round-2.md:53-62 - 'Deviation approved; the implemented form is strictly better than my literal wording', traced across five orderings. Entry written 2026-07-28 as the Plan 9 design's D104 obligation (owner-approved same day), closing the recon 8.5 gap; the plan's remaining half of that ruled item is the test"}
