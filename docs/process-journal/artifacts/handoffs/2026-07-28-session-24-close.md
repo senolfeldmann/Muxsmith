@@ -1,4 +1,4 @@
-<!-- Snapshot of HANDOFF.md at the session-24 close (2026-07-28), per SI-5: the HANDOFF is git-ignored and superseded in place. -->
+<!-- Snapshot of HANDOFF.md at the session-24 close (2026-07-28), per SI-5: the HANDOFF is git-ignored and superseded in place. Supersedes the earlier same-day snapshot; the gate ruling landed after it. -->
 
 # Handoff
 
@@ -120,12 +120,22 @@ and plans on conflict; the Plan 9 design is authoritative over the plan.
   with no damage but a live hazard; the occurrence is on
   `a-serial-ruling-binds-dispatch-concurrency-too`.
 - **The gate is TEN parts** per BUILDING.md, foreground, no subsets, before
-  any push and after every merge. Known blind spot, tracked with its vehicle
-  in the ROADMAP: rustdoc does not link-check private items, so a dangling
-  doc link in the GUI shell's private modules passes every run. Adopting
-  `--document-private-items` costs three one-line fixes at two consuming
-  sites and is deliberately deferred to the plan close, because the plan
-  quotes the gate verbatim and every task verifies against it.
+  any push and after every merge - **and it binds EVERY push with no
+  docs-only exception** (owner ruling 2026-07-28, on the measurement that a
+  full run costs 11 seconds on an unchanged tree, which is what a docs-only
+  push is).
+- **`python3 scripts/ledger-lint.py` runs before every push too** (Tier-2
+  `ledger-lint-runs-before-every-push`). It is NOT one of the ten parts and it
+  is the only check a documentation-or-YAML push can turn red. Two edits to
+  BUILDING.md's gate block are pending and land together AT THE PLAN CLOSE,
+  both tracked in the ROADMAP: this as an eleventh part, and
+  `--document-private-items` on the doc step at both consuming sites
+  (BUILDING.md and ci.yml), which closes the blind spot where rustdoc skips
+  private modules - the GUI shell hides three behind private `mod`
+  declarations, so a dangling doc link there passes every run today. Neither
+  is done mid-plan: the plan quotes the ten-part gate verbatim and every task
+  verifies against that wording, so the plan's own text is updated in the same
+  pass.
 - **House-knowledge YAML is edited by targeted text replacement only**, never
   through a serializer round-trip; `python3 scripts/ledger-lint.py` after
   every edit; it is a CI job. 492 entries across the four files at this close.
@@ -141,9 +151,8 @@ and plans on conflict; the Plan 9 design is authoritative over the plan.
 
 ## Current state (verified)
 
-- master at `028f636`, clean. Everything through the session-24 journal entry
-  is pushed; every push this session had its CI conclusion watched to
-  completion and logged.
+- master at `39ed4d9`, clean, pushed. Every push this session had its CI
+  conclusion watched to completion and logged.
 - **Plan 9 design: owner-approved** after one four-eyes review round (four
   blocking findings, five minor), one fix round, an APPROVED delta review, and
   two closed wording notes. **Amended twice afterwards on owner rulings**,
@@ -168,7 +177,8 @@ and plans on conflict; the Plan 9 design is authoritative over the plan.
    Then Tasks 3-7 in order. Each: fresh implementer, independent reviewer, the
    plan's own model tiers, verdict-arrival gate on every verdict (route the
    findings AND mine the harvest into the ledger before the next dispatch).
-2. **Plan close actions**, all listed in the plan: the roll-up funnel; the
+2. **Plan close actions**, all listed in the plan, plus the two BUILDING.md
+   gate edits above: the roll-up funnel; the
    promotion sweep of the five owner-ruled ledger entries the ROADMAP anchor
    enumerates, whose statements describe a tree that only exists once the work
    lands; `core-121`'s `blocked_on` clearing; the `core-d49-g1g2-experiment`
