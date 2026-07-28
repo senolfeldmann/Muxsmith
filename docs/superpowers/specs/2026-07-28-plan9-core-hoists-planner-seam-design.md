@@ -475,7 +475,9 @@ scale has not earned.
 The src-tauri `run_batch` (`src-tauri/src/run.rs:782-804`, signature and
 23-line body re-verified) moves as-is to
 `crates/muxsmith-core/src/executor/queue.rs`, public, keeping the exact
-signature:
+signature (amendment 3 restates the moved rustdoc for its new home - the
+rider at this entry's end carries the replacement; body and signature stay
+as-is):
 
 ```rust
 pub fn run_batch(
@@ -529,6 +531,121 @@ re-verified; both use core-owned `FakeSpawner`/`RunLogger`, and `tempfile`
 is already a core dev-dependency via `tests/joblog.rs`). The shell keeps
 every teardown/reservation/cancel test - those exercise shell composition,
 not `run_batch`.
+
+**Amendment 3 rider (owner ruling 2026-07-28): the moved rustdoc is
+restated for its new home; the move decision itself is unchanged.** Task 2
+executed this entry exactly as ordered - verbatim, rustdoc included - and
+the same commit gave the function its second caller (the CLI paragraph
+above). Three passages of the moved doc thereby became false about the
+function they document (Task-2 review MEDIUM-1,
+`.superpowers/sdd/plan-9/task-2-verdict.md` section 2; each re-verified at
+the tree 2026-07-28):
+
+1. "`on_event` (the shell's window-emit in production, a plain collector
+   in tests)" - the CLI's `on_event`
+   (`crates/muxsmith-cli/src/commands/run.rs:208-217`) renders milestone
+   lines to stdout: neither a window-emit nor a test collector.
+2. "the `#[tauri::command]` wrapper is what moves the whole call onto a
+   detached `std::thread`" - false for the CLI, which calls `run_batch`
+   synchronously on its own thread (`grep -c "thread"
+   crates/muxsmith-cli/src/commands/run.rs` -> 0; control: the same
+   pattern over `src-tauri/src/run.rs` -> 28, so the zero is a real
+   zero); and imprecise even for the GUI, where the detached spawn sits
+   in `start_run`'s own body (`std::thread::spawn` at
+   `src-tauri/src/run.rs:444`), not in the macro-generated wrapper.
+3. The `finish_teardown`/D31 paragraph explains a symbol a core reader
+   cannot reach: `fn finish_teardown` (`src-tauri/src/run.rs:651`)
+   carries no `pub`, sits behind a private `mod run;`
+   (`src-tauri/src/lib.rs:23`), and `crates/muxsmith-core/Cargo.toml`
+   declares no dependency on the gui crate. Its intra-doc link was
+   already reduced to a plain code span in Task 2 (ledger
+   `proc-48-docsurface-delink`); the prose kept pointing there anyway.
+
+**Unchanged by this amendment:** everything else this entry decides - the
+verbatim body, today's signature, the boundary (the `run_document` +
+logger-finish pair stays caller-side), `TeardownGuard` and `fail_fast`
+caller-side, the two moved tests. Only the doc comment is restated.
+
+**The replacement doc comment.** Task 3 (which owns `queue.rs`) replaces
+the `///` block immediately above `pub fn run_batch`
+(`crates/muxsmith-core/src/executor/queue.rs:327-347` at amendment time;
+locate by the `pub fn run_batch` anchor, not the line numbers) with
+exactly this, transcribed character for character:
+
+```rust
+/// The run lifecycle's core body (D23), from the moment its [`JobSpec`]s
+/// are known to the moment they are all terminal: runs `specs` to
+/// completion via [`run_queue`] on its own scoped worker thread while this
+/// function's own call stack drains the event channel, tee-ing every
+/// [`JobEvent`] first through `logger` (when persistence is available) and
+/// then through `on_event`, the caller's per-event hook carrying that
+/// surface's own presentation (the GUI shell emits each event to its
+/// frontend, the CLI renders its human milestone lines). Synchronous by
+/// design so it is directly unit-testable with a scripted [`Spawn`]: the
+/// call returns only once every job is terminal, and whether that wait
+/// occupies a dedicated thread is the caller's decision, not this
+/// function's - the GUI shell runs the whole call on a detached runner
+/// thread so its start command can return immediately, while the CLI
+/// simply blocks its calling thread.
+///
+/// Deliberately performs no teardown of caller-side run state: everything
+/// a caller tracks about a run in flight is still in place when this
+/// function returns, and clearing it - in whatever order that caller's
+/// own invariants require - is the caller's job, documented where its
+/// teardown code lives.
+///
+/// Returns the outcomes (index-aligned to `specs`, exactly like
+/// `run_queue`) and `logger` back, still open, so the caller can build the
+/// terminal `run_document` and only then call [`RunLogger::finish`] on it
+/// (`finish` needs the very document it is about to persist).
+```
+
+What the restatement does, per passage, so nothing reads as lost by
+accident:
+
+- `on_event` becomes the caller's per-event hook carrying that surface's
+  own presentation, both surfaces named in the module's own non-exclusive
+  illustrative form (cf. the `JobEvent` doc's "the CLI renders it, Plan
+  5's Tauri shell forwards it", `queue.rs:19-20`). The "plain collector
+  in tests" clause is absorbed by the unit-testable sentence: of the two
+  moved tests, one collects (`queue.rs:1376`), one passes a no-op
+  (`:1414`), so "collector" was already only half true in core.
+- The concurrency sentence states the function's own property
+  (synchronous; returns only once every job is terminal) and hands the
+  threading choice to the caller, both callers illustrated without naming
+  any src-tauri symbol.
+- The teardown paragraph keeps the load-bearing fact ("Deliberately
+  performs no teardown of caller-side run state") and leaves the
+  `finish_teardown`/D31 sequencing rationale where `finish_teardown`
+  lives. No src-tauri sentence is added by this amendment: the rationale
+  is already documented caller-side three times over -
+  `finish_teardown`'s own doc (`src-tauri/src/run.rs:641-650`),
+  `TeardownGuard`'s doc (`:656-667`), and the runner-thread comment at
+  the call site (`:447-454`) - so a fourth restatement would be
+  duplication, and no src-tauri file enters Task 3 on this amendment's
+  account.
+- The returns paragraph is byte-identical to today's; the D23 reference,
+  the logger-before-`on_event` tee order (load-bearing, pinned by the CLI
+  paragraph above), and the index-alignment / still-open-logger contract
+  are all kept. The rustdoc link set is unchanged ([`JobSpec`],
+  [`run_queue`], [`JobEvent`], [`Spawn`], [`RunLogger::finish`] - all
+  core-resolvable today), so no new intra-doc-link surface is created.
+
+**Completeness pass (2026-07-28), beyond the three ruled passages:** a
+caller-vocabulary grep over the whole file (`grep -n
+"tauri\|shell\|window\|start_run\|frontend\|GUI\|CLI\|IPC\|emit"
+crates/muxsmith-core/src/executor/queue.rs`), fire-verified by its hits on
+the three defective lines themselves (`:332`, `:334-335`, `:340`), plus a
+read of the module doc and every top-level `///` block in the file (spans
+enumerated mechanically: `:19-20`, `:71`, `:83`, `:86-93`, `:164-180`,
+`:327-347`, `:371-378`, `:383-384`, `:387-393`, `:402-423`, `:465-469`;
+the indented variant/method/test docs are covered by the grep). Every
+caller mention outside `:327-347` is illustrative and non-exclusive
+("e.g. the CLI's ctrlc handler", "e.g. a GUI's per-row cancel", "the CLI
+renders it, Plan 5's Tauri shell forwards it") and stays true with the
+second caller; the `#GUI#` hits are mkvmerge's own output protocol, not
+Muxsmith's GUI. Nothing else in the moved doc or its neighbours went
+caller-stale.
 
 ## D97: The src-tauri runs-root seam is deleted; the three call sites call `default_runs_root()` directly
 
@@ -1366,7 +1483,9 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
 - `run_batch` moves verbatim with today's signature; it does not absorb
   `run_document`, `finalize_joblog`, or the CLI's joblog messages;
   `TeardownGuard` and `fail_fast` stay caller-side; the two named tests
-  move to `queue.rs`'s test module (D96).
+  move to `queue.rs`'s test module (D96). Its rustdoc is restated for the
+  new home: the fence in D96's amendment-3 rider is the contract,
+  transcribed character for character by Task 3.
 - The runs-root deletion touches exactly the function and three call sites
   of D97's table; the CLI gate is not touched.
 - `JobOutcome.panic: Option<String>`, always serialized; the `errors`
@@ -1598,3 +1717,30 @@ rulings, nothing else touched:**
   to five, recounted from the signature block; the count re-sweep it
   triggered also normalized section 5's mixed-unit Fluent count to six
   texts / three keys.
+
+**Round 4 (2026-07-28), OWNER-RULED AMENDMENT 3, mid-execution after Task
+2 (routing: `.superpowers/sdd/plan-9/amendment-3-brief.md`; amendment 2
+was plan-only and lives in the plan's own log); one ruling, nothing else
+touched:**
+
+- **Ruling (the moved rustdoc's falseness is a design change, not a
+  defect fix):** Task 2 moved `run_batch`'s rustdoc verbatim, exactly as
+  D96's "as-is" and the plan's "rustdoc moved with it" ordered, while the
+  same commit gave the function its second caller - falsifying three
+  caller-specific passages (Task-2 review MEDIUM-1). The owner ruled the
+  correction enters the design and the code edit rides Task 3, which
+  already owns `queue.rs`; the alternatives (ordinary truthfulness fix in
+  a separate vehicle, deferral to a 1.x doc pass) were rejected. D96
+  gains the amendment-3 rider: the three passages with their re-verified
+  evidence, the exact replacement doc comment as a
+  character-for-character transcription fence, the per-passage account of
+  what the restatement changes, the decision to add NO src-tauri sentence
+  (the teardown rationale already lives caller-side at three named
+  sites), and the completeness pass over the moved doc's neighbours
+  (nothing else in `queue.rs` went caller-stale; check and spans in the
+  rider). D96's move decision - verbatim body, today's signature, the
+  not-absorbed `run_document` + logger-finish pair,
+  `TeardownGuard`/`fail_fast` caller-side, the two moved tests - is
+  unchanged; the entry's opening sentence and section 5's D96 bullet now
+  point at the rider so "moves as-is" cannot be read as covering the
+  rustdoc going forward.
