@@ -997,6 +997,23 @@ polish entry.
   adjudication verdict). Four re-deferrals below (v1.x + Triggers).
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
+## CI: make the workflow path-aware - firm 1.x item (owner ruling 2026-07-28)
+
+Today every push runs the full three-OS matrix, including a push that changes
+only Markdown or the house YAMLs. The owner ruled the LOCAL gate stays
+exception-free (measured: 11 seconds on an unchanged tree, so the exemption
+would buy nothing and cost an arguable boundary - ledger
+`does-the-ten-part-gate-bind-doc-only-pushes`), and ruled that making CI
+itself skip what a diff cannot affect is a 1.x item rather than pre-1.0 work.
+
+Not trigger-gated: it is committed for 1.x. Two things for that round to get
+right, both known traps rather than research: a `paths-ignore` filter makes a
+job SKIP rather than pass, which turns any required status check into a
+permanent pending on doc-only pushes (the usual cure is a no-op sibling job
+reporting the same name); and `ledger-lint` must keep running on exactly the
+pushes the rest of the matrix would skip, since a house-YAML edit is the one
+diff shape that can turn it red.
+
 ## Gate: rustdoc does not link-check private modules
 
 Measured 2026-07-28 (Plan 9 Task 1 review, HARVEST): gate part 4
