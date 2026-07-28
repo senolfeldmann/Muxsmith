@@ -510,6 +510,32 @@ with a mixed-severity `batch_diagnostics` vector asserting it is NOT
 reordered. Disposition at the close is the owner's; the measurement is
 recorded here so it cannot evaporate.
 
+**Two text corrections routed to the close, from the Task-5 review and its
+delta (2026-07-28).** Neither is user-visible; both are developer-facing prose
+that a change falsified. They are held to the close rather than amended into
+the running plan, on the same don't-fork-the-contract reasoning the gate edits
+above use.
+
+- **BatchView's else-branch** (`src/views/BatchView.vue`, the `!doc.profile`
+  branch): after Task 5's code-keyed fetch it fires on two triggers - an empty
+  `config_diagnostics`, and a non-empty one carrying no `parse-error` - while
+  its comment and its `console.error` string still name only the first. D103
+  anticipated the widening and ordered no text change, and Task 5's Step 4
+  positively fenced the string, so the implementer correctly left both;
+  amendment 3 is the precedent that a text a change falsifies is a design
+  matter rather than a keyboard fix. The comment should name both triggers and
+  the string should read as "no parse-error diagnostic" instead of "no
+  diagnostics". No test asserts either string, so nothing else catches this.
+- **Three overclaiming strings in `crates/muxsmith-cli/tests/dry_run_cli.rs`**
+  (delta-review LOW-4): the `files`-is-an-array assertion the Task-5 fix round
+  added is a SHAPE guard, not a builder discriminator - `config_only_document`
+  emits `files: []` as well, measured against the real profile-load-failure
+  document - so its message, the comment above it, and the pre-existing
+  `mkvmerge_found` message each claim an identification neither assertion
+  performs. The assertions stay; only the three texts change, and the delta
+  verdict carries the exact replacement. The pre-existing message was off
+  limits to the fix round, so this close action carries its licence.
+
 ## Triggers
 
 Observable events with registered consequences - CONSULT AT EVERY

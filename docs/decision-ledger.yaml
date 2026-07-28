@@ -4863,3 +4863,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5: the implementer's report pastes two BatchView.vue mutation runs with no intervening build (.superpowers/sdd/plan-9/task-5-report.md). The reported colours were nonetheless correct - the reviewer reproduced both independently WITH explicit rebuilds and says so in its evidence appendix - so the defect is in the evidence as written rather than in the conclusion; the same invocation copied into a case where the colours differ would silently measure the stale bundle"}
+- id: a-remedy-preference-in-a-verdict-is-measured-or-stated-without-the-comparative
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A review finding's required change is an INSTRUCTION, so when it prefers one remedy over another the reason for that preference is a behavioural claim about code, and it is measured before it ships - or the remedy is stated without the comparative. A finding travels one hop further than an observation: the implementer who reads it implements the stated rationale faithfully, so a false reason does not stay a wrong sentence in a verdict, it becomes a defect in the tree. Trigger, readable: you are writing `prefer the first, because it ...` about behaviour you have not run. Same family as the borrowed-claim rules, one artifact class downstream of them."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5: LOW-3 offered two remedies and preferred one because it would `close the load-failure path at the same assertion instead of relying on the next one`. False, and it contradicted a correct sentence two lines earlier in the same finding. The fix round implemented it faithfully; the reviewer measured the real profile-load-failure document in the delta pass and found it satisfies the new assertion, so the added guard rules out no reachable emitter shape. Recorded by the reviewer as its own defect (.superpowers/sdd/plan-9/task-5-verdict.md, Delta review LOW-4 and HARVEST 1)"}
+- id: a-fired-check-still-needs-a-reachable-failing-input
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: process
+  statement: "Fire-verifying a check proves a mutation can turn it red; it does not prove that any REAL code path produces input that fails it. The distinguishing question, asked once per assertion: which reachable emitter, branch or fixture produces a value this check rejects? When the honest answer is `none, only a mutation`, the check is a SHAPE GUARD - it catches a rename or a retype - and not a discriminator. Keep it where that role earns its place, but its failure message and the comment above it must not claim the discrimination it does not perform. Complements proc-verification-step-must-be-falsifiable, which asks whether a check can fire at all; this asks whether anything reachable makes it fire."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5 delta review LOW-4 (.superpowers/sdd/plan-9/task-5-verdict.md): the fix round added a files-is-an-array assertion whose message claims it identifies a planned batch document. Both fires succeeded, one half each, and both used mutations no code path emits. The reviewer then ran the real profile-load-failure path and found config_only_document emits an empty files array, so it passes both assertions - every builder in the tree emits files as an array, and the guard discriminates nothing. The test stays sound because the code-sequence assertion below rules that shape out; the three overclaiming strings were routed to the plan close"}
