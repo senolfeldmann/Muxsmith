@@ -1008,9 +1008,17 @@ that: an import removal left `[`plan_batch`]` unresolvable at
 `src-tauri/src/run.rs:359` and nothing could see it.
 
 The fix is one flag: `--document-private-items` on the doc step, in
-BUILDING.md's gate block. Its cost today is measured and zero beyond the one
-line already being fixed - with the flag, the whole workspace holds exactly
-one unresolved link, the one Task 1's fix round removes.
+BUILDING.md's gate block. **Its cost is THREE lines, not one** - this line
+first said one, on the review's unresolved-link count, and the Task-1 fix
+round refuted it by running the flag WITH `-D warnings`, which I reproduced:
+besides the one unresolved link, `src-tauri/src/lib.rs:54` and `:87` carry
+```[`run`]``` links that are ambiguous between the `run` function and the
+private `run` module, and ambiguity is a different diagnostic under the same
+`broken_intra_doc_links` lint - fatal once warnings deny. Both predate Plan 9
+(verbatim at `629dc64`, shifted one line by Task 1). The repair is
+```[`mod@run`]``` or ```[`run()`]``` per site. So the flag lands with three
+one-line fixes, still cheap, but the estimate was wrong and the measurement
+that produced it answered a narrower question than the one it was used for.
 
 **Deliberately NOT done mid-plan**, because the plan quotes the ten-part gate
 verbatim in its Global Constraints and every task's verification cites it;

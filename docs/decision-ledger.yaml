@@ -4489,8 +4489,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 1 fix round: the controller edited and committed docs/ROADMAP.md + docs/decision-ledger.yaml (commit 2856730) while the fix-round implementer was live in the same working tree - itself the concurrent second writer the rule forbids, in a plan whose own sequencing section rules it serial. No damage: both sides staged explicit pathspecs and the implementer reported the dirty tree rather than absorbing it, but one of its controls went vacuous during the race and it had to re-fire the check. The hazard was live the whole time - a bare git commit on either side takes everything staged"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5 whole-branch verdict HARVEST: the plan was deliberately cut serial and no-worktree because its tasks share files, and the controller then dispatched a plan amendment alongside the live Task 3. The shared-index incident followed that first mid-plan concurrent dispatch immediately - see concurrent-writers-need-pathspec-scoped-commits for the mechanism"}
 - id: empty-bare-raw-property-rejected-at-validate
   kind: pattern
