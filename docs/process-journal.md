@@ -2484,3 +2484,110 @@ ruling; only its home waits.
 **Recorded as 1.x**: making CI itself path-aware so a doc change does not run
 the full three-OS matrix, with the two known traps named in the entry rather
 than left for that round to rediscover.
+
+## 2026-07-28 | Plan 9 tasks 2-4, amendments 3 and 4 | session 25 (Peter, Opus 5)
+
+**Scope.** `bd7a322..418911e`, 19 commits. Plan 9 tasks 2, 3 and 4 executed and
+approved; two mid-execution amendments; five owner rulings. Tasks 5-7 remain.
+
+**Decisions and their why.**
+
+- *The moved rustdoc was ruled a DESIGN change, not a defect fix* (owner). Task
+  2 hoisted `run_batch` into core carrying its doc comment verbatim, as D96 and
+  the plan ordered; the same commit gave the function its second caller, which
+  falsified three caller-specific passages. Three routes were put up: treat it
+  as an ordinary truthfulness fix in a separate vehicle (cheapest, precedent in
+  `proc-27`), amend the design and ride Task 3 (full four-eyes chain), or defer
+  to a 1.x doc pass. The owner took the amendment. Cost: four agent roles for a
+  prose rider; benefit: D96's "as-is" instruction stopped being readable as
+  covering the doc, in the design and in the plan, in the same change.
+- *The file-vs-within-file boundary* (owner). A Files list's enumeration binds
+  over FILES; an entry constrains work inside its file only where it carries an
+  explicit qualifier ("only", a named span or region). Repairing a reference the
+  task's own enumerated edit invalidated, inside a listed file, is named in
+  scope. Evidence: two implementers reached opposite, individually correct
+  behaviour by feel, one at the cost of a licensed fix round; the discriminator
+  was measurable (task 1's Files list carries five "only" qualifiers, task 2's
+  carries none) and unwritten.
+- *Test-coverage precedence* (owner, options A+C). At execution time the
+  ships-with-the-feature rule beats a task's pinned-test enumeration, narrowly:
+  the package BUILDS the missing producer when the test is additive, runs on
+  existing infrastructure, covers a consequence its own diff creates, and is
+  named in the report. Companion at plan review: the coverage walk runs over
+  each acceptance observable's HALVES. The asymmetry decided it - an unnecessary
+  test is visible to a reviewer and cheap to reject; a missing one is invisible
+  by construction.
+- *The German test's invocation vehicle* (owner, option B with a sharpening).
+  Every CLI subprocess test rides a funnel that pins `--locale en`
+  unconditionally, so the plan's "args plus `--locale de`" could not run. A
+  locale-parameterized pinned helper was chosen over a third caller of the bare
+  helper, which would have reopened D64's closed exception set.
+- *Model tiering narrowed to one top-tier role* (owner, on measured
+  consumption): the plan-close whole-branch review and its deltas. Design and
+  plan four-eyes rounds and decision documents moved to the mid tier.
+
+**What the process caught.**
+
+- Task 3 review, BLOCKING: the persisted half of acceptance 4 had no producer.
+  The reviewer deleted the field from the record struct and ran the workspace -
+  39 binaries, all green. Originated in the plan (its acceptance map named one
+  producer for an observable with two sides). Caught by an independent task
+  reviewer, mid-tier model.
+- Task 4 implementer, blocking fork: the plan pinned a test invocation that
+  cannot run. Worse than a red test - clap's usage error exits 2, so the
+  `.code(2)` assertion passes and the snapshot comes back empty. Originated in
+  the plan; caught by the implementer refusing to work around it.
+- Task 4 review: the fix round's own evidence line did not hold. A green
+  `cargo doc` run was cited for doc comments living under `tests/`, which cargo
+  does not document; the reviewer injected a link to a nonexistent item and the
+  gate stayed green. Nothing in this repo can go red on that class.
+- Amendment 4 review: the amendment pinned the funnel's rustdoc and forgot the
+  new helper's own - omission-form latitude in the amendment whose purpose was
+  closing one.
+- Controller error class, four instances: a wrong ledger id passed into two
+  briefs, a stale commit hash in a dispatch, a "one call site" compression of a
+  one-file measurement, and a docs-accuracy item that was stale within the hour
+  and named three of four sites. Every one was refuted by a downstream agent
+  with a measurement.
+
+**Process mechanics.** Controller loop Opus 5. Task implementers and task
+reviewers Opus 5; design and plan amendment authors and reviewers Fable 5 (the
+last session under that rule). Transcript archiving Sonnet 5. Roughly 930k
+subagent tokens on the top tier against 1.28M on the mid tier - about 42
+percent of the session's subagent spend on two amendments, neither of which
+touched product behaviour. That measurement is what produced the tiering
+ruling. Four fresh top-tier agents plus six resumptions; resumption replays the
+whole prior transcript, which is where the amendment rounds got expensive.
+
+**Friction and failure.** A scripted YAML edit anchored on a repeated key pair
+twice, silently editing a neighbouring entry both times; `ledger-lint` caught
+both before the commit. An implementer's restore step hung for 600 seconds
+because the shell aliases `cp` interactive, leaving the tree mutated behind a
+command that read as slow. Two grep instruments failed silently in one review
+(a word boundary with bounded repetition returning zero under this grep, and a
+non-breaking-space literal degrading in transit into 5407 false hits). The
+plan's tracker file had no task rows for tasks 1 and 2 until an agent pointed
+it out - the plan names that file as the tracker.
+
+**Moments.**
+
+- The Task-3 reviewer proved a coverage gap by deleting the field and watching
+  39 test binaries stay green, then wrote the missing test itself and ran it
+  against both the correct and the broken tree before naming it.
+- The Task-4 implementer wrote the impossible test, ran it, and reported that
+  it *passed* its exit-code assertion with an empty snapshot - the failure mode
+  that would have shipped a green test proving nothing.
+- A recommendation nearly shipped that would have closed the blocking finding
+  on paper: `assert_eq!(job["panic"], Null)` passes for a missing key too.
+
+**Deltas.** The plan's per-task pinned-test enumerations turned out to collide
+with a standing rule nobody had ranked against them; the acceptance map was too
+coarse to catch it. Both are now closed, one at execution time and one at plan
+review.
+
+**Open threads.** Tasks 5-7 and the plan close. The D64 snapshot claim needs
+two edits at the close (numbers and a restated coverage sentence), tracked in
+the ROADMAP. One over-restriction proposal awaits an owner ruling: whether
+adding a symbol import that a task's own enumerated addition requires survives
+a "nothing else in this file" qualifier. Framework-side follow-ups are tracked
+agent-side.
