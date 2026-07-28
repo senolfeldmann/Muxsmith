@@ -84,4 +84,4 @@ suggestion-partition = { $kind ->
 { $fix }
     auf: { $files }
 }
-worker-panicked = Ein Worker-Thread ist beim Ausführen dieses Jobs abgestürzt. Dies ist ein Fehler in Muxsmith, kein mkvmerge-Fehler; Details stehen im Anwendungsprotokoll.
+worker-panicked = Ein Worker-Thread ist beim Ausführen dieses Jobs abgestürzt: { $detail }. Dies ist ein Fehler in Muxsmith, kein mkvmerge-Fehler; das persistierte Job-Protokoll dieses Laufs enthält den vollständigen Datensatz.

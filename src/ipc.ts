@@ -162,6 +162,9 @@ export interface JobOutcome {
   warnings: string[];
   errors: string[];
   duration_ms: number;
+  /** The downcast panic payload when a queue worker died running this job
+   * (D98): always on the wire, `null` for every job that did not panic. */
+  panic: string | null;
 }
 
 /** One `run_document` job entry: `JobOutcome` plus `index`/`output` (D15). */
@@ -221,6 +224,7 @@ export interface JobLogRecord {
   warnings: string[];
   errors: string[];
   duration_ms: number;
+  panic: string | null;
   lines: string[];
   started_at: string | null;
   finished_at: string;

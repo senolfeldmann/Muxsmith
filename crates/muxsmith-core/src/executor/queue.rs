@@ -319,6 +319,7 @@ pub fn run_queue(
                 warnings: Vec::new(),
                 errors: Vec::new(),
                 duration_ms: 0,
+                panic: None,
             })
         })
         .collect()
@@ -328,18 +329,22 @@ pub fn run_queue(
 /// are known to the moment they are all terminal: runs `specs` to
 /// completion via [`run_queue`] on its own scoped worker thread while this
 /// function's own call stack drains the event channel, tee-ing every
-/// [`JobEvent`] through `logger` (when persistence is available) and
-/// `on_event` (the shell's window-emit in production, a plain collector in
-/// tests). Synchronous by design so it is directly unit-testable with a
-/// scripted [`Spawn`]; the `#[tauri::command]` wrapper is what moves the
-/// whole call onto a detached `std::thread` so `start_run` itself returns
-/// immediately.
+/// [`JobEvent`] first through `logger` (when persistence is available) and
+/// then through `on_event`, the caller's per-event hook carrying that
+/// surface's own presentation (the GUI shell emits each event to its
+/// frontend, the CLI renders its human milestone lines). Synchronous by
+/// design so it is directly unit-testable with a scripted [`Spawn`]: the
+/// call returns only once every job is terminal, and whether that wait
+/// occupies a dedicated thread is the caller's decision, not this
+/// function's - the GUI shell runs the whole call on a detached runner
+/// thread so its start command can return immediately, while the CLI
+/// simply blocks its calling thread.
 ///
-/// Deliberately does NOT clear the active-run slot: that is
-/// `finish_teardown`'s job, and it must run only after the joblog is
-/// finalized and the terminal event emitted (D31: "slot empty" has to
-/// mean "teardown fully complete", or a confirmed quit could exit the
-/// process before `summary.json` is written).
+/// Deliberately performs no teardown of caller-side run state: everything
+/// a caller tracks about a run in flight is still in place when this
+/// function returns, and clearing it - in whatever order that caller's
+/// own invariants require - is the caller's job, documented where its
+/// teardown code lives.
 ///
 /// Returns the outcomes (index-aligned to `specs`, exactly like
 /// `run_queue`) and `logger` back, still open, so the caller can build the
@@ -418,9 +423,13 @@ fn lock_outcomes(
 /// The panic payload itself (whatever `panic!`/`.unwrap()`/`.expect()` was
 /// called with) is arbitrary developer-diagnostic content, not a stable,
 /// translatable code -- like `job.rs`'s `delete_partial_failed` detail, it
-/// is core's one deliberate prose-free exception (spec 6/7): logged here
-/// for triage, never carried past this function into the user-facing
-/// [`JobOutcome`] beyond the stable `worker-panicked` [`DiagCode`].
+/// is passed through as data rather than turned into prose here: it
+/// travels on the recovered [`JobOutcome`]'s `panic` field and each
+/// surface renders it at presentation time through the `worker-panicked`
+/// catalog entry's `$detail` param (spec 5.2/8.4). That is the spec's
+/// normal path, not an exception to it; core still authors no user-facing
+/// prose (`core-37-prose-free-core`), and the stable `worker-panicked`
+/// [`DiagCode`] token in `errors` is unchanged.
 fn recover_panicked_worker(
     worker_id: usize,
     payload: Box<dyn std::any::Any + Send>,
@@ -438,7 +447,6 @@ fn recover_panicked_worker(
         .map(|s| s.to_string())
         .or_else(|| payload.downcast_ref::<String>().cloned())
         .unwrap_or_else(|| "<non-string panic payload>".to_string());
-    eprintln!("muxsmith: worker thread panicked while running job {index}: {message}");
 
     // Invoke before dropping: a child spawned just before the panic is
     // still running and would otherwise keep writing to an output this
@@ -454,6 +462,7 @@ fn recover_panicked_worker(
         // The worker died mid-`run_job`, before it could measure its own
         // elapsed time; there is nothing truthful to report here.
         duration_ms: 0,
+        panic: Some(message),
     };
     let _ = events.send(JobEvent::Finished {
         index,
@@ -774,7 +783,8 @@ mod tests {
     /// because the panic was silently swallowed (`let _ = handle.join();`)
     /// before the job's slot in `outcomes` was ever written. This pins the
     /// fix: the panicked job must be reported `Failed` with the
-    /// `worker-panicked` diagnostic code, the surviving worker must still
+    /// `worker-panicked` diagnostic code and the downcast payload on its
+    /// typed `panic` field (D98), the surviving worker must still
     /// finish the rest of the batch (`jobs: 2` so a second, healthy worker
     /// is still alive to pick up what the dead one would have), and
     /// `run_queue` itself must not propagate the panic -- this test
@@ -811,6 +821,12 @@ mod tests {
                 .any(|e| e.starts_with(DiagCode::WorkerPanicked.key())),
             "expected a worker-panicked entry, got: {:?}",
             outcomes[0].errors
+        );
+        assert_eq!(
+            outcomes[0].panic.as_deref(),
+            Some("scripted worker panic for job 0"),
+            "the downcast panic payload must travel on the outcome as typed \
+             data (D98), since the surfaces render it from there"
         );
         assert_eq!(
             outcomes[1].state,

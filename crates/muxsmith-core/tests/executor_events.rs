@@ -58,11 +58,12 @@ fn job_event_wire_shapes() {
             warnings: Vec::new(),
             errors: Vec::new(),
             duration_ms: 1234,
+            panic: None,
         },
     };
     assert_eq!(
         serde_json::to_string(&ev).unwrap(),
-        r#"{"event":"finished","index":0,"outcome":{"state":"ok","exit_code":0,"warnings":[],"errors":[],"duration_ms":1234}}"#
+        r#"{"event":"finished","index":0,"outcome":{"state":"ok","exit_code":0,"warnings":[],"errors":[],"duration_ms":1234,"panic":null}}"#
     );
 
     let index = 0;

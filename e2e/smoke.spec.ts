@@ -551,12 +551,19 @@ test.describe("jobs view: live run", () => {
     await emitEvent(page, JOB_EVENT_CHANNEL, {
       event: "finished",
       index: 0,
-      outcome: { state: "ok", exit_code: 0, warnings: [], errors: [], duration_ms: 1234 },
+      outcome: { state: "ok", exit_code: 0, warnings: [], errors: [], duration_ms: 1234, panic: null },
     } satisfies JobEvent);
     await emitEvent(page, JOB_EVENT_CHANNEL, {
       event: "finished",
       index: 1,
-      outcome: { state: "cancelled", exit_code: null, warnings: [], errors: [], duration_ms: 50 },
+      outcome: {
+        state: "cancelled",
+        exit_code: null,
+        warnings: [],
+        errors: [],
+        duration_ms: 50,
+        panic: null,
+      },
     } satisfies JobEvent);
 
     const runFinished: RunFinishedEvent = {
@@ -566,7 +573,16 @@ test.describe("jobs view: live run", () => {
       suggestions: [],
       mkvmerge_found: true,
       jobs: [
-        { index: 0, output: JOB0_OUTPUT, state: "ok", exit_code: 0, warnings: [], errors: [], duration_ms: 1234 },
+        {
+          index: 0,
+          output: JOB0_OUTPUT,
+          state: "ok",
+          exit_code: 0,
+          warnings: [],
+          errors: [],
+          duration_ms: 1234,
+          panic: null,
+        },
         {
           index: 1,
           output: JOB1_OUTPUT,
@@ -575,6 +591,7 @@ test.describe("jobs view: live run", () => {
           warnings: [],
           errors: [],
           duration_ms: 50,
+          panic: null,
         },
       ],
       summary: { ok: 1, warning: 0, failed: 0, cancelled: 1 },

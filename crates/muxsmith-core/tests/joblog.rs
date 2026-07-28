@@ -27,6 +27,7 @@ fn outcome(state: JobState, exit_code: Option<i32>) -> JobOutcome {
         warnings: Vec::new(),
         errors: Vec::new(),
         duration_ms: 42,
+        panic: None,
     }
 }
 

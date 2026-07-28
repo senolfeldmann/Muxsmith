@@ -40,6 +40,7 @@ run-job-warning = [{ $index }/{ $total }] { $output } ... Warnung ({ $count ->
    *[other] { $count } Warnungen
 }, { $seconds }s)
 run-job-failed = [{ $index }/{ $total }] { $output } ... fehlgeschlagen (Exit-Code { $code })
+run-job-panicked = [{ $index }/{ $total }] { $output } ... fehlgeschlagen (Worker-Thread abgestürzt)
 run-job-cancelled = [{ $index }/{ $total }] { $output } ... abgebrochen
 run-summary = { $ok } ok, { $warning } Warnung, { $failed } fehlgeschlagen, { $cancelled } abgebrochen
 run-joblog-unavailable = Die Job-Protokolle für diesen Lauf konnten nicht geschrieben werden; es wird ohne gespeicherte Protokolle fortgefahren.

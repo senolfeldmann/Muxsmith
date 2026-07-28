@@ -16,6 +16,7 @@ fn outcome(state: JobState, exit_code: Option<i32>, warnings: usize, ms: u64) ->
         warnings: (0..warnings).map(|i| format!("w{i}")).collect(),
         errors: Vec::new(),
         duration_ms: ms,
+        panic: None,
     }
 }
 
@@ -88,10 +89,10 @@ fn run_document_maps_outcomes_to_indexed_job_entries_and_counts_the_summary() {
         serde_json::json!({
             "config_diagnostics": [],
             "jobs": [
-                {"index": 0, "output": "a.mkv", "state": "ok", "exit_code": 0, "warnings": [], "errors": [], "duration_ms": 12400},
-                {"index": 1, "output": "b.mkv", "state": "warning", "exit_code": 1, "warnings": ["w0"], "errors": [], "duration_ms": 500},
-                {"index": 2, "output": "c.mkv", "state": "failed", "exit_code": 2, "warnings": [], "errors": [], "duration_ms": 10},
-                {"index": 3, "output": "d.mkv", "state": "cancelled", "exit_code": null, "warnings": [], "errors": [], "duration_ms": 0},
+                {"index": 0, "output": "a.mkv", "state": "ok", "exit_code": 0, "warnings": [], "errors": [], "duration_ms": 12400, "panic": null},
+                {"index": 1, "output": "b.mkv", "state": "warning", "exit_code": 1, "warnings": ["w0"], "errors": [], "duration_ms": 500, "panic": null},
+                {"index": 2, "output": "c.mkv", "state": "failed", "exit_code": 2, "warnings": [], "errors": [], "duration_ms": 10, "panic": null},
+                {"index": 3, "output": "d.mkv", "state": "cancelled", "exit_code": null, "warnings": [], "errors": [], "duration_ms": 0, "panic": null},
             ],
             "summary": { "ok": 1, "warning": 1, "failed": 1, "cancelled": 1 },
         })

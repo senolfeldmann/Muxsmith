@@ -52,6 +52,11 @@ pub struct JobOutcome {
     pub errors: Vec<String>,
     /// Wall-clock duration of the run, in milliseconds.
     pub duration_ms: u64,
+    /// The downcast panic payload when a queue worker died running this job
+    /// (`recover_panicked_worker`): developer-diagnostic text passed through
+    /// as data for the surfaces to render via the `worker-panicked` catalog
+    /// entry (spec 5.2/8.4). `None` for every job that did not panic.
+    pub panic: Option<String>,
 }
 
 /// Mid-job signal surfaced to the caller (the queue re-emits as JobEvent).
@@ -106,6 +111,7 @@ pub fn run_job(
             warnings: Vec::new(),
             errors: Vec::new(),
             duration_ms: start.elapsed().as_millis() as u64,
+            panic: None,
         };
     }
 
@@ -127,6 +133,7 @@ pub fn run_job(
                 warnings: Vec::new(),
                 errors: vec![message],
                 duration_ms: start.elapsed().as_millis() as u64,
+                panic: None,
             };
         }
     };
@@ -190,6 +197,7 @@ fn finish(
         warnings,
         errors,
         duration_ms: start.elapsed().as_millis() as u64,
+        panic: None,
     }
 }
 

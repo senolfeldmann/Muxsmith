@@ -37,6 +37,15 @@ const progressValue = computed<number | undefined>(() => {
   return undefined;
 });
 
+// D100: the worker-panic payload a finished outcome carries (`JobOutcome.
+// panic`, D98) is the one per-job error text this row surfaces; `null` for
+// every non-terminal row and for every finished job that did not panic, so
+// a failed row without a panic renders exactly as before.
+const panicDetail = computed<string | null>(() => {
+  const state = props.job.state;
+  return state.kind === "finished" ? state.outcome.panic : null;
+});
+
 const isTerminal = computed(() => props.job.state.kind === "finished");
 </script>
 
@@ -49,6 +58,10 @@ const isTerminal = computed(() => props.job.state.kind === "finished");
     <td>
       <span>{{ $t(stateKey) }}</span>
       <span v-if="job.warningCount > 0">{{ $t("jobs-row-warning-count", { count: job.warningCount }) }}</span>
+      <span
+        v-if="panicDetail !== null"
+        data-testid="job-panic"
+      >{{ $t("worker-panicked", { detail: panicDetail }) }}</span>
     </td>
     <td>
       <progress

@@ -383,7 +383,7 @@ impl MilestoneState {
                 )]
             }
             JobEvent::Finished { index, outcome } => {
-                vec![self.render_finished(*index, outcome, total, renderer)]
+                self.render_finished(*index, outcome, total, renderer)
             }
             // Raw output lines (D24) feed a live log pane / persisted job
             // logs in a later task; human-mode milestone rendering has
@@ -392,21 +392,26 @@ impl MilestoneState {
         }
     }
 
-    /// One `run-job-{ok,warning,failed,cancelled}` line for a job's terminal
-    /// outcome.
+    /// The terminal line(s) for a job's outcome: one
+    /// `run-job-{ok,warning,failed,cancelled}` line, except for a failed job
+    /// whose worker panicked (D99), which renders two - `run-job-panicked`
+    /// (the milestone-line variant without the then-meaningless `exit n/a`
+    /// tail) followed by the `worker-panicked` catalog message carrying the
+    /// payload as its `$detail` param. The branch reads the typed
+    /// [`JobOutcome::panic`] field, never the `errors` strings.
     fn render_finished(
         &self,
         index: usize,
         outcome: &JobOutcome,
         total: usize,
         renderer: &Renderer,
-    ) -> String {
+    ) -> Vec<String> {
         let index_s = (index + 1).to_string();
         let total_s = total.to_string();
         let output = &self.outputs[index];
         let seconds = format!("{:.1}", outcome.duration_ms as f64 / 1000.0);
         match outcome.state {
-            JobState::Ok => renderer.msg(
+            JobState::Ok => vec![renderer.msg(
                 "run-job-ok",
                 &[
                     ("index", index_s.as_str()),
@@ -414,8 +419,8 @@ impl MilestoneState {
                     ("output", output),
                     ("seconds", seconds.as_str()),
                 ],
-            ),
-            JobState::Warning => renderer.msg_with_counts(
+            )],
+            JobState::Warning => vec![renderer.msg_with_counts(
                 "run-job-warning",
                 &[
                     ("index", index_s.as_str()),
@@ -424,30 +429,43 @@ impl MilestoneState {
                     ("seconds", seconds.as_str()),
                 ],
                 &[("count", outcome.warnings.len())],
-            ),
-            JobState::Failed => {
-                let code = outcome
-                    .exit_code
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "n/a".to_string());
-                renderer.msg(
-                    "run-job-failed",
-                    &[
-                        ("index", index_s.as_str()),
-                        ("total", total_s.as_str()),
-                        ("output", output),
-                        ("code", code.as_str()),
-                    ],
-                )
-            }
-            JobState::Cancelled => renderer.msg(
+            )],
+            JobState::Failed => match outcome.panic.as_deref() {
+                None => {
+                    let code = outcome
+                        .exit_code
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "n/a".to_string());
+                    vec![renderer.msg(
+                        "run-job-failed",
+                        &[
+                            ("index", index_s.as_str()),
+                            ("total", total_s.as_str()),
+                            ("output", output),
+                            ("code", code.as_str()),
+                        ],
+                    )]
+                }
+                Some(detail) => vec![
+                    renderer.msg(
+                        "run-job-panicked",
+                        &[
+                            ("index", index_s.as_str()),
+                            ("total", total_s.as_str()),
+                            ("output", output),
+                        ],
+                    ),
+                    renderer.msg("worker-panicked", &[("detail", detail)]),
+                ],
+            },
+            JobState::Cancelled => vec![renderer.msg(
                 "run-job-cancelled",
                 &[
                     ("index", index_s.as_str()),
                     ("total", total_s.as_str()),
                     ("output", output),
                 ],
-            ),
+            )],
         }
     }
 }
@@ -471,6 +489,7 @@ mod tests {
             warnings: (0..warnings).map(|i| format!("w{i}")).collect(),
             errors: Vec::new(),
             duration_ms: ms,
+            panic: None,
         }
     }
 
@@ -702,6 +721,34 @@ mod tests {
         );
         assert!(lines[0].contains("failed"), "{}", lines[0]);
         assert!(lines[0].contains("exit 2"), "{}", lines[0]);
+    }
+
+    /// D99: a failed job whose worker panicked renders two lines instead of
+    /// one - the `run-job-panicked` milestone line plus the `worker-panicked`
+    /// catalog message with the payload as `$detail` - and the `(exit n/a)`
+    /// tail of the plain failed line (which a panicked job would always hit,
+    /// since it never produced an exit code) appears on neither.
+    #[test]
+    fn finished_panicked_renders_two_lines_without_na() {
+        let r = renderer();
+        let mut state = MilestoneState::new(outputs(&["a.mkv"]));
+        let mut panicked = outcome(JobState::Failed, None, 0, 0);
+        panicked.panic = Some("index out of bounds".to_string());
+        let lines = state.render(
+            &JobEvent::Finished {
+                index: 0,
+                outcome: panicked,
+            },
+            1,
+            &r,
+        );
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].contains("worker panicked"), "{}", lines[0]);
+        assert!(lines[1].contains("index out of bounds"), "{}", lines[1]);
+        assert!(
+            !lines[0].contains("n/a") && !lines[1].contains("n/a"),
+            "neither line may carry the exit-code fallback: {lines:?}"
+        );
     }
 
     #[test]

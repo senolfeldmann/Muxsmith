@@ -77,4 +77,4 @@ suggestion-partition = { $kind ->
 { $fix }
     to: { $files }
 }
-worker-panicked = A worker thread panicked while running this job. This is a Muxsmith bug, not an mkvmerge failure; see the application log for details.
+worker-panicked = A worker thread panicked while running this job: { $detail }. This is a Muxsmith bug, not an mkvmerge failure; the run's persisted job log carries the full record.

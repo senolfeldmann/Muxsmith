@@ -149,7 +149,7 @@ fn fixture_args(code: DiagCode) -> Vec<(&'static str, &'static str)> {
             ("fix", "tracks[0].match.exact.codec_id: A_AC3"),
             ("files", "/in/a.mkv, /in/b.mkv"),
         ],
-        DiagCode::WorkerPanicked => vec![],
+        DiagCode::WorkerPanicked => vec![("detail", "queue worker thread panicked")],
     }
 }
 
@@ -200,6 +200,7 @@ const ALLOWLISTED_CLI_KEYS: &[&str] = &[
     "run-job-ok",
     "run-job-warning",
     "run-job-failed",
+    "run-job-panicked",
     "run-job-cancelled",
     "run-summary",
     "run-joblog-unavailable",
@@ -246,7 +247,7 @@ fn allowlisted_cli_key_args(key: &str) -> Vec<(&'static str, &'static str)> {
         "dry-run-output" => vec![("path", "/out/movie.mkv")],
         "dry-run-suggestion" => vec![("config_path", "tracks[0].match")],
         "batch-summary" => vec![("count", "3"), ("root", "/in"), ("extensions", "mkv, mp4")],
-        "run-job-start" | "run-job-cancelled" => {
+        "run-job-start" | "run-job-cancelled" | "run-job-panicked" => {
             vec![("index", "1"), ("total", "3"), ("output", "/out/movie.mkv")]
         }
         "run-job-progress" => vec![
