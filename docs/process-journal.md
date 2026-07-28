@@ -2335,3 +2335,108 @@ non-reproducible observation.
 planned package before the pre-1.0 gates; its recon inventory exists and
 corrected several long-standing figures in its own ROADMAP anchor, but no
 design is written. Framework-side follow-ups are tracked agent-side.
+
+## 2026-07-28 | Plan 9 designed, planned, Task 1 executed | session 24 (Peter, Opus 5)
+
+**Shape of the session.** No code existed for Plan 9 at the start and one task
+of it exists now, but the bulk of the session was the two four-eyes loops in
+front of that task: a design (D91-D105) and an execution plan, each authored
+by a fresh agent against a controller brief, each graded by an independent
+reviewer, each amended twice afterwards on owner rulings and re-reviewed by
+its own pair. Task 1 itself - hoisting a planning pipeline that existed in
+four near-identical copies into one core seam - took one implementer pass, one
+review, and one doc-only fix round.
+
+**The owner's scope cut, on measurement rather than memory.** A 1119-line
+recon inventory from the previous session was read first; eight of the ten
+named design inputs went into the plan, two out with named vehicles. The
+recon's own value showed up immediately: it corrected the duplication figure
+this project had carried for weeks (260 lines, not the "~100" the ledger
+said - the original number was an estimated net CUT restated as the size of
+the duplication) and it established that two items were not what their tracker
+entries claimed. One of them, core printing a panic payload to a stream a
+bundled desktop app has no console for, turned out to be the same hole as a
+second item where the stable code token rendered on no surface at all. Fusing
+them into one decision removed a dependency (no logging facade in core) rather
+than adding one.
+
+**Two owner rulings arrived after both artifacts were approved**, before any
+task ran, so they were routed as an amendment through the same author and
+reviewer pairs rather than patched in. First: a feature's tests ship with the
+feature. That overturned a controller decision - two acceptance observables
+had been restated honestly as having no producer, and honesty about an
+uncovered consequence closes a reporting defect, not the coverage defect
+underneath it. It is now a Tier-2 rule with the boundary it does NOT override
+written into it (new test INFRASTRUCTURE may still be deferred; a scenario the
+existing infrastructure can already express may not). Second: the GUI
+identification session cache is overengineering. Both halves of that ADR went;
+because the removed feature was what the spec had been promising, the spec
+sentence was amended to describe what the product does rather than left
+contradicted.
+
+**Both new tests turned out to prove less than they claimed, and said so.**
+The plan asserted the new Run-gate scenario would be red on the current tree.
+It is not: an existing test already feeds the batch view an error-severity
+document and the gate is existing behavior; what was missing was any assertion
+that the button is disabled. The same check, run rather than weighed, found
+the second scenario in the same state. Both steps now state which of the two
+they establish - that the behavior is new, or that the assertion is new - and
+name the two-link chain that covers the ruled consequence, because a mocked
+boundary supplies the new input by hand and cannot prove the producer. New
+house rule with an executable handle: run it on the pre-feature tree.
+
+**Four controller errors, each caught by an agent, none by the controller.**
+A finding count written from memory (three, when the verdict carries four) -
+found by the design author refusing the dictated figure and counting the
+headings. A claim that a registered trigger had fired, from reading its
+condition to the end of its first clause; the condition needs a fourth spec
+file that NEEDS the helper, there are nine spec files, and the "fourth" always
+counted helper copies - found by the plan reviewer. A cost estimate for a gate
+flag ("one line") built on a review measurement that had answered a narrower
+question - found by the Task-1 implementer running the flag with warnings
+denied, where two pre-existing ambiguous doc links also fail. And an
+enumeration naming one consuming site for that flag where there are two, so
+CI would have kept the blind spot - found by the Task-1 reviewer. The pattern
+is not carelessness about facts nobody checked; it is borrowed claims passed
+on without re-measuring, and every one of them was cheap to check.
+
+**What the process caught in the artifacts.** A design completion check whose
+green state was unreachable, so it would have been red on a correct
+implementation. Two acceptance observables citing e2e producers that do not
+exist. A latitude clause ("a one-line delegate or a re-export"). A stale
+parameter count left by a ripple sweep that grepped identifiers, in a sentence
+describing the signature's SHAPE without naming it. A Fluent bullet mixing
+units (texts for one ADR, keys for another) that would have shipped one
+catalog text instead of two. A staging line naming a directory where the rule
+says name the files. A constraint whose grammar routed it to the wrong task.
+
+**Task 1, executed.** Eight files, 288 lines added against 246 removed, which
+is the duplication the package exists to remove. Every machine-checkable
+property held on the first pass: both completion greps fire-verified with
+reachable green states, the CLI's inline queue block proven byte-identical for
+the task that replaces it, 494 tests with real mkvmerge and zero skips. All
+three review findings were prose: a uniqueness claim written while a second
+parameter was being added, a doc link written while its import was deleted, a
+comment citing a spec sentence the same commit replaced. Same class, three
+layers, one commit. The gate cannot see prose, and a hoist that re-homes 246
+lines of rationale is mostly prose migration.
+
+**Friction.** The controller edited and committed house files while a
+fix-round implementer was live in the same tree - the concurrent writer the
+plan's own serial ruling forbids, one session after that rule was written from
+the same defect. Explicit pathspecs on both sides meant nothing crossed, but
+one of the implementer's controls went vacuous during the race. Recorded as a
+violation rather than a near-miss.
+
+**Measured gate gap, tracked not fixed.** Rustdoc does not link-check private
+items, and the GUI shell hides three modules behind private mod declarations,
+so a dangling doc link there passes every gate run and every CI leg. Adopting
+`--document-private-items` costs three one-line fixes at two consuming sites.
+Deliberately not done mid-plan: the plan quotes the ten-part gate verbatim and
+every task verifies against it, so changing it under a running plan would fork
+the contract. Vehicle recorded on the tracker for the plan close.
+
+**Open threads.** Tasks 2 through 7 remain, serial, no worktrees. The plan's
+own close actions carry a promotion sweep of five owner-ruled ledger entries
+whose statements describe a tree that does not exist until the work lands.
+Framework-side follow-ups are tracked agent-side.

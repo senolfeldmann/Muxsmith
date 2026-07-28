@@ -1007,8 +1007,11 @@ passes every gate run and every CI leg. The task's own LOW-2 was exactly
 that: an import removal left `[`plan_batch`]` unresolvable at
 `src-tauri/src/run.rs:359` and nothing could see it.
 
-The fix is one flag: `--document-private-items` on the doc step, in
-BUILDING.md's gate block. **Its cost is THREE lines, not one** - this line
+The fix is one flag: `--document-private-items` on the doc step - **at BOTH
+consuming sites**, `BUILDING.md:76` and `.github/workflows/ci.yml:94-98`
+(Task-1 delta review, 2026-07-28; this line first named BUILDING.md alone,
+which would have left CI carrying the blind spot the change exists to
+remove). Windows-leg cost and doctest exposure were both measured empty. **Its cost is THREE lines, not one** - this line
 first said one, on the review's unresolved-link count, and the Task-1 fix
 round refuted it by running the flag WITH `-D warnings`, which I reproduced:
 besides the one unresolved link, `src-tauri/src/lib.rs:54` and `:87` carry
