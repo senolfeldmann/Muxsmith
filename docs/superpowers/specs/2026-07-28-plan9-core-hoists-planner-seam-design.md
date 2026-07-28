@@ -241,7 +241,6 @@ pub fn plan_pipeline(
     output: Option<PathBuf>,
     on_collision: Option<CollisionPolicy>,
     resolve_mkvmerge: impl FnOnce() -> Result<Mkvmerge, RuntimeError>,
-    cache: &mut IdentifyCache,
 ) -> PipelineOutcome
 ```
 
@@ -253,8 +252,9 @@ completion check is stated exactly once, as acceptance observable 1 in
 section 7, and is not restated here, per the ledger rule
 `design-states-a-completion-check-once`); `resolve_mkvmerge()` (S3); `mkv.list_languages()`
 (S4); `RunInputs { source: source.unwrap_or_else(|| PathBuf::from(".")),
-output, on_collision }` (S5, see D95); `LiveIdentifier { cache, mkv: &mkv }`
-(S6, see D93 for the borrow change); `plan_batch(&profile, &run, &mut
+output, on_collision }` (S5, see D95); `LiveIdentifier` over a
+pipeline-constructed `IdentifyCache::new()`, dropped when the call returns
+(S6; per-call cache, D93); `plan_batch(&profile, &run, &mut
 ident, &lang)` (S7). The near-verbatim rationale comments duplicated
 between the CLI copies (recon A-2, 25-26 lines per copy) consolidate into
 this module's docs; the S3e/S4e per-branch rationale moves onto the
@@ -262,9 +262,9 @@ variants.
 
 **What each of the four call sites becomes** (fork 1's last clause):
 
-1. `crates/muxsmith-cli/src/commands/dry_run.rs::run` - builds a local
-   `IdentifyCache`, calls `plan_pipeline(profile_path, source, output,
-   on_collision, Mkvmerge::locate, &mut cache)` and matches: `LoadFailed`
+1. `crates/muxsmith-cli/src/commands/dry_run.rs::run` - calls
+   `plan_pipeline(profile_path, source, output,
+   on_collision, Mkvmerge::locate)` and matches: `LoadFailed`
    -> today's json/human branch, return 2; `MkvmergeUnavailable` ->
    `config_only_document(.., Some(false), ..)` / sorted human +
    `mkvmerge-not-found` stderr, return 2; `QueryFailed` -> same with
@@ -277,7 +277,7 @@ variants.
    (D94), the empty-specs branch (unchanged presentation), and the queue
    via core `run_batch` (D96).
 3. `src-tauri/src/lib.rs::dry_run_body` - `plan_pipeline(profile_path,
-   source, output, None, || Mkvmerge::detect(mkvmerge_override), cache)`
+   source, output, None, || Mkvmerge::detect(mkvmerge_override))`
    mapped to the three `config_only_document` shapes and
    `batch_document`, exactly today's returns.
 4. `src-tauri/src/run.rs::plan_run` - keeps its settings read first (D-7,
@@ -301,8 +301,9 @@ only turn a divergence into a parameter, never flatten it):
 
 **Interface changes (memo-recorded here at decision time):** new public
 core items `pipeline::plan_pipeline`, `pipeline::PipelineOutcome`,
-`pipeline::PlannedPipeline`, `pipeline::job_specs` (D94), plus the
-`LiveIdentifier` borrow change (D93) and `report::severity_sorted` (D102).
+`pipeline::PlannedPipeline`, `pipeline::job_specs` (D94), plus
+`report::severity_sorted` (D102). `LiveIdentifier` is unchanged (D93,
+amendment 1).
 No serialized wire format changes in this entry (D92/D98 carry their own).
 
 **Rejected alternatives.** (a) Hoisting into `planner.rs`: the pipeline
@@ -312,10 +313,11 @@ module by the spec 7 module-responsibility table's own logic. (b) A
 builder-style seam object (`Pipeline::new().with_resolver(..)`): four call
 sites do not earn the indirection (scale-appropriate design); a function
 with six explicit parameters is the simplest mechanism that closes every
-divergence. (c) Passing a `&mut dyn Identify` instead of the cache: the
-identifier cannot exist before the pipeline resolves mkvmerge, since
-`LiveIdentifier` borrows the resolved `Mkvmerge`; the cache is the correct
-caller-owned half (D93).
+divergence. (c) Taking a `&mut dyn Identify` parameter: the identifier
+cannot exist before the pipeline resolves mkvmerge, since `LiveIdentifier`
+borrows the resolved `Mkvmerge`; the pipeline therefore constructs its own
+identifier over its own per-call cache (D93). The `Identify` seam stays
+where it is, on `plan_batch`, for tests.
 
 ## D92: `mkvmerge_found: false` means "no usable mkvmerge was resolved", uniformly, on every surface; no new wire field
 
@@ -360,70 +362,49 @@ returns nothing; the same grep over `src-tauri/src` returns the lib.rs doc
 lines, so the pattern is sound). The builder doc comment in
 `report/json.rs:66-73` is updated to the unified wording.
 
-## D93: The seam borrows a caller-owned `IdentifyCache`; the GUI holds one per app session, realizing spec 5.5's sharing sentence
+## D93: The seam constructs its own `IdentifyCache` per call; no session cache, no interface change (owner ruling, amendment 1)
 
-**Decision (fork 4).**
+**Decision (fork 4; re-ruled by the owner 2026-07-28, amendment 1: the GUI
+identification session cache is out as overengineering).**
 
-`plan_pipeline` takes `cache: &mut IdentifyCache`. To make that borrowable,
-`LiveIdentifier` changes from owning its cache to borrowing it:
+`plan_pipeline` takes no cache parameter. It constructs
+`IdentifyCache::new()` internally at S6, wraps it in the `LiveIdentifier`
+it builds over the resolved `Mkvmerge`, and drops both when the call
+returns - exactly what all four copies do today (recon A-5, re-verified at
+the four S6 anchors). Consequences, each an explicit non-change:
+`LiveIdentifier` keeps owning its cache (no borrow change, no public
+interface change); `crates/muxsmith-core/tests/command_integration.rs:231`
+and `:493` stay untouched; `AppState` gains no field; no mutex, no `Arc`,
+no state plumbing anywhere.
 
-```rust
-pub struct LiveIdentifier<'a> {
-    pub cache: &'a mut IdentifyCache,
-    pub mkv: &'a Mkvmerge,
-}
-```
+**Cost accepted, named (owner-accepted with the ruling; recorded so it is
+not re-litigated as an oversight):** a GUI dry-run followed by a run
+identifies every file twice - one `mkvmerge -J` process spawn per file per
+command, rather than once per session. Within a single call the cache
+still earns its keep: `plan_batch`'s own lookups and the suggestion
+engine's re-simulation passes identify each unchanged file once per
+invocation.
 
-This is a public core interface change (memo-recorded here). Its complete
-non-pipeline blast radius, enumerated by grep (`grep -rn "LiveIdentifier"
-crates src-tauri` minus the four migrating copies): the two constructions
-in `crates/muxsmith-core/tests/command_integration.rs:231` and `:493`,
-which change from `cache: IdentifyCache::new()` to borrowing a local
-`let mut cache = IdentifyCache::new();`. The compiler enforces completeness.
+**Spec consequence, handled rather than hidden:** spec 5.5's sentence
+"Identification cache: in-memory per session, keyed on path + mtime +
+size, shared between dry-run and run" is false for the GUI under this
+ruling, where dry-run and run are separate calls that share nothing. The
+spec is authoritative and does not get left contradicted: amendment S-8
+(section 3) replaces the sentence with what the product does - per-call in
+the GUI, per-process in the CLI, where call and process coincide.
 
-Per surface:
-
-- **CLI (`dry-run`, `run`):** each invocation constructs one local
-  `IdentifyCache` and passes `&mut` - identical to today, because a CLI
-  process is a session (spec 5.5 "in-memory per session").
-- **GUI:** `AppState` (`src-tauri/src/lib.rs:89`) gains
-  `ident_cache: Arc<Mutex<IdentifyCache>>`. The `dry_run` command wrapper
-  and `plan_run` each clone the `Arc` before entering their
-  `spawn_blocking` closure and lock it inside, passing `&mut *guard` to
-  `plan_pipeline`. This makes a GUI dry-run followed by a run reuse the
-  identifications (one `mkvmerge -J` per file per session instead of per
-  command), which is what spec 5.5 promises: "Identification cache:
-  in-memory per session, keyed on path + mtime + size, **shared between
-  dry-run and run**."
-
-**Spec conflict, flagged and resolved toward the spec (brief section 2.1:
-flag, never improvise):** the current tree does not realize that sentence
-in the GUI - all four copies build and drop a fresh cache per call (recon
-A-5, re-verified at the four S6 anchors). Since the spec is authoritative
-above this design, the design conforms the GUI to it rather than amending
-the spec to bless the accident. Correctness is unaffected either way: the
-cache key is path + mtime + size, so a changed file re-identifies and "a
-dry run can never be stale" (spec 5.5) holds identically.
-
-**Costs accepted, named:** (a) identification serializes across concurrent
-GUI planning commands (both run on `spawn_blocking`, so the lock never
-blocks the event loop; the cancel/close paths lock `active`, never this
-mutex, so D23's lock-free-planning invariant - "planning stays lock-free",
-`plan_run`'s own doc - is untouched: the two mutexes are disjoint and no
-code path holds both). `plan_run` keeps taking only owned/`Send` inputs (an
-`Arc` clone), preserving its documented AppState-free construction. (b) The
-cache grows monotonically over a GUI session (one entry per identified
-file; entries are track-metadata sized). Accepted at this scale;
-mkvtoolnix-gui likewise holds per-file identification in memory for every
-added file.
-
-**Rejected alternatives.** (a) Seam owns a cache per call (today's shape):
-simplest, but it hard-codes the spec violation into the new interface and
-makes the sharing unreachable without a later signature change - the seam
-interface is precisely what this plan exists to settle. (b) Caller-owned
-cache but GUI still passes a fresh one per call: preserves behavior,
-realizes nothing; the spec sentence stays false in the GUI with the
-interface already able to honor it, which is the worst of both.
+**Rejected alternative (the first draft's approved position, overturned by
+this ruling; steelman kept honest):** a caller-owned cache
+(`plan_pipeline(.., cache: &mut IdentifyCache)`, `LiveIdentifier`
+borrowing) plus a GUI session cache in `AppState`
+(`Arc<Mutex<IdentifyCache>>`, cloned into and locked inside the blocking
+closures). It realized spec 5.5's sharing sentence as written, and the
+path + mtime + size key made the reuse staleness-free; its costs were a
+mutex serializing concurrent GUI planning and monotonic per-session
+growth. Overturned because the owner judges the feature unnecessary at
+this product's scale: the double identification is cheap, and a seam
+parameter plus app-state plumbing to avoid it reads as overengineering -
+the accepted price is the double `mkvmerge -J` spawn set named above.
 
 ## D94: The specs derivation moves to core as `pipeline::job_specs(&Batch)`; the empty-specs branch stays per-surface
 
@@ -888,14 +869,38 @@ severity on the GUI: the Batch view's Run gate counts error-severity
 diagnostics (`hasErrors` over `diagnosticCounts`), so such a profile can no
 longer start a GUI run and its editor Save gate behaves like any other
 error - stated here so the exit-code acceptance is understood to include
-the GUI gating, not discovered in review. That gate consequence has **no
-test coverage today**: no e2e scenario feeds `BatchView.vue` an
-error-severity config diagnostic, and none asserts `batch-run` disabled
-(the only `toBeDisabled` on an error gate is the editor Save test, a
-different view). This plan does not add one - new GUI test scenarios
-beyond the ruled D23 tests (D104) are outside the ruled scope - so the gap
-rides the v1.x "GUI test harness for the run path" ROADMAP item, and is
-named here rather than papered over with a claimed producer.
+the GUI gating, not discovered in review. **That gate consequence ships
+with its test in this plan** (owner ruling 2026-07-28, amendment 1: a
+feature's tests ship with the feature, never after it; this replaces the
+round-1 "no producer, rides the v1.x item" routing, which was a controller
+decision the owner overturned). The producer, fully enumerated: a new
+scenario in `e2e/smoke.spec.ts`'s batch-view describe - the paired
+negative of the existing enabled assertion at `smoke.spec.ts:510`
+(`await expect(runButton).toBeEnabled()`) - that mocks `detect_mkvmerge`
+-> `MKVMERGE_INFO`, `plugin:dialog|open` -> a profile path, and
+`validate_profile` -> a report document with `mkvmerge_found: true`, empty
+`files`/`batch_diagnostics`/`suggestions`, and `config_diagnostics`
+carrying exactly one diagnostic: `code: "empty-raw-property"`,
+`severity: "error"`, `config_path: "tracks[0].match.exact.raw:"`,
+`params: {}`, `rendered: "empty-raw-property"` (the ruled condition
+itself as the fixture). Flow: pick the profile (selection validates, T7
+flow), no dry-run click needed. Assertions: `data-testid="batch-run"` is
+disabled, and its `title` attribute equals the localized
+`batch-run.tooltip-errors` text ("Fix every error-severity diagnostic
+before running.", `locales/en/gui-batch.ftl`) - proving the gate fired for
+the errors reason, not for a missing profile or missing mkvmerge (the
+document's `mkvmerge_found: true` and the completed pick close those
+earlier branches of `runDisabledReason` by construction).
+
+**Boundary, stated so it is not misread in either direction:** new test
+SCENARIOS on the existing Playwright + mock-IPC harness are in scope
+(amendment-1 ruling A; the mechanism is the one the batch describes
+already use, `installTauriMocks` + `resolveWith(<document>)`). New test
+INFRASTRUCTURE - Vitest, `tauri::test`/`mock_builder`, a
+`src-tauri/tests/` tree - stays out at 1.x (the kickoff's OUT ruling,
+untouched). The v1.x "GUI test harness for the run path" ROADMAP item also
+stays as it is: it covers `start_run`'s untested composition, which this
+scenario does not reach.
 
 Tests pinned by acceptance (section 7): one validate-level assertion per
 arm (an `exact` map with key `raw:`, a `substring` map with key `raw:`,
@@ -1007,15 +1012,32 @@ any future error-severity diagnostic in that envelope would masquerade as
 one - and a `[0]`-fallback behind the code-keyed find, which would
 reintroduce the positional read the ruling removes.
 
-**Coverage, stated plainly:** the branch this entry edits has no e2e
-producer today - no scenario resolves `load_profile` with a parse-error
-document (the only `profile: null` fixture, in `e2e/help-mode.spec.ts`,
+**Coverage ships in this plan** (owner ruling 2026-07-28, amendment 1;
+the scenarios-in / infrastructure-out boundary stated in D101 applies here
+identically and is not restated). The branch this entry edits had no e2e
+producer - no scenario resolved `load_profile` with a parse-failure
+document; the only `profile: null` fixture, in `e2e/help-mode.spec.ts`,
 carries empty `config_diagnostics` and exercises the contract-violation
-`console.error` branch, not the fetch), and this plan adds none, since new
-GUI test scenarios beyond the ruled D23 tests (D104) are outside the ruled
-scope. The change's correctness rests on the singleton-envelope evidence
-above; coverage rides the v1.x "GUI test harness for the run path" ROADMAP
-item.
+`console.error` branch, not the fetch. The producer, fully enumerated: a
+new scenario in `e2e/smoke.spec.ts`'s batch-view apply describe, replaying
+the existing apply flow (pick profile -> dry-run resolving the suggestion
+report -> click the suggestion's apply button, exactly the
+`smoke.spec.ts:406` scenario's scaffold) with one substitution:
+`load_profile` resolves a parse-failure document - `profile: null`,
+`config_diagnostics` carrying exactly one diagnostic mirroring core's
+`ParseError` emitter (`code: "parse-error"`, `severity: "error"`,
+`config_path: ""`, `params: { detail: "unknown field", at: "" }`,
+`rendered: "parse-error"`), empty `files`/`batch_diagnostics`/
+`suggestions`. Assertions: (a) the view's alert line (the `role="alert"`
+paragraph rendering `$t(ipcErrorCode, ipcErrorParams)`) contains "The
+profile could not be parsed" (the en text before the `$detail` placeable,
+so Fluent's directional-isolate marks around substitutions cannot break
+the match); (b) the recorded invoke log contains no `apply_suggestion` and
+no `save_profile` call (the branch returns before either - real
+invocation evidence, the house pattern `installTauriMocks` exists for).
+This is the discriminating test for this entry's change: it goes red if
+the code-keyed `find` misses `parse-error`. The change's correctness
+additionally rests on the singleton-envelope evidence above.
 
 ## D104: The D23 item ships as three mount-harness tests plus a GUI-panic render test, a widened mount glob with a reactive-props hook, and a Tier-1 ledger entry recording the correction's form
 
@@ -1272,6 +1294,19 @@ locale, so scripts key on codes, humans read text.", append:
 In every report document, the `config_diagnostics` array is ordered errors-first (error, warning, info), stable within a severity (ties keep collection order); per-file `diagnostics` and `batch_diagnostics` keep collection order.
 ```
 
+**S-8 - section 5.5, the identification-cache sentence (amendment 1,
+Ruling B).** The sentence (current text verbatim, spec line 311):
+
+```
+Identification cache: in-memory per session, keyed on path + mtime + size, shared between dry-run and run. On-disk cache is a future candidate.
+```
+
+is replaced by:
+
+```
+Identification cache: in-memory, keyed on path + mtime + size, constructed per planning call and dropped with it. One call identifies each unchanged file once (run plans and executes within a single call, so its planning pass and the suggestion engine's re-simulations share one cache); separate calls re-identify, so a GUI dry-run followed by a run spawns `mkvmerge -J` per file in each (a per-session shared cache was ruled out 2026-07-28 as unnecessary). In the CLI, call and process coincide. On-disk cache is a future candidate.
+```
+
 **Contradiction sweep** (a spec amendment has contradicted a neighbouring
 section in this project before; every `raw`/`worker-panicked`/ordering
 mention in the spec was grepped and read): 4.3's "unless the property is
@@ -1281,7 +1316,13 @@ empty name is rejected, not opted out - S-3's sentence sits in 4.4, which
 ("Core emits no user-facing prose") stays true under S-1/S-2 - the payload
 is data in a typed field, rendered at presentation time; 6's execution
 bullets and 7's prose-free module table entry are untouched and consistent;
-5.5's cache sentence needs no amendment (D93 conforms the tree to it);
+5.5's cache sentence is replaced by S-8 (amendment 1, Ruling B), and its
+neighbouring run bullet ("re-plans immediately before execution
+(identification is cheap and cached; a dry run can never be stale)") was
+checked against the per-call cache: it stays true - identification is
+cached within each call, "cheap" carries the re-plan justification, and
+staleness protection never depended on cross-call reuse (the path + mtime +
+size key re-identifies a changed file in any scheme);
 8.1/8.2 surface lists are untouched. No other spec sentence mentions
 `worker-panicked`, `raw:` emptiness, or `config_diagnostics` ordering
 (verified by grep over the spec for `raw`, `worker-panicked`,
@@ -1315,10 +1356,9 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
 - The resolver closures each surface passes (CLI `Mkvmerge::locate`, GUI
   `Mkvmerge::detect(override)`), and `mkvmerge_found`'s unified meaning
   with **no** new document field (D92).
-- `LiveIdentifier`'s borrow change and its two test-site adaptations; the
-  GUI session cache lives in `AppState` as `Arc<Mutex<IdentifyCache>>`,
-  locked inside the blocking closures, never across an `.await` on the
-  dispatch thread (D93).
+- The seam constructs its own `IdentifyCache` per call: no cache
+  parameter, no `LiveIdentifier` change, no `AppState` field, no session
+  cache in any form (D93, owner ruling amendment 1).
 - `job_specs` lives in `pipeline.rs` with the doc comment as written; the
   empty-specs presentation stays per-surface (D94).
 - The `"."` default is applied exactly once, in the seam (D95).
@@ -1348,6 +1388,12 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
   favor of the D102 `pub(crate) use` re-export; per-file and batch arrays
   stay unsorted (D102).
 - `BatchView`'s `find` predicate keys on `"parse-error"` exactly (D103).
+- The two amendment-1 e2e scenarios exactly as enumerated (flow, mocked
+  commands, document contents, assertion targets): D101's Run-gate
+  scenario and D103's parse-failure apply scenario, both in
+  `e2e/smoke.spec.ts`'s existing batch-view describes on the existing
+  mock mechanism. No scenario beyond these and the D104 four; new test
+  infrastructure stays out (the boundary stated in D101).
 - The mount-glob entries, `resolvePath` branches, the `__muxsmithSetProps__`
   hook, the spec-local mock composition, and the four assertions of D104;
   `e2e/mount.ts` and the two OUT items are not touched; no Vitest, no
@@ -1426,23 +1472,22 @@ recorded measurement), not a state someone must notice.
 5. **Empty bare `raw:`.** Emitters: the two per-arm validate tests plus
    the non-empty control (D101); `muxsmith validate` on a profile with a
    bare `raw:` key exits 2 and renders the en/de text verbatim (subprocess
-   test); the catalog fixture row renders without placeholder leaks. The
-   GUI Run-gate consequence (D101) deliberately has NO emitter in this
-   plan: no e2e feeds BatchView an error-severity config diagnostic today
-   and adding one is outside the ruled scope, so that consequence is a
-   stated, uncovered behavior riding the v1.x GUI-test-harness item - it
-   is not claimed as acceptance.
+   test); the catalog fixture row renders without placeholder leaks; and
+   the GUI Run-gate consequence's producer is D101's new batch-view
+   scenario (amendment 1): `batch-run` disabled with the
+   `tooltip-errors` title on an error-severity `empty-raw-property`
+   document, green under `pnpm test:e2e`, red if the gate or the ruled
+   severity regresses.
 6. **Central sort + BatchView.** Emitters: the discriminating order test of
    D102 (`[B, D, C, A]`); CLI `validate --json` and `dry-run --json` now
    agree on ordering for one mixed-severity fixture (subprocess
    assertion); `BatchView.vue` contains no `config_diagnostics[0]` read
-   (grep, fire-verified against today's `:225` hit). The branch D103 edits
-   has NO e2e producer today: no scenario resolves `load_profile` with a
-   parse-error document (the only `profile: null` fixture, in
-   `help-mode.spec.ts`, carries empty diagnostics and exercises the
-   contract-violation branch), and this plan adds none; D103's correctness
-   rests on the singleton-envelope evidence recorded there, and coverage
-   rides the v1.x GUI-test-harness item.
+   (grep, fire-verified against today's `:225` hit); and the branch D103
+   edits gains its producer, D103's new parse-failure apply scenario
+   (amendment 1): the alert line surfaces "The profile could not be
+   parsed" and neither `apply_suggestion` nor `save_profile` is invoked,
+   green under `pnpm test:e2e`, red if the code-keyed `find` misses
+   `parse-error`.
 7. **D23 item.** Emitters: the three ordering tests plus the panic-render
    test in `e2e/jobsview-reset.spec.ts` (D104), green under `pnpm
    test:e2e`; the `gui-d23-reset-gating-form` ledger entry exists and
@@ -1513,3 +1558,36 @@ nothing else changed:**
   D103's coverage paragraph) to "new GUI test scenarios beyond the ruled
   D23 tests (D104)", removing the tension with D104's three ruled-IN
   scenarios; acceptance 5's already-correctly-scoped instance untouched.
+
+**Round 3 (2026-07-28), OWNER-RULED AMENDMENT 1, post-approval and before
+execution (routing: `.superpowers/sdd/plan-9/amendment-1-brief.md`); two
+rulings, nothing else touched:**
+
+- **Ruling A (a feature's tests ship with the feature):** overturns the
+  round-1 CONTROLLER routing of I-2/I-3 ("restate honestly, add no e2e
+  tests"). D101's "no test coverage today / rides the v1.x item" paragraph
+  replaced by a fully enumerated batch-view scenario in
+  `e2e/smoke.spec.ts` (error-severity `empty-raw-property` document via
+  `validate_profile`; `batch-run` disabled + `tooltip-errors` title; the
+  paired negative of the `:510` enabled assertion), plus the explicit
+  scenarios-in / infrastructure-out boundary statement. D103's "Coverage,
+  stated plainly" paragraph replaced by a fully enumerated parse-failure
+  apply scenario (`load_profile` -> `profile: null` + singleton
+  `parse-error`; alert contains "The profile could not be parsed"; no
+  `apply_suggestion`/`save_profile` invoked). Acceptance observables 5 and
+  6 now name these producers; section 5 gains the two-scenarios bullet.
+  The kickoff's infrastructure OUT ruling and the v1.x
+  "GUI test harness for the run path" item are untouched.
+- **Ruling B (the GUI identification session cache is out as
+  overengineering):** D93 rewritten - the seam constructs its own
+  `IdentifyCache` per call (today's behavior); no cache parameter, no
+  `LiveIdentifier` borrow change, no test-site adaptations, no `AppState`
+  field; the caller-owned-cache-plus-session-cache design becomes the
+  rejected alternative with its honest steelman and the owner-accepted
+  cost (a GUI dry-run followed by a run spawns `mkvmerge -J` per file
+  twice). Ripple swept: D91's signature block, S6 step, call-site mappings
+  1 and 3, interface-changes memo, and rejected alternative (c); section
+  5's D93 bullet; spec amendment S-8 added replacing spec 5.5's
+  "shared between dry-run and run" cache sentence with the per-call /
+  per-process description, and the contradiction sweep updated with the
+  checked neighbouring run bullet.
