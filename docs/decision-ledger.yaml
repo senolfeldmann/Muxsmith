@@ -1123,6 +1123,8 @@ entries:
 - id: exec-43-runsroot-debug-gated
   kind: pattern
   tier: 1
+  source: human
+  nature: technical-code
   domain: executor
   statement: "The MUXSMITH_RUNS_ROOT override used by tests was shipping as an unconditional, undocumented env-var surface read in the release binary; gated behind #[cfg(debug_assertions)]. The seam exists ONCE, in the CLI: the src-tauri copy is deleted rather than hoisted to core (ruled 2026-07-28), because it has no consumer and a core-side gate would move the env read out of the binaries and into the library."
   steelman: "Hoisting to core was the recorded plan (idiomacy review, two copies of one gate). Rejected: the only consumers are five CLI test sites, the src-tauri tests bypass the function with an explicit path, and the claim that the debug_assertions semantics apply identically to a core build was never verified."
