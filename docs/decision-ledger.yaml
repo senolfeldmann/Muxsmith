@@ -4663,6 +4663,21 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: a-house-rule-is-cited-by-id-and-file-never-by-commit-hash
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A citation of a house rule or an owner ruling names the OWNING entry's id and its file; the commit that landed it may ride along as provenance, never alone. Two failure facets, both observed in one amendment cycle. (a) A bare hash tells a reader what changed, not where the rule now lives, and the natural next move - grepping the hash - returns nothing, which is indistinguishable from the rule not existing. (b) An id that merely APPEARS inside another entry's statement is not the owning entry: statements quote neighbouring ids, most sharply when one entry rules that another stays unchanged, so a grep hit on your quoted language can sit under a different `- id:` line than you think. Trigger is readable for both: you are writing a hash as a rule reference, or you are citing an id you took from the grep hit rather than from the entry header above it. Handle: walk up from the hit to the nearest preceding `- id:` line, cite that id plus its file."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-3 plan-side DELTA VERDICT MEDIUM-1 (.superpowers/sdd/plan-9/amendment-3-plan-verdict.md): facet (b), produced by the correction of facet (a). Looking the ruling up by language rather than by hash, the plan author landed on latitude-carveout-zero-content-structural-forks's statement - which opens 'Ruled: proc-latitude-clause-boundary stays UNCHANGED' - and credited the ruling to the id named in that opening, i.e. to the one entry the ruling explicitly does not amend. The wrong id then propagated into the plan's amendment log and into the controller's own review brief before the reviewer caught it at the source"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-3 plan-side report, section 5 (.superpowers/sdd/plan-9/amendment-3-plan-report.md): facet (a) - the design-side verdict cited the owner's file-vs-within-file ruling as the bare commit d7fd277. The plan author grepped that hash against docs/decision-ledger.yaml, got nothing, and only a fire control (the id itself, which hits docs/process-conventions.yaml) exposed that the empty result was a wrong-file artifact rather than a refutation - the rule lives in the Tier-2 process file, not the ledger"}
 - id: core-docs-name-callers-illustratively-never-exclusively
   kind: pattern
   tier: 1
