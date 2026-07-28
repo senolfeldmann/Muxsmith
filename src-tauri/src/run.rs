@@ -1,7 +1,8 @@
 //! Run lifecycle IPC (D23): `start_run`/`cancel_run`/`cancel_job`, the
 //! `muxsmith://job-event`/`muxsmith://run-finished` window events, and run
 //! history (`list_runs`/`get_job_log`). Mirrors the CLI's `run` command
-//! (re-plan, build [`JobSpec`]s, drive [`run_queue`]) so planning stays
+//! (re-plan, build [`JobSpec`]s, drive
+//! [`muxsmith_core::executor::queue::run_queue`]) so planning stays
 //! shared through core (spec 7) -- this module adds only the shell-specific
 //! parts: the single-active-run gate, window-event emission, and
 //! persisted-history reads.
@@ -29,7 +30,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
 use std::time::SystemTime;
 
 use serde::Serialize;
@@ -37,12 +37,12 @@ use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use muxsmith_core::capability::runtime::Mkvmerge;
-use muxsmith_core::executor::job::{JobOutcome, JobSpec};
+use muxsmith_core::executor::job::JobSpec;
 use muxsmith_core::executor::joblog::{
     RunLogger, default_runs_root, make_run_id, run_id_timestamp,
 };
-use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
-use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
+use muxsmith_core::executor::queue::{QueueControl, QueueOpts, run_batch};
+use muxsmith_core::executor::spawn::LiveSpawner;
 use muxsmith_core::pipeline::{self, PipelineOutcome, plan_pipeline};
 use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
 
@@ -298,7 +298,7 @@ fn plan_run(
     let run_id = make_run_id(SystemTime::now());
     let ctl = QueueControl::new(specs.len(), cancel_flag);
     let logger =
-        resolve_runs_root().and_then(|root| RunLogger::create(&root, &run_id, &specs).ok());
+        default_runs_root().and_then(|root| RunLogger::create(&root, &run_id, &specs).ok());
     let run_dir = logger.as_ref().map(|l| l.dir().display().to_string());
     let base = batch_document(&config_diags, &batch, &ShellRenderer);
     let outputs: Vec<String> = specs
@@ -502,13 +502,13 @@ pub fn cancel_job(state: State<AppState>, index: usize) -> Result<(), IpcError> 
 /// the log directory).
 #[tauri::command]
 pub fn list_runs() -> Result<Vec<RunMeta>, IpcError> {
-    Ok(list_runs_in(resolve_runs_root().as_deref()))
+    Ok(list_runs_in(default_runs_root().as_deref()))
 }
 
 /// Reads one job's persisted log record (`job-<index>.json`, D26).
 #[tauri::command]
 pub fn get_job_log(run_id: String, index: usize) -> Result<serde_json::Value, IpcError> {
-    get_job_log_in(resolve_runs_root().as_deref(), &run_id, index)
+    get_job_log_in(default_runs_root().as_deref(), &run_id, index)
 }
 
 /// The English GUI catalog, embedded at build time (D31): the shell's few
@@ -734,50 +734,6 @@ fn emit_run_finished(app: &AppHandle, mut document: serde_json::Value, status: J
     let _ = app.emit("muxsmith://run-finished", document);
 }
 
-/// The run lifecycle's core body (D23), from the moment its [`JobSpec`]s
-/// are known to the moment they are all terminal: runs `specs` to
-/// completion via [`run_queue`] on its own scoped worker thread while this
-/// function's own call stack drains the event channel, tee-ing every
-/// [`JobEvent`] through `logger` (when persistence is available) and
-/// `on_event` (the shell's window-emit in production, a plain collector in
-/// tests). Synchronous by design so it is directly unit-testable with a
-/// scripted [`Spawn`]; the `#[tauri::command]` wrapper is what moves the
-/// whole call onto a detached `std::thread` so `start_run` itself returns
-/// immediately.
-///
-/// Deliberately does NOT clear the active-run slot: that is
-/// [`finish_teardown`]'s job, and it must run only after the joblog is
-/// finalized and the terminal event emitted (D31: "slot empty" has to
-/// mean "teardown fully complete", or a confirmed quit could exit the
-/// process before `summary.json` is written).
-///
-/// Returns the outcomes (index-aligned to `specs`, exactly like
-/// `run_queue`) and `logger` back, still open, so the caller can build the
-/// terminal `run_document` and only then call [`RunLogger::finish`] on it
-/// (`finish` needs the very document it is about to persist).
-fn run_batch(
-    specs: &[JobSpec],
-    spawner: &(dyn Spawn + Sync),
-    opts: QueueOpts,
-    ctl: &Arc<QueueControl>,
-    mut logger: Option<RunLogger>,
-    mut on_event: impl FnMut(&JobEvent),
-) -> (Vec<JobOutcome>, Option<RunLogger>) {
-    let (tx, rx) = mpsc::channel();
-    let outcomes = std::thread::scope(|scope| {
-        let handle = scope.spawn(move || run_queue(specs, spawner, opts, ctl, &tx));
-        for event in rx {
-            if let Some(l) = logger.as_mut() {
-                l.on_event(&event);
-            }
-            on_event(&event);
-        }
-        handle.join().expect("queue worker thread panicked")
-    });
-
-    (outcomes, logger)
-}
-
 /// Persists `document` to `logger`'s `summary.json` (D26) and folds the
 /// result into a [`JoblogStatus`]: `None` (no logger -- runs_root
 /// unresolvable, or [`RunLogger::create`] itself failed) is
@@ -793,23 +749,6 @@ fn finalize_joblog(logger: Option<RunLogger>, document: &serde_json::Value) -> J
             Ok(_) => JoblogStatus::Complete,
             Err(_) => JoblogStatus::Incomplete,
         },
-    }
-}
-
-/// Resolves the run-log directory (D26), mirroring the CLI's own
-/// `create_logger`: [`default_runs_root`], with a debug-build-only
-/// `MUXSMITH_RUNS_ROOT` override (a test seam, deliberately absent from
-/// release builds -- see the CLI's identical gate for the rationale).
-fn resolve_runs_root() -> Option<PathBuf> {
-    #[cfg(debug_assertions)]
-    {
-        std::env::var_os("MUXSMITH_RUNS_ROOT")
-            .map(PathBuf::from)
-            .or_else(default_runs_root)
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        default_runs_root()
     }
 }
 
@@ -1198,41 +1137,6 @@ mod tests {
         do_cancel_job(&state, 0).unwrap();
     }
 
-    // -- run_batch: event ordering ------------------------------------------
-
-    #[test]
-    fn run_batch_emits_started_output_finished_in_order() {
-        let dir = tempfile::tempdir().unwrap();
-        let specs = vec![spec(dir.path(), "a.mkv")];
-        let fake = FakeSpawner::script(vec!["hello".to_string()], Some(0));
-        let control = ctl(specs.len());
-
-        let mut collected: Vec<JobEvent> = Vec::new();
-        let (outcomes, logger) = run_batch(&specs, &fake, opts(), &control, None, |e| {
-            collected.push(e.clone())
-        });
-
-        assert_eq!(outcomes.len(), 1);
-        assert_eq!(
-            outcomes[0].state,
-            muxsmith_core::executor::job::JobState::Ok
-        );
-        assert!(logger.is_none());
-
-        let kinds: Vec<&str> = collected
-            .iter()
-            .map(|e| match e {
-                JobEvent::Started { .. } => "started",
-                JobEvent::Output { .. } => "output",
-                JobEvent::Finished { .. } => "finished",
-                JobEvent::Progress { .. } => "progress",
-                JobEvent::Warning { .. } => "warning",
-                JobEvent::Error { .. } => "error",
-            })
-            .collect();
-        assert_eq!(kinds, vec!["started", "output", "finished"]);
-    }
-
     // -- finish_teardown: active flag clears after finish ---------------------
 
     #[test]
@@ -1302,24 +1206,6 @@ mod tests {
 
         assert!(state.active.lock().unwrap().is_none());
         assert_eq!(exits, 0, "no quit was pending; teardown must not exit");
-    }
-
-    // -- run_batch: joblog dir populated -------------------------------------
-
-    #[test]
-    fn run_batch_writes_job_log_files() {
-        let runs_root = tempfile::tempdir().unwrap();
-        let out_dir = tempfile::tempdir().unwrap();
-        let specs = vec![spec(out_dir.path(), "a.mkv")];
-        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
-        let control = ctl(specs.len());
-        let logger = RunLogger::create(runs_root.path(), "20260710-000000Z", &specs).unwrap();
-        let dir = logger.dir().to_path_buf();
-
-        let (_outcomes, logger) = run_batch(&specs, &fake, opts(), &control, Some(logger), |_| {});
-
-        assert!(dir.join("job-0.json").exists());
-        assert!(logger.is_some());
     }
 
     // -- D31: close decision + quit-after-finished ----------------------------

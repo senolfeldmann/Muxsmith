@@ -6,12 +6,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
 
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
 use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
-use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
+use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_batch};
 use muxsmith_core::executor::spawn::LiveSpawner;
 use muxsmith_core::pipeline::{self, PipelineOutcome, PlannedPipeline, plan_pipeline};
 use muxsmith_core::profile::model::CollisionPolicy;
@@ -197,42 +196,24 @@ pub fn run(
         eprintln!("{}", renderer.msg("run-signal-handler-unavailable", &[]));
     }
 
-    // D26: persisted job logs. Created before the queue runs so `on_event`
-    // can tee every event as it arrives (see the drain loop below); a
-    // creation failure never aborts the run (see `create_logger`'s doc).
-    let mut logger = create_logger(renderer, &specs);
+    // D26: persisted job logs. Created before the queue runs so `run_batch`
+    // can tee every event into it as it arrives; a creation failure never
+    // aborts the run (see `create_logger`'s doc).
+    let logger = create_logger(renderer, &specs);
 
-    let (tx, rx) = mpsc::channel();
-
-    // `run_queue` blocks until the whole batch finishes, so it runs on its
-    // own scoped thread; this (the calling) thread drains `rx` concurrently,
-    // rendering milestone lines as jobs progress rather than only after the
-    // batch completes. The queue thread owns the only `Sender`, so it drops
-    // when that thread's closure returns, ending the `for event in rx` loop
-    // below deterministically (no explicit `drop` needed on this side).
-    let outcomes = std::thread::scope(|scope| {
-        let queue_ctl = Arc::clone(&ctl);
-        let handle = scope.spawn(move || run_queue(&specs, &spawner, opts, &queue_ctl, &tx));
-
-        let mut milestones = MilestoneState::new(outputs);
-        for event in rx {
-            // Persistence is unconditional (spec 6, D26): tee every event
-            // into the log writer regardless of `--json`, mirroring how
-            // milestone rendering is the only thing `--json` suppresses.
-            if let Some(logger) = logger.as_mut() {
-                logger.on_event(&event);
-            }
-            if json {
-                // --json suppresses human progress lines; Task 9 builds the
-                // final document from the returned outcomes instead.
-                continue;
-            }
-            for line in milestones.render(&event, total, renderer) {
-                println!("{}", line);
-            }
+    // Persistence is unconditional (spec 6, D26): the tee inside `run_batch`
+    // happens before this closure runs, regardless of `--json`, so milestone
+    // rendering is the only thing `--json` suppresses.
+    let mut milestones = MilestoneState::new(outputs);
+    let (outcomes, logger) = run_batch(&specs, &spawner, opts, &ctl, logger, |event| {
+        // --json suppresses human progress lines; the final document is
+        // built from the returned outcomes instead.
+        if json {
+            return;
         }
-
-        handle.join().expect("queue worker thread panicked")
+        for line in milestones.render(event, total, renderer) {
+            println!("{line}");
+        }
     });
 
     let document = run_document(

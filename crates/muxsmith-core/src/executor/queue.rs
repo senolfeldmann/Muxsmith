@@ -5,13 +5,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
 
 use super::job::{JobOutcome, JobProgress, JobSpec, JobState, run_job};
+use super::joblog::RunLogger;
 use super::spawn::{Killer, RunningJob, Spawn, SpawnError};
 use crate::report::DiagCode;
 
@@ -321,6 +322,50 @@ pub fn run_queue(
             })
         })
         .collect()
+}
+
+/// The run lifecycle's core body (D23), from the moment its [`JobSpec`]s
+/// are known to the moment they are all terminal: runs `specs` to
+/// completion via [`run_queue`] on its own scoped worker thread while this
+/// function's own call stack drains the event channel, tee-ing every
+/// [`JobEvent`] through `logger` (when persistence is available) and
+/// `on_event` (the shell's window-emit in production, a plain collector in
+/// tests). Synchronous by design so it is directly unit-testable with a
+/// scripted [`Spawn`]; the `#[tauri::command]` wrapper is what moves the
+/// whole call onto a detached `std::thread` so `start_run` itself returns
+/// immediately.
+///
+/// Deliberately does NOT clear the active-run slot: that is
+/// `finish_teardown`'s job, and it must run only after the joblog is
+/// finalized and the terminal event emitted (D31: "slot empty" has to
+/// mean "teardown fully complete", or a confirmed quit could exit the
+/// process before `summary.json` is written).
+///
+/// Returns the outcomes (index-aligned to `specs`, exactly like
+/// `run_queue`) and `logger` back, still open, so the caller can build the
+/// terminal `run_document` and only then call [`RunLogger::finish`] on it
+/// (`finish` needs the very document it is about to persist).
+pub fn run_batch(
+    specs: &[JobSpec],
+    spawner: &(dyn Spawn + Sync),
+    opts: QueueOpts,
+    ctl: &Arc<QueueControl>,
+    mut logger: Option<RunLogger>,
+    mut on_event: impl FnMut(&JobEvent),
+) -> (Vec<JobOutcome>, Option<RunLogger>) {
+    let (tx, rx) = mpsc::channel();
+    let outcomes = std::thread::scope(|scope| {
+        let handle = scope.spawn(move || run_queue(specs, spawner, opts, ctl, &tx));
+        for event in rx {
+            if let Some(l) = logger.as_mut() {
+                l.on_event(&event);
+            }
+            on_event(&event);
+        }
+        handle.join().expect("queue worker thread panicked")
+    });
+
+    (outcomes, logger)
 }
 
 /// The worker-pool size for a batch of `spec_count` specs: `jobs` clamped to
@@ -1312,5 +1357,63 @@ mod tests {
             vec![0, 1],
             "job 2, queued after the non-first failure, must never start"
         );
+    }
+
+    // -- run_batch: event ordering ------------------------------------------
+
+    #[test]
+    fn run_batch_emits_started_output_finished_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let specs = vec![spec(0, dir.path().join("a.mkv"))];
+        let fake = FakeSpawner::script(vec!["hello".to_string()], Some(0));
+        let control = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        let opts = QueueOpts {
+            jobs: 1,
+            fail_fast: false,
+        };
+
+        let mut collected: Vec<JobEvent> = Vec::new();
+        let (outcomes, logger) = run_batch(&specs, &fake, opts, &control, None, |e| {
+            collected.push(e.clone())
+        });
+
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].state, JobState::Ok);
+        assert!(logger.is_none());
+
+        let kinds: Vec<&str> = collected
+            .iter()
+            .map(|e| match e {
+                JobEvent::Started { .. } => "started",
+                JobEvent::Output { .. } => "output",
+                JobEvent::Finished { .. } => "finished",
+                JobEvent::Progress { .. } => "progress",
+                JobEvent::Warning { .. } => "warning",
+                JobEvent::Error { .. } => "error",
+            })
+            .collect();
+        assert_eq!(kinds, vec!["started", "output", "finished"]);
+    }
+
+    // -- run_batch: joblog dir populated -------------------------------------
+
+    #[test]
+    fn run_batch_writes_job_log_files() {
+        let runs_root = tempfile::tempdir().unwrap();
+        let out_dir = tempfile::tempdir().unwrap();
+        let specs = vec![spec(0, out_dir.path().join("a.mkv"))];
+        let fake = FakeSpawner::script(vec!["#GUI#progress 100%".to_string()], Some(0));
+        let control = QueueControl::new(specs.len(), Arc::new(AtomicBool::new(false)));
+        let opts = QueueOpts {
+            jobs: 1,
+            fail_fast: false,
+        };
+        let logger = RunLogger::create(runs_root.path(), "20260710-000000Z", &specs).unwrap();
+        let dir = logger.dir().to_path_buf();
+
+        let (_outcomes, logger) = run_batch(&specs, &fake, opts, &control, Some(logger), |_| {});
+
+        assert!(dir.join("job-0.json").exists());
+        assert!(logger.is_some());
     }
 }
