@@ -4604,3 +4604,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 design amendment 1 delta review (.superpowers/sdd/plan-9/design-review-round-1.md): removing the cache parameter cut plan_pipeline from six parameters to five; the author's ripple sweep grepped IdentifyCache/cache/AppState/LiveIdentifier/command_integration, dispositioned every hit, and still left D91's rejected alternative (b) arguing against 'a function with six explicit parameters' - the sentence contains none of the swept identifiers. Verified at the artifact: the signature block lists five, the prose said six"}
+- id: a-new-test-says-whether-the-behavior-or-the-assertion-is-new
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A test added beside a feature states which of two things it establishes: that the BEHAVIOR is new, or that the ASSERTION is new. They look identical in a plan and differ completely in evidence - a test whose behavior already exists on the pre-feature tree cannot go red before the feature lands, so any claim that it will is false, and the test's real value is that nothing asserted the behavior until now. The distinction matters most where a mocked boundary feeds the assertion: the mock supplies the new input shape by hand, so the test never exercises the producer whose change the plan is actually about, and the consequence is covered by two tests in a chain rather than one end to end. Trigger is readable: you are writing 'this test fails on today's tree' about a test you are adding. Handle: run it on today's tree, and if it passes, say so and name the chain that covers the rest."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 plan amendment 1 delta review, finding A1-1 (.superpowers/sdd/plan-9/plan-review-round-1.md): the Run-gate e2e scenario added under the owner's tests-ship-with-the-feature ruling carried a fire-verification claim that it is red today. It is not - e2e/smoke.spec.ts:307 already feeds BatchView an error-severity document through pluralReport, and BatchView's hasErrors gate is existing behavior, so the scenario passes on the unmodified tree. What is genuinely absent is any assertion that batch-run is DISABLED. The new severity itself is proved by the task's core and CLI tests; the e2e mock supplies the severity by hand"}
