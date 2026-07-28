@@ -1231,7 +1231,9 @@ render:
    (`runActive` false).
 2. **Fresh rejection**: `start_run` rejects (`rejectWith("run-already-active")`,
    a real backend code); assert the error alert renders and cancel-batch is
-   disabled again (the `startingFresh` guard flipped `runActive` back).
+   disabled again (the `startingFresh` guard flipped `runActive` back) - the
+   second assertion's vehicle is the amendment-5 rider's, at this entry's
+   end.
 3. **Double-dispatch against an active run** (the divergent branch,
    unreachable from the UI, the reason this item exists): first dispatch
    resolves `StartedRun { total_jobs: 2 }`, a `started` job-event fills row
@@ -1254,7 +1256,8 @@ asserts; a timing-race harness for it would be nondeterministic decoration.
 `runActive` is deliberately not passed as a prop in these mounts: absent
 prop means `defineModel` falls back to local-ref semantics, which is the
 view's real standalone behavior and keeps the internal transitions
-assertable through the cancel-batch button's disabled state.
+assertable through the cancel-batch button's disabled state (items 1 and
+3; item 2's vehicle is the amendment-5 rider's).
 
 **The ledger entry** (Tier 1, written at implementation time with the
 design-fixed content): id `gui-d23-reset-gating-form`, kind `pattern`,
@@ -1266,6 +1269,78 @@ inside the command before its promise resolves - with the steelman carrying
 that literal reading and why it fails. This closes the recon 8.5 gap ("No
 ledger entry records the deviation as a decision; `gui-11` records the
 defect and 'Corrected', not the form").
+
+**Amendment 5 rider (controller ruling 2026-07-28): item 2's SECOND
+assertion asserts the control's ABSENCE, paired with the positive bearer;
+the behavior it asserts is unchanged.** Task 6 executed item 2 as written
+and the stated assertion could not execute (the failure pasted in
+`.superpowers/sdd/plan-9/task-6-report.md` section 4). Every anchor below
+re-verified at the tree 2026-07-28.
+
+**The stated vehicle has no bearer in item 2's scenario.** `cancel-batch`
+(`src/views/JobsView.vue:263`, bound `:disabled="!runActive"` at `:264`)
+sits inside `<template v-if="jobs.length > 0 || runActive ||
+finishedSummary">` (`:258`). A dispatch is fresh exactly when
+`startingFresh = !runActive.value` (`:176`), and the fresh branch resets
+`jobs = []`, `logLines = []`, `finishedSummary = null` before the invoke
+(`:177-182`); on rejection the catch arm sets `startError` and, the
+dispatch being fresh, `runActive = false` (`:193-196`), while
+`ensureJobsLength(started.total_jobs)` (`:191`) is never reached. All
+three disjuncts are therefore false in every end state of that scenario:
+the button is not rendered, so "disabled" has nothing to be true of. The
+numbered item's own wording carries the tell - "disabled *again*" - since
+at mount the button does not exist either (same `v-if`, all disjuncts
+false); the entry modeled `cancel-batch` as always rendered and bound to
+`!runActive`, which holds for items 1 and 3 and not for item 2.
+
+**The adjudicated behavior is confirmed, not contradicted.** The button's
+absence IS the direct consequence of `runActive` going back to false.
+Measured: mutating the catch arm to skip the reset makes the button appear
+(1 element found where 0 was expected, paste in the task-6 report's 4.2),
+so the flag under test is exactly what decides whether the control exists.
+The defect is in the assertion vehicle this entry picked, not in its
+substance - the same class as the plan's amendment 4, where a ruled test's
+substance was right and its stated invocation impossible.
+
+**The replacement, in place of item 2's `toBeDisabled()`** (item 2's first
+assertion, the error alert rendering `run-already-active`, is unchanged
+and passes):
+
+```ts
+await expect(jobs.getByTestId("cancel-batch")).toHaveCount(0);
+await expect(jobs.getByTestId("jobs-empty")).toBeVisible();
+```
+
+**The pairing is the assertion, not the count alone.** `jobs-empty`
+(`src/views/JobsView.vue:328`, the `v-else` at `:327` of the very same
+condition) renders exactly when all three disjuncts are false, so with
+`jobs` empty and `finishedSummary` null its visibility is logically
+equivalent to `runActive === false` - the proposition item 2 exists to
+assert. `toHaveCount(0)` alone would also pass against a view that never
+mounted at all; the visible placeholder is the positive bearer that rules
+that out.
+
+**No wording-preserving fix exists, and that was measured.** The negated
+form a reader would reach for, `expect(locator).not.toBeEnabled()`, does
+NOT pass on a detached element: Task 6 ran it and it reports "element(s)
+not found" and times out exactly like the positive form (paste in the
+task-6 report's 4.3). Both forms require the element to resolve first, so
+no phrasing of "disabled" survives a scenario whose end state has no
+element.
+
+**Items 1 and 3 are untouched.** Item 1's soft outcome leaves
+`finishedSummary` set, and item 3's second dispatch is not fresh so its
+row and `runActive` both survive - in each the `v-if` block is rendered,
+the button exists, and the disabled-state vehicle is correct as written
+(both green in the same run). The `runActive`-not-a-prop rationale above
+is likewise unchanged: item 2's transition is still asserted at the same
+place, through the same gating condition, from its other side.
+
+**Unchanged by this amendment:** everything else this entry decides - "No
+code fix", the harness enumeration, the spec composition, item 2's
+scenario and its first assertion, items 1, 3 and 4 in full, the
+deliberately not-duplicated orderings 1 and 5, and the ledger entry. Only
+item 2's second assertion changes vehicle.
 
 ## D105: The D49 G1/G2 removal experiment: exact mutation, exact invocation, decision rule, recording
 
@@ -1744,3 +1819,40 @@ touched:**
   unchanged; the entry's opening sentence and section 5's D96 bullet now
   point at the rider so "moves as-is" cannot be read as covering the
   rustdoc going forward.
+
+**Round 5 (2026-07-28), CONTROLLER-RULED AMENDMENT 5, mid-execution during
+Task 6 (routing: the decision memo in
+`.superpowers/sdd/plan-9/task-6-report.md` section 4, Task 6 returned
+NEEDS_CONTEXT); one ruling, nothing else touched.** Round 5 is the plan's
+amendment 5 - the two logs coincide at 5 by arithmetic, not by rule (rounds
+1 and 2 were review rounds; amendments 2 and 4 were plan-only), and each
+log keeps its own file's shape. Ruled by the controller rather than
+escalated (its tier analysis found no contested criterion), the
+alternatives being excluded by statements already on record: a view change
+by this entry's own "No code fix"; dropping the assertion by
+`tests-ship-with-the-feature-never-after` and
+`proc-proposed-safeguard-stays` (the assertion was built and measured NOT
+redundant - it detects the flag); re-shaping the scenario by the
+unconditional fresh-branch reset.
+
+- **Ruling (item 2's second assertion changes vehicle; the behavior it
+  asserts does not):** Task 6 executed D104 item 2 as written and its
+  second assertion could not execute - `cancel-batch` sits inside a `v-if`
+  whose three disjuncts are all false in every end state of a fresh
+  rejection, so "disabled" has no bearer, and the negated form
+  (`not.toBeEnabled()`) was measured to fail identically on a detached
+  element. The adjudicated premise is confirmed rather than contradicted:
+  the button's absence IS the consequence of `runActive` going back to
+  false, measured by mutating the catch arm. D104 gains the amendment-5
+  rider: the render condition and fresh-branch reset with their re-verified
+  anchors, the two-line replacement fence (`toHaveCount(0)` on
+  `cancel-batch` paired with `jobs-empty` visible) and why the pairing
+  rather than the count is the assertion, the measured non-existence of a
+  wording-preserving fix, and the account of why items 1 and 3 keep the
+  disabled-state vehicle. Item 2's numbered line and the
+  `runActive`-not-a-prop paragraph now point at the rider so the
+  disabled-state wording cannot be read as covering item 2 going forward;
+  everything else D104 decides - "No code fix", the harness enumeration,
+  the spec composition, items 1, 3 and 4, the not-duplicated orderings, the
+  ledger entry - is unchanged. The code edit rides Task 6's fix round, in
+  the spec file that task already creates.
