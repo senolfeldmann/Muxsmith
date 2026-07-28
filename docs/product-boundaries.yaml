@@ -475,3 +475,32 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-22", kind: decided, ref: "S21 owner ruling (Option 2 of the whole-branch I1 escalation): scope the wording, keep keyboard live as deliberate restraint; dragstart half fixed in 13e138c"}
+- id: exec-37-panicked-msg-catalog
+  kind: pattern
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: executor
+  statement: "A worker panic is rendered to the user through the diagnostics catalog on the surfaces the user actually watches: the CLI human output renders the worker-panicked message where a panicked job would otherwise show an `n/a` exit code, and the GUI job row carries the code in its failure state. The RunHistory export stays raw-output-only. Scope ruled 2026-07-28; the JSON and persisted joblog already carry the token verbatim."
+  steelman: "Leaving it JSON-only is defensible on the ground that a worker panic is a bug report, not a user-facing condition, and that two GUI surfaces need a new field rather than just a renderer (JobRowData and the history row both drop errors before rendering). Rejected because the spec already promises presentation-time rendering through this catalog entry, and until then a panicked job shows the CLI user `n/a` and the GUI user nothing at all."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "plan-5.5 task-4-verdict.md (I2) / whole-branch-verdict.md (I3)"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 5: three producers write a MIXED Vec<String> of catalog tokens and raw mkvmerge prose, no surface renders it, and the worker-panicked Fluent message is looked up by nothing but the CLI catalog-completeness test"}
+- id: empty-bare-raw-property-rejected-at-validate
+  kind: pattern
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: core
+  statement: "A `raw:` key with an EMPTY bare property name is rejected at validate with ERROR severity under its own DiagCode - not a warning, and not the existing UnknownProperty, whose message reads as nonsense with an empty name. Ruled 2026-07-28, lands in Plan 9. Today it emits an info diagnostic, exits 0, and then get(\"\") returns false at match time, so the rule silently never matches. The exit-code change for profiles that pass today is accepted deliberately: pre-1.0 is the cheap moment. The new code carries three downstream obligations - the CLI catalog-completeness fixture table, both locales' diagnostics.ftl, and the spec's 5.2 severity table."
+  steelman: "A warning would keep every profile that loads today loading, and reusing UnknownProperty would add no catalog key at all. Rejected because an empty bare name is always a typo rather than expressible intent, and the current behavior is the worst of both: visible as info, then silently non-matching at run time."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff). Origin: plan-5.5 task-16-verdict.md:36-37 (T16-m1, 'cosmetic wart') and whole-branch-verdict.md:92 (DEFER to Plan 6); the recon's section 6 established the never-matching consequence and that no ledger entry existed"}

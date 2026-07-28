@@ -1065,3 +1065,48 @@ entries:
     - {date: "2026-07-21", kind: decided, ref: "plan-7 T3 review Q2 (task-03-verdict.md): the plan's separator form empirically proven to run the full suite; corrected form recorded as stream-B cross-task constraint"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T13 (task-13-verdict.md harvest): the &&-chained variant - pnpm <script> with separator hands --grep to the outer sh -c as a positional; direct npx invocation named the robust form"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 T1 implementer report concern 3 (task-1-report.md): pnpm test:e2e -- --grep ran the full 61-test suite (appended --list ignored too) while pnpm exec playwright test --grep filtered correctly; the PLAN itself still carried the defeated form - the tier-1 entry was invisible at plan authoring, which is the promotion's own argument. Third strict-fit event, promoted at count 3"}
+- id: exec-36-core-stderr-logging
+  kind: restraint
+  tier: 2
+  source: human
+  nature: technical-code
+  domain: executor
+  statement: "Core does no direct stderr I/O. The one eprintln! that existed, in queue.rs, was removed by moving the worker-panic payload into the JobOutcome for the surfaces to render (see exec-37, landed in plan 9), NOT by adding a log/tracing facade the binaries route: a dependency for one producer was rejected. Forward-binding form: a new direct write to stderr from core is a defect; the payload travels on the outcome and the surface renders it."
+  steelman: "A facade is the idiomatic Rust answer, and it would also give the four silently-discarded failures in the executor a voice (job.rs:113 create_dir_all, joblog.rs:131 remove_dir_all, spawn.rs:123 kill, spawn.rs:106-111 wait). Under this ruling those stay discarded, so a later fifth producer re-opens the question rather than being covered."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-12", kind: deferred, ref: "plan-5.5 task-4-verdict.md (I1) / whole-branch-verdict.md (I3)"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff): the facade is rejected and this item is fused with exec-37 into one worker-panic item, because the recon (.superpowers/sdd/plan-9/recon-inventory.md sections 4 and 5) showed core prints the rich payload to a stream a bundled app has no console for while the stable token renders nowhere - one hole seen twice"}
+- id: cli-08-config-diags-json-ordering
+  kind: pattern
+  tier: 2
+  source: human
+  nature: technical-code
+  domain: cli
+  statement: "config_diagnostics is emitted errors-first, sorted CENTRALLY in core's two document builders (report/json.rs batch_document and config_only_document), not per caller - there are eight callers and per-caller sorting re-creates the drift. Ruled 2026-07-28. The one positional consumer moves in the same change: BatchView's config_diagnostics[0] read becomes a code lookup. That move is hardening, not a fix - checked at the site 2026-07-28 while the design was authored: the parse failure is DETECTED by `!doc.profile` (BatchView.vue:218), the index only fetches the diagnostic to display, and the `profile: null` envelope always carries exactly the one ParseError (its only constructors are load.rs:62 and :71), so the sort changes no BatchView behavior today."
+  steelman: "The original deferral's reasoning was that consumers key on the severity field and ordering is cosmetic. Half of it survives the 2026-07-28 check: no frontend consumer's behavior changes under the sort. It fails on the parity half - the GUI's validate_profile is the direct analogue of CLI validate and returns unsorted for the same profile, so identical input yields differently ordered output depending on which surface asked."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "E7", kind: deferred, ref: "task-9-verdict.md (iv) + whole-branch funnel"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 7: the array is built in exactly two core sites, always from the caller's collection-order vector, and all eight producing callers are unsorted"}
+- id: exec-43-runsroot-debug-gated
+  kind: pattern
+  tier: 2
+  source: human
+  nature: technical-code
+  domain: executor
+  statement: "The MUXSMITH_RUNS_ROOT override used by tests was shipping as an unconditional, undocumented env-var surface read in the release binary; gated behind #[cfg(debug_assertions)]. The seam exists ONCE, in the CLI: the src-tauri copy is deleted rather than hoisted to core (ruled 2026-07-28), because it has no consumer and a core-side gate would move the env read out of the binaries and into the library."
+  steelman: "Hoisting to core was the recorded plan (idiomacy review, two copies of one gate). Rejected: the only consumers are five CLI test sites, the src-tauri tests bypass the function with an explicit path, and the claim that the debug_assertions semantics apply identically to a core build was never verified."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-10", kind: violated-corrected, ref: "plan-5 task-6-review-verdict.md (Minor 2) + commit f54cbab"}
+    - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 3: producers at cli run.rs:331 and src-tauri run.rs:830, consumers only in crates/muxsmith-cli/tests (run_cli.rs:172, run_live.rs:110/245/370/468), negative result controlled"}
