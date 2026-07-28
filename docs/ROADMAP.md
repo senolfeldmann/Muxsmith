@@ -393,11 +393,17 @@ IN:
   ledger cli-08), **centrally in the two core document builders, not per
   caller** (owner ruling 2026-07-28) - eight call sites would re-drift. The
   gap is not CLI-internal: the GUI's validate_profile is the direct analogue
-  of CLI `validate` and returns unsorted for the same profile. One consumer
-  depends on the order and moves in the same change: BatchView.vue reads
-  config_diagnostics[0] to detect a parse failure and must key on the code
-  instead of the index. (2026-07-12, Plan 5.5 roll-up funnel; form ruled
-  2026-07-28)
+  of CLI `validate` and returns unsorted for the same profile. The
+  index-reading consumer moves in the same change as hardening: BatchView
+  reads config_diagnostics[0] and switches to a code lookup. **Corrected
+  2026-07-28 after the design author checked the site**: this line first
+  claimed BatchView DETECTS the parse failure by that index read, which is
+  wrong - detection is `!doc.profile` (BatchView.vue:218) and the index only
+  FETCHES the diagnostic to display. Since the `profile: null` envelope
+  always carries exactly the one ParseError diagnostic (its only two
+  constructors are load.rs:62 and :71), the sort changes no BatchView
+  behavior today; the code lookup is defence against a future second entry,
+  not a fix. (2026-07-12, Plan 5.5 roll-up funnel; form ruled 2026-07-28)
 - The D23 frontend-contract item is a **test plus a ledger entry, not a code
   fix** (owner ruling 2026-07-28). The recon established that round 2 of the
   plan-5 whole-branch review already adjudicated the deviation ("the
@@ -407,9 +413,18 @@ IN:
   code. What is missing is coverage and a record of the correction's FORM
   (gui-11 records the defect and "Corrected", not the form). The only
   harness work in scope rides here: widen the Playwright mount glob to
-  JobsView.vue so the reset logic is mountable at all. (2026-07-11,
-  docs-tree sweep; re-pointed here from the Plan-6 anchor by owner call
-  2026-07-16; form ruled 2026-07-28)
+  JobsView.vue so the reset logic is mountable at all. **Scope correction
+  2026-07-28, controller decision, recorded because it extends an
+  owner-ruled boundary:** the glob widening alone cannot carry the test. The
+  mount harness passes `spec.props` once at mount time and makes only
+  `modelValue` reactive (`e2e/mount-entry.ts`), so a SECOND `pendingRun` -
+  the double-dispatch case that is this item's whole reason to exist - is
+  undeliverable. The design therefore adds a minimal reactive-props hook to
+  the harness beside the glob entry. Judged in-scope as mechanics the ruled
+  test requires, not as the 1.x harness the same ruling cut; if the owner
+  overturns it, the test drops its double-dispatch assertion and keeps the
+  rest. (2026-07-11, docs-tree sweep; re-pointed here from the Plan-6 anchor
+  by owner call 2026-07-16; form ruled 2026-07-28)
 - Run the D49 G1/G2 removal experiment - the "next core/planner-touching
   plan" trigger below fires with this plan. (Trigger consumed 2026-07-28.)
 
