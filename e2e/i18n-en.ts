@@ -165,6 +165,17 @@ export function en(id: string, args?: Record<string, FluentVariable>): string {
   return text;
 }
 
+/** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
+ * default role-name matching is a case-insensitive SUBSTRING match, which
+ * collides here for real (not hypothetically): "Run" (the batch-run
+ * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
+ * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
+ * list), so an un-exact match resolves to 2-3 elements and Playwright's
+ * strict mode rejects the locator. */
+export function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
+  return { name: en(id, args), exact: true };
+}
+
 /** Renders one attribute of one en message; throws (test defect surfaced
  *  loudly) if the message or attribute is absent. */
 export function enAttr(id: string, attr: string): string {

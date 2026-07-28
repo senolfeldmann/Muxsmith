@@ -40,6 +40,11 @@ declare global {
      * round-tripping its `modelValue`/`update:modelValue` v-model. See
      * `mount.ts` for the Playwright-side driver. */
     __muxsmithMount__: (spec: { component: string; props?: Record<string, unknown>; locale?: string }) => void;
+    /** Set by `mount-entry.ts` (D104): merges `partial` into the props the
+     * mounted component is rendered with, so a spec can deliver a second
+     * value of a prop after mount (`__muxsmithMount__` passes `spec.props`
+     * once). Reset with the props on every `__muxsmithMount__` call. */
+    __muxsmithSetProps__: (partial: Record<string, unknown>) => void;
     /** Reads the mounted component's current model value (the live
      * `modelValue` the harness's wrapper root holds). */
     __muxsmithModel__: () => unknown;

@@ -18,17 +18,10 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import type { FluentVariable } from "@fluent/bundle";
 import { installTauriMocks, resolveWith } from "./mocks";
-import { en } from "./i18n-en";
+import { en, name } from "./i18n-en";
 import type { Diagnostic, LoadProfileDocument, MkvmergeInfo, ReportDocument } from "../src/ipc";
 import type { Profile } from "../src/bindings/profile";
-
-/** `getByRole(role, name(id))` with exact matching -- mirrors smoke.spec's
- *  own helper (Playwright's default role-name match is a loose substring). */
-function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
-  return { name: en(id, args), exact: true };
-}
 
 const MKVMERGE_INFO: MkvmergeInfo = { path: "/usr/bin/mkvmerge", version: "90.0.0" };
 const PROFILE_PATH = "/profiles/marker-demo.yaml";

@@ -21,8 +21,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { emitEvent, installMockIPC, installTauriMocks, rejectWith, resolveWith } from "./mocks";
 import { mountComponent, readModel } from "./mount";
-import { en, enAttr } from "./i18n-en";
-import type { FluentVariable } from "@fluent/bundle";
+import { en, enAttr, name } from "./i18n-en";
 import {
   JOB_EVENT_CHANNEL,
   RUN_FINISHED_CHANNEL,
@@ -49,17 +48,6 @@ import {
 } from "../src/editor/registries";
 import { CHAPTERS_KEYWORDS } from "../src/bindings/keywords";
 import type { Profile, StructuredEdit } from "../src/bindings/profile";
-
-/** `getByRole(role, name(id))` -- `exact: true` throughout: Playwright's
- * default role-name matching is a case-insensitive SUBSTRING match, which
- * collides here for real (not hypothetically): "Run" (the batch-run
- * button) is a substring of "Dry run" (batch-dry-run) and of any fixture
- * path containing "run" (e.g. "run-demo.yaml" in the recent-profiles
- * list), so an un-exact match resolves to 2-3 elements and Playwright's
- * strict mode rejects the locator. */
-function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
-  return { name: en(id, args), exact: true };
-}
 
 /** Strips the U+2068 (FIRST STRONG ISOLATE) / U+2069 (POP DIRECTIONAL
  * ISOLATE) marks Fluent wraps around every placeable substitution when a

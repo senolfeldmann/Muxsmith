@@ -24,14 +24,18 @@ import { buildBundles } from "../src/i18n";
 import { topicHtml } from "../src/help/topics";
 
 const modules = import.meta.glob<{ default: Component }>(
-  ["../src/editor/widgets/*.vue", "../src/views/EditorView.vue"],
+  ["../src/editor/widgets/*.vue", "../src/views/EditorView.vue", "../src/views/JobsView.vue"],
   { eager: true },
 );
 
 function resolvePath(component: string): string {
-  return component === "EditorView"
-    ? "../src/views/EditorView.vue"
-    : `../src/editor/widgets/${component}.vue`;
+  if (component === "EditorView") {
+    return "../src/views/EditorView.vue";
+  }
+  if (component === "JobsView") {
+    return "../src/views/JobsView.vue";
+  }
+  return `../src/editor/widgets/${component}.vue`;
 }
 
 interface MountSpec {
@@ -56,10 +60,22 @@ function mount(spec: MountSpec): void {
   const model = ref(spec.props?.modelValue);
   window.__muxsmithModel__ = () => model.value;
 
+  // D104: the mount call's props are held in a ref instead of being spread
+  // from `spec` directly, so a spec can deliver a SECOND value of a prop
+  // after mount. `JobsView`'s reset logic only runs on a CHANGE of
+  // `pendingRun`, and its divergent branch (a dispatch while a run is
+  // already active) needs exactly that second delivery -- a mount-time-only
+  // props object makes that case unwritable. Existing mount specs never
+  // call the hook, so their props stay whatever the mount call passed.
+  const props = ref<Record<string, unknown>>({ ...spec.props });
+  window.__muxsmithSetProps__ = (partial) => {
+    props.value = { ...props.value, ...partial };
+  };
+
   const app = createApp({
     render: () =>
       h(Comp, {
-        ...spec.props,
+        ...props.value,
         modelValue: model.value,
         "onUpdate:modelValue": (v: unknown) => {
           model.value = v;

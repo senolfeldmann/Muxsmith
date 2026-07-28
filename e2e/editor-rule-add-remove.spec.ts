@@ -28,19 +28,12 @@
  */
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { FluentVariable } from "@fluent/bundle";
 import { mountComponent, readModel } from "./mount";
 import { installTauriMocks, resolveWith } from "./mocks";
 import type { RecordedInvoke } from "./mocks";
-import { en } from "./i18n-en";
+import { en, name } from "./i18n-en";
 import type { Diagnostic, LoadProfileDocument, MkvmergeInfo, ReportDocument } from "../src/ipc";
 import type { Profile } from "../src/bindings/profile";
-
-/** `getByRole(role, name(id))` with exact matching -- mirrors the sibling
- *  specs' own helper (Playwright's default role-name match is a substring). */
-function name(id: string, args?: Record<string, FluentVariable>): { name: string; exact: true } {
-  return { name: en(id, args), exact: true };
-}
 
 const MKVMERGE_INFO: MkvmergeInfo = { path: "/usr/bin/mkvmerge", version: "90.0.0" };
 
