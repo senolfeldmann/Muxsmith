@@ -496,6 +496,20 @@ Tier-2 entry is always-loaded and binds every task that reads it. At the
 close the roll-up funnel promotes them into their nature files, or records
 per entry why one stays Tier 1.
 
+**A second close action, surfaced by the Task-5 review 2026-07-28:** D102's
+scope boundary - `config_diagnostics` sorts, while per-file `diagnostics` and
+`batch_diagnostics` stay in collection order - is asserted in three normative
+places (D102, spec S-7 which Task 5 itself added, and both builder rustdocs)
+and guarded in none. Measured rather than argued: the reviewer widened
+`batch_document` to sort all three arrays and `cargo test --workspace` stayed
+at exit 0 with zero failures (`task-5-verdict.md`, no-work-needed check 2).
+It correctly did not ride Task 5 - the boundary is preserved behaviour, not a
+consequence that diff creates, so the four-condition execution-time rule does
+not reach it. The cheap producer the review names: a `batch_document` case
+with a mixed-severity `batch_diagnostics` vector asserting it is NOT
+reordered. Disposition at the close is the owner's; the measurement is
+recorded here so it cannot evaporate.
+
 ## Triggers
 
 Observable events with registered consequences - CONSULT AT EVERY

@@ -4821,3 +4821,45 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 1 verdict LOW-2 (.superpowers/sdd/plan-9/task-1-verdict.md): the task's import removal left [`plan_batch`] unresolvable at src-tauri/src/run.rs:359, invisible to every gate run because src-tauri's run module is private; repaired by a licensed doc-only fix round, commit fed55be"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 2 (task-2-report.md divergences 1 and 2a; task-2-verdict.md Q1/Q3 and HARVEST b): the same cause one task later in the same file - the import removal broke [`run_queue`] at src-tauri/src/run.rs:4 - plus the cross-crate variant in the moved rustdoc, [`finish_teardown`]. Both repaired in-task and ruled in scope. The reviewer sharpened the trigger from 'a verbatim move' to 'an import removal', which is what actually produced both instances and is greppable in the diff"}
+- id: a-composed-doc-claim-about-a-call-site-set-is-checked-against-that-set
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: docs
+  statement: "Prose written about a symbol's CONSUMERS - `every call site`, `all consumers`, `the only user`, `so nothing outside X changes` - is a measurement, and is checked against the enumerated set before it is committed. The trigger is readable: you are describing the reach of a symbol you just moved, re-exported or renamed. The handle costs nothing extra, because such a change already owes the sweep in `an-import-removal-sweeps-the-doc-links-that-named-the-symbol` and that grep returns the call-site set - check the characterization against its output in the same breath. Kept as its own entry rather than folded into the sweep: the sweep is about a link that no longer RESOLVES, this is about a claim that no longer HOLDS, and statement-fit does not carry it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5 review MEDIUM-1 (.superpowers/sdd/plan-9/task-5-verdict.md): the re-export added to crates/muxsmith-cli/src/commands/mod.rs carried a composed doc comment asserting that every call site is one of this crate's human printing paths. One of the nine is validate.rs:21, whose sorted vector feeds BOTH output modes - as that call site's own pre-existing comment says and as D102's consumers sweep states in the design. The false half is precisely the belief the sweep exists to prevent, the one under which someone re-adds a second sort on validate's JSON envelope"}
+- id: an-e2e-fixture-is-verified-against-its-emitter-not-against-its-neighbours
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "An e2e fixture is a hand-written mirror of a document the backend builds, and no check in this repo compares the two - the mocked IPC layer is semantics-blind by construction, so a fixture carrying a field the real emitter never sets stays green forever. A task that writes or copies such a fixture verifies its field set against the EMITTING function, never against the neighbouring fixtures: the neighbours are the same hand-written class and can themselves be the drifted ones. Sibling of the echo/identity entry - that one is about a mock proving nothing about WHICH value the code used, this one about the fixture's own shape diverging from what the producer emits."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: reinforced, ref: "plan-9 Task 5 review adjudication 5 (.superpowers/sdd/plan-9/task-5-verdict.md): the new parse-failure fixture omits mkvmerge_found, and the reviewer verified at src-tauri/src/lib.rs (both load_profile_body arms pass None) that no load_profile envelope ever carries the key. The pre-existing neighbour loadedForApply at e2e/smoke.spec.ts:433 sets it to true - so the fixture the new one was modelled on is the drifted one, and the sibling comparison the review question assumed would have produced the wrong answer. Pre-existing, not Task 5's to fix"}
+- id: frontend-mutation-evidence-needs-a-rebuild-before-the-e2e-run
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: gui
+  statement: "The Playwright suite runs against the BUILT bundle (playwright.config.ts serves dist/), so a mutation applied to frontend source and immediately followed by a test run measures the previously built bundle and proves nothing. Any fire verification, red-then-green demonstration or mutation-based coverage measurement that edits src/ inserts a build between the edit and the run, and the pasted evidence shows that step. Same failure class as an absence check without its control: the run returns a plausible result to a question nobody asked."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5: the implementer's report pastes two BatchView.vue mutation runs with no intervening build (.superpowers/sdd/plan-9/task-5-report.md). The reported colours were nonetheless correct - the reviewer reproduced both independently WITH explicit rebuilds and says so in its evidence appendix - so the defect is in the evidence as written rather than in the conclusion; the same invocation copied into a case where the colours differ would silently measure the stale bundle"}
