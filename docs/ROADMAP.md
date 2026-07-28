@@ -1075,6 +1075,23 @@ Both edits touch the same block, so they are one change; the plan's own
 "ten-part gate" wording is updated in the same pass, and any count that says
 ten is recomputed.
 
+## Docs accuracy
+
+- **D64's snapshot counts went stale when Plan 9 Task 4 added one**
+  (surfaced by that task, 2026-07-28, in a file no Plan-9 task may touch).
+  `docs/superpowers/specs/2026-07-21-plan7-help-i18n-design.md` D64 says the
+  funnel "covers all **11 insta snapshots**" and enumerates "`cli_validate.rs`
+  (1 constructor, 3 snapshots)". Recounted at that task:
+  `ls crates/*/tests/snapshots/*.snap | wc -l` -> 12, `cli_validate__*` -> 4.
+  Both numbers sit inside a dated measurement block, so one defensible reading
+  is that they are a historical record; the "covers **all** 11" phrasing is the
+  part that now reads as a live claim. **Vehicle: the Plan-9 close**, decided
+  there in one line - either requalify the sentence as a dated measurement or
+  recount it. D64's greppable invariant itself still holds, re-measured:
+  `cargo_bin("muxsmith")` appears in exactly one file. Amendment 4 keeps it
+  that way by construction (the new locale-pinned helper delegates rather than
+  adding a second call site).
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML

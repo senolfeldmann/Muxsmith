@@ -4663,6 +4663,20 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: a-plan-that-pins-a-test-invocation-runs-it-once-first
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: testing
+  statement: "A plan step that pins the INVOCATION FORM of a test - the argv, the flags, the helper it rides - is run once against the tree before the step is written, wherever the repo mandates a single invocation funnel. A funnel that hard-codes part of the invocation makes some caller-side forms impossible, and the plan author cannot see it from the design: the design pins WHAT the test proves, the funnel constrains HOW it may be called, and only the tree knows both. Trigger is readable: your step names CLI arguments for a test and the repo has a mandated test-invocation helper. Handle: run that exact invocation once at authoring time. The failure is worse than a red test, which is why authoring-time probing is worth its minute: a duplicated-flag usage error exits with the same code the test asserts, so the exit-code assertion PASSES and the snapshot comes back empty because the parser wrote to stderr - a green test that proves nothing, one accepted snapshot away."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 4 report section 4 (.superpowers/sdd/plan-9/task-4-report.md): the plan pinned a German subprocess test as 'args plus --locale de', but crates/muxsmith-cli/tests/support/mod.rs appends --locale en unconditionally (D64, plan 7) and clap rejects a repeated --locale. The implementer wrote the test as pinned, ran it, and recorded the trap: .code(2) passed on clap's own usage error while the produced snapshot was empty. The plan's authoring section had probed the profile syntax and the diagnostic path but never this invocation. Owner ruled a locale-parameterized pinned helper (amendment 4), keeping cargo_bin at exactly one call site"}
 - id: a-scripted-yaml-edit-anchors-inside-the-entrys-id-span
   kind: pattern
   tier: 1
