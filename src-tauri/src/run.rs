@@ -356,7 +356,8 @@ struct ReadyPlan {
 ///
 /// **Fix: `async`, planning runs on `spawn_blocking`.** This command used
 /// to be a plain `fn`, so its entire planning pass -- [`plan_run`], which
-/// shells out to mkvmerge once per source file via [`plan_batch`]'s
+/// shells out to mkvmerge once per source file via
+/// [`muxsmith_core::planner::plan_batch`]'s
 /// identification -- ran synchronously on Tauri's command-dispatch thread:
 /// the same thread that also has to service [`on_close_requested`] and
 /// `cancel_run`/`cancel_job`, so a long batch froze the window AND made

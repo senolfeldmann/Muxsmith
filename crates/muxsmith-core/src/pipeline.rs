@@ -7,10 +7,9 @@
 //! It emits no prose, no documents and no exit codes (spec 5.2, 7, 8.4):
 //! [`plan_pipeline`] returns [`PipelineOutcome`] as data and every surface
 //! maps it to its own presentation (the CLI's human lines and mkvmerge-style
-//! exit codes, the GUI's IPC document shapes). The one place the surfaces
-//! deliberately differ inside the pipeline itself -- how mkvmerge is resolved
-//! (the CLI's PATH-only lookup versus the GUI's override-aware detect ladder,
-//! D28) -- is a parameter, not a branch.
+//! exit codes, the GUI's IPC document shapes). How mkvmerge is resolved (the
+//! CLI's PATH-only lookup versus the GUI's override-aware detect ladder, D28)
+//! is a parameter, not a branch.
 
 use std::path::{Path, PathBuf};
 
@@ -70,10 +69,10 @@ pub struct PlannedPipeline {
 /// Runs the shared planning pipeline over the profile at `profile_path` and
 /// returns the outcome as data (spec 5.5, 7).
 ///
-/// `resolve_mkvmerge` is the one deliberate per-surface divergence, injected
-/// rather than branched on: the CLI passes [`Mkvmerge::locate`] (PATH only,
-/// spec 8.1 defines no CLI override flag), the GUI a
-/// [`Mkvmerge::detect`]-with-override closure (spec 8.2, D28).
+/// `resolve_mkvmerge` is the divergence that is injected rather than branched
+/// on: the CLI passes [`Mkvmerge::locate`] (PATH only, spec 8.1 defines no
+/// CLI override flag), the GUI a [`Mkvmerge::detect`]-with-override closure
+/// (spec 8.2, D28).
 ///
 /// Spec 5.5: dry-run is a strict superset of `validate`, never a subset. The
 /// config-time static pass therefore runs FIRST -- it needs no filesystem

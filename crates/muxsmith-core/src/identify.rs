@@ -385,7 +385,8 @@ pub trait Identify {
 /// The production [`Identify`]: an [`IdentifyCache`] plus the resolved
 /// mkvmerge, wired together so `plan_batch` can drive real identification.
 pub struct LiveIdentifier<'a> {
-    /// The per-session identification cache (spec 5.5).
+    /// The identification cache (spec 5.5), constructed per planning call
+    /// and dropped with it.
     pub cache: IdentifyCache,
     /// The resolved external mkvmerge.
     pub mkv: &'a Mkvmerge,
