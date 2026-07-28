@@ -1171,6 +1171,16 @@ ten is recomputed.
   unchanged, re-measured: `cargo_bin("muxsmith")` appears in exactly one file,
   which amendment 4 preserves by construction.
 
+- **A stale line citation in a test comment** (Plan-9 Task-7 review, finding 5,
+  2026-07-29): `crates/muxsmith-core/tests/suggestions.rs:1015` cites
+  "delta_for's two exact-bearing arms, planner.rs:1812, :1817"; at HEAD those
+  arms are at `:1823` and `:1828`, and the cited lines fall inside a different
+  function's closing braces. Pre-existing and outside Task 7's empty Files list,
+  so it was correctly routed rather than fixed as a drive-by. **Vehicle:
+  whichever task next owns `suggestions.rs`**, never a drive-by edit. The
+  underlying shape - a comment citing line numbers in another file - is the
+  reason the house convention is to locate by content.
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML

@@ -507,10 +507,11 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15), applied retroactively to the already-approved plan-6 design document: its own proposed schema-annotation guard had been dropped as 'a tautology' (reviewer proposed, implementer complied, neither able to check it) in the same round where that rationale shape had already produced three false claims. Guard restored; the tautology analysis re-aimed onto a falsifiable trigger. doctrine §3 amended"}
     - {date: "2026-07-21", kind: reinforced, ref: "plan-7 design (approved): D62's URL-ban scan kept despite its recorded plain-text over-breadth (round-1 review harvest, calibration data), and check 1(c)'s partially-redundant scan branch kept with the redundancy recorded in place (round-3 harvest) - both retained for build-and-measure per this rule"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-9 Task 7, the first time this entry's scenario ran to completion: a design-phase vacuity claim about two guards was re-aimed onto a measurement instead of argued out, the measurement ran, and it came back INCONCLUSIVE for an instrument reason - the fenced mutation site also feeds the candidate generator, so the degraded candidates were filtered out before the guards saw them (.superpowers/sdd/plan-9/task-7-verdict.md). The rule held exactly as written: the guards stay, and the original vacuity analysis is neither confirmed nor refuted"}
 - id: proc-normative-count-recomputed
   kind: pattern
   tier: 2

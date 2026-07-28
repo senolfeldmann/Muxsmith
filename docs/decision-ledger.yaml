@@ -4936,3 +4936,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 6 Step 4 carried the equivalence, and the run produced its counterexample the same day: D104 item 2 went red, the premise came out CONFIRMED by measurement, and the defect was the assertion's bearerless vehicle. The routing half did the work - the implementer returned NEEDS_CONTEXT with a decision memo rather than adjusting either the view or the test (.superpowers/sdd/plan-9/amendment-5-verdict.md INFO-2)"}
+- id: a-mutation-experiment-mutates-a-site-only-the-guards-subject-reads
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: core
+  statement: "A mutation experiment is only interpretable if the mutated site is read by the guard's SUBJECT alone. Where the mutated function also feeds the fixture or candidate generator upstream of the guard, the degraded input is filtered out before the guard ever sees it: the guard then passes for a reason unrelated to its strength, and the result is uninterpretable in BOTH directions - a green guard is not evidence of vacuity and a red one is not evidence of coverage. The instrument censors its own input. Trigger, readable at design time: you are fencing a mutation target, so enumerate that target's call sites and check whether any of them is upstream of the fixture the guard consumes. Complements proc-check-green-state-reachable (that one demands the check's GREEN state be reachable; this demands the guard's RED state be reachable under the experiment's own instrument)."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 Task 7 and its review (.superpowers/sdd/plan-9/task-7-verdict.md finding 4): D105 fenced a mutation of delta_for, which has three call sites in core - two building the candidate's simulated apply, one inside the applier. The engine re-validates its own candidates, so every degraded AddExact candidate was dropped and replaced by its NOT-polarity twin, and the guards never received a degraded value to compare. Measured, not argued: the reviewer applied the same defect class at the APPLIER site only, in an isolated copy of the crate, and all three guards went red through their own assertions - the pattern the design hypothesized, under a mutation the design did not fence"}
+- id: an-anti-vacuity-counter-counts-the-dimension-the-guard-is-about
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: core
+  statement: "A vacuity guard keyed on `did I check anything at all` cannot see its coverage collapsing onto a sibling case. When the counted set spans two variants and the guard is about one of them, the counter stays satisfied while coverage of the guarded variant goes to zero. Count the dimension the guard is ABOUT, not the loop's iterations. Readable trigger: your assert reads `checked > 0` (or a count) over a collection whose members are not all instances of the case the surrounding assertions are written for."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-9 Task 7 review finding 3, measured in an isolated crate copy: under the D105 mutation the guard G1's fixture set kept its size of three because each degraded AddExact candidate was replaced by its NOT-polarity twin. G1's anti-vacuity counter counts both polarities, so it still read three while coverage of the AddExact arm the guard exists for was zero, and the guard passed. At HEAD the same guard does cover that arm (three checked candidates, measured), so this is a latent blind spot rather than a live defect; per-polarity counting is the cheap hardening if the owner ever keeps the guard"}
