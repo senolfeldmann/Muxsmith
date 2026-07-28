@@ -4891,3 +4891,46 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5 delta review LOW-4 (.superpowers/sdd/plan-9/task-5-verdict.md): the fix round added a files-is-an-array assertion whose message claims it identifies a planned batch document. Both fires succeeded, one half each, and both used mutations no code path emits. The reviewer then ran the real profile-load-failure path and found config_only_document emits an empty files array, so it passes both assertions - every builder in the tree emits files as an array, and the guard discriminates nothing. The test stays sound because the code-sequence assertion below rules that shape out; the three overclaiming strings were routed to the plan close"}
+- id: the-absence-idiom-is-count-zero-paired-with-a-positive-bearer
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "Playwright's negated state matchers do NOT pass on a detached element: playwright-core short-circuits a missing element only for an enumerated list (hidden, visible under not, detached, attached under not, in-viewport under not, plus the document-level title/url/aria matchers), and everything else - to.be.enabled and to.be.disabled included - returns missingReceived and polls to a timeout reported as `element(s) not found`. So `not.toBeEnabled()` is not an escape hatch for a control that is not rendered. The house idiom for asserting a control is GONE is toHaveCount(0) PAIRED with a positive bearer, because to.have.count takes the array branch and an empty page satisfies it unaided. The pairing's real strength is that the bearer proves the intended branch is ACTIVE - it also survives someone deleting or renaming the absent control's testid, which the count alone accepts silently."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 amendment 5: D104 item 2's assertion had no bearer, and Task 6 measured that the negated form does not rescue it (.superpowers/sdd/plan-9/task-6-report.md section 4.3). The amendment-5 reviewer then verified the mechanism from the pinned playwright-core source rather than from one run, enumerating the short-circuit list and firing a control on it, and sharpened why the pairing is load-bearing in situ (.superpowers/sdd/plan-9/amendment-5-verdict.md LOW-2 and INFO-1). The ruled replacement pairs toHaveCount(0) with jobs-empty visible, the v-else of the same condition"}
+- id: a-state-assertion-presupposes-the-control-renders-so-walk-the-render-chain
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: gui
+  statement: "An assertion about a control's STATE - disabled, enabled, checked - presupposes that the control is rendered, so a design that fixes such an assertion for a scenario which RESETS state walks the control's render chain at design time, not only its state transition. The collapse is systematic rather than unlucky: when the flag under test also appears among the disjuncts of the control's own v-if, the vehicle vanishes in exactly the branch worth asserting. Readable tells in the design's own prose: an `again` or a `back to` naming an earlier state the entry never established, and a scenario whose setup clears the collections the render condition tests. The correct observable there is presence or absence, per the-absence-idiom-is-count-zero-paired-with-a-positive-bearer."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment 4: the pinned invocation for the German subprocess test could not execute as written, because the funnel it rides appends the locale flag itself; resolved by parameterizing the pinned helper by locale and having the funnel delegate to it. Substance right, stated form impossible; caught on code contact by the executing task, not by design review"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment 5: D104 item 2 fixed `cancel-batch is disabled again` for a fresh-dispatch rejection, but cancel-batch sits inside a v-if naming runActive among its three disjuncts and the fresh branch clears the other two before the invoke, so the control is not rendered in any end state of that scenario. Task 6 measured that the adjudicated behaviour is CONFIRMED - mutating the catch arm makes the button appear - so the defect was the vehicle. Second instance of the class in one plan, again caught on code contact rather than by design review (.superpowers/sdd/plan-9/task-6-report.md section 4, amendment-5-verdict.md HARVEST)"}
+- id: a-red-test-does-not-entail-a-contradicted-premise
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A plan clause of the form `if this test fails against the unmodified code, that contradicts the adjudicated premise` states an equivalence that does not hold: a red test also means the stated OBSERVABLE is unsatisfiable while the premise is confirmed. Both cases route identically - return it, never fix it at the keyboard - so the operative half is sound and is what should carry the weight; the causal gloss is what misleads, because an agent reading it looks for a behavioural contradiction and finds none. Write such clauses as `contradicts the premise OR shows the stated observable unsatisfiable`, and let the routing be the same for both."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 6 Step 4 carried the equivalence, and the run produced its counterexample the same day: D104 item 2 went red, the premise came out CONFIRMED by measurement, and the defect was the assertion's bearerless vehicle. The routing half did the work - the implementer returned NEEDS_CONTEXT with a decision memo rather than adjusting either the view or the test (.superpowers/sdd/plan-9/amendment-5-verdict.md INFO-2)"}

@@ -491,9 +491,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15). Evidence from the plan-6 design round: the shape produced three false claims - an unenumerated set (which was hiding a real 20-files defect), an unguarded second copy, and a flat 'D48 cannot derive' that ninety seconds of compiling refuted. The third appeared in the same document that had just conceded the pattern in writing. doctrine §7 brief-wiring amended"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-5 review LOW-1 and LOW-2 (.superpowers/sdd/plan-9/amendment-5-verdict.md): the same shape twice in one report, both times a COST claim excusing a verification. `the doctrine text is not in this repo` was refuted by one grep of docs/process-conventions.yaml, where the four contested criteria are enumerated inside proc-latitude-clause-boundary's own statement; `re-running it would mean mutating the co-writer's uncommitted spec` was refuted by reading the pinned playwright-core bundle, a read-only path at zero risk. Both self-limitations were written before the cheap path was tried, and the reviewer ran both"}
 - id: proc-proposed-safeguard-stays
   kind: pattern
   tier: 2
