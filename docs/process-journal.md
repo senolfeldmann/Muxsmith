@@ -2591,3 +2591,125 @@ the ROADMAP. One over-restriction proposal awaits an owner ruling: whether
 adding a symbol import that a task's own enumerated addition requires survives
 a "nothing else in this file" qualifier. Framework-side follow-ups are tracked
 agent-side.
+
+## 2026-07-29 | Plan 9 complete | session 26 (Peter, Opus 5 1M)
+
+**Scope.** Plan 9 tasks 5, 6 and 7, amendment 5, the whole-branch review and
+the plan close. Commit range `9143075..HEAD`. The plan is closed; the next
+milestone is the pre-1.0 gates.
+
+**Decisions and their why.**
+- Amendment 5 is the first amendment of this plan ruled by the controller
+  rather than by Şenol. D104's item 2 fixed an assertion (the cancel-batch
+  button is disabled after a fresh dispatch is rejected) whose target control
+  cannot render in that scenario: the control's own `v-if` names `runActive`
+  among its three disjuncts, and a fresh rejection leaves all three false. Of
+  four options, three were excluded by statements already on record (D104's
+  own "No code fix"; `tests-ship-with-the-feature-never-after` plus
+  `proc-proposed-safeguard-stays` against dropping the assertion; the
+  unconditional pre-invoke reset against re-shaping the scenario), and none of
+  the four contested criteria held, so the tier analysis put the call with the
+  controller. Ruled: assert the control's ABSENCE paired with a positive
+  bearer (the empty-state placeholder, the `v-else` of the same condition).
+  The logs label it CONTROLLER-RULED rather than hiding the difference.
+- The D49 experiment's ledger entry is controller-composed and says so in its
+  own statement. D105 fixed wording for its two clean branches and none for
+  the anomaly branch it also mandated be recorded - a three-branch decision
+  rule with text for two. Recording the anomaly with no text was not an
+  option; composing one silently was worse than composing one that discloses
+  itself.
+- The promotion sweep rewrote two of the five entries' tense. An always-loaded
+  Tier-2 entry saying "the eprintln goes away" or naming "today's `n/a` exit
+  code" would bind every future task to a state this branch had already
+  changed. That is the reason a promotion is an edit and not a move.
+
+**What the process caught.**
+- Whole-branch review, the finding no task review could reach: spec amendment
+  S-8 removed the GUI session cache, and two rustdoc passages in `identify.rs`
+  still described it, both citing the section that now says the opposite.
+  Task 1's fix round had swept for the literal string `per-session` and closed
+  a third site; these two say the same thing in other words. Originated
+  upstream, in the amendment's own sweep. Gate-invisible by construction - no
+  test asserts prose.
+- The fix round's out-of-scope sweep then found a third artifact class: a
+  Tier-2 convention entry asserting the same ruled-out lifetime in its
+  statement and its blocked_on. Code, module docs, always-loaded convention:
+  one stale premise, three classes.
+- Task 5: the owner's four-condition execution-time rule fired for the second
+  consecutive task, on a total gap - the hoisted sort has two call sites and
+  the plan enumerated a producer for one. The implementer measured the gap
+  (workspace green with the other site unsorted) and built the producer. Its
+  reviewer re-measured with a symmetric mutation pair: each site has exactly
+  one guard, disjoint, neither redundant.
+- Task 5 review, MEDIUM: a composed doc comment on the new re-export claimed
+  every call site is a human printing path; one of the nine feeds the JSON
+  envelope. Originated with the implementer.
+- Task 5 delta review recorded a defect against ITSELF: its own required
+  change had preferred one remedy on a rationale nobody ran, the fix round
+  implemented that rationale faithfully, and the added assertion turned out to
+  be a shape guard rather than a builder discriminator - every builder in the
+  tree emits the field it checks. A finding travels one hop further than an
+  observation.
+- Task 6 review: four targeted source mutations, each reddening exactly one of
+  the four new tests and nothing else in 68. The mutations are real
+  implementation variants (the pre-fix implementation, a rejected literal
+  reading, an unwired field), so the four tests are regression discriminators,
+  not shape guards.
+- Task 7: the experiment landed on the anomaly branch and its own premise
+  failed. The fenced mutation site feeds both the engine's candidate
+  construction and the applier, and the engine re-validates its own
+  candidates, so every degraded candidate was replaced by its NOT-polarity
+  twin before a guard could compare anything. The reviewer applied the same
+  defect class at the applier site only, in an isolated crate copy: all three
+  guards red through their own assertions. The instrument censored its input.
+- Controller defects, two, both refuted downstream: a review brief said three
+  commits landed mid-flight where two did, and a ledger occurrence restated a
+  literal-phrase measurement as a claim about the class. Both recorded with
+  handles.
+
+**Process mechanics.** Seven tasks in the plan, three executed this session.
+Dispatches: three task implementers, three task reviewers, two implementer-side
+fix rounds, one amendment author, one amendment reviewer, one whole-branch
+reviewer, one whole-branch fix implementer. All on Opus 5 except the
+whole-branch review, which ran on the top tier (Fable 5) per the narrowed
+model-tiering ruling that reserves it for exactly that role; delta re-reviews
+ran as resumptions on their original agents' spawn models. Effort xhigh
+throughout. Five house-knowledge commits from harvests, one per verdict
+arrival. Ledger 505 to 516 entries over the session. Ten-part gate plus
+ledger-lint green foreground before the one push.
+
+**Friction and failure.** Two of my own YAML edits damaged the house files and
+were caught within seconds by `ledger-lint`: one dropped the following entry's
+`- id:` header while inserting an occurrence, merging two entries; one used an
+escape sequence invalid inside a double-quoted YAML scalar. Both are arguments
+for the pre-commit lint rather than against line-oriented editing, but they are
+the same class twice in one night. The e2e suite runs against built bundles, so
+two mutation-evidence runs in a task report had no intervening build; the
+colours happened to be right and the reviewer reproduced them properly. Şenol
+was away for most of the close, so two owner questions are open rather than
+answered.
+
+**Moments.**
+- The Task-5 reviewer measuring the gap with a symmetric mutation pair, then
+  the Task-7 reviewer using the same technique to prove an experiment could
+  not answer its own question. Same instrument, opposite conclusions, one
+  session apart.
+- A reviewer writing a finding against its own earlier required change, with
+  the measurement that refuted it, rather than quietly closing the item.
+- The whole-branch review finding a defect whose earlier fix round had swept
+  for a string instead of a class, in the same file, one plan earlier.
+
+**Deltas.** The plan's Task-6 assertion could not execute as designed and cost
+an amendment mid-execution; the plan's own NEEDS_CONTEXT clause equated a red
+test with a contradicted premise, and this episode was its counterexample - the
+premise came out confirmed and the observable was the defect.
+
+**Open threads.**
+- Two owner questions: whether to re-fence the D49 experiment at the applier
+  site, and the disposition of the registered trigger whose condition is now
+  unreachable as written.
+- A text-corrections pass is routed to the close and not yet dispatched: the
+  unguarded scope boundary's producer, the BatchView else-branch text, three
+  overclaiming assertion messages, one delta-review wording sharpening, the
+  docs-accuracy two-edit item, and the two BUILDING.md gate edits.
+- CI on the pushed head was in progress at the time of writing.
