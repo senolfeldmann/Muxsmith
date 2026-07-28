@@ -1014,7 +1014,7 @@ reporting the same name); and `ledger-lint` must keep running on exactly the
 pushes the rest of the matrix would skip, since a house-YAML edit is the one
 diff shape that can turn it red.
 
-## Gate: rustdoc does not link-check private modules
+## Gate: rustdoc does not link-check private items
 
 Measured 2026-07-28 (Plan 9 Task 1 review, HARVEST): gate part 4
 (`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`) skips the docs
@@ -1024,21 +1024,40 @@ passes every gate run and every CI leg. The task's own LOW-2 was exactly
 that: an import removal left `[`plan_batch`]` unresolvable at
 `src-tauri/src/run.rs:359` and nothing could see it.
 
+**The heading said "private modules" until 2026-07-28 and the blind spot is
+wider than that**: it covers any private ITEM, including one inside a PUBLIC
+module of a public crate. Measured at the Plan-9 Task-2 review with its fire
+(the reviewer injected a broken link on the private `fn worker_count` inside
+the public `muxsmith_core::executor::queue`: the plain gate passed it, the
+same run with `--document-private-items` failed). `queue.rs` alone holds
+three such private functions, so `src-tauri` is not the only exposed crate.
+
+**The recurrence, recorded because it is the argument for the flag:** the
+same defect fired again one task later, same file, same cause - Task 2's
+import removal broke `` [`run_queue`] `` at `src-tauri/src/run.rs:4`
+(ledger `an-import-removal-sweeps-the-doc-links-that-named-the-symbol`).
+Two consecutive tasks, both invisible to the gate, both caught only by a
+review.
+
 The fix is one flag: `--document-private-items` on the doc step - **at BOTH
 consuming sites**, `BUILDING.md:76` and `.github/workflows/ci.yml:94-98`
 (Task-1 delta review, 2026-07-28; this line first named BUILDING.md alone,
 which would have left CI carrying the blind spot the change exists to
-remove). Windows-leg cost and doctest exposure were both measured empty. **Its cost is THREE lines, not one** - this line
-first said one, on the review's unresolved-link count, and the Task-1 fix
-round refuted it by running the flag WITH `-D warnings`, which I reproduced:
-besides the one unresolved link, `src-tauri/src/lib.rs:54` and `:87` carry
-```[`run`]``` links that are ambiguous between the `run` function and the
-private `run` module, and ambiguity is a different diagnostic under the same
-`broken_intra_doc_links` lint - fatal once warnings deny. Both predate Plan 9
-(verbatim at `629dc64`, shifted one line by Task 1). The repair is
-```[`mod@run`]``` or ```[`run()`]``` per site. So the flag lands with three
-one-line fixes, still cheap, but the estimate was wrong and the measurement
-that produced it answered a narrower question than the one it was used for.
+remove). Windows-leg cost and doctest exposure were both measured empty. **Its cost is
+TWO one-line fixes** - this line said one, then three, and both figures were
+measured at a moment that has since moved. The one unresolved link was Task
+1's own LOW-2 and commit `fed55be` fixed it, so it stopped counting; what
+remains are the two ambiguity errors, `src-tauri/src/lib.rs:54` and `:87`,
+where ```[`run`]``` is ambiguous between the `run` function and the private
+`run` module. Ambiguity is a different diagnostic under the same
+`broken_intra_doc_links` lint and is equally fatal once warnings deny, which
+is why `grep -c "unresolved link"` is the wrong instrument for this cost.
+Both predate Plan 9. The repair is ```[`mod@run`]``` or ```[`run()`]``` per
+site. Controller measurement 2026-07-28 at commit `9b2843f`, pasted from the
+run of `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+--document-private-items`: exactly those two errors plus the resulting
+`could not document muxsmith-gui`, and no unresolved link anywhere in the
+workspace; the control run without the flag passes.
 
 **Deliberately NOT done mid-plan**, because the plan quotes the ten-part gate
 verbatim in its Global Constraints and every task's verification cites it;
@@ -1203,6 +1222,22 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   ad-hoc signing of Plan 8.5 already in place, since it applies to any new
   leg. Whichever route wins carries the D78 amendment as a task rather than
   diverging from it silently.
+
+- **One joint proof that joblog persistence stays unconditional under
+  `--json`** (Plan-9 T2 review harvest, 2026-07-28). The invariant (spec 6,
+  D26) is covered by two halves that never meet: the tee itself by
+  `run_batch_writes_job_log_files` in core, and `--json`'s suppression of
+  human output by `crates/muxsmith-cli/tests/run_cli.rs:125`
+  (`run_json_on_a_real_mux_...`), which does set `MUXSMITH_RUNS_ROOT` but
+  asserts only the JSON document and the output file. The one CLI test that
+  reads the runs root, `run_live.rs:398` inside
+  `readme_passthrough_recipe_...`, asserts it for a `run` invocation that
+  carries no `--json` - the `--json` in that test is on the preceding
+  `dry-run` (controller-verified 2026-07-28 by reading both call sites, not
+  relayed). Plan 9 did not weaken this; it is the plan that moved the tee
+  across a crate boundary, which is why the gap is recorded now. Cost: one
+  subprocess test on the existing `run_live.rs` harness - the same run with
+  `--json` added, asserting the run directory and its `summary.json`.
 
 - **UI polish pass ("schick machen") - deliberate 1.x item (owner ruling
   2026-07-21, S20)**: v1's visual bar is a reasonably good, usable layout;

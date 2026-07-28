@@ -1706,9 +1706,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-12", kind: decided, ref: "task-12-verdict.md judgment (E7[60])"}
+    - {date: "2026-07-28", kind: reinforced, ref: "plan-9 T2 review Q1 (.superpowers/sdd/plan-9/task-2-verdict.md): run_batch's rustdoc moved verbatim into muxsmith-core still carrying [`finish_teardown`], which names a private fn behind a private module in a crate core does not depend on. Satisfied by de-linking to a plain code span, not by publicizing the target - second instance of this decision and the first across a crate boundary, where no path could have expressed the link at all. The reviewer measured all three halves of that impossibility (no pub, private mod, no dependency edge)"}
 - id: proc-50-ponytail-ladder-rejected
   kind: restraint
   tier: 1
@@ -4662,3 +4663,18 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: an-import-removal-sweeps-the-doc-links-that-named-the-symbol
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: docs
+  statement: "A change that DELETES a `use` line greps the files it touches for intra-doc links naming the removed symbols, and re-points or de-links each hit in the same change. An intra-doc link resolves through the file's imports, so removing an import silently breaks every [`Symbol`] in that file's docs: the compiler is silent because docs are not code, and the plain rustdoc gate is silent wherever the item or its module is private (ROADMAP 'Gate: rustdoc does not link-check private items'). Trigger is readable in the diff: it contains a removed `use` line. Handle: one grep per removed symbol over the touched files. The same handle covers a verbatim cross-crate MOVE, where the doc travels with the function into a crate that cannot address the origin's private symbols. Whoever authors the task's Files list puts the resulting doc edits INTO it, so the repair never has to cross the structural-conformance grant at the keyboard."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 1 verdict LOW-2 (.superpowers/sdd/plan-9/task-1-verdict.md): the task's import removal left [`plan_batch`] unresolvable at src-tauri/src/run.rs:359, invisible to every gate run because src-tauri's run module is private; repaired by a licensed doc-only fix round, commit fed55be"}
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 2 (task-2-report.md divergences 1 and 2a; task-2-verdict.md Q1/Q3 and HARVEST b): the same cause one task later in the same file - the import removal broke [`run_queue`] at src-tauri/src/run.rs:4 - plus the cross-crate variant in the moved rustdoc, [`finish_teardown`]. Both repaired in-task and ruled in scope. The reviewer sharpened the trigger from 'a verbatim move' to 'an import removal', which is what actually produced both instances and is greppable in the diff"}
