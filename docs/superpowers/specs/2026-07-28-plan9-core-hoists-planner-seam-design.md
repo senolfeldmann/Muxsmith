@@ -1,7 +1,10 @@
 # Plan 9 design: core/orchestration hoists + planner seam
 
-Status: DRAFT 2026-07-28, fix round 1 applied 2026-07-28; every amendment
-is recorded in the `## Amendment log` section at the end. Numbering starts at **D91** per the Plan-9 brief.
+Status: owner-approved 2026-07-28, after one four-eyes review round (four
+blocking findings, five minor), one fix round, an APPROVED delta review by
+the same reviewer, and two non-blocking wording notes closed in a second
+fix round; every amendment is recorded in the `## Amendment log` section
+at the end. Numbering starts at **D91** per the Plan-9 brief.
 Verified 2026-07-28 against the current tree: a repo-wide grep for `D91`
 (excluding `.git`, `.worktrees`, `node_modules`, generated output and the
 brief itself) returns exactly one hit, a hypothetical mention in

@@ -336,9 +336,10 @@ overhead handle.
 
 **DESIGN OWNER-APPROVED 2026-07-28**:
 `docs/superpowers/specs/2026-07-28-plan9-core-hoists-planner-seam-design.md`
-(D91-D105), after one four-eyes review round (three blocking findings, five
-minor), one fix round, an APPROVED delta review, and two closed wording
-notes. Its four triggers are mirrored into the Triggers section below; its
+(D91-D105), after one four-eyes review round (FOUR blocking findings, five
+minor - counted from the verdict's `### I-` and `### M-` headings after the
+first write of this line said three), one fix round, an APPROVED delta
+review, and two closed wording notes. Its four triggers are mirrored into the Triggers section below; its
 `gui-d23-reset-gating-form` ledger obligation is written;
 `core-d49-g1g2-experiment` waits for the experiment's measurement and
 `core-121`'s `blocked_on` clears at the plan close. The design is the
