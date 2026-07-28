@@ -378,8 +378,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 4
-  count: 9
+  count: 10
   occurrences:
+    - {date: "2026-07-28", kind: reinforced, ref: "plan-9 amendment-4 (author report section 3, confirmed by the delta verdict): the controller's dispatch asserted that the ruled sharpening leaves 'exactly one cargo_bin call site, in one function'. The author measured the file instead of transcribing the premise - muxsmith_bare keeps its own call inside its closed exception, so the file has two and D64's real invariant is FILE-level - refused the wording, and wrote the measured form into all three places the plan states it. The controller had made the same measurement earlier and compressed one file into one call site while writing"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-4 verdict: the brief's anchor list summed 19, stated 20, real 21 - untagged arithmetic over the tree"}
     - {date: "2026-07-13", kind: violated-corrected, ref: "plan-5.6 task-8 verdict Important #1: the brief asserted rust-toolchain.toml components apply on a bare rustup toolchain install (false, rustup #4216); untagged, only the reviewer caught it; fix 308effc"}
     - {date: "2026-07-15", kind: violated-corrected, ref: "plan-6 design-brief premise 'the apply logic exists as a test helper, hoist it' refuted by the design implementer: tests/suggestions.rs:95 is a fixture generator that takes no Profile and mutates nothing; untagged"}

@@ -4663,6 +4663,20 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: a-rationale-cites-only-consumers-that-already-exist
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A rationale that justifies a decision by enumerating who CONSUMES the thing names only consumers that exist at the time of writing. An artifact the process will produce later is a prediction, not a citation - and it usually argues the opposite way once it exists, because it will read the AMENDED state rather than the one being protected. Trigger is readable: your reason-clause lists artifacts, and one of them is scheduled rather than written. Handle: name the existing consumers only, and if the argument needs the future one, state it as a consequence to check later rather than as present evidence."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-4 verdict LOW-1 (.superpowers/sdd/plan-9/amendment-4-plan-verdict.md): the amendment justified NOT renumbering Task 4's steps with 'Task 4's executed report and review cite the current step numbers'. The report does; the review had not run - and could not dangle anyway, since it would read the amended plan. The decision stood on the report alone; only the rationale overclaimed"}
 - id: a-plan-that-pins-a-test-invocation-runs-it-once-first
   kind: pattern
   tier: 1
