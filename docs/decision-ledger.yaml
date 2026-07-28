@@ -4504,3 +4504,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff). Origin: plan-5.5 task-16-verdict.md:36-37 (T16-m1, 'cosmetic wart') and whole-branch-verdict.md:92 (DEFER to Plan 6); the recon's section 6 established the never-matching consequence and that no ledger entry existed"}
+- id: design-states-a-completion-check-once
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A design states a completion check ONCE - in its acceptance section - and every other passage that needs it points at it rather than restating it. Two copies of the same check drift exactly like duplicated code: the reader cannot tell which is authoritative, and the copy nobody re-runs is the one that is wrong. Trigger is readable: you are writing a grep, count or guard that already appears elsewhere in the same document. Handle: delete the copy, cite the acceptance item."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 design review round 1 HARVEST (.superpowers/sdd/plan-9/design-review-round-1.md): the Plan 9 design carried two different greps for the same funnel migration - acceptance observable 1 (sound, hits exactly the four copies) and D91's inline parenthetical (unreachable green, finding I-1). The reviewer names the irony: the copies drifted the same way the four pipeline copies this plan removes did"}
+- id: design-dropped-wire-distinction-pairs-with-a-trigger
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Where a design deliberately drops or leaves unconsumed a distinction that a serialized surface could carry - collapsing two meanings into one wire field, leaving a second code-shaped token unrouted - the decision ships paired with a trigger naming the observable event that reopens it and the mechanism that would then be built. The pairing is what keeps a knowingly-lossy simplification from reading later as an oversight nobody weighed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 design review round 1 HARVEST (.superpowers/sdd/plan-9/design-review-round-1.md): observed twice in one design - D92 collapses mkvmerge_found's absent-vs-too-old distinction, D98 leaves delete_partial_failed unrouted - each paired with a section-6 trigger naming its reopening event. Reviewer flags it as a candidate convention if a third design repeats it"}

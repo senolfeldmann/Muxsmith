@@ -443,8 +443,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 design review round 1 (.superpowers/sdd/plan-9/design-review-round-1.md, I-1): D91's funnel-migration completion grep predicts a survivor set containing `lint.rs`, which contributes zero hits and can contribute none - the qualified string never appears in the module defining the function - while the real survivor `dry_run.rs:21` (a doc comment outside the migrated A-2 set) is missing from it, so the check is red on a correct implementation. Controller re-ran the grep: seven hits, none in profile/lint.rs. The design's own acceptance-1 pattern is the sound form of the same check"}
     - {date: "2026-07-21", kind: decided, ref: "plan-7 plan review round 1, finding 1: Task 5's 24-name completion grep can never pass - three folded Fluent ids double as DOM id=/aria-describedby= values the same task preserves, plus a gitignored generated file sits in scope; every absence step in the plan was dutifully fire-verified red, which is exactly why the unreachable green survived (reviewer harvest process note)"}
     - {date: "2026-07-21", kind: violated-corrected, ref: "plan-7 T2 review (task-02-verdict.md harvest), novel flavor: Step 4's stale-doc grep is permanently red because it collides with the plan's OWN Step-1 test fixture strings (self-collision within one task); the implementer's sharper substitute pattern was upheld as verification-instrumentation fix (fire-verified against HEAD~1), and the reviewer notes the mirror risk - the tuned pattern must not become a standing guard, it would under-fire on differently-worded survivors"}
     - {date: "2026-07-22", kind: reinforced, ref: "plan-7 T17 (task-17-report.md NEEDS_CONTEXT): the implementer ran the green-reachability duty against D55 rule 5's select-structure checks and found them permanently RED on the correct tree (sibling column-0 reopeners in validate-summary/batch-diagnostics-summary, nested suggestion-partition, all en/de-structurally identical), refuting the design's no-nested-selects premise before the checks could ship; third instance, promoted"}
@@ -553,13 +554,14 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Every load-bearing empirical claim in a design document - and in a fix round on one - ships as a one-command reproduction (exact command, byte-quotable expected output), and every ABSENCE claim ships with a named positive control that fires; the review then re-runs instead of re-deriving. Trigger is readable: you are writing a sentence that asserts behavior, a count, or an absence. Handle: put the command and its expected output beside the claim."
+  statement: "Every load-bearing empirical claim in a design document - and in a fix round on one - ships as a one-command reproduction (exact command, byte-quotable expected output), and every ABSENCE claim ships with a named positive control that fires; the review then re-runs instead of re-deriving. Trigger is readable: you are writing a sentence that asserts behavior, a count, or an absence. Handle: put the command and its expected output beside the claim - PASTED from the run, never recalled, reconstructed, or taken from a different tool than the one named (a reader tool's line count is not `wc -l`'s). Narrating a check instead of pasting it is where this entry's violations cluster."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 design review round 1 (.superpowers/sdd/plan-9/design-review-round-1.md, M-1 + M-2 + the verdict's own header): three counts in one round were narrated rather than pasted - the design 'corrected' the recon's accurate 1119 lines to 1120 attributing it to wc -l (wc and awk both return 1119, trailing newline present), its stdio control said three files for a pattern that returns six, and the reviewer's own header called the 1397-line design 1398. Controller re-measured all three. The reviewer's harvest names the handle now folded into the statement: an evidence line may only carry output that was pasted"}
     - {date: "2026-07-22", kind: decided, ref: "plan-7.5 design review round 1 HARVEST (docs/process-journal/artifacts/plan-7.5-sdd/design-review-round-1.md): all empirical claims reproduced byte-exact on first re-run (rendered strings, mkvtoolnix counts, 46/46 catalog, exit codes), absence claims carried firing positive controls; reviewer names the pattern as the review-cost lever"}
     - {date: "2026-07-23", kind: reinforced, ref: "plan-7.5 delta review HARVEST (docs/process-journal/artifacts/plan-7.5-sdd/design-review-round-1.md round-2 section): every F1-F5 fix shipped its own inline verification claim (grep with positive control, measured 17-of-47, byte-quoted describes) and each reproduced on re-run; reviewer names evidence-inline fix rounds as materially cheaper to delta-review"}
     - {date: "2026-07-23", kind: reinforced, ref: "plan-8 design review round 1 HARVEST (docs/process-journal/artifacts/plan-8-sdd/design-review-round-1.md): verified-negative-with-positive-control used four times in the design (WiX Environment grep, NSIS PATH grep, R3, R7), survived every reviewer re-run; reviewer proposes naming it the standard form for absence claims - third strict-fit event, promoted at count 3"}
