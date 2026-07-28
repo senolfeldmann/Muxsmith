@@ -2266,3 +2266,72 @@ than as a confirmed fix for a cause still unestablished.
 
 **Open threads.** The governing human deletes the rehearsal draft; that step
 is his by design, as it was in Plan 8.
+
+## 2026-07-28 | Session 23 close | session 23 (Peter, Opus 5 1M)
+
+Scope: the whole session, `7302e1b..HEAD`. It ran past midnight, so its
+commits carry two dates. First session on the re-instantiated tiering:
+controller loop on Opus 5, the top tier reserved for design/plan four-eyes
+rounds and whole-branch reviews, everything else mid.
+
+**What the session did.** Closed three plans. Plan 7.5 and Plan 8 arrived
+executed but unclosed and were taken through their close gates; Plan 8.5 was
+kicked off, designed by ruling, planned four-eyes, executed in four tasks and
+closed - all within the session, because the human walk-through Plan 8's
+close had reserved for real hardware found three defects, two of them 1.0
+blockers, hours after that plan was declared ready.
+
+**The pattern worth keeping from this session: every machine check passed.**
+Plan 8's rehearsal was green on every observable it defined. The macOS app
+then would not launch at all. The gap was not sloppiness in the checks - it
+was that the checks could not see the thing that mattered, and only a human
+installing the artifact could. Plan 8.5's own reviewer later showed how thin
+the margin was: both the fixed and the broken binaries carry a valid
+signature blob, because the arm64 linker always ad-hoc signs, so the obvious
+binary-level check would have gone green on the broken artifact too. What
+discriminates is the bundle seal, and nothing but a walk-through would have
+told us to look there.
+
+**Decisions.** Ad-hoc signing at 1.0 (one config line, no Apple account; it
+does not reopen the deferred code signing but did make its wording untrue, so
+the same package swept every live site). The dmg licence removed rather than
+repaired, settled by reading mkvtoolnix's own packaging under the standing
+parity duty: it ships no licence agreement, so the click-through was never
+parity. macOS Intel support recorded as a 1.x commitment rather than a
+request-gated trigger. And the agent commit-trailer set, open since 2026-07-14,
+settled on measured state: one trailer naming the model canonically, no
+session line, the string derived from the dispatch rather than written as a
+literal in a plan.
+
+**Three process amendments went into the doctrine**, each from a defect this
+session produced: the salvage is the last write of a close, with a `diff -r`
+handle, after a reviewer measured a 30-line archive against a 32-line tracker;
+independent verification needs independent INSTRUMENTS, after a reviewer's
+first re-run silently executed the implementer's own harness from a shared
+scratch path; and a parallel stream must earn its overhead, with the
+shared-index mechanism naming why one-tree parallelism is not made safe by
+staging discipline alone. All three are mirrored into the shared collection.
+The last two carry a deferred revisit tied to a future branch-and-PR model,
+with the instruction to check rather than assume.
+
+**What the process caught, in one list.** A plan that classified a site and
+never commissioned an edit for it. An enumeration that went stale three times
+in one day across two files, cured by removing the dependency rather than
+maintaining it. A census carried by four layers where the reproduction reused
+the same blind pattern. A count that had been converted from a presence check
+and asserted from intent. A completeness claim falsified seventeen lines
+below itself. And nine controller-brief defects, every one caught by the
+agent receiving it - including a factual claim about macOS that Apple's own
+man page refuted.
+
+**Friction.** Two agents in one tree share one git index; a bare commit swept
+a co-writer's staged file. Disclosed and repaired. The sharper lesson came
+from the whole-branch review: the serial cut this plan chose was a ruling
+about concurrency, and the controller broke it with its own mid-plan
+dispatch. One flaky test, ruled a 1.x fix rather than chased on a single
+non-reproducible observation.
+
+**Open threads.** The owner deletes the rehearsal draft. Plan 9 is the last
+planned package before the pre-1.0 gates; its recon inventory exists and
+corrected several long-standing figures in its own ROADMAP anchor, but no
+design is written. Framework-side follow-ups are tracked agent-side.
