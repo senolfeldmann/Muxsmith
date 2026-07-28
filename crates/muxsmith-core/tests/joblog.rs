@@ -114,6 +114,11 @@ fn full_lifecycle_writes_job_and_summary_files() {
     assert_eq!(job["warnings"], serde_json::json!([]));
     assert_eq!(job["errors"], serde_json::json!([]));
     assert_eq!(job["duration_ms"], 42);
+    assert!(
+        job.as_object().unwrap().contains_key("panic"),
+        "`panic` is always on the wire (D98), null for a job that did not \
+         panic: {job}"
+    );
     assert_eq!(
         job["lines"],
         serde_json::json!(["#GUI#progress 100%", "some real output line"]),
@@ -132,6 +137,34 @@ fn full_lifecycle_writes_job_and_summary_files() {
     assert_eq!(
         summary, run_document,
         "summary.json is the T2 run_document, written verbatim"
+    );
+}
+
+/// Acceptance 4's persisted half (D98): the panic payload a recovered
+/// outcome carries reaches `job-<index>.json` as the `panic` key, so a
+/// panicked run stays triageable from the record once the run is over -
+/// the record is what replaced the deleted stderr line.
+#[test]
+fn panicked_outcome_persists_its_payload_on_the_job_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let runs_root = dir.path().join("runs");
+    let specs = vec![spec(&["--output", "out.mkv", "a.srt"], "out.mkv")];
+
+    let mut logger = RunLogger::create(&runs_root, "20260710-120000Z", &specs).unwrap();
+    let mut panicked = outcome(JobState::Failed, None);
+    panicked.panic = Some("scripted worker panic for job 0".to_string());
+    logger.on_event(&JobEvent::Finished {
+        index: 0,
+        outcome: panicked,
+    });
+    let written_dir = logger.finish(&serde_json::json!({})).unwrap();
+
+    let job: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(written_dir.join("job-0.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        job["panic"], "scripted worker panic for job 0",
+        "the persisted record must carry the panic payload (D98), got: {job}"
     );
 }
 

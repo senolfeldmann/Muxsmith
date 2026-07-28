@@ -338,11 +338,12 @@ impl MilestoneState {
         }
     }
 
-    /// Renders zero or more human-mode lines for one [`JobEvent`]. `Started`,
-    /// `Warning`/`Error` (both -> `run-job-notice`), and `Finished` each
-    /// render exactly one line; `Progress` renders one line per newly
-    /// crossed [`MILESTONES`] threshold (often zero, when still strictly
-    /// between two of them).
+    /// Renders zero or more human-mode lines for one [`JobEvent`]. `Started`
+    /// and `Warning`/`Error` (both -> `run-job-notice`) each render exactly
+    /// one line; `Finished` renders one, or two when the outcome carries a
+    /// worker panic (D99, see `render_finished`); `Progress` renders one
+    /// line per newly crossed [`MILESTONES`] threshold (often zero, when
+    /// still strictly between two of them).
     fn render(&mut self, event: &JobEvent, total: usize, renderer: &Renderer) -> Vec<String> {
         match event {
             JobEvent::Started { index, .. } => vec![renderer.msg(
