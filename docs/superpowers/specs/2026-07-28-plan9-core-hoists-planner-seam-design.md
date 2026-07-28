@@ -312,8 +312,9 @@ is already the largest core module; a cross-module orchestrator is a new
 module by the spec 7 module-responsibility table's own logic. (b) A
 builder-style seam object (`Pipeline::new().with_resolver(..)`): four call
 sites do not earn the indirection (scale-appropriate design); a function
-with six explicit parameters is the simplest mechanism that closes every
-divergence. (c) Taking a `&mut dyn Identify` parameter: the identifier
+with five explicit parameters is the simplest mechanism that closes every
+divergence - and the case against a builder only strengthened when
+amendment 1 removed the sixth (cache) parameter. (c) Taking a `&mut dyn Identify` parameter: the identifier
 cannot exist before the pipeline resolves mkvmerge, since `LiveIdentifier`
 borrows the resolved `Mkvmerge`; the pipeline therefore constructs its own
 identifier over its own per-call cache (D93). The `Identify` seam stays
@@ -1373,8 +1374,9 @@ NEEDS_CONTEXT with a decision memo (`proc-latitude-clause-boundary`).
   touched; the `JobRecord`/`ipc.ts` mirrors gain the field as written
   (D98). No logging facade, no `log`/`tracing` dependency (ruled; also "no
   new runtime dependency" binds).
-- The four Fluent texts of D99 and the one of D101, character for
-  character, both locales; the `catalog_completeness` fixture rows and the
+- The six Fluent texts of D99 and D101 (three keys - `worker-panicked`,
+  `run-job-panicked`, `empty-raw-property` - in both locales each),
+  character for character; the `catalog_completeness` fixture rows and the
   `ALLOWLISTED_CLI_KEYS` addition as written. No other user-visible string
   changes anywhere in this plan.
 - The `JobRow.vue` render condition, message key, param and
@@ -1590,4 +1592,9 @@ rulings, nothing else touched:**
   5's D93 bullet; spec amendment S-8 added replacing spec 5.5's
   "shared between dry-run and run" cache sentence with the per-call /
   per-process description, and the contradiction sweep updated with the
-  checked neighbouring run bullet.
+  checked neighbouring run bullet. Delta-review catch folded into this
+  round: D91's rejected alternative (b) still argued against a
+  six-parameter function after the cache parameter was removed - corrected
+  to five, recounted from the signature block; the count re-sweep it
+  triggered also normalized section 5's mixed-unit Fluent count to six
+  texts / three keys.

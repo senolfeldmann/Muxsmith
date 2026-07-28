@@ -4590,3 +4590,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "Owner ruling at the Plan 9 plan-approval gate, reversing design D93's GUI half before any code was written; routed into plan-9 amendment 1 (.superpowers/sdd/plan-9/amendment-1-brief.md), which carries the full scope: no caller-owned cache in the seam, LiveIdentifier keeps owning its cache, the two command_integration.rs test sites untouched, and the spec sentence amended in the design's spec-amendments section"}
+- id: ripple-sweep-covers-the-shape-not-only-the-name
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A consumer sweep after a change greps the changed thing's NAME and therefore misses every passage that describes its SHAPE without naming it: a parameter count, 'both call sites', 'the three fields', 'each of them'. Those statements are dependencies exactly like a named reference, and they go stale silently because no identifier appears in them to search for. Trigger is readable: you are grepping identifiers to find what a change ripples into. Handle: sweep the quantity words and counts in the changed passage's own neighbourhood as a second pass - the argument paragraphs about a signature, not just the code blocks that use it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 design amendment 1 delta review (.superpowers/sdd/plan-9/design-review-round-1.md): removing the cache parameter cut plan_pipeline from six parameters to five; the author's ripple sweep grepped IdentifyCache/cache/AppState/LiveIdentifier/command_integration, dispositioned every hit, and still left D91's rejected alternative (b) arguing against 'a function with six explicit parameters' - the sentence contains none of the swept identifiers. Verified at the artifact: the signature block lists five, the prose said six"}
