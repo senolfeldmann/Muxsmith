@@ -4647,3 +4647,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 1 verdict MEDIUM-1 + HARVEST (.superpowers/sdd/plan-9/task-1-verdict.md): the owner-ruled S-8 amendment replaced spec 5.5's identification-cache sentence, and crates/muxsmith-core/src/identify.rs:388 kept citing it as 'The per-session identification cache (spec 5.5)' - the last per-session claim in the tree, contradicting the spec the same commit wrote. `grep -rn 'spec 5.5' crates src-tauri src` would have found it at design time. The reviewer also logs it as over-restriction calibration: an EXHAUSTIVE file list plus a blanket no-change bullet cannot express 'and the one-line ripples of your own amendment', so the implementer correctly surfaced instead of fixing and the correction cost a licensed fix round"}
+- id: does-the-ten-part-gate-bind-doc-only-pushes
+  kind: non-decision
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Open question, raised 2026-07-28 and not yet ruled: does the ten-part gate's 'before any push, no subsets' bind a push whose commits touch only documentation and house-knowledge YAML? The controller ran the full gate for every such push in session 24 (four runs, all green) on the rule's literal wording, at a real wall-clock cost per push. Arguments both ways are recorded here so the ruling does not have to re-derive them: the gate's evidence base is code pushes that went CI-red (fmt-dirty from partial gates), and a docs commit cannot produce that failure - but ledger-lint IS a CI job that a YAML edit can break, the gate's value is partly that it has no exception surface to argue about, and 'docs only' is a judgement someone makes about their own diff."
+  steelman: null
+  blocked_on: "an owner ruling; surfaced at the Plan 9 close, where the gate is being touched anyway for the rustdoc private-items flag"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push. The owner did not rule; without this entry the question would have survived only in the chat scroll, which is the deferral-without-a-vehicle shape the doctrine bans"}
