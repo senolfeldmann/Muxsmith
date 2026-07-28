@@ -940,15 +940,16 @@ entries:
   source: human
   nature: technical-code
   domain: core
-  statement: "The identification cache is in-memory per session (keyed path+mtime+size); an on-disk cache is a future candidate, not built in v1."
+  statement: "The identification cache is in-memory, constructed per planning call and dropped with it (keyed path+mtime+size); an on-disk cache is a future candidate, not built in v1. The lifetime clause was corrected 2026-07-29: it read `per session` until spec amendment S-8, and the owner's ruling against a GUI session cache made that wording describe a product that does not exist - see gui-identification-cache-per-call-not-per-session for the ruling itself. The deferral this entry carries is unaffected: no on-disk cache in v1."
   steelman: null
-  blocked_on: "in-memory per-session cache suffices for v1, no measured need"
+  blocked_on: "the per-call in-memory cache suffices for v1, no measured need"
   status: blocked
   promoted_at: 2
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-08", kind: deferred, ref: "spec §5.5/§11"}
     - {date: "2026-07-08", kind: deferred, ref: "handoff plan-1-close"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 whole-branch fix round: the finding was two rustdoc claims in identify.rs, and the fix implementer's out-of-scope sweep found the same falsified lifetime in THIS Tier-2 statement and its blocked_on - a live always-checked entry describing the session cache the owner ruled out in amendment 1 and spec amendment S-8 removed. Third artifact class carrying the same stale premise after the code and the module docs, and the one that binds every future task; the deferral itself survived unchanged"}
 - id: core-84-regex-recompile
   kind: non-decision
   tier: 2
