@@ -4663,6 +4663,20 @@ entries:
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+- id: a-dispatch-pins-the-tree-not-a-hash-the-controller-may-have-amended
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A brief that pins the tree state by commit hash is re-read against HEAD immediately before its dispatch goes out, because the controller's own `git commit --amend` replaces the hash the brief cites. Trigger is readable: you amended a commit after writing a brief, or you are dispatching a brief written before your most recent commit. Handle: re-read HEAD and correct the brief, or pin what the agent must verify anyway (the file states) instead of the hash. The failure lands on the agent that behaves correctly - one that checks ancestry finds the cited commit is not an ancestor of HEAD and must decide whether it is looking at a diverged tree."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-3 report, tree-state section (.superpowers/sdd/plan-9/amendment-3-report.md): the brief pinned HEAD e592f55, which the controller had already amended to 851ada1 to add the missing commit trailer. The author checked ancestry, found the cited commit was not an ancestor, diffed the two and established the trees were byte-identical before building on any premise - so a metadata-only re-commit cost a detour rather than a wrong result"}
 - id: an-import-removal-sweeps-the-doc-links-that-named-the-symbol
   kind: pattern
   tier: 1
