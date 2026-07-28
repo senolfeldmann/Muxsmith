@@ -4548,3 +4548,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-11", kind: decided, ref: "docs/process-journal/artifacts/plan-5-sdd/verdicts/whole-branch-review-verdict-round-2.md:53-62 - 'Deviation approved; the implemented form is strictly better than my literal wording', traced across five orderings. Entry written 2026-07-28 as the Plan 9 design's D104 obligation (owner-approved same day), closing the recon 8.5 gap; the plan's remaining half of that ruled item is the test"}
+- id: ground-truth-edited-during-review-gets-a-scratch-note
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When the controller edits ground truth (a house YAML, a tracker, a spec) while an artifact that CITES it is under review, the same turn writes a one-line note into that plan's SDD scratch saying what changed and that the artifact's evidence line is now stale-but-satisfied. Without it the reviewer meets a claim that does not reproduce and has to reconstruct why - from file mtimes and line-number drift, under a brief that forbids git. Trigger is readable: you are editing a file that an artifact currently in review quotes. Handle: append the note to the scratch before the edit is committed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 plan review round 1 HARVEST + M-1 (.superpowers/sdd/plan-9/plan-review-round-1.md): the controller added source/nature to exec-43 at 05:06, after the plan was authored at 05:04 and while it was queued for review; the reviewer found the plan's evidence line non-reproducing and had to establish by mtime comparison and ledger line-drift arithmetic that it was a post-authoring fix rather than an authoring error"}
+- id: review-briefs-ban-git-writes-not-read-only-git
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A review or implementer brief's git restriction is scoped to WRITES (commit, push, add, branch, checkout, reset); read-only git - log, show, diff, status, blame - stays available, because a blanket 'no git commands' silently removes the only way to verify an artifact's claims ABOUT history (which commit introduced a line, whether a cited commit is doc-only) and the reviewer is left substituting present-tree consequences for the claim actually made. The repo-wide convention already draws the line there; a brief that restates it more broadly is an unscoped prohibition killing the legitimate use with the illegitimate."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: decided, ref: "plan-9 plan review round 1 HARVEST boundary note (.superpowers/sdd/plan-9/plan-review-round-1.md): the plan asserted two commits were doc-only and named its own artifact commit; the reviewer could not check any of it under the brief's blanket no-git rule and said so, bounding the risk by verifying present-tree consequences instead. The controller wrote that brief clause in all four of this cycle's briefs"}
