@@ -621,7 +621,9 @@ call plus a comment mention in `lib.rs:23`; control: the same grep over
 `crates/muxsmith-cli/src` returns hits in six files - `main.rs` and
 `commands/{mod,validate,identify,dry_run,run}.rs`, measured 2026-07-28).
 `recover_panicked_worker` is the only constructor that sets `Some`; every
-other `JobOutcome` constructor the compiler flags sets `panic: None`.
+other existing `JobOutcome` constructor the compiler flags sets
+`panic: None` (the two new test fixtures this design itself pins - D99's
+unit test and D104 item 4's e2e event - are new code, not flagged sites).
 
 **Wire-contract memo (recorded here at decision time):** the serialized
 `JobOutcome` gains `panic` in: `--json` `jobs[]` entries (`run_document`),
@@ -887,10 +889,10 @@ the GUI gating, not discovered in review. That gate consequence has **no
 test coverage today**: no e2e scenario feeds `BatchView.vue` an
 error-severity config diagnostic, and none asserts `batch-run` disabled
 (the only `toBeDisabled` on an error gate is the editor Save test, a
-different view). This plan does not add one - new GUI test scenarios are
-outside the ruled scope - so the gap rides the v1.x "GUI test harness for
-the run path" ROADMAP item, and is named here rather than papered over
-with a claimed producer.
+different view). This plan does not add one - new GUI test scenarios
+beyond the ruled D23 tests (D104) are outside the ruled scope - so the gap
+rides the v1.x "GUI test harness for the run path" ROADMAP item, and is
+named here rather than papered over with a claimed producer.
 
 Tests pinned by acceptance (section 7): one validate-level assertion per
 arm (an `exact` map with key `raw:`, a `substring` map with key `raw:`,
@@ -1007,9 +1009,10 @@ producer today - no scenario resolves `load_profile` with a parse-error
 document (the only `profile: null` fixture, in `e2e/help-mode.spec.ts`,
 carries empty `config_diagnostics` and exercises the contract-violation
 `console.error` branch, not the fetch), and this plan adds none, since new
-GUI test scenarios are outside the ruled scope. The change's correctness
-rests on the singleton-envelope evidence above; coverage rides the v1.x
-"GUI test harness for the run path" ROADMAP item.
+GUI test scenarios beyond the ruled D23 tests (D104) are outside the ruled
+scope. The change's correctness rests on the singleton-envelope evidence
+above; coverage rides the v1.x "GUI test harness for the run path" ROADMAP
+item.
 
 ## D104: The D23 item ships as three mount-harness tests plus a GUI-panic render test, a widened mount glob with a reactive-props hook, and a Tier-1 ledger entry recording the correction's form
 
@@ -1492,3 +1495,18 @@ fixed, none disputed:**
   D97 (retained trivial wrapper), D100 (dedicated new GUI key), D101
   (per-arm checks instead of the shared funnel), D102 (sorting inside
   `rendered_diags`), D103 (severity-keyed fetch / `[0]` fallback).
+
+**Round 2 (2026-07-28), the round-1 delta review's two non-blocking notes;
+nothing else changed:**
+
+- **Note 1:** D98's M-3 replacement sentence gains the "existing"
+  qualifier ("every other existing `JobOutcome` constructor the compiler
+  flags sets `panic: None`") plus the parenthetical naming the two new,
+  deliberately `Some`-setting test fixtures (D99's unit test, D104 item
+  4's e2e event), removing the apparent contradiction for a reader who
+  drops the compiler-flags qualifier.
+- **Note 2:** the general clause "new GUI test scenarios are outside the
+  ruled scope" scoped at both named sites (D101's consequence paragraph,
+  D103's coverage paragraph) to "new GUI test scenarios beyond the ruled
+  D23 tests (D104)", removing the tension with D104's three ruled-IN
+  scenarios; acceptance 5's already-correctly-scoped instance untouched.
