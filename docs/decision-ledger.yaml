@@ -4632,3 +4632,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 plan amendment 2 delta review, finding A2-1 (.superpowers/sdd/plan-9/plan-review-round-1.md): the controller recorded the e2e name()-helper trigger as FIRED because Plan 9 creates a new e2e spec file, having read the condition as far as 'a FOURTH e2e spec file'. Its remaining clause is 'needs the local name() helper', and the plan's own step says the new spec uses testid and role selectors and consumes nothing; nine spec files exist today, so the count was wrong too - the trigger's 'fourth' counts helper copies, of which there are three. The owner had independently ruled the hoist done now, so the work stands on his ruling; the tracker note was corrected from fired to consumed-early"}
+- id: a-spec-amendment-sweeps-the-code-that-cites-that-section
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a design or plan amendment replaces a sentence in the spec, the SAME change greps the code for comments citing that spec section and carries the ripples into the amendment's file list. A spec-section citation drifts in the opposite direction from a file:line citation: the coordinate stays valid while the document under it changes, so nothing about the citing line looks stale and no reader is prompted to check it. Trigger is readable: you are writing a spec-amendment entry. Handle: one grep per amendment for the section number over the source tree, at design time, while adding the hit to a task's file list is still free. This duty belongs to the amendment's author, not to the implementer, because only the author knows which sentence is being replaced."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 1 verdict MEDIUM-1 + HARVEST (.superpowers/sdd/plan-9/task-1-verdict.md): the owner-ruled S-8 amendment replaced spec 5.5's identification-cache sentence, and crates/muxsmith-core/src/identify.rs:388 kept citing it as 'The per-session identification cache (spec 5.5)' - the last per-session claim in the tree, contradicting the spec the same commit wrote. `grep -rn 'spec 5.5' crates src-tauri src` would have found it at design time. The reviewer also logs it as over-restriction calibration: an EXHAUSTIVE file list plus a blanket no-change bullet cannot express 'and the one-line ripples of your own amendment', so the implementer correctly surfaced instead of fixing and the correction cost a licensed fix round"}

@@ -997,6 +997,28 @@ polish entry.
   adjudication verdict). Four re-deferrals below (v1.x + Triggers).
 - **Worker-panic handling + mutex-poison hygiene (Plan-4 T3 minor)**: DONE 2026-07-12 (Plan 5.5 T4 + whole-branch killer-invoke fix; poison recovery centralized incl. AppState.active).
 
+## Gate: rustdoc does not link-check private modules
+
+Measured 2026-07-28 (Plan 9 Task 1 review, HARVEST): gate part 4
+(`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`) skips the docs
+of private items, and `src-tauri` puts `run`, `error` and `settings` behind
+private `mod` declarations - so a dangling intra-doc link in any of them
+passes every gate run and every CI leg. The task's own LOW-2 was exactly
+that: an import removal left `[`plan_batch`]` unresolvable at
+`src-tauri/src/run.rs:359` and nothing could see it.
+
+The fix is one flag: `--document-private-items` on the doc step, in
+BUILDING.md's gate block. Its cost today is measured and zero beyond the one
+line already being fixed - with the flag, the whole workspace holds exactly
+one unresolved link, the one Task 1's fix round removes.
+
+**Deliberately NOT done mid-plan**, because the plan quotes the ten-part gate
+verbatim in its Global Constraints and every task's verification cites it;
+changing the gate under a running plan would fork the contract every task
+executes against. **Vehicle: done at the Plan 9 close**, in the same pass as
+the close actions, or by whichever plan next touches BUILDING.md - whichever
+comes first.
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML
