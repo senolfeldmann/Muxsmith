@@ -15,7 +15,8 @@ use crate::i18n::Renderer;
 
 /// The one error-first ordering definition, hoisted to core (D102) and
 /// re-exported here so every `crate::commands::severity_sorted` call site
-/// -- the human printing paths this crate owns -- is unchanged.
+/// -- this crate's human printing paths and `validate`'s own `--json`
+/// envelope -- is unchanged.
 pub(crate) use muxsmith_core::report::severity_sorted;
 
 /// Maps the worst severity present (`None` for no diagnostics at all) to

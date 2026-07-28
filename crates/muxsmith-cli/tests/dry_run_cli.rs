@@ -443,6 +443,10 @@ tracks:
     // Planning ran, so this document came from `batch_document`, not the
     // config-only shape: `files` is present and `mkvmerge_found` absent.
     assert!(
+        report.get("files").is_some_and(|f| f.is_array()),
+        "expected a planned batch document with a files array, got: {report}"
+    );
+    assert!(
         report.get("mkvmerge_found").is_none(),
         "expected a planned batch document, got: {report}"
     );
