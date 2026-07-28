@@ -5,10 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use muxsmith_core::capability::runtime::Mkvmerge;
-use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
-use muxsmith_core::planner::{RunInputs, plan_batch};
+use muxsmith_core::pipeline::{PipelineOutcome, plan_pipeline};
 use muxsmith_core::profile::model::CollisionPolicy;
-use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::json::{batch_document, config_only_document};
 
 use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
@@ -16,17 +14,13 @@ use crate::i18n::Renderer;
 
 /// Runs `muxsmith dry-run`. Returns the mkvmerge-style exit code.
 ///
-/// Spec 5.5: dry-run is a strict superset of `validate`, never a subset. It
-/// runs the config-time static validate pass FIRST (the same
-/// `validate::validate` + `lint::provable_overlaps` collection `validate`
-/// runs), then a full planning pass, and folds both diagnostic sets into one
-/// report; the exit code reflects the worst severity across all of them.
-/// Exception: if mkvmerge cannot be located, planning never runs (it needs
-/// mkvmerge for identification). The config-time diagnostics are still
-/// surfaced even then, so the superset-of-validate guarantee holds
-/// unconditionally, but the exit code is the mkvmerge-not-found failure (2)
-/// outright rather than a severity fold, since there is nothing else to
-/// fold in.
+/// Planning itself is the shared core seam
+/// ([`muxsmith_core::pipeline::plan_pipeline`], which carries spec 5.5's
+/// superset-of-`validate` guarantee and its rationale); everything below is
+/// this surface's presentation of the outcome. The exit code reflects the
+/// worst severity across the config-time and planning diagnostics, except on
+/// the pre-planning failures, which return the mkvmerge failure (2) outright
+/// rather than a severity fold, since there is nothing else to fold in.
 pub fn run(
     profile_path: &Path,
     source: Option<PathBuf>,
@@ -35,37 +29,21 @@ pub fn run(
     json: bool,
     renderer: &Renderer,
 ) -> i32 {
-    let profile = match load::from_file(profile_path) {
-        Ok(p) => p,
-        Err(d) => {
-            // Load failure never reaches the config-time validate pass or
-            // the mkvmerge lookup, but the `--json` contract still holds:
-            // stdout carries exactly one JSON document. json mode folds
-            // this single diagnostic into the same config-only shape the
+    match plan_pipeline(profile_path, source, output, on_collision, Mkvmerge::locate) {
+        PipelineOutcome::LoadFailed { diagnostic } => {
+            // The `--json` contract still holds on a load failure: stdout
+            // carries exactly one JSON document. json mode folds this single
+            // diagnostic into the same config-only shape the
             // mkvmerge-not-found branch below builds (mirrors validate.rs's
             // `Err(d) => vec![d]` fold); human mode is unchanged.
             if json {
-                println!("{}", config_only_document(&[d], None, renderer));
+                println!("{}", config_only_document(&[diagnostic], None, renderer));
             } else {
-                println!("{}", renderer.diagnostic(&d));
+                println!("{}", renderer.diagnostic(&diagnostic));
             }
-            return 2;
+            2
         }
-    };
-
-    // Config-time validate pass (spec 5.5, level 1); needs no filesystem
-    // access beyond the profile itself, so it runs before the mkvmerge
-    // lookup below.
-    let mut config_diags = validate::validate(&profile);
-    config_diags.extend(lint::provable_overlaps(&profile));
-
-    let mkv = match Mkvmerge::locate() {
-        Ok(m) => m,
-        Err(_) => {
-            // mkvmerge missing blocks the planning pass entirely, but the
-            // config-time pass above already ran; spec 5.5 requires dry-run
-            // to stay a strict superset of `validate` even on this path, so
-            // those diagnostics are surfaced here rather than dropped.
+        PipelineOutcome::MkvmergeUnavailable { config_diags } => {
             if json {
                 println!(
                     "{}",
@@ -77,21 +55,13 @@ pub fn run(
                 }
                 eprintln!("{}", renderer.msg("mkvmerge-not-found", &[]));
             }
-            return 2;
+            2
         }
-    };
-    let lang = match mkv.list_languages() {
-        Ok(l) => l,
-        Err(_) => {
-            // mkvmerge was located but querying it failed (a broken
-            // installation): planning never runs here either, so json mode
-            // gets the same config-only document shape the locate()-failure
-            // branch above builds, but with `mkvmerge_found: true` - the
-            // binary WAS found, only the query failed. Human mode surfaces the
-            // config-time diagnostics on stdout before the failure line, the
-            // same as the locate()-failure branch: spec 5.5's superset-of-
-            // validate guarantee is unconditional, so this pre-planning path
-            // must not drop them (item vii).
+        PipelineOutcome::QueryFailed { config_diags } => {
+            // json mode gets the same config-only document shape the
+            // mkvmerge-not-found branch above builds, but with
+            // `mkvmerge_found: true` - the binary WAS found, only the query
+            // failed.
             if json {
                 println!(
                     "{}",
@@ -103,29 +73,26 @@ pub fn run(
                 }
                 eprintln!("{}", renderer.msg("mkvmerge-query-failed", &[]));
             }
-            return 2;
+            2
         }
-    };
-    let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
-    let run = RunInputs {
-        source: source_dir,
-        output,
-        on_collision,
-    };
-
-    let mut ident = LiveIdentifier {
-        cache: IdentifyCache::new(),
-        mkv: &mkv,
-    };
-    let batch = plan_batch(&profile, &run, &mut ident, &lang);
-
-    if json {
-        println!("{}", batch_document(&config_diags, &batch, renderer));
-    } else {
-        for d in severity_sorted(&config_diags) {
-            println!("{}", renderer.diagnostic(d));
+        PipelineOutcome::Planned(planned) => {
+            if json {
+                println!(
+                    "{}",
+                    batch_document(&planned.config_diags, &planned.batch, renderer)
+                );
+            } else {
+                for d in severity_sorted(&planned.config_diags) {
+                    println!("{}", renderer.diagnostic(d));
+                }
+                print_batch_human(
+                    &planned.batch,
+                    &planned.source,
+                    &planned.profile.input.extensions,
+                    renderer,
+                );
+            }
+            diag_exit_code(&planned.config_diags, &planned.batch)
         }
-        print_batch_human(&batch, &run.source, &profile.input.extensions, renderer);
     }
-    diag_exit_code(&config_diags, &batch)
 }

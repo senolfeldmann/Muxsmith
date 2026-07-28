@@ -308,7 +308,7 @@ One code path, three entry points:
 2. **dry-run**: the config-time static validate pass (level 1) FIRST, then a full planning pass over the batch; produces the report (config-time diagnostics + per-file resolution tables + all planning diagnostics + suggestions). dry-run is a strict superset of validate, never a subset. No mkvmerge mux invocations, only `-J` identification.
 3. **run**: re-plans immediately before execution (identification is cheap and cached; a dry run can never be stale), then executes plans. Any error-severity diagnostic for a file skips that file, reported identically to the dry run.
 
-Identification cache: in-memory per session, keyed on path + mtime + size, shared between dry-run and run. On-disk cache is a future candidate.
+Identification cache: in-memory, keyed on path + mtime + size, constructed per planning call and dropped with it. One call identifies each unchanged file once (run plans and executes within a single call, so its planning pass and the suggestion engine's re-simulations share one cache); separate calls re-identify, so a GUI dry-run followed by a run spawns `mkvmerge -J` per file in each (a per-session shared cache was ruled out 2026-07-28 as unnecessary). In the CLI, call and process coincide. On-disk cache is a future candidate.
 
 ## 6. Command generation and execution
 
@@ -340,6 +340,7 @@ Muxsmith/
 | `identify` | `mkvmerge -J` wrapper + cache |
 | `matcher` | pure match-expression evaluation |
 | `planner` | per-file resolution, batch report, suggestion engine |
+| `pipeline` | the shared planning pipeline (load -> validate funnel -> resolve mkvmerge -> identify -> plan) every surface calls: the injectable planner seam; also derives executable job specs from a planned batch |
 | `template` | template engine, both render modes |
 | `command` | `Plan -> Vec<String>` |
 | `executor` | process spawn, progress parse, cancellation, job states |

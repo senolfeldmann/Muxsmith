@@ -63,13 +63,14 @@ pub fn batch_document(
 /// this a valid JSON document (not plain text on stderr) and dry-run/run a
 /// superset of `validate` even on these paths.
 ///
-/// `mkvmerge_found` flags, for JSON consumers, whether mkvmerge's presence
-/// was actually established: `Some(false)` on the mkvmerge-not-found path
-/// (the lookup ran and failed, and the JSON consumer cannot otherwise
-/// distinguish this from any other error-severity report); `Some(true)` on
-/// the mkvmerge-query-failed path (the binary was found, only the
-/// subsequent query failed); `None` (the key is absent from the document)
-/// on a profile-load failure, where the lookup never ran at all and
+/// `mkvmerge_found` carries one meaning on every surface (D92), where
+/// "usable" is defined by the resolver the surface injects into the shared
+/// pipeline seam (D91): `false` = the surface's resolver produced no usable
+/// mkvmerge for planning -- for the CLI, PATH lookup failed or the found
+/// binary could not answer `--version`; for the GUI, the detect ladder
+/// failed for any reason including `TooOld`. `true` = a usable mkvmerge
+/// resolved and the subsequent `list_languages` query failed. The key stays
+/// absent on a profile-load failure, where the lookup never ran at all and
 /// asserting either value would claim a fact never established.
 ///
 /// Consumed by both dry-run and run for their identical mkvmerge-missing /

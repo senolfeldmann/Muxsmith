@@ -37,16 +37,13 @@ use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use muxsmith_core::capability::runtime::Mkvmerge;
-use muxsmith_core::command::command;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec};
 use muxsmith_core::executor::joblog::{
     RunLogger, default_runs_root, make_run_id, run_id_timestamp,
 };
 use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
 use muxsmith_core::executor::spawn::{LiveSpawner, Spawn};
-use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
-use muxsmith_core::planner::{RunInputs, plan_batch};
-use muxsmith_core::profile::{lint, load, validate};
+use muxsmith_core::pipeline::{self, PipelineOutcome, plan_pipeline};
 use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
 
 use crate::AppState;
@@ -251,20 +248,22 @@ fn plan_run(
     let mkvmerge_override = crate::load_settings_from(settings_path.as_deref())?.mkvmerge_path;
 
     let profile_path = PathBuf::from(profile);
-    let profile = match load::from_file(&profile_path) {
-        Ok(p) => p,
-        Err(d) => {
-            let doc = run_document(config_only_document(&[d], None, &ShellRenderer), &[], &[]);
+    let planned = match plan_pipeline(
+        &profile_path,
+        source.map(PathBuf::from),
+        output.map(PathBuf::from),
+        None,
+        || Mkvmerge::detect(mkvmerge_override.as_deref().map(Path::new)),
+    ) {
+        PipelineOutcome::LoadFailed { diagnostic } => {
+            let doc = run_document(
+                config_only_document(&[diagnostic], None, &ShellRenderer),
+                &[],
+                &[],
+            );
             return Ok(PlanOutcome::Soft(doc));
         }
-    };
-
-    let mut config_diags = validate::validate(&profile);
-    config_diags.extend(lint::provable_overlaps(&profile));
-
-    let mkv = match Mkvmerge::detect(mkvmerge_override.as_deref().map(Path::new)) {
-        Ok(m) => m,
-        Err(_) => {
+        PipelineOutcome::MkvmergeUnavailable { config_diags } => {
             let doc = run_document(
                 config_only_document(&config_diags, Some(false), &ShellRenderer),
                 &[],
@@ -272,10 +271,7 @@ fn plan_run(
             );
             return Ok(PlanOutcome::Soft(doc));
         }
-    };
-    let lang = match mkv.list_languages() {
-        Ok(l) => l,
-        Err(_) => {
+        PipelineOutcome::QueryFailed { config_diags } => {
             let doc = run_document(
                 config_only_document(&config_diags, Some(true), &ShellRenderer),
                 &[],
@@ -283,33 +279,12 @@ fn plan_run(
             );
             return Ok(PlanOutcome::Soft(doc));
         }
+        PipelineOutcome::Planned(planned) => planned,
     };
+    let config_diags = planned.config_diags;
+    let batch = planned.batch;
 
-    let run_inputs = RunInputs {
-        source: source
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(".")),
-        output: output.map(PathBuf::from),
-        on_collision: None,
-    };
-    let mut ident = LiveIdentifier {
-        cache: IdentifyCache::new(),
-        mkv: &mkv,
-    };
-    let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
-
-    // Error-severity files already carry `plan: None` (spec 5.1); this
-    // filter_map is also the "does this file get muxed" gate, exactly like
-    // the CLI's `run` command (no shell-side planning logic).
-    let specs: Vec<JobSpec> = batch
-        .files
-        .iter()
-        .filter_map(|f| f.plan.as_ref())
-        .map(|p| JobSpec {
-            argv: command(p),
-            output: p.output.clone(),
-        })
-        .collect();
+    let specs = pipeline::job_specs(&batch);
 
     if specs.is_empty() {
         let doc = run_document(
@@ -330,7 +305,7 @@ fn plan_run(
         .iter()
         .map(|s| s.output.display().to_string())
         .collect();
-    let mkv_path = mkv.path().to_path_buf();
+    let mkv_path = planned.mkv.path().to_path_buf();
 
     Ok(PlanOutcome::Ready(Box::new(ReadyPlan {
         run_id,

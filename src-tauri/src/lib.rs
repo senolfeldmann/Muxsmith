@@ -28,9 +28,10 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use muxsmith_core::capability::runtime::Mkvmerge;
-use muxsmith_core::identify::{Identification, IdentifyCache, LiveIdentifier};
-use muxsmith_core::planner::{self, RunInputs, StructuredEdit, plan_batch};
-use muxsmith_core::profile::{Profile, lint, load, save, validate};
+use muxsmith_core::identify::{Identification, IdentifyCache};
+use muxsmith_core::pipeline::{PipelineOutcome, plan_pipeline};
+use muxsmith_core::planner::{self, StructuredEdit};
+use muxsmith_core::profile::{Profile, load, save, validate};
 use muxsmith_core::report;
 use serde::Serialize;
 use tauri::State;
@@ -179,11 +180,10 @@ fn validate_profile_body(path: &Path) -> serde_json::Value {
     report::json::config_only_document(&diags, None, &ShellRenderer)
 }
 
-/// `dry_run`'s command body (testable without a Tauri runtime): mirrors
-/// `muxsmith-cli`'s `dry-run` orchestration (load -> config-time validate
-/// -> resolve mkvmerge -> `list_languages` -> `plan_batch` -> assemble
-/// document, `muxsmith-cli/src/commands/dry_run.rs`) with one deliberate
-/// substitution -- [`Mkvmerge::detect`] (override + PATH + platform
+/// `dry_run`'s command body (testable without a Tauri runtime): the shared
+/// core planning pipeline ([`plan_pipeline`], spec 5.5) mapped to this
+/// surface's document shapes, with one deliberate substitution the seam
+/// takes as a parameter -- [`Mkvmerge::detect`] (override + PATH + platform
 /// candidates, D28) in place of the CLI's PATH-only [`Mkvmerge::locate`] --
 /// so a GUI user's configured mkvmerge override (`AppSettings::mkvmerge_path`)
 /// is honored here exactly as it is by `detect_mkvmerge`, not only at
@@ -202,44 +202,22 @@ fn dry_run_body(
     output: Option<PathBuf>,
     mkvmerge_override: Option<&Path>,
 ) -> serde_json::Value {
-    let profile = match load::from_file(profile_path) {
-        Ok(p) => p,
-        Err(d) => return report::json::config_only_document(&[d], None, &ShellRenderer),
-    };
-
-    let mut config_diags = validate::validate(&profile);
-    config_diags.extend(lint::provable_overlaps(&profile));
-
-    let mkv = match Mkvmerge::detect(mkvmerge_override) {
-        Ok(m) => m,
-        Err(_) => {
-            return report::json::config_only_document(&config_diags, Some(false), &ShellRenderer);
+    match plan_pipeline(profile_path, source, output, None, || {
+        Mkvmerge::detect(mkvmerge_override)
+    }) {
+        PipelineOutcome::LoadFailed { diagnostic } => {
+            report::json::config_only_document(&[diagnostic], None, &ShellRenderer)
         }
-    };
-    let lang = match mkv.list_languages() {
-        Ok(l) => l,
-        Err(_) => {
-            return report::json::config_only_document(&config_diags, Some(true), &ShellRenderer);
+        PipelineOutcome::MkvmergeUnavailable { config_diags } => {
+            report::json::config_only_document(&config_diags, Some(false), &ShellRenderer)
         }
-    };
-
-    // No natural "current directory" for a bundled desktop app, but kept
-    // for parity with the CLI's own fallback (dry_run.rs); in practice the
-    // batch view (T10) always supplies an explicit source directory via
-    // its dir picker before calling this command.
-    let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
-    let run = RunInputs {
-        source: source_dir,
-        output,
-        on_collision: None,
-    };
-    let mut ident = LiveIdentifier {
-        cache: IdentifyCache::new(),
-        mkv: &mkv,
-    };
-    let batch = plan_batch(&profile, &run, &mut ident, &lang);
-
-    report::json::batch_document(&config_diags, &batch, &ShellRenderer)
+        PipelineOutcome::QueryFailed { config_diags } => {
+            report::json::config_only_document(&config_diags, Some(true), &ShellRenderer)
+        }
+        PipelineOutcome::Planned(planned) => {
+            report::json::batch_document(&planned.config_diags, &planned.batch, &ShellRenderer)
+        }
+    }
 }
 
 /// The `identify` command's JSON shape: mirrors `muxsmith-cli`'s

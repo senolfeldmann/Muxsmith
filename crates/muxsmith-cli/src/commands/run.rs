@@ -9,15 +9,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
 use muxsmith_core::capability::runtime::Mkvmerge;
-use muxsmith_core::command::command;
 use muxsmith_core::executor::job::{JobOutcome, JobSpec, JobState};
 use muxsmith_core::executor::joblog::{RunLogger, default_runs_root, make_run_id};
 use muxsmith_core::executor::queue::{JobEvent, QueueControl, QueueOpts, run_queue};
 use muxsmith_core::executor::spawn::LiveSpawner;
-use muxsmith_core::identify::{IdentifyCache, LiveIdentifier};
-use muxsmith_core::planner::{RunInputs, plan_batch};
+use muxsmith_core::pipeline::{self, PipelineOutcome, PlannedPipeline, plan_pipeline};
 use muxsmith_core::profile::model::CollisionPolicy;
-use muxsmith_core::profile::{lint, load, validate};
 use muxsmith_core::report::json::{batch_document, config_only_document, run_document};
 
 use crate::commands::{diag_exit_code, print_batch_human, severity_sorted};
@@ -40,12 +37,12 @@ const MILESTONES: [u8; 3] = [25, 50, 75];
 /// in-flight jobs, partials are deleted, the summary still prints) and
 /// force-exits on a second SIGINT during cleanup.
 ///
-/// Spec 5.5 level 3: identical to `dry-run` through `plan_batch` (re-plans
-/// from scratch immediately before executing, never reuses a stale
-/// dry-run), printing that planning report in exactly dry-run's human
-/// format first. If nothing plans cleanly enough to mux, the batch is
-/// folded and the function returns exactly like `dry-run` would, without
-/// ever touching the queue.
+/// Spec 5.5 level 3: identical to `dry-run` through the shared core seam
+/// ([`muxsmith_core::pipeline::plan_pipeline`]; re-plans from scratch
+/// immediately before executing, never reuses a stale dry-run), printing
+/// that planning report in exactly dry-run's human format first. If nothing
+/// plans cleanly enough to mux, the batch is folded and the function returns
+/// exactly like `dry-run` would, without ever touching the queue.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     profile_path: &Path,
@@ -57,13 +54,12 @@ pub fn run(
     json: bool,
     renderer: &Renderer,
 ) -> i32 {
-    let profile = match load::from_file(profile_path) {
-        Ok(p) => p,
-        Err(d) => {
-            // Load failure never reaches the config-time validate pass or
-            // the mkvmerge lookup, but the `--json` contract still holds:
-            // stdout carries exactly one JSON document. json mode folds
-            // this single diagnostic into the same config-only,
+    let planned = match plan_pipeline(profile_path, source, output, on_collision, Mkvmerge::locate)
+    {
+        PipelineOutcome::LoadFailed { diagnostic } => {
+            // The `--json` contract still holds on a load failure: stdout
+            // carries exactly one JSON document. json mode folds this single
+            // diagnostic into the same config-only,
             // empty-jobs/zeroed-summary shape the mkvmerge-not-found branch
             // below builds (mirrors validate.rs's `Err(d) => vec![d]`
             // fold), minus `mkvmerge_found` itself: the lookup never ran on
@@ -72,25 +68,21 @@ pub fn run(
             if json {
                 println!(
                     "{}",
-                    run_document(config_only_document(&[d], None, renderer), &[], &[])
+                    run_document(
+                        config_only_document(&[diagnostic], None, renderer),
+                        &[],
+                        &[]
+                    )
                 );
             } else {
-                println!("{}", renderer.diagnostic(&d));
+                println!("{}", renderer.diagnostic(&diagnostic));
             }
             return 2;
         }
-    };
-
-    let mut config_diags = validate::validate(&profile);
-    config_diags.extend(lint::provable_overlaps(&profile));
-
-    let mkv = match Mkvmerge::locate() {
-        Ok(m) => m,
-        Err(_) => {
-            // Planning never runs without mkvmerge, so json mode gets the
-            // same superset-of-validate document dry-run builds for this
-            // path (D15): config diagnostics surfaced, everything else
-            // empty, `mkvmerge_found: false`.
+        PipelineOutcome::MkvmergeUnavailable { config_diags } => {
+            // json mode gets the same superset-of-validate document dry-run
+            // builds for this path (D15): config diagnostics surfaced,
+            // everything else empty, `mkvmerge_found: false`.
             if json {
                 println!(
                     "{}",
@@ -108,20 +100,11 @@ pub fn run(
             }
             return 2;
         }
-    };
-    let lang = match mkv.list_languages() {
-        Ok(l) => l,
-        Err(_) => {
-            // mkvmerge was located but querying it failed (a broken
-            // installation): planning never runs here either, so json mode
-            // gets the same config-only, empty-jobs/zeroed-summary document
-            // shape the locate()-failure branch above builds, but with
-            // `mkvmerge_found: true` - the binary WAS found, only the query
-            // failed. Human mode surfaces the config-time diagnostics on
-            // stdout before the failure line, the same as the locate()-failure
-            // branch: spec 5.5's superset-of-validate guarantee is
-            // unconditional, so this pre-planning path must not drop them
-            // (item vii). The queue is never touched.
+        PipelineOutcome::QueryFailed { config_diags } => {
+            // json mode gets the same config-only, empty-jobs/zeroed-summary
+            // document shape the mkvmerge-not-found branch above builds, but
+            // with `mkvmerge_found: true` - the binary WAS found, only the
+            // query failed. The queue is never touched.
             if json {
                 println!(
                     "{}",
@@ -139,43 +122,24 @@ pub fn run(
             }
             return 2;
         }
+        PipelineOutcome::Planned(planned) => planned,
     };
-    let source_dir = source.unwrap_or_else(|| PathBuf::from("."));
-    let run_inputs = RunInputs {
+    let PlannedPipeline {
+        config_diags,
+        batch,
+        profile,
         source: source_dir,
-        output,
-        on_collision,
-    };
-
-    let mut ident = LiveIdentifier {
-        cache: IdentifyCache::new(),
-        mkv: &mkv,
-    };
-    let batch = plan_batch(&profile, &run_inputs, &mut ident, &lang);
+        mkv,
+    } = *planned;
 
     if !json {
         for d in severity_sorted(&config_diags) {
             println!("{}", renderer.diagnostic(d));
         }
-        print_batch_human(
-            &batch,
-            &run_inputs.source,
-            &profile.input.extensions,
-            renderer,
-        );
+        print_batch_human(&batch, &source_dir, &profile.input.extensions, renderer);
     }
 
-    // error-severity files already carry `plan: None` (spec 5.1), so this
-    // filter_map is also the "does this file get muxed" gate.
-    let specs: Vec<JobSpec> = batch
-        .files
-        .iter()
-        .filter_map(|f| f.plan.as_ref())
-        .map(|p| JobSpec {
-            argv: command(p),
-            output: p.output.clone(),
-        })
-        .collect();
+    let specs = pipeline::job_specs(&batch);
 
     if specs.is_empty() {
         // Nothing plans cleanly enough to mux: fold and exit exactly like
