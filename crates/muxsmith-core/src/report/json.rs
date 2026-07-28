@@ -12,7 +12,7 @@
 
 use crate::executor::job::{JobOutcome, JobState};
 use crate::planner::{Batch, Plan};
-use crate::report::Diagnostic;
+use crate::report::{Diagnostic, severity_sorted};
 
 /// Renders one [`Diagnostic`] to a single human-readable line, for the
 /// `"rendered"` field every document in this module attaches to each
@@ -28,6 +28,15 @@ pub trait DiagnosticRenderer {
 /// Builds the `--json` report (spec 5.2): the raw [`Batch`] plus the
 /// config-time diagnostics, with a `"rendered"` message string attached to
 /// every diagnostic (config-time, batch-level, and per-file alike).
+///
+/// `config_diagnostics` is emitted errors-first via
+/// [`crate::report::severity_sorted`] (D102), so every surface that builds a
+/// document here -- CLI `--json` and each GUI command alike -- agrees with
+/// `validate`'s own sorted envelope instead of leaking the caller's
+/// collection order. The per-file `diagnostics` arrays and
+/// `batch_diagnostics` deliberately keep collection order: the ruling names
+/// `config_diagnostics`, and per-file order carries resolution meaning in
+/// the human dry-run rendering.
 ///
 /// Consumed verbatim as the base of `run`'s own `--json` document (spec
 /// 5.5, D15; see [`run_document`]), and by dry-run directly; the GUI's
@@ -49,8 +58,12 @@ pub fn batch_document(
             })
         })
         .collect();
+    let config_diagnostics: Vec<serde_json::Value> = severity_sorted(config_diags)
+        .into_iter()
+        .map(|d| rendered_diag(d, renderer))
+        .collect();
     serde_json::json!({
-        "config_diagnostics": rendered_diags(config_diags, renderer),
+        "config_diagnostics": config_diagnostics,
         "files": files,
         "batch_diagnostics": rendered_diags(&batch.batch_diagnostics, renderer),
         "suggestions": batch.suggestions,
@@ -73,6 +86,9 @@ pub fn batch_document(
 /// absent on a profile-load failure, where the lookup never ran at all and
 /// asserting either value would claim a fact never established.
 ///
+/// `config_diagnostics` is emitted errors-first, exactly as in
+/// [`batch_document`] and for the same reason (D102).
+///
 /// Consumed by both dry-run and run for their identical mkvmerge-missing /
 /// query-failed / profile-load-failure paths (spec 5.5, D15), which all
 /// need this same superset-of-validate guarantee.
@@ -81,8 +97,12 @@ pub fn config_only_document(
     mkvmerge_found: Option<bool>,
     renderer: &dyn DiagnosticRenderer,
 ) -> serde_json::Value {
+    let config_diagnostics: Vec<serde_json::Value> = severity_sorted(config_diags)
+        .into_iter()
+        .map(|d| rendered_diag(d, renderer))
+        .collect();
     let mut doc = serde_json::json!({
-        "config_diagnostics": rendered_diags(config_diags, renderer),
+        "config_diagnostics": config_diagnostics,
         "files": [],
         "batch_diagnostics": [],
         "suggestions": [],
@@ -172,18 +192,26 @@ fn plan_value(plan: &Option<Plan>) -> serde_json::Value {
     }
 }
 
+/// Maps ONE diagnostic to its JSON value with a `"rendered"` field injected
+/// (mirrors `validate`'s own `--json` rendering, spec 5.2). The single
+/// per-diagnostic mapping in this crate: [`rendered_diags`] applies it to
+/// the arrays that keep collection order, and the two builders apply it to
+/// their `severity_sorted` iteration, so sorting a document's
+/// `config_diagnostics` needs no second rendering implementation (D102).
+fn rendered_diag(d: &Diagnostic, renderer: &dyn DiagnosticRenderer) -> serde_json::Value {
+    let mut v = serde_json::to_value(d).unwrap();
+    v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
+    v
+}
+
 /// Maps each diagnostic to its JSON value with a `"rendered"` field
-/// injected (mirrors `validate`'s own `--json` rendering, spec 5.2).
+/// injected, in the given order. Used for the arrays that stay in
+/// collection order (per-file `diagnostics`, `batch_diagnostics`) and by
+/// the CLI's `validate`, which sorts its own flat envelope before calling
+/// this (D102).
 pub fn rendered_diags(
     diags: &[Diagnostic],
     renderer: &dyn DiagnosticRenderer,
 ) -> Vec<serde_json::Value> {
-    diags
-        .iter()
-        .map(|d| {
-            let mut v = serde_json::to_value(d).unwrap();
-            v["rendered"] = serde_json::Value::String(renderer.diagnostic(d));
-            v
-        })
-        .collect()
+    diags.iter().map(|d| rendered_diag(d, renderer)).collect()
 }

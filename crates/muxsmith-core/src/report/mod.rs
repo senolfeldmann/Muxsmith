@@ -1,6 +1,7 @@
 //! Diagnostics as data. Core never produces user-facing prose; renderers
 //! (CLI, GUI) map `DiagCode::key()` + `params` to Fluent messages.
 
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -304,6 +305,16 @@ pub fn worst_severity(diags: &[Diagnostic]) -> Option<Severity> {
     diags.iter().map(|d| d.severity).max()
 }
 
+/// Diagnostics in error-first order (Severity is Info < Warning < Error,
+/// so Reverse puts errors first), stable within a severity: ties keep the
+/// caller's collection order (validate's traversal order, then the
+/// overlap lints appended by config_diagnostics).
+pub fn severity_sorted(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+    let mut sorted: Vec<&Diagnostic> = diags.iter().collect();
+    sorted.sort_by_key(|d| Reverse(d.severity));
+    sorted
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,6 +360,27 @@ mod tests {
         ];
         assert_eq!(worst_severity(&diags), Some(Severity::Error));
         assert_eq!(worst_severity(&[]), None);
+    }
+
+    #[test]
+    fn severity_sorted_orders_errors_first_stable_within_severity() {
+        // D102's pinned contract, discriminating on both halves at once:
+        // [info A, error B, warning C, error D] -> [B, D, C, A] proves
+        // errors-first AND that the equal-severity pair keeps its
+        // collection order (B before D), which `sort_by_key`'s stability
+        // guarantees and an unstable sort would be free to swap.
+        let diags = vec![
+            Diagnostic::info(DiagCode::IgnoredFile, "A"),
+            Diagnostic::error(DiagCode::InvalidRegex, "B"),
+            Diagnostic::warning(DiagCode::ProvableOverlap, "C"),
+            Diagnostic::error(DiagCode::UnknownProperty, "D"),
+        ];
+        let order: Vec<&str> = severity_sorted(&diags)
+            .iter()
+            .map(|d| d.config_path.as_str())
+            .collect();
+        assert_eq!(order, ["B", "D", "C", "A"]);
+        assert_eq!(severity_sorted(&[]).len(), 0);
     }
 
     #[test]

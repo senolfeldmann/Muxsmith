@@ -319,6 +319,151 @@ fn dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing() {
     assert_eq!(report["mkvmerge_found"], false);
 }
 
+/// D102 / acceptance observable 6, the subprocess emitter: `dry-run --json`
+/// and `validate --json` agree on `config_diagnostics` ordering, because the
+/// sort now lives in core's two document builders instead of only in
+/// `validate`'s own path (`cli-08-config-diags-json-ordering`). The fixture
+/// discriminates by construction: its collection order is info
+/// (`raw-property`), warning (`raw-on-known-property`), error, error, so an
+/// unsorted side cannot match a sorted one. Both errors come from the same
+/// rule, which pins the stable-tie half too. Shares
+/// [`dry_run_json_surfaces_config_diagnostics_when_mkvmerge_missing`]'s
+/// PATH idiom, so it does not depend on `have_mkvmerge()`.
+#[test]
+fn dry_run_and_validate_json_agree_on_config_diagnostics_ordering() {
+    let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { raw:x: 1 } }
+    - match: { exact: { raw:language: de } }
+    - match: { regex: { title: '[' } }
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("mixed-severity.yaml");
+    std::fs::write(&profile, y).unwrap();
+
+    let no_mkvmerge_path = empty_path_dir();
+    let dry_run = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .env("PATH", no_mkvmerge_path.path())
+    .output()
+    .unwrap();
+    let validate = support::muxsmith(&["validate", profile.to_str().unwrap(), "--json"])
+        .env("PATH", no_mkvmerge_path.path())
+        .output()
+        .unwrap();
+
+    let parse = |out: &std::process::Output, what: &str| -> serde_json::Value {
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+            panic!(
+                "{what} json ({e}), exit {:?}, stderr: {}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr)
+            )
+        })
+    };
+    let codes = |diags: &serde_json::Value, what: &str| -> Vec<String> {
+        diags
+            .as_array()
+            .unwrap_or_else(|| panic!("{what} must be an array, got: {diags}"))
+            .iter()
+            .map(|d| d["code"].as_str().expect("diagnostic code").to_string())
+            .collect()
+    };
+
+    let dry_run_report = parse(&dry_run, "dry-run");
+    let validate_report = parse(&validate, "validate");
+    let dry_run_codes = codes(&dry_run_report["config_diagnostics"], "config_diagnostics");
+    let validate_codes = codes(&validate_report["diagnostics"], "diagnostics");
+
+    assert_eq!(
+        dry_run_codes, validate_codes,
+        "dry-run and validate must order the same diagnostics identically"
+    );
+    assert_eq!(
+        &dry_run_codes[..2],
+        ["unknown-property", "invalid-regex"],
+        "the two error-severity codes come first, in collection order: {dry_run_codes:?}"
+    );
+}
+
+/// The `batch_document` half of the same D102 change. The parity test above
+/// forces the no-mkvmerge path, which builds `config_only_document`; the
+/// OTHER builder - the one every successful dry-run and every GUI report
+/// goes through - is a separate call site of the same sort, and it was
+/// measured uncovered: removing `batch_document`'s sort left the entire
+/// workspace green on a machine with mkvmerge installed. Same discriminating
+/// fixture (collection order info, warning, error, error), but with mkvmerge
+/// on PATH so planning actually runs; the source directory holds no media,
+/// which keeps the batch empty without needing a fixture MKV and leaves the
+/// config-time diagnostics as the only content.
+#[test]
+fn dry_run_json_sorts_config_diagnostics_errors_first_when_planning_ran() {
+    if !have_mkvmerge() {
+        eprintln!("{}", muxsmith_core::MKVMERGE_SKIP_MARKER);
+        return;
+    }
+    let y = r#"
+profile_version: 1
+input: { pattern: 'E(\d+)', extensions: [mkv] }
+tracks:
+  rules:
+    - match: { exact: { raw:x: 1 } }
+    - match: { exact: { raw:language: de } }
+    - match: { regex: { title: '[' } }
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let profile = dir.path().join("mixed-severity.yaml");
+    std::fs::write(&profile, y).unwrap();
+
+    let out = support::muxsmith(&[
+        "dry-run",
+        profile.to_str().unwrap(),
+        "--source",
+        dir.path().to_str().unwrap(),
+        "--json",
+    ])
+    .output()
+    .unwrap();
+
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "json report ({e}), exit {:?}, stderr: {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    // Planning ran, so this document came from `batch_document`, not the
+    // config-only shape: `files` is present and `mkvmerge_found` absent.
+    assert!(
+        report.get("mkvmerge_found").is_none(),
+        "expected a planned batch document, got: {report}"
+    );
+    let codes: Vec<&str> = report["config_diagnostics"]
+        .as_array()
+        .expect("config_diagnostics array")
+        .iter()
+        .map(|d| d["code"].as_str().expect("diagnostic code"))
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "unknown-property",
+            "invalid-regex",
+            "raw-on-known-property",
+            "raw-property"
+        ],
+        "errors first, then the warning, then the info"
+    );
+}
+
 /// D15 (spec 8.1): `--on-collision` overrides the profile's output-collision
 /// policy for a single dry-run invocation. Default policy is `error`, so a
 /// pre-existing file at the planned output path exits 2; passing

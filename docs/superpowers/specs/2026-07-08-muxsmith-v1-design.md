@@ -252,7 +252,7 @@ Diagnostics are data, produced only by `muxsmith-core`:
 diagnostic := { code, severity: error|warning|info, config_path, file?, params, suggestion_ref? }
 ```
 
-Core emits no user-facing prose: `code` plus structured `params` select and fill a message and hint template from the shared catalog at presentation time (8.4). `--json` output carries code and params plus the rendered message in the active locale, so scripts key on codes, humans read text.
+Core emits no user-facing prose: `code` plus structured `params` select and fill a message and hint template from the shared catalog at presentation time (8.4). `--json` output carries code and params plus the rendered message in the active locale, so scripts key on codes, humans read text. In every report document, the `config_diagnostics` array is ordered errors-first (error, warning, info), stable within a severity (ties keep collection order); per-file `diagnostics` and `batch_diagnostics` keep collection order.
 
 | Code | Severity | Condition |
 |---|---|---|

@@ -6,7 +6,6 @@ pub mod identify;
 pub mod run;
 pub mod validate;
 
-use std::cmp::Reverse;
 use std::path::Path;
 
 use muxsmith_core::planner::Batch;
@@ -14,15 +13,10 @@ use muxsmith_core::report::{Diagnostic, Severity};
 
 use crate::i18n::Renderer;
 
-/// Diagnostics in error-first order (`Severity` is `Info < Warning < Error`,
-/// so `Reverse` puts errors first), stable within a severity. Matches
-/// `validate`'s human/JSON sort so every surface prints the worst first.
-/// Returns borrows; the source slice is untouched.
-pub(crate) fn severity_sorted(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
-    let mut sorted: Vec<&Diagnostic> = diags.iter().collect();
-    sorted.sort_by_key(|d| Reverse(d.severity));
-    sorted
-}
+/// The one error-first ordering definition, hoisted to core (D102) and
+/// re-exported here so every `crate::commands::severity_sorted` call site
+/// -- the human printing paths this crate owns -- is unchanged.
+pub(crate) use muxsmith_core::report::severity_sorted;
 
 /// Maps the worst severity present (`None` for no diagnostics at all) to
 /// the mkvmerge-style exit code (spec 5.1/8.1): 2 for an error, 1 for a

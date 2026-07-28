@@ -526,6 +526,69 @@ test.describe("batch view: dry run", () => {
     expect(saveArgs.path).not.toBe(SUGGESTION_CONFIG_PATH);
     expect(saveArgs.profile).toEqual(appliedProfile);
   });
+
+  // D103: the profile parsed when the suggestion was computed but no longer
+  // parses when apply re-loads it. `load_profile` folds that into an
+  // envelope with `profile: null` plus the one explaining diagnostic
+  // (`load::from_file` emits `ParseError` on both its failure modes), which
+  // BatchView fetches BY CODE to feed its shared alert line, and the branch
+  // returns before apply or save. `mkvmerge_found` is absent on purpose:
+  // `config_only_document` documents the key as omitted on a profile-load
+  // failure, where the lookup never ran.
+  const parseFailureOnLoad: LoadProfileDocument = {
+    config_diagnostics: [
+      {
+        code: "parse-error",
+        severity: "error",
+        config_path: "",
+        params: { detail: "unknown field", at: "" },
+        rendered: "parse-error",
+      },
+    ],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    profile: null,
+  };
+
+  test("a parse failure on apply's load_profile surfaces the parse-error alert and invokes neither apply_suggestion nor save_profile (D103)", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+        validate_profile: [resolveWith(emptyReport)],
+        dry_run: [resolveWith(applyReport)],
+        // The one substitution against the apply-flow scenario above; the
+        // two commands the branch must not reach stay mocked, so their
+        // absence below is a real invocation fact, not a missing mock.
+        load_profile: [resolveWith(parseFailureOnLoad)],
+        apply_suggestion: [resolveWith(appliedProfile)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    await page.goto("/");
+
+    const batch = page.getByTestId("view-batch");
+    await batch.getByRole("button", name("batch-profile-pick")).click();
+    await batch.getByRole("button", name("batch-dry-run")).click();
+
+    const applyButton = batch
+      .getByRole("article")
+      .getByRole("button", name("batch-suggestion-apply"));
+    await expect(applyButton).toBeVisible();
+    await applyButton.click();
+    await expect(applyButton).not.toHaveAttribute("aria-busy", "true");
+
+    // The en text BEFORE the `$detail` placeable, so Fluent's directional
+    // isolate marks around the substitution cannot break the match.
+    await expect(batch.getByRole("alert")).toContainText("The profile could not be parsed");
+
+    expect(recorded.filter((r) => r.cmd === "apply_suggestion")).toHaveLength(0);
+    expect(recorded.filter((r) => r.cmd === "save_profile")).toHaveLength(0);
+  });
 });
 
 test.describe("jobs view: live run", () => {

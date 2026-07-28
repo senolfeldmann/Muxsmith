@@ -222,7 +222,7 @@ async function onApplySuggestion(
       // diagnostic's own code/params are the correct thing to surface
       // through this view's existing shared alert line -- reusing it
       // needs no bespoke fallback code.
-      const parseDiagnostic = doc.config_diagnostics[0];
+      const parseDiagnostic = doc.config_diagnostics.find((d) => d.code === "parse-error");
       if (parseDiagnostic) {
         ipcErrorCode.value = parseDiagnostic.code;
         ipcErrorParams.value = parseDiagnostic.params;
