@@ -1110,3 +1110,17 @@ entries:
   occurrences:
     - {date: "2026-07-10", kind: violated-corrected, ref: "plan-5 task-6-review-verdict.md (Minor 2) + commit f54cbab"}
     - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff), on the recon's section 3: producers at cli run.rs:331 and src-tauri run.rs:830, consumers only in crates/muxsmith-cli/tests (run_cli.rs:172, run_live.rs:110/245/370/468), negative result controlled"}
+- id: comments-locate-by-symbol-never-by-line-number
+  kind: pattern
+  tier: 2
+  source: human
+  nature: technical-code
+  domain: cross
+  statement: "A comment never locates code by LINE NUMBER. Name the symbol instead - the function, method, type, module, match arm, config key - because lines move constantly and no developer writes a line reference expecting it to survive. Naming the FILE stays normal and wanted: a file rename is possible but far rarer than a line shift, and file-plus-symbol is unambiguous where a bare symbol may not be. Applies to every source-comment form (`//`, `///`, docstrings, TS and Vue comments). Trigger is readable: you are typing a colon followed by digits after a filename inside a comment. Handle: replace the number with the symbol the line sits in; where no symbol names it, name the nearest one plus what you mean ('the third arm of `scalar_eq`'). Historical statements get NO exception - 'pre-fix: panics at report/json.rs:44' becomes 'pre-fix: panicked in `batch_document` while building the `Set` plan value', which is both true and durable, so the live-pointer versus historical-record distinction does not have to be judged at all. The losing argument, kept so it is not rediscovered: a line number is more precise when several similar lines sit in one function - answered by naming the arm or branch, which is what a reader needs anyway. SCOPE BOUNDARY, set by the controller rather than by the ruling, so nobody attributes it to the owner: this governs comments in SOURCE files. It does not reach dated evidence citations in PROCESS artifacts - a review verdict, a journal entry, a ledger occurrence ref or a tracker recording a measurement at a named commit may cite `<file>:<line>`, because those record where something was at one moment and the moment is part of the claim."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff, on the controller's report of a second stale citation: 'solche kommentare die datei und dann auch noch zeilennummern referenzieren sind bloedsinn. das schreibt kein dev so. datei vielleicht noch, aber niemals zeilenname ... man sagt einfach den richtigen namespace worauf man sich bezieht'. Corpus measured the same turn: 17 sites across Rust, TypeScript and Vue"}

@@ -1317,12 +1317,24 @@ ten is recomputed.
   - `suggestions.rs:1035` citing `matcher.rs:202-212` still lands on
     `scalar_eq`'s match arms and is currently accurate.
 
-  **Open scope question for the pre-1.0 package** (not decided controller-side,
-  because it widens what the owner approved): does the `suggestions.rs` task fix
-  only its own line, or sweep the cross-file pointers as a class - live pointers
-  re-anchored to content per the house convention, historical ones marked as
-  historical so nobody "repairs" them later. Six sites, comments only, no
-  behaviour change.
+  **RULED 2026-07-29, and the ruling is a convention, not a disposition of this
+  site.** The owner: a comment referencing a file AND a line number is not how a
+  developer writes, because lines move; name the symbol - which method, which
+  class, which namespace - and referencing the FILE is fine, its staleness risk
+  being real but far smaller. Recorded as Tier-2
+  `comments-locate-by-symbol-never-by-line-number`. Two consequences:
+  - The scope question above is answered: **sweep the class, all of it.** Corpus
+    re-measured across every source language once the ruling widened it beyond
+    `.rs`: **17 sites** in Rust, TypeScript and Vue (`e2e/smoke.spec.ts`,
+    `src/views/EditorView.vue`, `src/editor/fieldSpec.ts`,
+    `src/editor/widgets/{FieldWidgetDispatcher,OptionalFlagWidget,PropertyMapWidget}.vue`,
+    `src/components/ResolutionTable.vue`, `src-tauri/src/lib.rs`, and the nine
+    `.rs` sites already listed). It is its own task in the pre-1.0 package, not
+    a rider on `suggestions.rs`.
+  - The live-pointer versus historical-record judgment **disappears** rather than
+    being made: under the ruling the historical ones lose their line numbers too,
+    and "pre-fix: panicked in `batch_document` while building the `Set` plan
+    value" is both true and durable. Nothing has to be classified.
 
 ## Gate-count derivation has no check (candidate, from the plan-9 close pass 2026-07-29)
 
