@@ -301,16 +301,17 @@ entries:
   source: human
   nature: operational
   domain: ci
-  statement: "Dependabot/Renovate activation is a firm PRE-1.0 commitment (owner call 2026-07-29), no longer deferred to a later decision. CADENCE, settled by the owner the same day: monthly, grouped per ecosystem (Cargo, npm, GitHub Actions), with security updates immediate and ungrouped. The driver is CI cost - every dependency PR triggers the full 3-OS matrix - which is why grouping plus a monthly window beat per-dependency PRs. The accepted price is named rather than glossed: a broken dependency can sit unnoticed for up to four weeks, and a grouped PR that goes red has to be taken apart to find which member did it."
+  statement: "Renovate (not Dependabot) activation is a firm PRE-1.0 commitment (owner call 2026-07-29), no longer deferred to a later decision. CADENCE, settled by the owner the same day: monthly, grouped per ecosystem (Cargo, npm, GitHub Actions), with security updates immediate and ungrouped. MAJOR updates get their OWN PRs and do not ride the ecosystem group (owner, same day): in a repo of exact pins under `-D warnings` a major is likely to be red, and inside the group it would hold a month of harmless patches hostage. MANAGERS: `rust-toolchain` on, `mise` OFF - the owner's reason is that mise is slated to leave anyway (see the ROADMAP's mise-out-of-CI item for the scope that is actually tracked; the ruling did not restate it). CONSEQUENCE the controller drew from that and records here rather than deciding silently: the npm manager's `packageManager` depType is disabled too, because pnpm is pinned in BOTH `mise.toml` and `package.json`'s `packageManager` field as a deliberate mirror, and managing one side while the other is unmanaged breaks the mirror - CI takes its pnpm from mise, a developer's corepack from `package.json`. Both pnpm pins therefore move by hand until mise leaves. The driver behind the whole shape is CI cost - every dependency PR triggers the full 3-OS matrix - though on a public repo that cost is wall-clock and review attention, not money. The accepted price is named rather than glossed: a broken dependency can sit unnoticed for up to four weeks, and a grouped PR that goes red has to be taken apart to find which member did it."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 3
+  count: 4
   occurrences:
     - {date: "2026-07-08", kind: deferred, ref: "journal 2026-07-08 open threads + ROADMAP residue R3"}
     - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff: 'renovate machen wir vor dem 1.0 release'. The deferral's condition was his own activation call, so the call clears it; the entry moved from the ROADMAP's near-1.0 section into its pre-1.0 gates in the same change, and the now-empty near-1.0 section was removed"}
     - {date: "2026-07-29", kind: decided, ref: "owner ruling minutes later in the same kickoff, on the controller's recommendation with its cost stated: monthly, grouped per ecosystem, security updates immediate and ungrouped. Settled BEFORE the plan brief rather than left to the implementer, because an open cadence would be an unresolved design question reaching a dispatch"}
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling on the two dimensions the cadence ruling had not covered, surfaced by a controller recon that read the Renovate docs and source: majors get their own PRs ('major updates sind eigene prs, genau'), rust-toolchain managed, mise not ('rust-toolchain ja, mise nein. da mise sowieso noch rausfliegt'). The recon's central finding was verified at the source by the controller rather than taken on report: the schedule:monthly preset is ['* 0-3 1 * *'], a four-hour window, which a daily job cadence can skip for whole months - so the ruled monthly cadence is expressed as ['* * 1-3 * *']"}
 - id: ci-13-packaging-deferred
   kind: non-decision
   tier: 2
