@@ -4587,10 +4587,11 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-28", kind: deferred, ref: "session 24: the controller pushed a docs-and-YAML-only commit without the local gate, flagged its own deviation to the owner in the same session, then ran the full gate before every subsequent push"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the measured 11-second full-gate run: keep CI and the gate simple, no docs-only exception for now; making CI itself path-aware is a 1.x item (ROADMAP), and the ledger-lint gap is closed now"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "session-27 close, the CONTROLLER: two commits touching only docs and house YAML were pushed after the gate had run but before they existed, i.e. the gate covered the tree without them. Exactly the doc-only exemption this entry rules out, taken by reflex rather than by argument - and the reflex is what the ruling anticipated, since the exemption was rejected on the measurement that the gate costs eleven seconds on an unchanged tree. Re-run retroactively on the pushed head, GATE-ALL-GREEN, so the state was sound and only the ordering was not; recorded because a green retroactive run is not the same evidence as a gate that ran first"}
 - id: a-rationale-cites-only-consumers-that-already-exist
   kind: pattern
   tier: 1
