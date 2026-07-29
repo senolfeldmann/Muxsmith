@@ -974,8 +974,19 @@ Must be resolved before the first tagged release.
   - Renovate will offer the TS-7 bump when the ecosystem catches up (S14).
   Cadence rationale (residue R3, recovered from Plan 1): every dep PR triggers
   the full 3-OS matrix, so the cadence choice is a CI-cost decision - the
-  "monthly" lean exists because of that cost, not preference. The cadence
-  itself is still open and is settled when the config is written.
+  "monthly" lean exists because of that cost, not preference. **The cadence is
+  SETTLED 2026-07-29 (session 28), when `renovate.jsonc` landed (`630d418`):**
+  monthly, written as the three-day window `* * 1-3 * *` rather than the
+  `schedule:monthly` preset, because that preset is a four-hour window on the
+  1st and the hosted service documents that repo config cannot tighten its own
+  backend cadence - so a four-hour window can be missed entirely, for months.
+  **Re-validating that file later takes `--no-global`**: naming a file sets the
+  validator's `configType` to `global`, measured at tag `43.287.0` in
+  `lib/config-validator.ts`, so the plain form is silently blind to
+  repo-config defect classes (a `globalOnly` option, a `global:` preset). The
+  Task-3 reviewer proved both directions with probes - `repositoryCache` and
+  `global:disableInherit` each pass the plain form and fail under `--no-global`
+  - and confirmed this file is clean under both.
 - **DONE 2026-07-28 (Plan 8.5, owner-accepted on hardware). BLOCKER: the macOS dmg's app does not launch - "the app is damaged"**
   (owner R8 walk-through on real Apple-Silicon hardware, 2026-07-27; the
   first human execution of the documented install path). Measured on the

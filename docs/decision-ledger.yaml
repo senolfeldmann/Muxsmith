@@ -5134,3 +5134,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 2 review finding 1 (.superpowers/sdd/plan-10/task-2-verdict.md): the implementer justified merging its new imports into an existing use line with 'a second use of the same module path is not this tree's pattern'. The reviewer counted: three of 73 tracked .rs files carry exactly that shape (prop_matcher.rs, mkvmerge_runtime.rs, matcher.rs), so the pattern is dominant rather than unbroken. The committed code stands unchanged; only the claim was overstated"}
+- id: a-validators-default-mode-is-part-of-the-commands-meaning
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: ci
+  statement: "A validator, linter or checker that supports several MODES applies one by default, and which one it picked is part of what a green run means. Naming a file on the command line is not neutral: renovate-config-validator sets configType to 'global' for a named file unless --no-global is passed, so a clean run says nothing about two whole repo-config defect classes. Trigger is readable: you are about to quote a tool's exit 0 as coverage for an artifact whose ROLE the tool had to infer. Handle: read the tool's own mode resolution in its source, run it in the mode the artifact will actually be used in, and probe the difference - inject a defect only the intended mode catches and watch the default mode pass it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 3 review finding 1 and adjudication 2 (.superpowers/sdd/plan-10/task-3-verdict.md): the plan fenced the validator invocation without --no-global. The reviewer read lib/config-validator.ts at tag 43.287.0 rather than at main, then built two probes from the committed file - a globalOnly option (repositoryCache) and a global: preset (global:disableInherit) - each of which passes the fenced form at exit 0 and fails --no-global at exit 1. The artifact is clean under both modes, so nothing changed in renovate.jsonc; the defect is in the plan's Step 3, and any later re-validation of that file carries --no-global (written into the ROADMAP's Renovate entry)"}
+- id: a-control-varies-the-dimension-the-claim-is-about
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A control proves an instrument sees the dimension the CLAIM is about, and nothing else. A value mutation proves a comparison notices changed content; it does not prove the comparison notices changed ORDER, so where order is semantic the control set needs a reorder as well. A pattern fire proves the pattern matches; it does not prove the SELECTOR reaches the file, so a check whose scope is a file selector (git ls-files -- '*.rs' '*.ts', a glob, a path filter) needs a control that widens or moves the selector. Trigger is readable: you are about to call a check verified because one control fired. Ask which property that control varied, and enumerate the properties the claim actually rests on."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 3 review, dimensions 1 and 10 (.superpowers/sdd/plan-10/task-3-verdict.md): the reviewer fire-controlled its transcription diff with BOTH a value mutation and a packageRules REORDER, because later rules win in that file and a value control alone would not prove the diff sees order; and it fired the Task-5 corpus exclusion by widening the selector with '*.jsonc' (1 hit) rather than assuming renovate.jsonc was out of scope. Both are the same move: vary the property the claim rests on"}
+- id: a-local-commit-is-not-on-master-for-a-claim-about-a-remote-service
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "'It is on master' is ambiguous between the local branch and what the remote serves, and the distinction is load-bearing whenever the consumer of the claim is an external service - a bot that reads the repository, a CI trigger, a webhook. Write which one, and measure it: git rev-list --left-right --count origin/master...HEAD, or git branch -r --contains <sha>. Trigger is readable: your sentence pairs 'on master' with something outside this machine."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 3 review finding 2 (.superpowers/sdd/plan-10/task-3-verdict.md): the report's controller-facing section said the config 'is on master as of 630d418', while the ordering rider it was serving is about the repository GitHub serves before the owner installs the Renovate app. Measured: origin/master...HEAD was 0 5 and no remote branch contained the commit. The report states 'Not pushed' elsewhere, so it recovers, but the imprecise sentence sat in the section a controller acts on"}
