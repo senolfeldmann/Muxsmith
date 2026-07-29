@@ -5006,3 +5006,18 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: reinforced, ref: "plan-10 delta review, HARVEST (.superpowers/sdd/plan-10/plan-review-round-1.md): the reviewer's first probe against the F12 fix appeared to refute a correct fix, because a 200-plus character spec line was truncated before the quoted sentence began. Caught by the reviewer before reporting; recorded as the discipline that prevented a fix round rather than as a defect that cost one"}
+- id: a-document-that-measures-itself-changes-its-own-measurement
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A document that reports a count of matches WITHIN itself sits inside its own search space, so writing the sentence can change the number the sentence states - and quoting the expression in prose is enough to do it. Trigger is readable: you are about to write a match count into the document you are counting. Handle: re-run the search AFTER the edit rather than trusting the pre-edit number, and state the self-reference explicitly instead of silently excluding the sentence - an audit that quietly exempts itself is unverifiable by the next reader, who re-runs the command and gets a different answer."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 fix round 1 (author's report on finding F2): the replacement self-audit reports nine sites, and the ninth is the audit sentence itself, which matches because it quotes its own expression. Stated in the plan rather than excluded, which is the handle this entry records"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-10 fix round 2 (author's report on N3): adding a scratch-line token to the audit sentence made that sentence match its own COMPANION expression, moving a stated count from one to two. Controller re-measured: `grep -nE '[0-9]+ (Rust|frontend|house-knowledge)'` returns two lines, :182 (the canonical sentence the task writes into BUILDING.md) and :619 (the audit sentence), with the pattern fired against a known-present line and a negative control at zero"}
