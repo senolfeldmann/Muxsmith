@@ -24,8 +24,8 @@ permissions:
 # built on the oldest base we intend to support (Tauri AppImage
 # guidance, glibc being backward but not forward compatible) while
 # tests run on the newest. That base sets the shipped glibc floor at
-# 2.39; docs/INSTALL.md and the tar.gz README state it, so moving this
-# pin moves the product's reach and those two texts with it.
+# 2.39, so moving this pin moves the product's reach - and with it every
+# user-facing text that states that floor or an artifact's reach.
 
 jobs:
   guard:

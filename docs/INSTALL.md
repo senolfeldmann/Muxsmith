@@ -78,9 +78,9 @@ shell profile.
 
 Artifacts (x86_64):
 
-- `muxsmith-<version>-linux-x86_64.deb` - Debian/Ubuntu: `sudo apt install ./muxsmith-<version>-linux-x86_64.deb`
-- `muxsmith-<version>-linux-x86_64.rpm` - Fedora & co.: `sudo dnf install ./muxsmith-<version>-linux-x86_64.rpm`
-- `muxsmith-<version>-linux-x86_64.AppImage` - any distro: `chmod +x` the file, then run it
+- `muxsmith-<version>-linux-x86_64.deb` - Debian 13+ / Ubuntu 24.04+: `sudo apt install ./muxsmith-<version>-linux-x86_64.deb`
+- `muxsmith-<version>-linux-x86_64.rpm` - rpm distributions with glibc 2.39+ (Fedora 40+, RHEL 10+): `sudo dnf install ./muxsmith-<version>-linux-x86_64.rpm`
+- `muxsmith-<version>-linux-x86_64.AppImage` - any distro with glibc 2.39+: `chmod +x` the file, then run it
 - `muxsmith-<version>-linux-x86_64.tar.gz` - portable archive with both binaries; see its
   `README.txt`
 
