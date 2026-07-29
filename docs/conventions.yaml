@@ -1123,4 +1123,4 @@ entries:
   promoted_at: 1
   count: 1
   occurrences:
-    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff, on the controller's report of a second stale citation: 'solche kommentare die datei und dann auch noch zeilennummern referenzieren sind bloedsinn. das schreibt kein dev so. datei vielleicht noch, aber niemals zeilenname ... man sagt einfach den richtigen namespace worauf man sich bezieht'. Corpus measured the same turn: 17 sites across Rust, TypeScript and Vue"}
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff, on the controller's report of a second stale citation: 'solche kommentare die datei und dann auch noch zeilennummern referenzieren sind bloedsinn. das schreibt kein dev so. datei vielleicht noch, aber niemals zeilenname ... man sagt einfach den richtigen namespace worauf man sich bezieht'. Corpus: 20 comment lines across 13 files in Rust, TypeScript and Vue - the controller's same-turn count said 17 and was wrong, having enumerated the cited file extensions without `.md`; refuted by the plan author against the tree"}

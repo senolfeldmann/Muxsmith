@@ -1323,14 +1323,18 @@ ten is recomputed.
   class, which namespace - and referencing the FILE is fine, its staleness risk
   being real but far smaller. Recorded as Tier-2
   `comments-locate-by-symbol-never-by-line-number`. Two consequences:
-  - The scope question above is answered: **sweep the class, all of it.** Corpus
-    re-measured across every source language once the ruling widened it beyond
-    `.rs`: **17 sites** in Rust, TypeScript and Vue (`e2e/smoke.spec.ts`,
-    `src/views/EditorView.vue`, `src/editor/fieldSpec.ts`,
-    `src/editor/widgets/{FieldWidgetDispatcher,OptionalFlagWidget,PropertyMapWidget}.vue`,
-    `src/components/ResolutionTable.vue`, `src-tauri/src/lib.rs`, and the nine
-    `.rs` sites already listed). It is its own task in the pre-1.0 package, not
-    a rider on `suggestions.rs`.
+  - The scope question above is answered: **sweep the class, all of it.** It is
+    its own task in the pre-1.0 package, not a rider on `suggestions.rs`.
+  - **Corpus: 20 comment lines across 13 files**, in Rust, TypeScript and Vue.
+    The controller's first count said 17 and was wrong: the search enumerated
+    the CITED file extensions and left out `.md`, so it widened the source
+    languages and not the cited types. Refuted by the plan author against the
+    tree and re-measured by the controller. The three missed sites
+    (`crates/muxsmith-cli/tests/run_live.rs`, citing `README.md` line spans) are
+    the sharpest case for the ruling that exists: the same package's README task
+    edits that file, so those spans would go stale INSIDE the package that is
+    repairing the class. A mis-enumerated set in a measuring position produced
+    the undercount - the same defect shape the ruling addresses, one level up.
   - The live-pointer versus historical-record judgment **disappears** rather than
     being made: under the ruling the historical ones lose their line numbers too,
     and "pre-fix: panicked in `batch_document` while building the `Set` plan
