@@ -536,6 +536,23 @@ asserting it is NOT reordered. The controller's argument that carried it: a
 contract asserted in three normative places, one of them the spec, with no
 producer anywhere is a claim nobody can rely on, and this producer is cheap.
 
+**DONE 2026-07-29 (session 28), Plan 10 Task 2, commit `35bc363`** - and the
+disposition records WHICH halves got producers, because a measurement decided
+that rather than the plan. Four mutations, each applied alone to
+`report/json.rs` and followed by the full workspace suite: the two SORTED
+halves came back RED, i.e. already guarded, by
+`dry_run_cli.rs::dry_run_json_sorts_config_diagnostics_errors_first_when_planning_ran`
+and `::dry_run_and_validate_json_agree_on_config_diagnostics_ordering`
+respectively, so no producer was written for either. The two PRESERVED-ORDER
+halves came back GREEN, i.e. unguarded, and each got its enumerated producer in
+`crates/muxsmith-core/tests/report_json.rs`:
+`batch_document_preserves_batch_diagnostics_collection_order` and
+`batch_document_preserves_per_file_diagnostics_collection_order`. The task
+reviewer re-ran all four mutations with its own function-scoped driver - needed
+because the sort block occurs twice in the file, once per builder - and
+reproduced the pattern exactly; the whole-branch reviewer reproduced it a third
+time. No production code changed.
+
 **A neighbouring coverage fact, surfaced by the Plan-10 author 2026-07-29 and
 recorded here because the HANDOFF is volatile and a fact with no vehicle
 evaporates.** The existing guard for the SORTED half of the same contract,
@@ -1514,6 +1531,23 @@ ten is recomputed.
     being made: under the ruling the historical ones lose their line numbers too,
     and "pre-fix: panicked in `batch_document` while building the `Set` plan
     value" is both true and durable. Nothing has to be classified.
+  - **SWEPT 2026-07-29 (session 28), Plan 10 Task 5, commit `1a23283`**, and the
+    corpus was larger than this entry's own figure: **24 matched lines across 16
+    files**, rewritten as **21 comments**, because the rewrite unit is the
+    comment and three citations continue onto a line the pattern cannot see. The
+    20/13 above counts only the filename-citation form; a second expression
+    catches four bare `:<line>` spans with no filename, which a controller ruling
+    folded IN as the worse form of the same defect rather than exempting on a
+    property of the search pattern. Both absence checks are empty on the end
+    state and each is fired by its own pre-state run; the controller reproduced
+    both independently (0 on the end state, 20 and 4 against the pre-state).
+    **NINE of the 24 citations were already stale**, each verified at its target,
+    and one had never pointed at its target in any committed tree - its target
+    moved in the same commit that wrote the comment. **The class is closed WITHIN
+    THE CORPUS'S SELECTOR** - source files in six extensions - and NOT tree-wide:
+    one member survives in `.github/workflows/ci.yml`, with its own entry and
+    vehicle at the top of this section, plus an open owner question about whether
+    the ruling reaches CI and config comments at all.
 
 ## Gate-count derivation has no check (candidate, from the plan-9 close pass 2026-07-29)
 
@@ -1587,6 +1621,22 @@ passing result is an absence proves nothing until it has been made to fire once.
 New documents keep citing "per BUILDING.md"; nothing polices their prose,
 because the only live consumers are plan documents and a plan's four-eyes review
 reads BUILDING.md anyway.
+
+**DONE 2026-07-29 (session 28), Plan 10 Task 1, commit `ddb8f42`.** `BUILDING.md`
+states the total once behind a `gate-total` marker; each of the three command
+blocks carries a `gate-block` marker; `scripts/ledger-lint.py` - already a gate
+part, so no new part and no recursion - compares the stated per-block numbers
+and the stated total against the commands the marked blocks enumerate, refuses
+on a backslash continuation rather than miscounting, and skips the comparisons
+whose inputs a missing marker makes underivable. Five fires, each with its
+pasted red state, plus two the implementer added and a tolerate-green exclusion
+probe the reviewer added; the count moved into the canonical sentence and out of
+the Rust-gate heading. **The cross-file form stays killed** - the MEASURED block
+above is the record, and the count in every other tracked file is a historical
+statement about a closed plan. **Two boundaries of what shipped are recorded as
+ROADMAP triggers rather than left implicit:** a fourth marked gate block would be
+invisible to the check, and a command wrapped with a trailing `|` or `&&` is not
+modelled.
 
 ## Ledger hygiene
 
