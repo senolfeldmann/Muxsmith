@@ -5155,14 +5155,15 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "A control proves an instrument sees the dimension the CLAIM is about, and nothing else. A value mutation proves a comparison notices changed content; it does not prove the comparison notices changed ORDER, so where order is semantic the control set needs a reorder as well. A pattern fire proves the pattern matches; it does not prove the SELECTOR reaches the file, so a check whose scope is a file selector (git ls-files -- '*.rs' '*.ts', a glob, a path filter) needs a control that widens or moves the selector. Trigger is readable: you are about to call a check verified because one control fired. Ask which property that control varied, and enumerate the properties the claim actually rests on."
+  statement: "A control proves an instrument sees the dimension the CLAIM is about, and nothing else. A value mutation proves a comparison notices changed content; it does not prove the comparison notices changed ORDER, so where order is semantic the control set needs a reorder as well. A pattern fire proves the pattern matches; it does not prove the SELECTOR reaches the file, so a check whose scope is a file selector (git ls-files -- '*.rs' '*.ts', a glob, a path filter) needs a control that widens or moves the selector. Trigger is readable: you are about to call a check verified because one control fired. Ask which property that control varied, and enumerate the properties the claim actually rests on. A third dimension hides INSIDE the instrument: where the pattern carries an alternation - the mechanisms, extensions, spellings or keywords it enumerates - that set is a claim of its own, and firing the pattern against one known-present member proves nothing about a member you left out. Derive such a set from the artifact, never from recall of what should be in it."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 3 review, dimensions 1 and 10 (.superpowers/sdd/plan-10/task-3-verdict.md): the reviewer fire-controlled its transcription diff with BOTH a value mutation and a packageRules REORDER, because later rules win in that file and a value control alone would not prove the diff sees order; and it fired the Task-5 corpus exclusion by widening the selector with '*.jsonc' (1 hit) rather than assuming renovate.jsonc was out of scope. Both are the same move: vary the property the claim rests on"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-10 Task 4 fix-round delta review (.superpowers/sdd/plan-10/task-4-verdict.md, delta section): the enumeration facet, on the fix report own sweep. The report proved the single SIGINT registration site by sweeping for ctrlc, which silently asserts that ctrlc is the only registration ROUTE. The reviewer re-derived the set - signal_hook, sigaction, SigAction, libc::signal across crates/, src-tauri/ and xtask/, all zero - and only then was the single call site the whole population. It also reached for an instrument of a different KIND, reading SigCgt=0x440 from /proc/<pid>/status of a live process, which shows SIGINT uncaught at kernel level without depending on any source search"}
 - id: a-local-commit-is-not-on-master-for-a-claim-about-a-remote-service
   kind: pattern
   tier: 1
