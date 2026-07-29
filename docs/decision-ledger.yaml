@@ -4921,3 +4921,32 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 close pass F1: the controller fenced a replacement comment quoted from the Task-5 delta verdict. That comment says the profile-load-failure document carries neither key; the same verdict's own measurement block, some forty lines above the fenced text, prints files present: True for that document. The implementer applied it verbatim as fenced and reported the contradiction, which is the correct behaviour and the only reason it surfaced; the reviewer reproduced the measurement and ruled a narrowing edit owed on the controller's licence, since the controller erected the fence. Cost one fix round"}
+- id: a-search-whose-terms-come-from-memory-produces-a-false-absence
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A search built from what you REMEMBER should be there, rather than derived from what IS there, returns a false absence that looks exactly like a true one. The trigger is readable: you are about to write a sentence of the form 'I checked and nothing turned up', and the pattern you checked with was composed from recall. The handle is the existing absence discipline aimed one level up at the instrument itself - derive the search terms from the artifact (list the extensions actually cited, grep the forms actually written) and fire the pattern once against a known-present case before reporting the empty result. Hardest case, and the one where it keeps happening: a negative claim about a document you are currently WRITING, because there the author is also the only reader and the search terms are necessarily drawn from memory of what was written rather than from what is on the page."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "controller measurement of the comment line-citation corpus (ROADMAP Docs-accuracy entry, commit 240e179): the search enumerated the CITED file extensions from recall - rs, ts, vue, py, sh, toml, yml, json - and omitted md, so widening the owner's ruling past Rust widened the SOURCE languages and left the cited types untouched. Reported 17 sites; the plan author refuted it against the tree at 20 across 13 files, and the plan reviewer reproduced both the number and the mechanism (17 under the old extension set, 20 under the new, the delta being exactly the three README.md-citing lines)"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 plan review round 1 finding F2 (.superpowers/sdd/plan-10/plan-review-round-1.md): the plan's self-review claimed the gate's part count appears nowhere outside Task 1's fenced deliverable, 'checked by grepping this document for the stale forms (ten-part, eleven-part, N parts per)'. The count does appear at the plan's own authoring-measurement line, and the searched forms are hyphenated compounds the document never uses - a negative check that could not have fired against what it audited, reported as though it had. Same document also contains the repo's cleanest FIRED negative control, applied to the tree; the asymmetry is the datum"}
+- id: a-review-brief-separates-a-claimed-measurement-from-a-prescribed-one
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A review brief that says 're-run the evidence' must first sort the artifact's evidence into what was MEASURED (a claim about the tree, reproducible now) and what is PRESCRIBED (a fire an implementer will perform against a deliverable that does not exist yet). Only the first is re-runnable; asking a read-only reviewer to re-run the second either forces it to build the deliverable, which is outside a reviewer's role, or invites it to report agreement it could not have obtained. The handle at brief-writing time: for prescribed evidence, ask the reviewer to grade the fire as a DESIGN against the specification - does the prescribed red state actually exercise the anchor the task exists to protect - which is a different and answerable question."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 plan review round 1, HARVEST boundary-stop 1 (.superpowers/sdd/plan-10/plan-review-round-1.md): the controller brief told the reviewer to re-run three fires in Task 1 and a control in Task 5. The controls were re-runnable and reproduced; the three fires were prescriptions against a check the task had not yet built. The reviewer graded them as designs instead and that evaluation produced finding F8 - three of the four absence-shaped checks have no prescribed red state at all - which the flattened phrasing had not asked for"}
