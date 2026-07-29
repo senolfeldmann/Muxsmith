@@ -5290,6 +5290,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "the ubuntu-24.04 base move and its three follow-on rounds (docs/process-journal/artifacts/plan-10-sdd/ is a neighbour, the artifacts here are .superpowers/sdd/runner-base-move-*, close-riders-* and reach-sweep-*). Each round repaired the texts on its own exhaustive file list and left another asserting the old reach, and each leftover was caught by the next review rather than by the change: the runner move falsified renovate.jsonc's comment; the floor repair left the same document's own artifact table claiming the AppImage runs on 'any distro'; the release-body repair left release.yml's policy comment counting two texts where there were more. It converged only when a reviewer swept all 265 candidate files, marked every site true/false/incomplete, and the next task was written as a rule with that enumeration attached. Its own policy comment now states the predicate plus the grep rather than a count"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "the same session, one level down: a controller brief for the reach sweep enumerated FOUR sites while its Files-list header said three, because one repair spans two documents whose cells are deliberately character-identical. The implementer kept the equality and reported the discrepancy rather than dropping a site. Same defect shape as the entry above - the count came from the file list while the work is defined by the assertion set - and it appeared in the brief written to fix that very shape"}

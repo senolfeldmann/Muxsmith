@@ -1747,6 +1747,22 @@ ROADMAP triggers rather than left implicit:** a fourth marked gate block would b
 invisible to the check, and a command wrapped with a trailing `|` or `&&` is not
 modelled.
 
+## Reach-claim checker (candidate, not a commitment; from the session-28 reach sweep)
+
+A one-shot instrument exists and worked: a script parsing every Linux artifact
+row of `docs/INSTALL.md` and `.github/release/draft-body.md` under two rules - a
+distribution family or an "any" quantifier needs a floor qualifier, and every
+Linux row of the release table must state a floor. It fired with six violations
+on the pre-state and came back clean on the end state, and an independent rebuild
+reproduced the six. **Deliberately NOT promoted into `scripts/ledger-lint.py`**,
+on the reviewer's recommendation and the controller's agreement: it parses PROSE,
+which is what `proc-check-green-state-reachable` names as the way such a check
+becomes permanently red on correct content, and the boundary it would encode was
+still being argued in the same round that produced it (whether a row may describe
+form instead of reach). Reconsider if a third table appears - the README's
+`placeholder(1.0)` mandates one at the tag - or if a reach claim goes stale
+again. The instrument itself is in the salvaged rider artifacts.
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML
