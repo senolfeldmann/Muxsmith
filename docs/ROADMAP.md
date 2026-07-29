@@ -1255,6 +1255,24 @@ ten is recomputed.
   underlying shape - a comment citing line numbers in another file - is the
   reason the house convention is to locate by content.
 
+## Gate-count derivation has no check (candidate, from the plan-9 close pass 2026-07-29)
+
+`BUILDING.md` is the gate's single authoritative enumeration, and at least six
+other files derive a number from it with the words "per BUILDING.md". Nothing
+checks that the derivation still matches: the close pass produced exactly that
+divergence (the file enumerated ten while the ruling and every consumer said
+eleven), and it was caught by a reviewer reading both, not by any tooling. The
+house statements that could drop the number have since been rewritten to name
+the file instead, which shrinks the surface but does not close it - a HANDOFF or
+a plan still has to state a count to be useful.
+
+**Candidate, not a commitment:** `scripts/ledger-lint.py` is the natural home
+for a cheap invariant - parse `BUILDING.md`'s check blocks, count the commands,
+and compare against any "N parts per BUILDING.md" claim in the tracked docs.
+Weigh it against the alternative of simply never writing the number outside
+`BUILDING.md`. The reviewer that surfaced this explicitly left it out of its own
+pass's scope.
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML

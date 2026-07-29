@@ -4712,14 +4712,15 @@ entries:
   source: agent-emergent
   nature: technical-code
   domain: core
-  statement: "A core doc that mentions a caller names it as a non-exclusive illustration ('the GUI shell emits each event to its frontend, the CLI renders its human milestone lines'), never as the definition of the parameter or the behavior ('on_event, the shell's window-emit'). The exclusive form is a time bomb: it is true until the item acquires its second caller, and the change that acquires it is exactly the change nobody re-reads the doc during. The illustrative form survives a third caller by construction. Trigger is readable: you are writing a core doc sentence that names a surface. Handle: state the property of the FUNCTION, then illustrate per surface in a parenthetical, and qualify the illustration with the channel it actually holds for (the CLI clause survives --json only because it says 'human milestone lines'). House precedent: JobEvent's doc in the same module."
+  statement: "SURFACE WIDENED 2026-07-29 from `core docs` to ANY prose that justifies itself by naming who calls, reads or mounts something - a module doc, a test-file comment, an e2e spec's header, a house entry. A doc or comment that mentions a caller names it as a non-exclusive illustration ('the GUI shell emits each event to its frontend, the CLI renders its human milestone lines'), never as the definition of the parameter or the behavior ('on_event, the shell's window-emit'). The exclusive form is a time bomb: it is true until the item acquires its second caller, and the change that acquires it is exactly the change nobody re-reads the doc during. The illustrative form survives a third caller by construction. Trigger is readable: you are writing a core doc sentence that names a surface. Handle: state the property of the FUNCTION, then illustrate per surface in a parenthetical, and qualify the illustration with the channel it actually holds for (the CLI clause survives --json only because it says 'human milestone lines'). House precedent: JobEvent's doc in the same module."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "plan-9 amendment 3 (design commit 08621cb) + its delta verdict (.superpowers/sdd/plan-9/amendment-3-verdict.md, dimension 1 ruling): run_batch's rustdoc carried the exclusive form from its src-tauri home and Task 2's hoist gave the function its second caller in the same commit, falsifying three passages at once. The restatement adopts the illustrative form the module's own JobEvent doc already used; the reviewer ruled the CLI clause true under --json on the 'human' qualifier and recorded that a future --json-events stream would not re-falsify it"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 close pass: the rule fired THREE times in one package (.superpowers/sdd/plan-9/close-pass-verdict.md, HARVEST 6c item 2). Once as the item being fixed - the IdentifyCache doc naming one of three construction contexts as the definition; once as a neighbouring site the fix left behind, the module doc three hundred lines above in the same file; and once as a sentence NEWLY WRITTEN in the same commit, the e2e installer disclosure naming three of six settings consumers exclusively. Two of the three are outside core, which is why the stated surface was widened here"}
 - id: a-dispatch-pins-the-tree-not-a-hash-the-controller-may-have-amended
   kind: pattern
   tier: 1
@@ -4906,3 +4907,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: decided, ref: "plan-9 Task 7 and its review (.superpowers/sdd/plan-9/task-7-report.md, task-7-verdict.md): the control, mutated and restored runs are pasted in the report and were reproduced independently by the reviewer, whose mutated-file blob hash matched the task's. Tree byte-identical at the end; nothing was committed by the task, as D105 requires"}
+- id: a-fenced-text-is-a-licence-boundary-not-a-truth-warrant
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Fencing a text in a brief - quoting a block from an earlier verdict, design or plan as binding, transcribe-do-not-compose - decides WHO may edit it. It says nothing about whether the text is true, and it removes the one reader who would have noticed: the implementer, correctly, applies it verbatim. So the fencing party owns the text's truth and re-reads it against the measurement in its own source document before the dispatch goes out. Trigger, readable: you are pasting a block from an earlier verdict into a brief as binding. Note the asymmetry with the ordinary quote rule - there the risk is inaccurate transcription, here the transcription is perfect and the content is false."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 close pass F1: the controller fenced a replacement comment quoted from the Task-5 delta verdict. That comment says the profile-load-failure document carries neither key; the same verdict's own measurement block, some forty lines above the fenced text, prints files present: True for that document. The implementer applied it verbatim as fenced and reported the contradiction, which is the correct behaviour and the only reason it surfaced; the reviewer reproduced the measurement and ruled a narrowing edit owed on the controller's licence, since the controller erected the fence. Cost one fix round"}
