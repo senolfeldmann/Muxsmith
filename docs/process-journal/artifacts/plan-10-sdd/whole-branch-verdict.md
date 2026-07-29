@@ -261,3 +261,91 @@ Key runs (all foreground, this session):
    count was taken with `-c` and confirmed with `-o | wc -l` (both 28) only
    because the house had just ledgered that exact instrument slip. The
    ledgered pattern paid for itself within hours.
+
+---
+
+# DELTA - close fix wave re-review (2026-07-29, same whole-branch reviewer)
+
+Scope: the one fix commit `1805949` (`README.md`, `e2e/smoke.spec.ts`,
+`src/views/EditorView.vue`, +16/-18), judged against my findings 1-3 only.
+Diff package: `.superpowers/sdd/close-fix-b37eac1..1805949.diff`. Reviewed at
+HEAD `3fb5954`; the two commits after the fix (`3fb5954` and the ledger
+commit before it) touch only `docs/decision-ledger.yaml` and `docs/ROADMAP.md`
+(measured: `git diff --name-only 1805949..HEAD` returns exactly
+`docs/decision-ledger.yaml`), so the three files under review are the fix
+commit's own state.
+
+## Per-finding verdicts
+
+**Finding 1 (pronoun): ADDRESSED.** `README.md:190` now reads "Interrupt any
+subcommand with Ctrl-C" - the exact fenced repair. Read in its paragraph: the
+referent is explicit, the following "Only `run` earns that code gracefully"
+still contrasts correctly against the other subcommands, and no other pronoun
+in the paragraph is left dangling.
+
+**Finding 2 (ragged wraps): ADDRESSED.** Both blocks are fill-wrapped with no
+mid-sentence fragment line (both inspected in the tree). Comment-only and
+word-preserving, proven twice with fired controls:
+- Every changed line in both files is a `//` comment line: the diff's
+  changed-line set filtered for non-comment lines returns 0; the same filter
+  fired on the README's changed lines returns 4.
+- Word identity: both files, marker-stripped (`sed 's|^\s*// \?||'`) and
+  whitespace-normalized, hash identical between `b37eac1` and `1805949`;
+  control - the same instrument with one word swapped in reports a
+  difference. (My first instrument compared normalized streams WITHOUT
+  stripping the `//` markers and reported both files as differing - sound as
+  a command, wrong as a measurement, since reflowing moves marker tokens by
+  construction. Corrected rather than trusted, and recorded here because the
+  house just ledgered exactly this shape.)
+- `pnpm lint` exit 0 at HEAD (parse proof over both files).
+
+**Finding 3 (verdict figure): ADDRESSED.** All of the implementer's claims
+reproduced with my own instruments at HEAD:
+- `README.md:202` states 225; basename reading 225, full-path reading 225.
+- Set IDENTITY, not two equal counts: `comm` in both directions over the two
+  sorted sets returns empty/empty.
+- Every member is markdown (filter fired against a synthetic `.txt` control);
+  no `brief` member (filter fired against a synthetic control).
+- The delta against the 219 set at `80e5c19` is EXACTLY the six salvaged
+  files - `task-1..5-verdict.md` plus `whole-branch-verdict.md` under
+  `docs/process-journal/artifacts/plan-10-sdd/` - and nothing left the set
+  (reverse `comm` returns 0).
+- The stated unit is unchanged: "files under `docs/` with `verdict` in the
+  name", the same sentence wording whose two readings I verified converge.
+
+## New breakage introduced by the fix diff
+
+None found. No word or code line changed in the two source files (proofs
+above); the README paragraph reads correctly; the figure's unit wording is
+untouched; no line-number citation re-entered the swept files (both corpus
+expressions over the two files: 0 hits - the expressions' fires stand from
+the main review, 20/13 and 4/4 on the pre-sweep state).
+
+## On the two disclosures
+
+- **The concurrent-writer violation is the controller's, correctly ledgered,
+  and does not contaminate the artifact:** the four in-flight commits touch
+  only `docs/ROADMAP.md` and `docs/decision-ledger.yaml`, disjoint from the
+  three files under review, and the implementer re-measured at the new HEAD.
+  My own measurements above are all taken at `3fb5954` and agree.
+- **The treadmill non-decision: my recommendation is the standing re-measure
+  duty attached to the salvage step** (option 2). It passes the house's own
+  trigger-and-handle filter: the trigger is readable (you are executing the
+  salvage step, the step that adds members of the counted set) and the handle
+  is mechanical (re-run the two recorded commands, update the figure in the
+  salvage commit itself - the commit that changes the set states its new
+  count, per `proc-normative-count-recomputed`'s own logic). Growth-proof
+  phrasing (option 1) either keeps a number and re-arms anyway, or drops
+  precision from a sell-tone sentence whose concrete figure is the point -
+  and the README's register is the owner's, so that option stays his to take
+  INSTEAD if he prefers killing the duty over keeping the number fresh. Cost
+  of my recommendation: one measurement per plan close, already fenced.
+
+## Delta evidence
+
+Instruments in the session scratchpad `wbrev-independent/`: `set-basename.txt`,
+`set-fullpath.txt`, `set-219.txt`, `delta-lint.log`. Tree identity at file
+level, proven before this append: all 1397 tracked files hash-identical to
+their HEAD blobs (`git ls-tree -r HEAD` vs `git hash-object --stdin-paths`,
+0 mismatches). This appended section makes this file the single intended
+delta; every other tracked file is untouched, re-proven after the append.
