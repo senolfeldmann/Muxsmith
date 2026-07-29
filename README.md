@@ -106,7 +106,10 @@ Muxsmith needs **mkvmerge >= 86.0** on the PATH or in a standard install locatio
 <!-- placeholder(1.0): Install section - artifact table per OS (msi x2 /
      dmg / deb / rpm / AppImage / tar.gz, naming per Plan-8 D89) linking
      docs/INSTALL.md, which already carries the per-OS install-hurdle
-     steps; drop the WIP banner in the same pass -->
+     steps; every row states the artifact's reach the way the install
+     notes and the release body state it - the requirement itself, never
+     a distro family standing in for it; drop the WIP banner in the same
+     pass -->
 
 Until packaged releases land, build from source:
 

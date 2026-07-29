@@ -8,7 +8,7 @@ Muxsmith __VERSION__ - builds carry no developer identity; read the install note
 | `muxsmith-__VERSION__-windows-arm64.msi` | Windows 11 on ARM |
 | `muxsmith-__VERSION__-macos-arm64.dmg` | macOS 11+, Apple Silicon |
 | `muxsmith-__VERSION__-linux-x86_64.deb` | Debian 13+ / Ubuntu 24.04+ |
-| `muxsmith-__VERSION__-linux-x86_64.rpm` | rpm distributions with glibc 2.39+ (Fedora 40+, RHEL 10+) |
+| `muxsmith-__VERSION__-linux-x86_64.rpm` | rpm distributions with glibc 2.39+ (Fedora 40+; RHEL 10+ with EPEL for webkitgtk 4.1) |
 | `muxsmith-__VERSION__-linux-x86_64.AppImage` | any distro with glibc 2.39+ |
 | `muxsmith-__VERSION__-linux-x86_64.tar.gz` | any distro with glibc 2.39+, CLI + GUI |
 

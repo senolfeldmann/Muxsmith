@@ -79,10 +79,10 @@ shell profile.
 Artifacts (x86_64):
 
 - `muxsmith-<version>-linux-x86_64.deb` - Debian 13+ / Ubuntu 24.04+: `sudo apt install ./muxsmith-<version>-linux-x86_64.deb`
-- `muxsmith-<version>-linux-x86_64.rpm` - rpm distributions with glibc 2.39+ (Fedora 40+, RHEL 10+): `sudo dnf install ./muxsmith-<version>-linux-x86_64.rpm`
+- `muxsmith-<version>-linux-x86_64.rpm` - rpm distributions with glibc 2.39+ (Fedora 40+; RHEL 10+ with EPEL for webkitgtk 4.1): `sudo dnf install ./muxsmith-<version>-linux-x86_64.rpm`
 - `muxsmith-<version>-linux-x86_64.AppImage` - any distro with glibc 2.39+: `chmod +x` the file, then run it
-- `muxsmith-<version>-linux-x86_64.tar.gz` - portable archive with both binaries; see its
-  `README.txt`
+- `muxsmith-<version>-linux-x86_64.tar.gz` - any distro with glibc 2.39+, portable archive with
+  both binaries: see its `README.txt`
 
 **Unsigned packages (Fedora):** the `dnf install` above prints
 `Warning: skipped OpenPGP checks for 1 package from repository: @commandline`

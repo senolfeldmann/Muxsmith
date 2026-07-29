@@ -25,7 +25,10 @@ permissions:
 # guidance, glibc being backward but not forward compatible) while
 # tests run on the newest. That base sets the shipped glibc floor at
 # 2.39, so moving this pin moves the product's reach - and with it every
-# user-facing text that states that floor or an artifact's reach.
+# text that states that floor, an artifact's reach, or this pin. Find
+# those texts by grepping the tree for the outgoing values (the old
+# glibc version, the old image label); they sit in docs, release
+# templates and bot config, and the set is not one anybody recalls.
 
 jobs:
   guard:
