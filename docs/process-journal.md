@@ -2811,3 +2811,107 @@ scoped to text and the gate, the owner's test-coverage ruling does not reach a
 preserved-behaviour contract, and building it was never put to him - so it
 carries into the pre-1.0 gates as an owner question with its measurement
 attached. Framework-side session duties are tracked agent-side.
+
+## 2026-07-29 | Plan 10 authored four-eyes | session 27 (Peter, Opus 5 1M)
+
+**Scope.** Session 27, `8e680be..09c37b3` plus the close commits. No code
+executed: the 1.0 scope was re-cut on five owner rulings, then Plan 10 was
+authored and reviewed through four fix rounds to APPROVED. Plans 1-9 were
+already closed. The plan is not executed; that is the next session's work.
+
+**Decisions and their why.**
+
+- Guide, both blog posts and the requirements-catalog derivation moved from
+  "at 1.0" to 1.x (owner): they describe a finished product, so they follow the
+  release rather than gate the tag. The Tier-2 entry carrying them read
+  "deferred to the 1.0 tag" and therefore read as a blocker; re-pointed.
+- New pre-1.0 gate (owner): no release before his own manual QA and bug hunt on
+  real hardware, with bugs, disliked-but-conforming behaviour and pulled-forward
+  v1.x items all counting as scope input. So finishing the ROADMAP's pre-1.0
+  list does not close 1.0 scope.
+- Renovate: hosted app over self-hosted action, because the pins live in
+  workflow files and `GITHUB_TOKEN` cannot write those - self-hosting needs a
+  classic PAT with `workflow` scope in repo secrets, more blast radius than the
+  app. Cost: a third party gets write access to the CI definition.
+- The ruled monthly cadence is `["* * 1-3 * *"]`, not `schedule:monthly`. That
+  preset is `['* 0-3 1 * *']`, a four-hour window, and the hosted scheduler runs
+  a repo daily depending on status, so the preset skips whole months silently.
+- Majors get their own PRs, `mise` stays unmanaged (both owner). Controller
+  consequence, recorded not silent: the npm `packageManager` depType goes off
+  too, since pnpm is mirrored in `mise.toml` and `package.json` and managing one
+  side alone breaks the mirror.
+- No design document, owner-approved: three of five work items were already
+  specified to the line, the two with design content were settled
+  controller-side with verified facts. First package to skip one; plans 6-9 each
+  had a design. The plan states this in its header.
+
+**What the process caught.** Origin in brackets.
+
+- Four controller-brief premises refuted against the tree by the plan author
+  [brief]: BUILDING.md's frontend section states no gate count; the citation
+  corpus is 20 lines across 13 files, not 17; the cargo `rangeStrategy` default
+  was described imprecisely; the validator invocation was neither documented form.
+- Round 1, 8 Important / 6 Minor, coverage complete [plan]: two self-audit
+  sentences that do not reproduce; three of four absence-shaped checks with no
+  prescribed red state; a settled ledger entry cited for what it does not cover;
+  an unfenced paragraph edit that would have dropped a PyYAML prerequisite.
+- Delta 1, one Important [plan]: a fire forbade a count mismatch its own
+  mutation necessarily produces alongside the continuation message.
+- Delta 2, one Minor [plan]: four fires counted where five are enumerated,
+  inherited from a clause framing them as one per anchor kind.
+- Delta 3, one Minor [fix]: the plan's self-review cited its own line `:182`
+  and the acceptance row inserted by that same fix round moved the target to
+  `:183`. The document's only self-pointing line citation, inside the package
+  whose subject is that line citations go stale, falsified within one round of
+  its own edits. Repaired symbolically rather than renumbered.
+- Delta 4 APPROVED. Five review rounds, every one of them found something,
+  including the last.
+- The fix rounds produced defects of their own, caught in-round [fix]: a corpus
+  control matching its own `git grep -n` prefix and reporting a clean tree; a
+  compound control naming a token its expression cannot match.
+
+**Process mechanics.** Controller on Opus 5 1M. Every dispatch carried an
+explicit model: one archival task on the cheap tier; Renovate recon, plan author
+and plan reviewer on the mid tier, author resumed three times for fixes and
+reviewer three times for delta judgments. No top-tier dispatch - that tier is
+reserved for the plan-close whole-branch review, which this session did not
+reach. Two full eleven-part gate runs, both green; warm gate measured at
+17.186 s. `ledger-lint` correctly refused one commit for a count not bumped
+alongside an appended occurrence. House knowledge 517 -> 526 entries.
+
+**Friction and failure.** The controller was the session's dominant defect
+source and every instance was caught by something else. The 17-site corpus count
+was wrong because the search enumerated cited file extensions from recall and
+omitted `.md`. A push log said six commits where seven went. A commit message
+claimed "the fourth time this session" about something that had happened once
+(amended pre-push). The review brief told a read-only reviewer to "re-run" three
+fires that are prescriptions against a deliverable that does not exist yet. And
+a harvest occurrence was nearly appended to an entry whose statement does not
+carry it, which would have walked that entry to its promotion threshold on a
+stretched reading.
+
+**Moments.**
+
+- The three sites the corpus search missed cite `README.md` spans from a CLI
+  test, and the same package's README task edits that file - they would have
+  gone stale inside the package built to repair the class.
+- The plan's replacement self-audit reports nine sites; the ninth is the audit
+  sentence itself, matching because it quotes its own expression.
+- Round 1's reviewer: the plan's evidence discipline was rigorous everywhere it
+  measured the tree and absent everywhere it audited its own text.
+
+**Deltas.** The gate-count check was tracked as a cross-file lint. Measuring the
+corpus before briefing it killed that form: ten of the twelve tracked files
+stating a count are retired plans whose figure was true when written, and the
+rest are historical statements, so the lint would have demanded that history be
+falsified. The real root was that the file called the authoritative enumeration
+never states the total; the item became a one-file invariant. The citation sweep
+grew from one line in one file to its own task over 24 sites in 16 files.
+
+**Open threads.** Owner QA pass gates the release; its rehearsal build exists on
+`a5b63ba`, produced without a tag. Two Renovate activation steps are the owner's
+and stay OPEN. Two false counts in the README's process paragraph are an
+unanswered owner scope question. BUILDING.md's positional gate ordinals were
+surfaced out of scope, awaiting routing. A `have_mkvmerge()`-gated guard leaves
+the D102 sorted half unguarded on machines without mkvmerge. Framework-side
+session duties are tracked agent-side.

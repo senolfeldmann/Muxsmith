@@ -536,6 +536,18 @@ asserting it is NOT reordered. The controller's argument that carried it: a
 contract asserted in three normative places, one of them the spec, with no
 producer anywhere is a claim nobody can rely on, and this producer is cheap.
 
+**A neighbouring coverage fact, surfaced by the Plan-10 author 2026-07-29 and
+recorded here because the HANDOFF is volatile and a fact with no vehicle
+evaporates.** The existing guard for the SORTED half of the same contract,
+`dry_run_json_sorts_config_diagnostics_errors_first_when_planning_ran`, is
+`have_mkvmerge()`-gated. So on any machine without mkvmerge - and in principle
+on a CI leg that lost it - that half is unguarded while the suite still reports
+green. Not Plan 10's problem and deliberately not folded into it: the fix is
+either a second producer on the no-mkvmerge path or a gate-independent
+construction, and both are their own decision. **Vehicle: whichever package next
+touches the diagnostics ordering contract, or the owner QA pass if it surfaces
+the symptom first.**
+
 **DONE at the close 2026-07-29** (`9dc3a4d` + `c8dfc6d`). **Two text corrections routed to the close, from the Task-5 review and its
 delta (2026-07-28).** Neither is user-visible; both are developer-facing prose
 that a change falsified. They are held to the close rather than amended into
