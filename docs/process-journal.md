@@ -3022,3 +3022,113 @@ The vulnerability vehicle, unscheduled against Plan 10 because neither touches
 the other's files. The owner's full product pass, which is what actually closes
 1.0 scope. `BUILDING.md`'s positional gate ordinals, routed at this close to
 whichever package next edits those blocks after Task 1 lands.
+
+## 2026-07-29 | Plan 10 complete (the pre-1.0 product package) | session 28 (Peter, Opus 5)
+
+**Scope.** Plan 10 authored and approved in session 27, executed here end to
+end: five serial tasks, their reviews, one task fix round, the plan close with
+its whole-branch review and close fix wave. Commit range `754cb73..a4061d5`
+(22 commits: six product, the rest tracker, house-knowledge and salvage).
+
+**Decisions and their why.**
+- Minor findings were routed into a fix round twice, against the execution
+  skill's default of handing minors to the whole-branch review. Ground both
+  times: the findings were user-facing documentation accuracy in the task whose
+  purpose is that accuracy, the repairs were one clause each with their content
+  already measured by the reviewer, and the implementer's context was live so a
+  round cost a round-trip rather than a re-derivation. Recorded as a deviation
+  rather than presented as the rule.
+- `a-search-whose-terms-come-from-memory-produces-a-false-absence` promoted to
+  Tier 2 on its third occurrence (agent-emergent + process promotes at 3). Its
+  statement gained the split that the third instance exposed: a measuring
+  expression carries two enumerations, what it READS and what it MATCHES, and
+  auditing one leaves the other unaudited.
+- `a-guards-exclusion-list-is-the-next-reviewers-target-list` reached the same
+  threshold within this one package and was deliberately NOT promoted, because
+  all three occurrences came from one package and largely from one reviewer's
+  method. Recorded in the entry so the deviation is visible rather than silent.
+
+**What the process caught.** Every item below was caught by something other
+than the agent that produced it.
+- Task 1's implementer: `BUILDING.md` carries three positional gate ordinals,
+  not the two the tracker enumerated; the third hides hard-wrapped inside the
+  same paragraph as the second. Origin: the tracker entry, written a session
+  earlier.
+- Task 1's review: the shipped gate-count check cannot see a fourth gate block,
+  and none of the seven fires reached its comment/blank-line exclusion branch.
+  Origin: the plan. Both routed as ROADMAP triggers.
+- Task 2's implementer: the plan's character-for-character Rust fence cannot
+  survive `cargo fmt`, which the same plan makes a task exit bar - not a line
+  length but rustfmt's `fn_call_width` of 60 against a 66-column argument list.
+  Origin: the plan.
+- Task 2's review: a ROADMAP vehicle read "whichever package next touches the
+  ordering contract", which fires on the package the same paragraph exempts by
+  name. Origin: a tracker entry written two sessions earlier.
+- Task 3's review: the plan's fenced validator invocation validates the file as
+  GLOBAL config, so a green run is blind to two repo-config defect classes.
+  Proven with two probes that pass the fenced form and fail `--no-global`.
+  Origin: the plan.
+- Task 4's review: the README scoped exit code 130 to `run` on a measurement of
+  emitting sites, while the reader's observable is `$?` - an interrupted
+  `dry-run` reports 130 too, by default signal disposition. Origin: the
+  implementer's own correct measurement, applied to the wrong scope.
+- Task 5's review: one member of the swept comment-citation class survives in
+  `.github/workflows/ci.yml`, outside the corpus's file selector. The class is
+  closed within six source extensions and not tree-wide. Origin: the corpus
+  definition, i.e. the plan and the tracker before it.
+- Whole-branch review: the README's verdict-file count is falsified by this
+  close's own salvage commit. Origin: the process itself.
+- Whole-branch review: "byte-exact" overstates what `raw:` does - `scalar_eq`
+  carries Int/Float cross arms, so `raw:x: 6` matches a reported `6.0`. Wrong
+  in the spec, the matcher's comment and the README simultaneously; pre-existing,
+  routed to the spec-amendment vehicle.
+
+**Process mechanics.** 5 task implementers, 5 task reviewers, 1 close fix-wave
+implementer, all Opus 5; 1 whole-branch reviewer on Fable 5, the only role the
+top tier serves here; controller loop Opus 5. Three resumptions (a fix round, a
+task delta review, the whole-branch delta review), each judged by the agent that
+had produced the finding. Two fix rounds total, both one round. Eleven-part gate
+run green before every commit by its author and re-run by the controller at the
+close with each part's exit code captured separately; CI green on all five jobs
+at the pushed head. House knowledge 531 -> 545 entries.
+
+**Friction and failure.**
+- The controller committed four times into the working tree while the close
+  fix-wave implementer was live, using `git add` plus a bare `git commit` rather
+  than the pathspec-scoped form the house rule prescribes. Nothing was captured,
+  because the implementer had staged nothing yet - that is luck, not method. The
+  implementer reported the broken premise itself and re-ran all eleven gate
+  parts and all four of its measurements at the new HEAD.
+- A controller review brief demanded the tree be left byte-identical to a named
+  commit, and the controller then moved HEAD mid-review; the prescribed proof
+  became unavailable in its prescribed form. The durable repair is now written
+  down: prove identity per file against blobs, never by a clean `git status`.
+- The verdict harvest of one review was mined after the next dispatch went out,
+  not before it. Nothing was lost; the order was wrong.
+- Instruments failed in three reviews and each failure was self-caught: a
+  PATH-stripped control that met a second, shadowed `mkvmerge`; a `grep -c` that
+  counts lines where the question was matches; a truncated sha256 restated with
+  an invented tail.
+
+**Moments.**
+- One swept citation had never pointed at its target in any committed tree: at
+  the parent of the commit that introduced it the target sat at `:557`, and that
+  same commit's own diff moved it to `:694` while writing the comment. The
+  "just keep the numbers updated" counter-argument does not survive it.
+- The close's own salvage falsified a number the package had verified true three
+  times an hour earlier.
+
+**Deltas.** The plan predicted which halves of the D102 contract were unguarded;
+the task measured instead of assuming, and the measurement decided: the two
+sorted halves were already guarded, the two preserved-order halves were not, so
+two of four fenced producers were written and two deliberately not.
+
+**Open threads.** Renovate's activation is two owner actions and stays open, and
+its ROADMAP trigger has not fired. The surviving `ci.yml` citation, with an open
+owner question about whether the comment ruling reaches CI and config comments.
+The `raw:` wording and the spec's 8.1 synopsis, both on the spec-amendment
+vehicle. The count-versus-salvage treadmill, recorded as a blocked non-decision
+with the reviewer recommending a standing re-measure duty at the salvage step.
+Two vulnerability alerts on their own one-task vehicle. And the gate that
+decides everything: no 1.0 completeness claim is possible before the owner's
+manual QA and bug-hunting pass has run.
