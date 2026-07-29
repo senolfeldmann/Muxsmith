@@ -758,12 +758,18 @@ action:
   now unreachable as written:** Task 7 measured the anomaly branch, and the
   reason was the instrument - the fenced mutation site also feeds the engine's
   candidate construction, so the degraded candidates never reached the guards.
-  No re-run of D105's protocol can produce the only-G3 branch. The trigger
-  therefore waits on a condition nobody can meet, and re-aiming it at a
-  re-fenced experiment (mutating the applier site only, which the Task-7
-  reviewer measured turns all three guards red through their own assertions) is
-  an OPEN OWNER QUESTION raised at this close, not a controller call. Until
-  ruled, all three guards stay.
+  No re-run of D105's protocol can produce the only-G3 branch. **RE-AIMED by
+  owner ruling 2026-07-29**, on the recommendation that the D49 question stays
+  open until after 1.0 rather than being re-run now: the new condition is **a
+  re-fenced D49 experiment is run at all** (mutating the APPLIER site only -
+  `apply_suggestion`'s call to `delta_for` - which the Task-7 reviewer measured
+  in an isolated crate copy turns all three guards red through their own
+  assertions). Then, and only then, the owner rules on G1/G2 removal against
+  `core-d49-g1g2-experiment`. Until such a run happens, all three guards stay
+  per `proc-proposed-safeguard-stays`. The re-fencing itself is not scheduled:
+  its most likely outcome is "all three load-bearing, keep everything", so it
+  buys a confirmation that nothing changes, which is not what the run-up to 1.0
+  is for.
 - A NINTH IpcError render site is added anywhere in the frontend -> the v1.x
   "IpcError render funnel" entry stops being a candidate and becomes the
   answer: eight hand-rolled `$t(err.code, err.params)` alerts are the
