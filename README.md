@@ -149,7 +149,7 @@ $ muxsmith dry-run series.yaml --source /media/series --output /media/clean
 
 ### `muxsmith run <profile> [--source DIR] [--output DIR] [--jobs N] [--fail-fast] [--on-collision <policy>]`
 
-The same planning, then execution with `N` parallel mux jobs (default 1). Every job's full mkvmerge command line and output persist to the run log (auto-pruned after 14 days). `--fail-fast` stops dequeuing new jobs after the first failure and lets in-flight jobs finish cleanly.
+The same planning, then execution with `N` parallel mux jobs (default 1). Every job's full mkvmerge command line and output persist to the run log (auto-pruned after 14 days). `--fail-fast` stops dequeuing new jobs after the first failure and lets in-flight jobs finish cleanly, and `--on-collision` carries the same three policies described under `dry-run` above.
 
 ```console
 $ muxsmith run series.yaml --source /media/series --output /media/clean --jobs 8
@@ -187,7 +187,7 @@ settings = {
 
 Bind it in editor settings, not with the in-file `# yaml-language-server: $schema=...` modeline. The modeline is one line and no editor config, which is exactly why it is a trap: it lives inside a YAML comment, and the GUI's save does not preserve comments, key order, or formatting - it writes the profile fresh from its own model. Wire up a modeline, then save the same profile once from the GUI, and the binding is gone. No error, no warning: the file still works, your editor just quietly stops helping. Bind the schema in your editor's own settings instead, and it survives every save because it never lived in the file the GUI rewrites.
 
-Two conventions that hold everywhere: **command-line flags override profile-stored values** (`--source`, `--output`, `--on-collision`), and **exit codes mirror mkvmerge's own**: `0` clean, `1` finished with warnings, `2` errors - your scripts already speak this dialect. One code is Muxsmith's own: a `run` you interrupt with Ctrl-C exits `130`, the shell's convention for a signalled process, after killing in-flight jobs and deleting their partial output.
+Two conventions that hold everywhere: **command-line flags override profile-stored values** (`--source`, `--output`, `--on-collision`), and **exit codes mirror mkvmerge's own**: `0` clean, `1` finished with warnings, `2` errors - your scripts already speak this dialect. Interrupt any of them with Ctrl-C and you get `130` instead, the shell's own convention for a signalled process, so handle it in your `case $?`. Only `run` earns that code gracefully: the first Ctrl-C kills the in-flight jobs, deletes their partial output and still prints the summary, and a second one force-exits on the spot, part-way through that cleanup.
 
 ## 🖱️ The GUI
 
