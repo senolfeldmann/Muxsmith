@@ -2135,6 +2135,22 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
 
 ## Test flakiness (owner call 2026-07-28: no flakiness at 1.x; this is the tracked instance)
 
+- **A SECOND, DIFFERENT flake class, observed 2026-07-29 (session 28): the CI
+  Windows leg's mkvmerge INSTALL step, not a test.** Run `30469546031` on commit
+  `ad4746d` failed with
+  `mkvmerge.exe not found at C:\Program Files\MKVToolNix\mkvmerge.exe after choco install`
+  while the four other jobs passed. The commit was docs-only, and the runs on
+  both neighbouring commits - `8b98b86` before it and `fac3b6c` after - were
+  green on all five jobs, so nothing in the tree explains it. The same job's log
+  carries npm registry read errors with retries in the same minutes, which is
+  the ordinary signature of a network-flaky runner window. **Why it is worth
+  tracking rather than shrugging off:** this step is what makes the project's
+  "3-OS green" claim mean live-binary tests on three of three, so when it fails
+  the guarantee silently degrades to two of three - and it fails LOUDLY today
+  only because the step asserts the binary's path afterwards. First occurrence;
+  if it recurs, the fix is a retry around the install plus a re-assert, not a
+  weaker check. No action now, per the owner's 1.x flakiness call.
+
 - **`dry_run_json_emits_a_document_when_the_language_query_fails` failed once
   under load, then passed four times** (Plan 8.5 pre-push gate, 2026-07-28).
   Observed: the ten-part gate's `cargo test --workspace` reported
