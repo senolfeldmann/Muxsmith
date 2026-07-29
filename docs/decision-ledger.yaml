@@ -4964,3 +4964,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 fix round 1, author's own report: measuring whether unbackticked bare line-spans exist beyond the three known ones, the first control reported a clean tree because the one-pipeline form matched its own `git grep -n` prefix. The per-file form then found the member the review's F11 had named (suggestions.rs:1016), and the failure mode is now written into the task's own step rather than left as report prose"}
+- id: a-compound-control-proves-only-that-one-of-its-tokens-fires
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A control that puts several tokens on ONE line and observes that the line matches has proven that at least one member fires, not that each does. A dead alternative in the pattern is masked by its living siblings, and the control's prose then claims a coverage the expression does not have. Handle: fire each alternative on its own line, or describe the control by what actually matched rather than by the tokens you intended it to cover. Trigger is readable: your control line contains more than one of the forms you are claiming coverage for."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 delta review finding N3 (.superpowers/sdd/plan-10/plan-review-round-1.md): the replacement self-audit's fire control was described as verified against a scratch line carrying 'ten-part', '11 parts' and 'Sum `11`'. Isolated by the reviewer, `[0-9]+-part` cannot match `ten-part`; the compound line matched on its other members and masked the dead one. Not a live defect - an independent word-spelled sweep found no gate count the audit misses - but the named token was exactly the form the earlier failing grep had searched for"}
+- id: a-fire-lists-every-check-its-mutation-trips-not-only-the-target
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A fire written to prove guard X red must list the OTHER checks that the same mutation also trips, as expected output. One mutation is observed by every check whose input it touches, so an acceptance criterion naming only the target - worse, one forbidding a neighbour's output - is unmeetable, and the implementer running it literally lands in a routing round over a sentence. Trigger is readable: the fire's acceptance sentence contains the word NOT about a neighbouring check's output. Handle: enumerate the full expected violation set, and say which member is the one the fire exists to catch, so a run missing THAT member still fails."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 delta review finding N1 (.superpowers/sdd/plan-10/plan-review-round-1.md): fire F5 rewrote a gate block's command as two backslash-continued lines to prove the continuation guard fires, and required the exit be 'NOT with a count mismatch'. The same mutation makes the fixed counter see 2 commands against a stated 1 and 12 against a stated 11, so all three violations speak; suppressing the comparison would have been the counting-rule decision the task is forbidden to make"}
+- id: a-display-truncation-becomes-part-of-the-measurement
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "`cut`, `head` and their kin are display conveniences that silently join the measurement. When a probe appears to REFUTE a claim about a long line, re-run it without the truncation before writing the refutation down - the quoted text may simply have started past the cut. Trigger is readable: you are about to report that a claim does not hold, and your command contains a width or line limit."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-10 delta review, HARVEST (.superpowers/sdd/plan-10/plan-review-round-1.md): the reviewer's first probe against the F12 fix appeared to refute a correct fix, because a 200-plus character spec line was truncated before the quoted sentence began. Caught by the reviewer before reporting; recorded as the discipline that prevented a fix round rather than as a defect that cost one"}
