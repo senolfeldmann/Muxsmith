@@ -77,7 +77,7 @@ release bundle locally" below covers the local invocation.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
 cargo deny check
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
 ```
@@ -85,6 +85,12 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D war
 `#![deny(missing_docs)]` gates presence of rustdoc comments; the `cargo doc`
 run above is what gates their *correctness* (broken intra-doc links and
 other rustdoc warnings), which presence-only enforcement cannot catch.
+`--document-private-items` widens that check to the private half of each
+crate: without it rustdoc neither renders private items' doc comments nor
+carries them into link resolution, so a broken link inside a private item -
+and an ambiguity that exists only once a private module joins the documented
+namespace (`src-tauri/src/lib.rs`'s `run` module beside its `run` function,
+which the flag caught the moment it was added) - stays invisible.
 
 The cross-target clippy run (part 6) type-checks the workspace for Windows
 without linking, so it runs on any OS. It catches what a host-only clippy
@@ -100,6 +106,16 @@ pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
 pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
 pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
 ```
+
+### House-knowledge check
+
+```bash
+python3 scripts/ledger-lint.py   # decision-ledger / process-conventions YAML invariants
+```
+
+A gate part like the Rust and frontend ones above, binding before every push
+(house rule `ledger-lint-runs-before-every-push`). Needs PyYAML; CI runs it
+from a throwaway venv as its own job.
 
 CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-5 natively on all
 three OS legs (its Windows leg covers natively what part 6 cross-checks

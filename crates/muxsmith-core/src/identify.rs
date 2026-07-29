@@ -301,10 +301,11 @@ impl std::fmt::Display for IdentifyError {
     }
 }
 
-/// In-memory identification cache, constructed per planning call and dropped
-/// with it (spec 5.5). Keyed on path plus (mtime, size); a changed file
-/// re-identifies, so a dry run is never stale. On-disk caching is a future
-/// candidate (spec non-goals).
+/// In-memory identification cache, constructed per call and dropped with it
+/// (per planning call in the pipeline seam, per invocation on the CLI and GUI
+/// identify surfaces; spec 5.5). Keyed on path plus (mtime, size); a changed
+/// file re-identifies, so a dry run is never stale. On-disk caching is a
+/// future candidate (spec non-goals).
 #[derive(Debug, Default)]
 pub struct IdentifyCache {
     entries: HashMap<PathBuf, (CacheKey, Identification)>,

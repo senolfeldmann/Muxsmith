@@ -91,8 +91,13 @@ jobs:
       # private item) rotted silently since Plan 4 until this task. All
       # legs, matching the cross-target lint rule (cfg-gated items can
       # differ per platform).
+      # --document-private-items (Plan 9 close): private items are not
+      # rendered without it, so their doc comments' links go unchecked and a
+      # link only ambiguous once a private module is documented resolves
+      # quietly. Kept identical to BUILDING.md's gate block - a single-site
+      # flag would leave CI carrying exactly the blind spot it removes.
       - name: cargo doc (rustdoc warnings as errors)
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
       # Task 2 (#14): assert the gated tests actually exercised mkvmerge

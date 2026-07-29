@@ -1502,8 +1502,13 @@ mechanism (`src/i18n/index.ts`) on the Rust side:
   renders a de message; (2) a message present only in en renders the en
   value under a de chain (per-message fallback); (3) a region-qualified
   "de-DE" resolves the de row; (4) an unknown tag renders the en chain.
-  No new snapshot files: the 11 insta snapshots stay en-pinned (D64) and
-  de rendering is covered here plus by the parity gates.
+  No new snapshot files, as designed here - amendment 4 later added
+  exactly one, `cli_validate.rs`'s German case
+  (`bare_raw_property_renders_german_with_locale_flag`), so de rendering is
+  covered by it, by these unit tests and by the parity gates. Recounted at
+  the Plan-9 close: 13 snapshots, 12 of them en-pinned through the D64
+  funnel and that one de-pinned through the funnel's own
+  locale-parameterized construction site (`support::muxsmith_localized`).
 
 **Rejected: single bundle, en resources overridden by de
 (`add_resource_overriding`).** Steelman: one bundle, no chain walk, and
@@ -1553,17 +1558,22 @@ machine - the exact failure the entry names). Therefore:
   or by the enumerated bare helper.
 - **Where it applies, enumerated - the complete CLI-invoking test
   surface** (measured: `cargo_bin` grep, 2026-07-21):
-  `cli_validate.rs` (1 constructor, 3 snapshots), `dry_run_cli.rs` (13
-  invocation sites, 3 snapshots), `run_cli.rs` (1 constructor, 4
-  snapshots), `run_live.rs` (1 constructor, 1 snapshot),
+  `cli_validate.rs` (1 constructor, 3 snapshots - 5 since amendment 4
+  added the German case), `dry_run_cli.rs` (13 invocation sites, 3
+  snapshots), `run_cli.rs` (1 constructor, 4 snapshots),
+  `run_live.rs` (1 constructor, 1 snapshot),
   `cli_schema.rs` (2 sites, **both via the bare helper below - zero
   funnel sites in this file**; corrected at execution via the Task-1
   NEEDS_CONTEXT: the earlier "`schema_json()` routes through the funnel
-  ... pinned regardless" premise was refuted by the tree). The funnel
-  covers all **11 insta snapshots** (`tests/snapshots/`, counted) and
-  every locale-sensitive stdout/stderr assertion - including `--json`
-  assertions, whose envelope carries the locale-rendered `rendered`
-  field; `cli_schema.rs`'s two tests are locale-independent by
+  ... pinned regardless" premise was refuted by the tree). Every
+  CLI-invoking snapshot test rides a pinned helper - the en funnel or its
+  locale-parameterized construction site `support::muxsmith_localized` -
+  as does every locale-sensitive stdout/stderr assertion, including
+  `--json` assertions, whose envelope carries the locale-rendered
+  `rendered` field. Recounted at the Plan-9 close: **13 insta snapshots**
+  (`tests/snapshots/`, counted), 12 of them through the en funnel and the
+  German `cli_validate` case through `muxsmith_localized`;
+  `cli_schema.rs`'s two tests are locale-independent by
   construction (no `Renderer` exists on either path - the exception
   block below).
 - **Two enumerated exceptions, closed** (controller rulings, internal

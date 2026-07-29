@@ -440,15 +440,17 @@ tracks:
             String::from_utf8_lossy(&out.stderr)
         )
     });
-    // Planning ran, so this document came from `batch_document`, not the
-    // config-only shape: `files` is present and `mkvmerge_found` absent.
+    // Shape guards. `mkvmerge_found` absent rules out the two config-only
+    // shapes that carry it (mkvmerge missing, query failed). The
+    // profile-load-failure shape carries neither key and is ruled out by the
+    // code sequence below, where it would be a singleton `parse-error`.
     assert!(
         report.get("files").is_some_and(|f| f.is_array()),
-        "expected a planned batch document with a files array, got: {report}"
+        "expected a report document carrying a files array, got: {report}"
     );
     assert!(
         report.get("mkvmerge_found").is_none(),
-        "expected a planned batch document, got: {report}"
+        "expected a planned batch document, not the mkvmerge-missing config-only shape, got: {report}"
     );
     let codes: Vec<&str> = report["config_diagnostics"]
         .as_array()

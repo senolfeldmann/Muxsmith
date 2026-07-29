@@ -228,13 +228,15 @@ async function onApplySuggestion(
         ipcErrorParams.value = parseDiagnostic.params;
       } else {
         // Contract violation (D42's `load_profile` envelope): `profile:
-        // null` is documented to always pair with a lead diagnostic
-        // explaining why. An empty `config_diagnostics` here means core
-        // broke that contract -- there is no diagnostic to surface through
-        // the shared alert line, so at minimum this stops being a silent
-        // no-op.
+        // null` is documented to always pair with a lead `parse-error`
+        // diagnostic explaining why. The fetch above is a code-keyed
+        // `find`, so two shapes reach this arm and both are that
+        // violation: an empty `config_diagnostics`, and a non-empty one
+        // carrying no `parse-error` entry. Neither leaves a `parse-error`
+        // diagnostic to surface through the shared alert line, so at
+        // minimum this stops being a silent no-op.
         console.error(
-          "[batch] load_profile returned profile: null with no diagnostics",
+          "[batch] load_profile returned profile: null with no parse-error diagnostic",
           selectedProfile.value,
         );
       }

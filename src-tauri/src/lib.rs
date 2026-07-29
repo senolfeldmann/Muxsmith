@@ -51,7 +51,7 @@ use settings::AppSettings;
 /// code key rather than composing a translated message the shell has no
 /// business producing.
 ///
-/// `pub(crate)`: [`run`]'s `start_run` builds the same document shapes for
+/// `pub(crate)`: [`mod@run`]'s `start_run` builds the same document shapes for
 /// the run-lifecycle path and used to carry an identical duplicate
 /// definition of this same zero-field unit struct; this is the one
 /// surviving copy.
@@ -84,7 +84,7 @@ pub(crate) async fn on_blocking<T: Send + 'static>(
 /// Tauri-managed application state (D23), unified across both tasks that
 /// contribute IPC commands to this shell: T7's settings persistence and
 /// T8's run lifecycle. There is exactly one `AppState` value, `.manage`d
-/// once in [`run`] -- Tauri resolves `State<AppState>` for every command
+/// once in [`run()`] -- Tauri resolves `State<AppState>` for every command
 /// regardless of which task's module declares it, so the fields cannot be
 /// split across two managed structs.
 pub struct AppState {
