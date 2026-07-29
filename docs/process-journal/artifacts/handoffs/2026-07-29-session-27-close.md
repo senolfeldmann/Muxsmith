@@ -1,4 +1,4 @@
-<!-- Snapshot of HANDOFF.md at the session-27 close (SI-5). The HANDOFF itself is git-ignored and superseded in place. -->
+<!-- Snapshot of HANDOFF.md at the session-27 close (SI-5), superseding the earlier same-day snapshot after the two post-approval amendments. -->
 
 # Handoff
 
@@ -140,6 +140,13 @@ and plans on conflict.
 - **A comment never locates code by line number** (owner ruling 2026-07-29,
   Tier-2 `comments-locate-by-symbol-never-by-line-number`): name the symbol.
   Naming the file stays fine. Plan 10's Task 5 sweeps the existing 24 sites.
+  Scoped to SOURCE comments by his ruling the same day, and NOT widened.
+- **A document never cites a line number inside ITSELF** (owner ruling
+  2026-07-29, Tier-2 `a-document-never-cites-a-line-number-inside-itself`): name
+  the container - sentence, table row, fenced block, section. Chosen over an
+  update duty on his reasoning that updating gets forgotten, i.e. a rule
+  requiring someone to notice is decoration. Citations to ANOTHER file at a
+  named commit stay permitted; there the moment is part of the claim.
 - Subagents never call session-relocation tools; worktrees are plain
   directories.
 
@@ -149,13 +156,18 @@ and plans on conflict.
   writes, nothing unpushed at the close (checked with `git status` and
   `git rev-list origin/master..master`, not from memory). CI green on the
   pushed heads of this session.
-- **Plan 10 is authored, reviewed and approved**:
+- **Plan 10 is authored, reviewed, approved and twice amended**:
   `docs/superpowers/plans/2026-07-29-plan-10-pre-1.0-package.md`. Five serial
   tasks, one tree, no worktrees. Task 1 the canonical gate total and its check;
   Task 2 the D102 preserved-order producers, measurement-gated across four
-  contract halves; Task 3 `renovate.jsonc`; Task 4 the README accuracy pass;
-  Task 5 the comment line-citation sweep. The 4 -> 5 edge is hard: three sweep
-  sites cite `README.md` spans that Task 4 edits.
+  contract halves; Task 3 `renovate.jsonc`; Task 4 the user-facing documentation
+  pass; Task 5 the comment line-citation sweep. The 4 -> 5 edge is hard: three
+  sweep sites cite `README.md` spans that Task 4 edits.
+- **Both amendments are post-approval owner rulings, one pair each** (they add
+  steps to Task 4, they do not re-cut the task set). Amendment 1 folds in the
+  two false counts in the README's process paragraph. Amendment 2 documents the
+  Fedora warning his QA pass found; it renamed Task 4 from a README pass and
+  added `docs/INSTALL.md` to its files.
 - **The package has no design document**, owner-approved. The controller brief
   at `.superpowers/sdd/plan-10/plan-brief.md` stands in as coverage ground
   truth; the plan says so in its header.
@@ -173,25 +185,34 @@ and plans on conflict.
 3. **The owner QA pass** runs independently of execution; none of the five tasks
    changes shipped product behaviour, so the build under test is the same either
    way. His findings become the NEXT package, not an amendment to this one.
-4. **Renovate activation is TWO OWNER ACTIONS, both OPEN, never booked as done**:
-   install the app against this repository AFTER `renovate.jsonc` is on master
-   (that ordering is what suppresses the vendor's onboarding PR), and enable the
-   repository's dependency-graph and alert feed, without which the ruled
-   "security updates immediate" half produces nothing at all.
+4. **Renovate: the owner did both actions on 2026-07-29, and the app went on
+   BEFORE `renovate.jsonc` exists, so the vendor opened its onboarding PR.** The
+   alert feed is on and that half is done. The onboarding PR is to be CLOSED, not
+   merged - merging would create a competing default config that Task 3 would
+   then collide with. Closing is the documented opt-out and is reversible by
+   committing a config to the default branch, which is exactly what Task 3 does.
+   **Unverified at the vendor and worth one check after Task 3 lands:** the docs
+   list a config commit as a route to onboarding but do not say in so many words
+   that it overrides an already-closed onboarding PR. If Renovate stays silent
+   after Task 3 - no dependency-dashboard issue - the documented fallback is to
+   rename the closed PR.
 5. **Archive duty:** session 27 is archived by the NEXT session; session 26 was
    archived at the start of this one.
 
 ## Open questions / risks
 
-- **Two owner questions are unanswered** and both are cheap to settle before
-  execution starts. First: the README's "How this got built" paragraph carries
-  two measurably false counts (a decision series stated as ending far earlier
-  than it does, and a review count stated far below the number of verdict files
-  in the repo); they fall outside the ruled scope of Task 4, and folding them in
-  is cheaper before execution than after. Second: whether the
-  locate-by-symbol ruling extends from source comments to live line pointers in
-  any authored document - the plan produced an instance of exactly that and it
-  is recorded as its own ledger entry rather than folded into his rule.
+- **Both owner questions from the close are RULED** and both landed as changes:
+  the README counts came into Task 4 as amendment 1, and the locate-by-symbol
+  ruling stays scoped to source comments while self-citation inside one document
+  became its own Tier-2 prohibition.
+- **The README's review count is a unit trap, and the plan defends against it by
+  mechanism rather than by warning.** Measured: at the commit that introduced the
+  sentence both candidate units returned 78, and they forked later when plans
+  stopped using the `verdicts/` subdirectory. Today it is 219 by basename and 78
+  by directory, frozen - so a re-measurement under the original unit reproduces
+  the README's figure and reads as confirmation. The neighbouring figure carries
+  the other shape: the decision series is not contiguous, 103 numbers reaching
+  D105, so a range claim would state a false count as a side effect.
 - **`BUILDING.md`'s positional gate ordinals** ("part 6", "parts 1-4") were
   surfaced as OUT of Task 1 and await controller routing. They are
   Rust-block-local positions rather than totals, and covering them would need a

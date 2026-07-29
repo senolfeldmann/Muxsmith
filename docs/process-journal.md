@@ -2915,3 +2915,67 @@ unanswered owner scope question. BUILDING.md's positional gate ordinals were
 surfaced out of scope, awaiting routing. A `have_mkvmerge()`-gated guard leaves
 the D102 sorted half unguarded on machines without mkvmerge. Framework-side
 session duties are tracked agent-side.
+
+## 2026-07-29 | Plan 10 post-approval amendments | session 27 (Peter, Opus 5 1M)
+
+**Scope.** `09c37b3..0fee52a`, after the plan was approved. Two owner-ruled
+amendments and the fix loop they opened, closed APPROVED after four further
+delta rounds. Still no code executed. The closing verdict is the one that
+matters: the reviewer applied the plan's new derivation test cold, without
+reading the lists first, and landed on the same five - so the rule is
+deterministic rather than merely consistent with what it describes.
+
+**Decisions and their why.**
+
+- The owner's QA pass ran on the rehearsal build and came back with the install
+  paths clean on all three OSes and one finding: Fedora prints
+  `Warning: skipped OpenPGP checks` on the documented install command. He ruled
+  signing a firm 1.x item rather than trigger-gated, so the pre-1.0 disposition
+  is to document the warning the way the macOS Gatekeeper detour already is.
+- He ruled the two false counts in the README's process paragraph into Task 4,
+  and ruled a ban rather than an update duty for a document citing its own line
+  numbers. His reason for the ban is the rule's whole argument and is recorded
+  as its steelman: an update duty is discharged only by someone remembering, so
+  the number is wrong for however long nobody notices.
+
+**What the process caught.**
+
+- The amendment brief's explanation of WHY the README's review count was wrong
+  was refuted by measurement at the commit that introduced the sentence
+  eighteen days earlier [brief]: both candidate units returned 78 there, and
+  they forked later when plans stopped using the `verdicts/` subdirectory. The
+  distinction changed the work - "never counted the right unit" and "was right
+  and its unit forked" prescribe different steps, and only the second implies a
+  re-measurement reproduces the stale figure and reads as confirmation.
+- The same measurement found the neighbouring figure carries the other shape
+  [plan]: the decision series is not contiguous, so a range claim would have
+  stated a false count as a side effect of being repaired for staleness.
+- A rename sweep and a scope sweep are different jobs and the second was missed
+  [plan]: an amendment swept a task's name across four sites correctly and left
+  the task's own reading list behind. The reason it hides is that the old text
+  is not wrong, only no longer complete, so nothing exists to grep for.
+- The author found the mechanism of its own probe's miss [fix]: the token
+  pattern required a backticked path to end at its extension, so a
+  `file.rs::symbol` form was invisible to it.
+
+**Deltas.** The read-inputs class took three rounds because each round widened
+the probe's universe rather than the rule behind it. The round that closed it
+asked a different question - is the WRITTEN rule sufficient for a third party to
+re-derive the same lists deterministically, and if not, what is it missing as a
+clause - and got back one distinction that reproduces all five lists: a
+read-input the plan can name in advance is listed, a set a prescribed
+measurement computes at execution is not. The rule had been ambiguous against
+itself, with an include clause and an edited-file exemption both firing on every
+edited file and nothing ranking them; the lists split 3/0/0/2/0 on that question
+and were consistent in fact while undecidable from the text.
+
+**Friction.** Two controller defects again, both caught downstream: the
+amendment brief's false history claim above, and a ROADMAP line reading "during
+the rpm install" that meant the package and can be read as the `rpm` binary,
+which would have put the wrong tool in front of a reader already unsure whether
+they had a real problem.
+
+**Open threads.** The owner installed the Renovate app before `renovate.jsonc`
+exists, so the vendor opened its onboarding PR; it is to be closed rather than
+merged, and whether a later config commit overrides an already-closed onboarding
+PR is not stated in the vendor's docs and wants one check after Task 3 lands.
