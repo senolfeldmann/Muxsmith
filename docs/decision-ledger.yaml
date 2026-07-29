@@ -4390,9 +4390,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5, the plan-amendment author running beside the Task-3 implementer: it staged only its own path, and its bare `git commit` (86bfd69) swept in the co-writer's staged draft-body.md anyway. Self-disclosed rather than smoothed over, repaired by soft reset plus a pathspec-scoped re-commit (29ef17b, verified to touch one file), 86bfd69 left unreferenced, nothing pushed; the co-writer's change was restored to its staged pre-incident state and it committed its own work afterwards"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 close, the CONTROLLER own near-miss: a house commit (d5382e7, ROADMAP plus ledger) was made while the close fix wave implementer had README.md, e2e/smoke.spec.ts and src/views/EditorView.vue modified in the same tree. The commit was safe only because the controller had staged its two paths explicitly and the implementer had staged nothing yet - git add plus a bare git commit is NOT the protection this entry prescribes, which is git commit -- <paths>. Verified after the fact that the commit contains exactly the two docs files. The plan own serial ruling also says no second writer is dispatched while a task is live; at a plan close the controller is that second writer"}
 - id: dispatch-preconditions-name-zero-commits-ahead
   kind: pattern
   tier: 1
