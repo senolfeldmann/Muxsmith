@@ -5063,3 +5063,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 amendment 1: the controller brief asserted the README's review count 'may never have counted the unit its prose claims'. The author measured at 62aaf61, the commit that introduced the sentence eighteen days earlier, and found both candidate units returned 78 there - the figure was right and the units forked afterwards, when later plans stopped using the verdicts/ subdirectory. Every earlier refutation in this package corrected a claim about the CURRENT state; this one corrected a claim about history"}
+- id: when-a-fix-loop-widens-twice-ask-the-convergence-question-not-for-more-members
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When two consecutive fix rounds return the SAME finding one level wider - the sweep missed a member, then missed a wider class of member - the defect has stopped being the artifact's contents and is now the rule it was derived against, which is unwritten or ambiguous. Asking for more members keeps the loop running at whatever the next reviewer's probe happens to cover. Change the dispatch question instead: ask whether the WRITTEN rule is sufficient for a third party to re-derive the same result deterministically, and if it is not, to state what the rule is MISSING as a single clause rather than to list further members. Trigger is readable: your last two routed findings differ only in scope. The controller's own economics matter here too - a loop that widens indefinitely stops being proportionate to what the artifact decides, so the convergence question is also how you find out whether to keep going."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 amendment fix loop: two rounds had each returned more members of the read-inputs class (documents and config, then source files). The third dispatch asked the convergence question instead, and the reviewer answered with one clause - a read-input the plan can NAME IN ADVANCE is listed, a set a prescribed measurement computes at execution is not - measured to reproduce all five task lists exactly, plus the ambiguity that had kept the loop open: the rule's own edited-file exemption and its include clause both fired on every edited file and nothing decided which won, with the lists splitting 3/0/0/2/0 on that question"}
