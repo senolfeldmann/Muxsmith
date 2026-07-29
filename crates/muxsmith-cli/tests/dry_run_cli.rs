@@ -442,7 +442,8 @@ tracks:
     });
     // Shape guards. `mkvmerge_found` absent rules out the two config-only
     // shapes that carry it (mkvmerge missing, query failed). The
-    // profile-load-failure shape carries neither key and is ruled out by the
+    // profile-load-failure shape carries no `mkvmerge_found` and an empty
+    // `files` array, so it satisfies both guards and is ruled out by the
     // code sequence below, where it would be a singleton `parse-error`.
     assert!(
         report.get("files").is_some_and(|f| f.is_array()),

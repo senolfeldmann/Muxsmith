@@ -96,18 +96,19 @@ const SOFT_OUTCOME: RunFinishedEvent = {
  * a static value and cannot express it, which is why this case installs
  * its own handler instead of going through a `MockScenario`.
  *
- * Relative to `installMockIPC` it deliberately answers a narrower surface
- * -- no `__TAURI_OS_PLUGIN_INTERNALS__.platform` global, no forwarding to
- * the Node-side `__muxsmithRecordInvoke__` log, and no `get_settings` /
- * `set_settings` / `plugin:fs|write_text_file` answers -- which is safe
- * today because this spec mounts `JobsView` alone on a blank page instead
- * of driving the served app: `platform()` is `FirstRun.vue`'s, the
- * settings pair belongs to `main.ts`'s locale bootstrap and
- * `SettingsDialog.vue`, the file write sits behind `RunHistory.vue`'s
- * user-triggered log export, no mount here reaches any of them, and every
- * test in this file asserts DOM state rather than a recorded call log --
- * with the unmocked-command throw below as the backstop the day one of
- * those stops holding.
+ * Relative to `installMockIPC` it deliberately answers a narrower surface:
+ * no `__TAURI_OS_PLUGIN_INTERNALS__.platform` global, no forwarding to the
+ * Node-side `__muxsmithRecordInvoke__` log, and no `get_settings` /
+ * `set_settings` / `plugin:fs|write_text_file` answers. That is safe today
+ * because no mount in this spec reaches any of them: it mounts `JobsView`
+ * alone on a blank page instead of driving the served app, `platform()` is
+ * `FirstRun.vue`'s, the settings pair is read across the app but by no
+ * component this spec mounts (`main.ts`'s locale bootstrap,
+ * `SettingsDialog.vue`, `BatchView.vue`, `EditorView.vue`, `FirstRun.vue`,
+ * `recentProfiles.ts`), the file write sits behind `RunHistory.vue`'s
+ * user-triggered log export, and every test in this file asserts DOM state
+ * rather than a recorded call log -- with the unmocked-command throw below
+ * as the backstop the day one of those stops holding.
  */
 function installSoftOutcomeIPC(arg: {
   channel: string;

@@ -103,6 +103,7 @@ step: its Windows leg runs clippy natively.
 
 ```bash
 pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
+pnpm build            # vue-tsc type-check + production frontend build
 pnpm check:i18n       # frontend Fluent catalog completeness gate (spec 8.4)
 pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-checks e2e/, builds the harness, then runs)
 ```
@@ -117,7 +118,7 @@ A gate part like the Rust and frontend ones above, binding before every push
 (house rule `ledger-lint-runs-before-every-push`). Needs PyYAML; CI runs it
 from a throwaway venv as its own job.
 
-CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-5 natively on all
+CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-4 natively on all
 three OS legs (its Windows leg covers natively what part 6 cross-checks
 from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and
 `pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`

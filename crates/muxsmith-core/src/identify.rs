@@ -2,7 +2,7 @@
 //! external process, parses its JSON into a track/attachment/chapter model,
 //! and caches results in memory keyed on path + mtime + size, so one planning
 //! call never re-identifies an unchanged file (spec 5.5). The cache is
-//! constructed per planning call and dropped with it, so separate calls
+//! constructed per call and dropped with it, so separate calls
 //! re-identify.
 
 use std::collections::BTreeMap;

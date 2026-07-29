@@ -1558,9 +1558,11 @@ machine - the exact failure the entry names). Therefore:
   or by the enumerated bare helper.
 - **Where it applies, enumerated - the complete CLI-invoking test
   surface** (measured: `cargo_bin` grep, 2026-07-21):
-  `cli_validate.rs` (1 constructor, 3 snapshots - 5 since amendment 4
-  added the German case), `dry_run_cli.rs` (13 invocation sites, 3
-  snapshots), `run_cli.rs` (1 constructor, 4 snapshots),
+  `cli_validate.rs` (1 constructor, 3 snapshots at this measurement; 5 at
+  the Plan-9 close, the bare-raw case (`d768657`) and the German case
+  (`3412fcc`, amendment 4) - the other figures in this enumeration are the
+  2026-07-21 measurement, unrefreshed), `dry_run_cli.rs` (13 invocation
+  sites, 3 snapshots), `run_cli.rs` (1 constructor, 4 snapshots),
   `run_live.rs` (1 constructor, 1 snapshot),
   `cli_schema.rs` (2 sites, **both via the bare helper below - zero
   funnel sites in this file**; corrected at execution via the Task-1
