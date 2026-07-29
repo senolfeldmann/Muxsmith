@@ -617,12 +617,13 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 4
+  count: 5
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "S22 close (gh-log final entry): the CONTROLLER itself hit the interactive cp alias on the handoff snapshot copy (2-minute tool timeout), redone with command cp -f - post-promotion instance showing the rule binds controller-side shell use too, not only subagent briefs"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T4 completion report (task-4-report.md): third instance - the aliased cp silently left the target un-overwritten, caught only because the next check re-read the file instead of assuming the copy; fixed with command cp -f < /dev/null; third strict-fit event, promoted at count 3"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "session-27 close: the CONTROLLER hit it again on the same operation as the S22 instance - refreshing the HANDOFF snapshot with a bare cp. Twice in a row, because `cp -f` does not clear the alias either; the aliased form expands with -i still present and the prompt blocks a non-interactive shell until the step times out. Cost two dead two-minute steps. `/usr/bin/cp -f` succeeded first try. The entry already named this exact operation and this exact actor, which is the datum: knowing the rule is not the mechanism, reaching for the alias-proof form by default is"}
 - id: proc-sweep-surface-completeness
   kind: pattern
   tier: 2
