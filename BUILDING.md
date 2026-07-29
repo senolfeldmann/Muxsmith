@@ -71,8 +71,15 @@ pnpm build            # vue-tsc type-check + production frontend build
 built by `release.yml` on `v*` tags and manual dispatch, and "Reproducing a
 release bundle locally" below covers the local invocation.
 
-### The Rust gate (six parts, run from the repo root, workspace-wide)
+<!-- gate-total; checked by scripts/ledger-lint.py -->
+The pre-push gate is 11 parts: 6 Rust, 4 frontend, 1 house-knowledge. The three
+blocks below are its authoritative enumeration; `scripts/ledger-lint.py` checks
+this sentence against them, so the stated number cannot drift from what the file
+actually lists.
 
+### The Rust gate (run from the repo root, workspace-wide)
+
+<!-- gate-block: rust; checked by scripts/ledger-lint.py -->
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
@@ -101,6 +108,7 @@ step: its Windows leg runs clippy natively.
 
 ### Frontend checks
 
+<!-- gate-block: frontend; checked by scripts/ledger-lint.py -->
 ```bash
 pnpm lint            # eslint (Vue rules, TypeScript rules, D27 no-raw-text)
 pnpm build            # vue-tsc type-check + production frontend build
@@ -110,19 +118,24 @@ pnpm test:e2e         # Playwright smoke + axe a11y + i18n completeness (type-ch
 
 ### House-knowledge check
 
+<!-- gate-block: house; checked by scripts/ledger-lint.py -->
 ```bash
-python3 scripts/ledger-lint.py   # decision-ledger / process-conventions YAML invariants
+python3 scripts/ledger-lint.py   # house-knowledge YAML invariants + BUILDING.md's gate-count invariant
 ```
 
 A gate part like the Rust and frontend ones above, binding before every push
-(house rule `ledger-lint-runs-before-every-push`). Needs PyYAML; CI runs it
-from a throwaway venv as its own job.
+(house rule `ledger-lint-runs-before-every-push`). Despite the name it is the
+house's docs-invariant checker: besides the four house-knowledge YAML files it
+verifies that the canonical gate-total sentence above agrees with the commands
+the three marked gate blocks enumerate, so changing a gate block without the
+sentence, or the sentence without the blocks, turns this part red. Needs
+PyYAML; CI runs it from a throwaway venv as its own job.
 
 CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-4 natively on all
 three OS legs (its Windows leg covers natively what part 6 cross-checks
 from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and
 `pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`
-and `scripts/ledger-lint.py` (house-knowledge invariants, Plan-8 rider)
+and `scripts/ledger-lint.py` (house-knowledge and gate-count invariants, Plan-8 rider)
 run as independent jobs.
 
 ### Reproducing a release bundle locally
