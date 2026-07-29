@@ -2713,3 +2713,60 @@ premise came out confirmed and the observable was the defect.
   overclaiming assertion messages, one delta-review wording sharpening, the
   docs-accuracy two-edit item, and the two BUILDING.md gate edits.
 - CI on the pushed head was in progress at the time of writing.
+
+## 2026-07-29 | Plan 9 close, addendum: the close pass | session 26 (Peter, Opus 5 1M)
+
+**Scope.** The one close action the plan-close entry left open, executed in the
+same session on the owner's instruction. Commits `9dc3a4d` (seven items, nine
+files), `c8dfc6d` (its six-finding fix round), plus the controller's follow-up
+`f3d25b7` and the re-salvage `0e7171e`. Both product commits independently
+reviewed; the delta verdict is APPROVED.
+
+**What it changed.** Text corrections routed here by four earlier reviews, and
+the gate's own definition: `--document-private-items` on the rustdoc step at
+both consuming sites, and `ledger-lint` as a gate part rather than a side-duty.
+
+**What the process caught.**
+- The reviewer did not accept that the new flag buys anything - it restored the
+  two ambiguous intra-doc links the change had just repaired and measured the
+  same tree red under the flag and green without it. That is the first evidence
+  the repo has that the old gate was blind to this class, as opposed to an
+  argument that it was.
+- Three findings were of one shape: the new sentence is not true. One of them
+  was the controller's - a fenced text block quoted into a brief from an
+  earlier verdict, contradicting a measurement forty lines above it in that
+  same verdict. The implementer applied it verbatim because it was fenced and
+  reported the contradiction, which is exactly right, and is why it surfaced.
+  **A fence is a licence boundary, not a truth warrant.**
+- The same defect class fired three times in one package: as the item being
+  fixed (a doc naming callers exclusively), as a neighbouring site left behind,
+  and as a sentence newly written in the same commit.
+- The structural one: after the gate edit `BUILDING.md` enumerated ten commands
+  while the ruling said eleven and six other files derive their count "per
+  BUILDING.md". The controller's owed HANDOFF rewrite would have been false
+  against the file it cites. `pnpm build` was documented in the file but not in
+  a checks block.
+- Two stale house statements were found by the review against the implementer's
+  own list of stale statements, not by that list - including a Tier-1 rule
+  describing the just-landed change as pending.
+
+**Process mechanics.** Four dispatches: implementer, reviewer, fix implementer,
+and the reviewer resumed for the delta. All Opus 5 at xhigh; no top-tier
+dispatch, since the whole-branch role was already spent. The eleven-part gate
+ran three times green (implementer, reviewer, controller).
+
+**Friction.** The controller's brief carried two defects into the work: the
+fenced text above, and a header saying "six edits across five files" when it is
+six files - the implementer corrected the second in its report rather than
+silently absorbing it.
+
+**Deltas.** Where the number was incidental to a rule, the house statements now
+name `BUILDING.md` instead of a figure. The part count has changed three times;
+a rule carrying the number goes stale at every gate change, a rule citing the
+file never does.
+
+**Open threads.** One recorded non-defect: with both `identify.rs` docs
+corrected, the type doc now cites spec 5.5 for a property stated more broadly
+than the spec states it. Closing that is a spec amendment, so it is recorded in
+the ROADMAP rather than given a vehicle. CI on the pushed head was queued at
+the time of writing, and it is the first run under the widened rustdoc flag.
