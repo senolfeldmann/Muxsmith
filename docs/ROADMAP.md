@@ -520,7 +520,15 @@ consequence that diff creates, so the four-condition execution-time rule does
 not reach it. The cheap producer the review names: a `batch_document` case
 with a mixed-severity `batch_diagnostics` vector asserting it is NOT
 reordered. Disposition at the close is the owner's; the measurement is
-recorded here so it cannot evaporate.
+recorded here so it cannot evaporate. **STILL OPEN after the plan-9 close
+2026-07-29** - deliberately, and this line says why so nobody reads it as an
+oversight: the close pass was scoped to text corrections and the gate's
+definition, and this is a new test. The owner's test-coverage ruling does not
+reach it (the boundary is preserved behaviour, not a consequence the plan's
+diff created), so building it is a discretionary call that was never put to
+him. **Carry it into the pre-1.0 gates as an owner question**, together with
+the measurement above: widening the sort to all three arrays leaves the whole
+suite green.
 
 **DONE at the close 2026-07-29** (`9dc3a4d` + `c8dfc6d`). **Two text corrections routed to the close, from the Task-5 review and its
 delta (2026-07-28).** Neither is user-visible; both are developer-facing prose

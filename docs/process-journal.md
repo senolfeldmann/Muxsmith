@@ -2770,3 +2770,44 @@ corrected, the type doc now cites spec 5.5 for a property stated more broadly
 than the spec states it. Closing that is a spec amendment, so it is recorded in
 the ROADMAP rather than given a vehicle. CI on the pushed head was queued at
 the time of writing, and it is the first run under the widened rustdoc flag.
+
+## 2026-07-29 | Session 26 close | session 26 (Peter, Opus 5 1M)
+
+**Scope.** Session-close entry, covering what the two entries above do not: the
+session's own shape and its final state. Commit range `9143075..474204a`, 25
+commits, all pushed.
+
+**Shape.** One sitting carried three plan tasks, a mid-execution design
+amendment, the plan close, and then the close pass that the plan close had
+routed forward - the last on the owner's instruction rather than deferred to
+the next session. That is unusually long for one session in this project and it
+is visible in the work: the close pass found a defect the plan close had
+created (a fenced text quoted into a brief), and the controller's own follow-up
+found two more that the close pass's own list had missed. A close that
+generates its own work is the doctrine's stated expectation; a close that
+generates three rounds of it is the first instance here.
+
+**Final state, verified.** `master` at `474204a`, clean, nothing unpushed. CI
+green on all three pushed heads. The middle one, `0e7171e`, is the first CI run
+under the widened rustdoc flag - it passed on all three OS legs, which
+confirms the reviewer's measured prediction that no production item is
+cfg-gated and the flag therefore exposes no platform-only doc surface.
+
+**Controller error tally for the session**, recorded because section 5 asks for
+the unflattering entries and only this context has the count. Four defects of
+mine reached an artifact and were caught downstream by measurement: a commit
+count in a review brief (two, not three); a ledger occurrence that widened a
+literal-phrase measurement into a claim about a class; a fenced text block
+quoted into a brief that contradicted a measurement in its own source document;
+and a brief header miscounting its own file list. Two further edits of mine
+damaged the house YAML structurally and were caught by `ledger-lint` within
+seconds - a dropped entry header and an invalid escape inside a quoted scalar.
+Every one was found by something other than me: three by subagents, two by the
+lint, one by a reviewer resumed for a delta.
+
+**Open threads.** One item is deliberately still open and its ROADMAP line now
+says so: the producer for D102's unguarded scope boundary. The close pass was
+scoped to text and the gate, the owner's test-coverage ruling does not reach a
+preserved-behaviour contract, and building it was never put to him - so it
+carries into the pre-1.0 gates as an owner question with its measurement
+attached. Framework-side session duties are tracked agent-side.
