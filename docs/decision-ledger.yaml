@@ -5205,3 +5205,47 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 4 review, HARVEST 7 (docs/process-journal/artifacts/plan-10-sdd/task-4-verdict.md): the verdict's own tree-identity section first quoted two sha256 sums truncated, and one tail was invented (...80f5 for a digest ending ...80b5). The measurement was correct when taken and went wrong when restated short. The reviewer caught it by diffing its quoted lines back against a live sha256sum, replaced both with full digests, and recorded it rather than fixing it quietly - a verdict committing the pattern it harvests in the same document"}
+- id: a-close-action-that-grows-a-counted-set-falsifies-the-prose-that-counts-it
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A count in shipped prose can be freshly measured, well-formed in its unit, and still false by the time the package ships - when a CLOSE ACTION of the same package adds members to the set being counted. The writer's own pipeline moves the value, so no amount of care at writing time protects it. Distinct from the unit-claim family: there the unit is ambiguous or drifted, here the unit is sound and the world moved under it, and the mover is us. Trigger is readable: a close action - a salvage, an archival copy, a generated index - ADDS files or entries to a set some shipped document counts. Handle: the commit that changes the set updates the count in the same change, or the prose is phrased so growth cannot falsify it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 whole-branch review finding 3 (docs/process-journal/artifacts/plan-10-sdd/whole-branch-verdict.md): the README states a count of verdict-named files under docs/. Task 4 measured it true, its reviewer re-measured it true under both readings of the unit, and the plan close then salvaged the SDD scratch - six verdict files - into docs/process-journal/artifacts/plan-10-sdd/, falsifying it. Repaired in the close fix wave, measured after the salvage commit so the figure converges"}
+- id: verifying-an-absolute-enumerates-the-cases-it-quantifies-over
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Checking a claim of the form 'X is always Y' against the code invites confirming the MECHANISM the claim names rather than the QUANTIFIER it asserts: you open the arm the sentence points at, see it do what the sentence says, and stop. The absolute survives because its counterexample lives in a sibling case nobody enumerated. Trigger is readable: the claim you are verifying contains an absolute - byte-exact, always, never, every, no coercion. Handle: enumerate the cases the absolute quantifies over (the match arms, the type pairs, the input classes) and walk them, rather than reading the one the prose names."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 whole-branch review finding 4 (docs/process-journal/artifacts/plan-10-sdd/whole-branch-verdict.md): spec 4.4/9.2, the matcher's own comment and the README's matching list all call raw: an untyped BYTE-LITERAL equality. Task 4 verified its anchor item against spec AND code and its reviewer upheld it, both confirming that the raw arm calls scalar_eq. scalar_eq has six arms, two of them CROSS arms (Int against Float and Float against Int, compared after an as f64 conversion), so raw:x: 6 matches a reported 6.0 - a coercion the word byte-exact promises not to do. Controller re-verified at matcher.rs the same turn; the wording is what is wrong, in three places, and it is routed to the spec-amendment vehicle"}
+- id: a-guards-exclusion-list-is-the-next-reviewers-target-list
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Every check that guards a boundary carries an explicit or implicit list of what it does NOT look at - a file selector, a fixed marker set, a modelled syntax - and that list is where the next surviving member sits. Reviewing a check therefore has a repeatable question, not a lucky read: ask what this check CANNOT see, derive that complement from the artifact, and run it. NOTE ON TIER: this entry reached the agent-emergent threshold of three occurrences in a single package and was deliberately NOT promoted, because all three came from one package and largely from one reviewer's method, so recurrence over time - which is what the threshold is evidence FOR - is not yet demonstrated. Promote at its next independent instance, or on an owner ruling."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 3
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 5 review finding 1 (docs/process-journal/artifacts/plan-10-sdd/task-5-verdict.md): the comment-sweep corpus is defined by two expressions whose FILE SELECTOR reads six source extensions; a surviving member of the swept class sits in .github/workflows/ci.yml, invisible to any sweep of that corpus. Found by deriving the cited-extension set from the tree own extension tally and running it over every non-docs file"}
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 1 review finding 5 (docs/process-journal/artifacts/plan-10-sdd/task-1-verdict.md): the shipped gate-count check fixes its block set at three named markers and its sentence at four numbers, so a future FOURTH gate section carrying its own marker is invisible and the stated total stays green while the gate has grown. Routed as a ROADMAP trigger keyed on the readable event"}
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 whole-branch review NIT 5 (docs/process-journal/artifacts/plan-10-sdd/whole-branch-verdict.md): the same counter models backslash continuations and refuses on them, but models neither a trailing pipe nor a trailing && - a command wrapped in either form counts as two, silently. Ruled no-action at the close and recorded as a ROADMAP trigger; the reviewer reached it by asking what the counter cannot see"}

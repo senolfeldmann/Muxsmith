@@ -848,6 +848,16 @@ action:
   2); trigger 6 needs no entry by design (drift check and registry fail by
   construction).
 
+- A gate command is written across two lines with a `|` or `&&` at the end
+  (rather than a backslash) -> the gate-count check counts it as two commands
+  and the stated total goes red for the wrong reason, or worse, a rewritten
+  block silently reconciles. The counter models backslash continuations
+  explicitly and REFUSES on them; these two forms it does not model at all.
+  Known boundary, ruled no-action at the Plan-10 close (whole-branch review
+  NIT 5, 2026-07-29): no gate block uses either form today, and widening the
+  counter to shell grammar is more machinery than the invariant is worth.
+  Readable event: you are about to wrap a gate command.
+
 - A FOURTH GATE BLOCK is added to `BUILDING.md` (a fourth marked command block
   beyond `rust`, `frontend` and `house`) -> widen `scripts/ledger-lint.py`'s
   fixed three-marker set AND the canonical sentence's four-number shape in the
@@ -1383,6 +1393,22 @@ ten is recomputed.
   SOURCE comments and explicitly not widened, and its comment-form enumeration
   names `//`, `///`, `//!` and `/* */` - not `#` or `<!-- -->`. Whether a CI
   workflow comment is in scope is his call, not the controller's.
+
+- **"byte-exact" overstates what `raw:` does for NUMERIC scalars** (Plan-10
+  whole-branch review finding 4, 2026-07-29; verified by the controller at the
+  source the same turn). Spec 4.4 / 9.2 and `matcher.rs`'s own comment at the
+  `raw:` arm call the comparison an untyped byte-literal value equality, and the
+  README's matching-magic list item 4 repeats it - but that arm calls
+  `scalar_eq`, which carries two CROSS arms: `Scalar::Int` against
+  `PropValue::Float` and `Scalar::Float` against `PropValue::Int`, each
+  comparing after an `as f64` conversion. So `raw:x: 6` matches a reported
+  `6.0`, which is exactly the coercion "byte-exact" promises not to do. The
+  behaviour is old and deliberate-looking; only the WORDING is wrong, in three
+  places at once, and the README's version is a faithful transcription of the
+  spec's (correct by the precedence rule, so not a Plan-10 defect). **Vehicle:
+  whichever package next amends the v1 spec** - same vehicle as the 8.1
+  synopsis item below; both are spec-wording repairs and the README follows
+  whatever the spec settles.
 
 - **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
   Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the
