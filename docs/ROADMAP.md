@@ -1299,6 +1299,31 @@ ten is recomputed.
   underlying shape - a comment citing line numbers in another file - is the
   reason the house convention is to locate by content.
 
+  **The class is bigger than this one site, measured 2026-07-29 (session 27)
+  while verifying the citation for a plan brief.** Ten comments in tracked
+  `.rs` files cite a `<file>.rs:<line>`; four of them point inside their own
+  file and are cheap to keep true. Of the cross-file ones:
+  - `crates/muxsmith-cli/tests/run_live.rs:361` reads "same `Set` value,
+    run.rs:274-275". It is a present-tense pointer, it does not say WHICH
+    `run.rs`, and the cli crate's `commands/run.rs:272-277` is unrelated code
+    (the debug-only `MUXSMITH_RUNS_ROOT` override). Same defect as the
+    `suggestions.rs` one, and currently tracked nowhere.
+  - Three citations of `report/json.rs:44` (`run_live.rs:273`, `:326`,
+    `planner.rs:2226`, plus one same-file at `report/json.rs:161`) mean the
+    PRE-FIX panic site of D40 - `:326` says "pre-fix: panics at" in so many
+    words. Those are historical records, not live pointers, and repairing them
+    to today's line numbers would falsify them. Exactly the live-claim versus
+    historical-record distinction the gate-count entry above ran into.
+  - `suggestions.rs:1035` citing `matcher.rs:202-212` still lands on
+    `scalar_eq`'s match arms and is currently accurate.
+
+  **Open scope question for the pre-1.0 package** (not decided controller-side,
+  because it widens what the owner approved): does the `suggestions.rs` task fix
+  only its own line, or sweep the cross-file pointers as a class - live pointers
+  re-anchored to content per the house convention, historical ones marked as
+  historical so nobody "repairs" them later. Six sites, comments only, no
+  behaviour change.
+
 ## Gate-count derivation has no check (candidate, from the plan-9 close pass 2026-07-29)
 
 `BUILDING.md` is the gate's single authoritative enumeration, and at least six
