@@ -48,7 +48,7 @@
       "groupName": "github actions"
     },
     {
-      // release.yml pins ubuntu-22.04 on purpose (D85: the oldest supported
+      // release.yml pins ubuntu-24.04 on purpose (D85: the oldest supported
       // base for the AppImage glibc floor) while the test matrix runs
       // ubuntu-26.04. Renovate cannot know that distinction, so runner
       // images are not managed at all.
