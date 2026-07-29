@@ -542,11 +542,18 @@ evaporates.** The existing guard for the SORTED half of the same contract,
 `dry_run_json_sorts_config_diagnostics_errors_first_when_planning_ran`, is
 `have_mkvmerge()`-gated. So on any machine without mkvmerge - and in principle
 on a CI leg that lost it - that half is unguarded while the suite still reports
-green. Not Plan 10's problem and deliberately not folded into it: the fix is
-either a second producer on the no-mkvmerge path or a gate-independent
-construction, and both are their own decision. **Vehicle: whichever package next
-touches the diagnostics ordering contract, or the owner QA pass if it surfaces
-the symptom first.**
+green. **MEASURED 2026-07-29 (session 28), so this is no longer a claim:** the
+Task-2 reviewer applied the sort-removing mutation and ran that test under an
+emptied PATH; it printed `mkvmerge not found; skipping` and exited 0, i.e. the
+defect passes the suite. Not Plan 10's problem and deliberately not folded into
+it: the fix is either a second producer on the no-mkvmerge path or a
+gate-independent construction, and both are their own decision.
+**Vehicle, reworded 2026-07-29 (session 28) because the first form fired on the
+package it exempts by name:** whichever package AFTER Plan 10 next touches the
+diagnostics ordering contract, or the owner QA pass if it surfaces the symptom
+first. Plan 10's Task 2 does touch that contract and is exempt by the sentence
+above, so the original wording made this entry contradict itself; the Task-2
+reviewer surfaced it.
 
 **DONE at the close 2026-07-29** (`9dc3a4d` + `c8dfc6d`). **Two text corrections routed to the close, from the Task-5 review and its
 delta (2026-07-28).** Neither is user-visible; both are developer-facing prose

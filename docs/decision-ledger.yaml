@@ -5106,3 +5106,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 1 review finding 1 (.superpowers/sdd/plan-10/task-1-verdict.md): the implementer's report justified a comment-column alignment with an evidence line saying the separator column reads off checks 1-6; the reviewer measured 39/40/40/41/41/39, so it is true of two of the six. The alignment chosen is correct and matches check 6 - only the evidence line generalized past its measurement. Report-local, no tree change"}
+- id: a-plan-that-fences-code-fences-the-formatters-output-form
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Code fenced character-for-character in a plan is written in the form the repo's FORMATTER produces, because that formatter runs in the same gate the plan makes binding. A fence the formatter rewrites forces the implementer to choose between two of the plan's own constraints - transcribe the fence and fail gate part 1, or format it and deviate from the fence - and whichever it picks it is deviating from something the plan requires. Trigger is readable: you are pasting code into a plan fence. Handle: run the formatter over the fenced block before the plan is approved. The collision is not visible by reading, which is why the eye is not the check: rustfmt's fn_call_width default of 60 rejects a 66-column argument list on a line of 96 columns, well inside max_width 100."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 2 review finding 2 and adjudication 1 (.superpowers/sdd/plan-10/task-2-verdict.md): the plan's fenced mixed_severity() body cannot survive cargo fmt --all --check, which the same plan's Step 5 makes a task exit bar. The implementer committed rustfmt's output and disclosed the conflict; the reviewer measured both halves (fenced form exits 1, committed form exits 0, rustfmt(fence) is byte-identical to the committed text), confirmed no token of CONTENT differs - line breaks, indentation and rustfmt's trailing comma only - and ruled the committed form correct because the plan requires the formatted form by its own text. A third option, #[rustfmt::skip], was measured to work and rejected: it invents an unfenced attribute"}
+- id: a-house-pattern-claim-is-counted-before-it-justifies-a-choice
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A justification of the form 'X is (not) this tree's pattern' is a COUNT over the tree, and it is run before it is written: the claim is what makes the choice defensible, so an unmeasured one dresses an arbitrary choice as a principled one. Trigger is readable: your rationale contains 'the house pattern', 'not how this tree does it', 'the only place that'. Handle: grep the tree, state the ratio, and write DOMINANT where it is dominant rather than UNBROKEN where it is not. The choice usually survives the measurement - what does not survive is the absolute."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 2 review finding 1 (.superpowers/sdd/plan-10/task-2-verdict.md): the implementer justified merging its new imports into an existing use line with 'a second use of the same module path is not this tree's pattern'. The reviewer counted: three of 73 tracked .rs files carry exactly that shape (prop_matcher.rs, mkvmerge_runtime.rs, matcher.rs), so the pattern is dominant rather than unbroken. The committed code stands unchanged; only the claim was overstated"}
