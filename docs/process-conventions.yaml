@@ -690,7 +690,7 @@ entries:
   source: human
   nature: process
   domain: process
-  statement: "`python3 scripts/ledger-lint.py` runs before every push, alongside the ten-part gate. It is not one of the ten parts and it is the ONLY check a documentation-or-YAML-only push can turn red, so without it that class of push was gated by nothing locally and found out from CI after the fact. It costs 0 seconds measured. Trigger is readable: you are about to push. Handle: run it, in the same breath as the gate. The gate block in BUILDING.md gains it as an eleventh part at the Plan 9 close, together with the rustdoc private-items flag - deliberately not mid-plan, because the running plan quotes the ten-part gate verbatim and every task verifies against that wording."
+  statement: "`python3 scripts/ledger-lint.py` runs before every push, as part of the gate block BUILDING.md defines. It was not one of the gate parts when this was ruled and it is the ONLY check a documentation-or-YAML-only push can turn red, so without it that class of push was gated by nothing locally and found out from CI after the fact. It costs 0 seconds measured. Trigger is readable: you are about to push. Handle: run it, in the same breath as the gate. It joined that block at the Plan 9 close 2026-07-29, together with the rustdoc private-items flag, and the block now enumerates eleven commands."
   steelman: null
   blocked_on: null
   status: settled

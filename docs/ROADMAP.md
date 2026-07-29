@@ -522,7 +522,7 @@ with a mixed-severity `batch_diagnostics` vector asserting it is NOT
 reordered. Disposition at the close is the owner's; the measurement is
 recorded here so it cannot evaporate.
 
-**Two text corrections routed to the close, from the Task-5 review and its
+**DONE at the close 2026-07-29** (`9dc3a4d` + `c8dfc6d`). **Two text corrections routed to the close, from the Task-5 review and its
 delta (2026-07-28).** Neither is user-visible; both are developer-facing prose
 that a change falsified. They are held to the close rather than amended into
 the running plan, on the same don't-fork-the-contract reasoning the gate edits
@@ -562,7 +562,7 @@ commit, by design (Task 7). The two OUT items received their v1.x vehicles at
 the S24 kickoff and are untouched by this plan. The whole-branch fix wave is
 `b40db26`, `96dbcf6`, `e255d40`.
 
-**A third text item, from the Task-6 review (LOW-1, 2026-07-29).** The
+**DONE at the close 2026-07-29** (`9dc3a4d` + `c8dfc6d`; the disclosure was rewritten once more because its own safety clause enumerated the settings consumers exclusively - the very shape the neighbouring item exists to prevent). **A third text item, from the Task-6 review (LOW-1, 2026-07-29).** The
 spec-local IPC installer in `e2e/jobsview-reset.spec.ts` answers `start_run` and
 `list_runs` and throws on everything else, where the shared `installMockIPC`
 also sets the OS-plugin platform global, forwards to the invoke recorder, and
@@ -1130,7 +1130,9 @@ reporting the same name); and `ledger-lint` must keep running on exactly the
 pushes the rest of the matrix would skip, since a house-YAML edit is the one
 diff shape that can turn it red.
 
-## Gate: rustdoc does not link-check private items
+## Gate: rustdoc does not link-check private items - DONE at the plan-9 close 2026-07-29
+
+**Landed in `9dc3a4d` with its fix round `c8dfc6d`:** `--document-private-items` on the doc step at BOTH consuming sites, `ledger-lint` in the gate block as its eleventh part, and the two pre-existing ambiguous `[`run`]` links in `src-tauri/src/lib.rs` repaired in the same change - without which the first run under the flag would have gone red. The reviewer proved the flag load-bearing by restoring the broken links and measuring the same tree red with the flag and green without it. `BUILDING.md` also gained `pnpm build` in its frontend block, because the file enumerated ten commands while every consumer derived eleven from it. The record below is the history.
 
 Measured 2026-07-28 (Plan 9 Task 1 review, HARVEST): gate part 4
 (`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`) skips the docs
@@ -1193,7 +1195,7 @@ ten is recomputed.
 
 ## Docs accuracy
 
-- **D64's snapshot claim went stale in COUNT and in KIND when Plan 9 Task 4
+- **DONE at the plan-9 close 2026-07-29** (`9dc3a4d` + `c8dfc6d`): all four sites corrected in count and in kind, the recount independently reproduced twice (13 snapshots, 5/3/4/1/0), and the two commits behind the `cli_validate` delta named. **D64's snapshot claim went stale in COUNT and in KIND when Plan 9 Task 4
   landed** (surfaced by that task, sharpened by its review, 2026-07-28; every
   affected file is outside every Plan-9 task's Files list). Four sites, each
   measured at the Task-4 review:
@@ -1221,6 +1223,19 @@ ten is recomputed.
   its locale-parameterized construction site". D64's actual invariant holds
   unchanged, re-measured: `cargo_bin("muxsmith")` appears in exactly one file,
   which amendment 4 preserves by construction.
+
+- **`per planning call` now reaches one step past its source** (Plan-9
+  close-pass delta review, 2026-07-29). Both `identify.rs` docs were corrected
+  to "per call", and the phrase survives in exactly three prose sites: spec 5.5
+  itself, the plan-9 design quoting that spec sentence verbatim, and the Tier-2
+  entry `core-20-ondisk-cache`. **Nothing here is false**: spec 5.5's sentence
+  is scoped to the plan/run flow, where it is true. What changed is that the
+  corrected type doc cites spec 5.5 for a property stated more broadly than the
+  spec states it - a citation reaching past its source, not a contradiction.
+  Closing it would be a spec amendment, so it is RECORDED here rather than
+  given a vehicle; the reviewer recommended exactly that. Reconsider if a
+  reader is ever misled by the gap, or when spec 5.5 is next amended for
+  another reason.
 
 - **A stale line citation in a test comment** (Plan-9 Task-7 review, finding 5,
   2026-07-29): `crates/muxsmith-core/tests/suggestions.rs:1015` cites

@@ -2326,7 +2326,7 @@ entries:
   kind: pattern
   tier: 1
   domain: ci
-  statement: "RUSTDOCFLAGS=-D warnings cargo doc --no-deps runs as the ninth gate part inside the matrixed test job on all three legs (via an env: block); dead intra-doc links are delinked while the target is private and real-fixed once public (T12)."
+  statement: "RUSTDOCFLAGS=-D warnings cargo doc runs as a gate part inside the matrixed test job on all three legs (via an env: block); it gained --document-private-items at the plan-9 close 2026-07-29, at both consuming sites, because the plain run does not link-check private items; dead intra-doc links are delinked while the target is private and real-fixed once public (T12)."
   steelman: null
   blocked_on: null
   status: settled
@@ -4114,7 +4114,7 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Task steps run the NAMED check subset; the full nine-part gate is owed at merge and at push (controller-side); the task-level drift guard for out-of-surface changes is the zero-surface diff check (commit stat shows only the task's files). Preambles state this clause so the subset-vs-gate fork never reaches an implementer as a judgment call - and a mandated full gate on a two-file docs diff is ceremony that trains gate-as-ritual."
+  statement: "Task steps run the NAMED check subset; the full gate as BUILDING.md defines it is owed at merge and at push (controller-side; the part count has changed three times, so this rule names the file rather than a number); the task-level drift guard for out-of-surface changes is the zero-surface diff check (commit stat shows only the task's files). Preambles state this clause so the subset-vs-gate fork never reaches an implementer as a judgment call - and a mandated full gate on a two-file docs diff is ceremony that trains gate-as-ritual."
   steelman: null
   blocked_on: null
   status: settled
@@ -4243,7 +4243,7 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "The local nine-part gate covers ONE platform; the 3-OS matrix exists only in CI. Every push therefore gets its CI CONCLUSION observed (gh run watch, or a checked gh run list conclusion before the next push/claim) - 'pushed, CI running' without a later conclusion check is how a red leg survives unnoticed across pushes. Trigger is readable: you are writing a gh-log push entry. Handle: the entry gets its conclusion appended when known, and a session-close with unobserved conclusions names them as open."
+  statement: "The local gate covers ONE platform; the 3-OS matrix exists only in CI. Every push therefore gets its CI CONCLUSION observed (gh run watch, or a checked gh run list conclusion before the next push/claim) - 'pushed, CI running' without a later conclusion check is how a red leg survives unnoticed across pushes. Trigger is readable: you are writing a gh-log push entry. Handle: the entry gets its conclusion appended when known, and a session-close with unobserved conclusions names them as open."
   steelman: null
   blocked_on: null
   status: settled
@@ -4582,7 +4582,7 @@ entries:
   source: human
   nature: process
   domain: process
-  statement: "SETTLED by owner ruling 2026-07-28: the gate binds EVERY push, with no docs-only exception - the local command list keeps no exemption surface to argue about. The cost argument that motivated the question does not survive measurement: on an unchanged tree with warm caches the full ten parts run in 11 seconds (cargo test 3-4s and pnpm test:e2e 4s dominate; fmt, both clippy runs and cargo doc measure 0s), and a docs-only push is by definition the unchanged-tree case. What the question DID expose is a real gap, closed separately: ledger-lint is not one of the ten parts, so the only check a docs-or-YAML push can turn red was not run before the push at all."
+  statement: "SETTLED by owner ruling 2026-07-28: the gate binds EVERY push, with no docs-only exception - the local command list keeps no exemption surface to argue about. The cost argument that motivated the question does not survive measurement: on an unchanged tree with warm caches the full ten parts run in 11 seconds (cargo test 3-4s and pnpm test:e2e 4s dominate; fmt, both clippy runs and cargo doc measure 0s), and a docs-only push is by definition the unchanged-tree case. What the question DID expose is a real gap, since closed: ledger-lint was not one of the gate parts, so the only check a docs-or-YAML push can turn red was not run before the push at all. It joined the gate block at the plan-9 close 2026-07-29; the 11-second figure above is a measurement of the pre-close ten."
   steelman: "A path-scoped exception (a positive allowlist of doc paths, checked mechanically against the diff rather than judged) would have saved those 11 seconds and stayed immune to the it-is-just-docs judgement call. Rejected on the ratio: 11 seconds against an exemption surface in a process where every discretionary boundary was misapplied at least once in the session that raised the question."
   blocked_on: null
   status: settled
@@ -4611,7 +4611,7 @@ entries:
   source: agent-emergent
   nature: technical-code
   domain: testing
-  statement: "A `cargo doc` run is not evidence about a doc comment that lives in an integration-test target: cargo does not document `tests/`, so a broken intra-doc link there passes the rustdoc gate, every CI leg, and the pending --document-private-items change alike. Nothing in this repo can go red on it. Trigger is readable: you are citing a doc run as evidence for a doc comment, and the file it lives in sits under `tests/`. Handle: cite the link targets themselves (are they in scope at that site?) or drop the evidence line; do not upgrade the claim by re-running the same command."
+  statement: "A `cargo doc` run is not evidence about a doc comment that lives in an integration-test target: cargo does not document `tests/`, so a broken intra-doc link there passes the rustdoc gate, every CI leg, and the --document-private-items flag alike - that flag landed at the plan-9 close 2026-07-29 and does NOT change this, because cargo still does not document test targets. Nothing in this repo can go red on it. Trigger is readable: you are citing a doc run as evidence for a doc comment, and the file it lives in sits under `tests/`. Handle: cite the link targets themselves (are they in scope at that site?) or drop the evidence line; do not upgrade the claim by re-running the same command."
   steelman: null
   blocked_on: null
   status: settled
