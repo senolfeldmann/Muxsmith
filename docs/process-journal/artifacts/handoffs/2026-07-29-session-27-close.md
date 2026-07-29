@@ -1,4 +1,4 @@
-<!-- Snapshot of HANDOFF.md at the session-27 close (SI-5), superseding the earlier same-day snapshot after the two post-approval amendments. -->
+<!-- Snapshot of HANDOFF.md at the session-27 close (SI-5), refreshed after the two vulnerability alerts landed. -->
 
 # Handoff
 
@@ -196,7 +196,18 @@ and plans on conflict.
    that it overrides an already-closed onboarding PR. If Renovate stays silent
    after Task 3 - no dependency-dashboard issue - the documented fallback is to
    rename the closed PR.
-5. **Archive duty:** session 27 is archived by the NEXT session; session 26 was
+5. **Two open vulnerability alerts, and a gate disagreement under them** (ROADMAP,
+   pre-1.0 gates). `postcss` HIGH, transitive in the pnpm lockfile, build-time
+   only and needing untrusted CSS this project does not have, so low exposure
+   behind a high label - fix it anyway, it is a lockfile bump on a public repo.
+   `glib` MEDIUM through the Tauri/GTK stack, where the first question is
+   whether it can move independently of Tauri's own tree. **The part that
+   outranks both:** `cargo deny check` is a gate part and is GREEN on this tree
+   while GitHub reports a Rust advisory that `deny.toml` does not silence. Until
+   that disagreement is explained - the hypothesis is RustSec's `informational`
+   class for unsoundness, unmeasured - neither mechanism may be quoted as
+   coverage. Owner decides the vehicle at the execution kickoff.
+6. **Archive duty:** session 27 is archived by the NEXT session; session 26 was
    archived at the start of this one.
 
 ## Open questions / risks
