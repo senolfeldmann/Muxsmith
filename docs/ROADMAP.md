@@ -1365,6 +1365,18 @@ ten is recomputed.
 
 ## Docs accuracy
 
+- **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
+  Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the
+  binary; verified by the controller the same turn). The spec line reads
+  `muxsmith validate <profile>` while `dry-run`, `run` and `identify` each carry
+  `[--json]`; the shipped binary's `validate --help` lists `--json` AND
+  `--locale`. So the drift runs OPPOSITE to the README's, which overclaimed the
+  same flags for `schema`: here the authoritative document underclaims a real
+  surface. Small, developer-facing, and outside every Plan-10 task's Files list
+  (no task edits the spec). **Vehicle: whichever package next amends the v1
+  spec** - a spec amendment sweeps the spec for self-contradictions anyway, and
+  this is one.
+
 - **DONE at the plan-9 close 2026-07-29** (`9dc3a4d` + `c8dfc6d`): all four sites corrected in count and in kind, the recount independently reproduced twice (13 snapshots, 5/3/4/1/0), and the two commits behind the `cli_validate` delta named. **D64's snapshot claim went stale in COUNT and in KIND when Plan 9 Task 4
   landed** (surfaced by that task, sharpened by its review, 2026-07-28; every
   affected file is outside every Plan-9 task's Files list). Four sites, each
