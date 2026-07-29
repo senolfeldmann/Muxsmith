@@ -5078,3 +5078,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: decided, ref: "plan-10 amendment fix loop: two rounds had each returned more members of the read-inputs class (documents and config, then source files). The third dispatch asked the convergence question instead, and the reviewer answered with one clause - a read-input the plan can NAME IN ADVANCE is listed, a set a prescribed measurement computes at execution is not - measured to reproduce all five task lists exactly, plus the ambiguity that had kept the loop open: the rule's own edited-file exemption and its include clause both fired on every edited file and nothing decided which won, with the lists splitting 3/0/0/2/0 on that question"}
+- id: a-check-with-an-exclusion-rule-needs-a-probe-that-exercises-the-exclusion
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A check that EXCLUDES some inputs - skip comment lines, ignore blanks, tolerate a permitted form - carries a branch no red fire reaches: the fires mutate toward what the check must CATCH, while the exclusion is what it must TOLERATE, and on a green tree the exclusion never speaks. Its probe set therefore needs a PAIR: one mutation inserting the excluded form and requiring GREEN, one inserting a real target at the same site and requiring RED. A single red fire cannot tell a working check from one that fails on everything, and a green tree cannot tell a working exclusion from one that swallows real targets. Trigger is readable: your counting or matching rule has a 'does not count' clause. Sits one level below proc-verification-step-must-be-falsifiable (the check's red state is reachable) and proc-check-green-state-reachable (its green state is reachable on the intended end state), at the granularity of a single branch."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 1 review finding 4 (.superpowers/sdd/plan-10/task-1-verdict.md): the shipped gate-count check counts a command line as non-empty and not starting with '#', so comments and blank lines inside a gate block are excluded. None of the plan's five fires and neither of the implementer's two extra fires reaches that branch. The reviewer built the pair - Y1 inserted comments and blank lines into a gate block and required green, Y2 inserted a real command at the same site and required red - and both behaved correctly. No tree change; the entry records the probe shape"}
+- id: an-evidence-line-names-the-set-it-actually-measured
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "An evidence line names the exact set its measurement covered, never the wider set the sentence makes plausible - 'reads off checks 1-6' where two of the six were measured, 'in every file' after sampling three. The failure is invisible from inside the document: the wider claim is usually TRUE of the sampled members, the conclusion it supports usually survives, and nobody re-measures a line that merely supports a conclusion. Trigger is readable: you are writing a range or a quantifier into a sentence whose evidence is a sample. Handle: measure every member and say so, or name the members you measured."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 1 review finding 1 (.superpowers/sdd/plan-10/task-1-verdict.md): the implementer's report justified a comment-column alignment with an evidence line saying the separator column reads off checks 1-6; the reviewer measured 39/40/40/41/41/39, so it is true of two of the six. The alignment chosen is correct and matches check 6 - only the evidence line generalized past its measurement. Report-local, no tree change"}

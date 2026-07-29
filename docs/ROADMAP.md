@@ -841,6 +841,17 @@ action:
   2); trigger 6 needs no entry by design (drift check and registry fail by
   construction).
 
+- A FOURTH GATE BLOCK is added to `BUILDING.md` (a fourth marked command block
+  beyond `rust`, `frontend` and `house`) -> widen `scripts/ledger-lint.py`'s
+  fixed three-marker set AND the canonical sentence's four-number shape in the
+  same change. Until then a fourth marked block is INVISIBLE to the check: the
+  stated total is compared against the sum of the three known blocks, so it
+  stays green while the real gate has grown. This is a property of what Plan 10
+  Task 1 shipped, not a defect in it - the plan fixed the marker set at three -
+  and it is recorded here so the next author of a gate section knows the check
+  will not catch them. Readable event: you are adding a `<!-- gate-block: ... -->`
+  marker. (Plan-10 Task-1 review finding 5, 2026-07-29.)
+
 - A FOURTH DECLARATION SITE of a `.generated/` harness-bundle path constant
   appears -> export `HARNESS_PATH` and `MOUNT_HARNESS_PATH` from their owning
   files (`e2e/mocks.ts`, `e2e/mount.ts`) and import them everywhere instead.
@@ -1442,14 +1453,27 @@ a plan still has to state a count to be useful.
 
 **A neighbouring class, surfaced by the Plan-10 author and ROUTED here
 2026-07-29 so it is not left in a plan step, which is not a tracker.**
-`BUILDING.md` also carries POSITIONAL gate ordinals - "the cross-target clippy
-run (part 6)" and "CI runs Rust-gate parts 1-4". They are Rust-block-local
+`BUILDING.md` also carries POSITIONAL gate ordinals. **Three sites, not the two
+this entry named until 2026-07-29 (session 28)** - re-measured at commit
+`ddb8f42` with `grep -nE 'part [0-9]|parts [0-9]' BUILDING.md`, which is the
+enumeration this entry now carries: `:102` "The cross-target clippy run
+(part 6)", `:134` "runs Rust-gate parts 1-4", and `:135` "what part 6
+cross-checks". The third was found by Task 1's implementer, not by the author of
+this entry, and it hides in the shape this house already has a rule for: it sits
+in the SAME paragraph as `:134`, hard-wrapped across the line break, so a
+by-paragraph reading sees one ordinal where there are two
+(`proc-wrapped-prose-quote-grep`). They are Rust-block-local
 positions rather than totals, so the canonical-total check does not cover them
 and covering them would need a second parser over a numbering the canonical
 sentence does not define. They are also newly ambiguous once the file states a
 total: "part 6" acquires a second possible referent, the sixth of eleven, which
-only section context resolves. **Vehicle: whichever package next edits
-`BUILDING.md`'s gate blocks after Plan 10's Task 1 lands** - deliberately not
+only section context resolves. **A fourth item rides the same vehicle, added
+2026-07-29 (session 28):** Task 1's fenced Step-1(e) replacement leaves
+`BUILDING.md:138` at 86 characters, the file's only non-fenced prose line over
+80 (the pre-state had none). A reflow has zero rendered effect and was correctly
+NOT done inside Task 1, because the fenced paragraph carries a within-file
+qualifier naming the very ordinals a reflow would move. **Vehicle: whichever
+package next edits `BUILDING.md`'s gate blocks after Plan 10's Task 1 lands** - deliberately not
 Task 1 itself, whose scope is the total and its check, and where adding a second
 numbering concern would widen a task the owner approved at its current size.
 
