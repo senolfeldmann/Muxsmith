@@ -634,6 +634,15 @@ action:
 - Renovate/Dependabot activated -> prune deny.toml RUSTSEC ignores; TS-7
   bump arrives via its PRs (riders on the activation entry, which moved into
   the pre-1.0 gates section by the 2026-07-29 owner ruling).
+  **FIRED 2026-07-29 (session 28): Renovate is running**, dependency-dashboard
+  issue #2 exists. **Deliberately RE-DEFERRED rather than consumed, with a
+  sharper observable, because neither rider is actionable yet:** the config's
+  cadence is the 1st to 3rd of the month, so no dependency PR exists yet to
+  obsolete a RUSTSEC ignore or to carry the TypeScript bump. **New observable:
+  Renovate's first dependency PRs land** - expected 2026-08-01 to 08-03, though
+  security updates bypass the schedule and could arrive sooner. Then walk the 18
+  commented RUSTSEC ignores in `deny.toml` and drop the ones its PRs have made
+  obsolete, and take the TS-7 bump when the typescript-eslint ceiling allows.
 - A bulk profile shows regex compilation dominating -> promote the
   regex-cache line from v1.x into hardening scope (v1.x entry).
 - mkvtoolnix/mkvmerge version bump (dev machine or CI) -> re-verify the
@@ -986,6 +995,16 @@ Must be resolved before the first tagged release.
   same edit, since the note is a third member. **THE ENTRY ITSELF DOES NOT
   CLOSE:** the owner QA gate is a standing precondition on the tag, further
   rounds are expected, and artifact signing stays a ruled 1.x item.
+- **OWNER QA PASS, round 2 (2026-07-29): the ubuntu-24.04 build tested on Fedora,
+  works.** He installed and ran the draft rehearsal build from run `30491217194`
+  (commit `fd78bfc`, all seven artifacts plus SHA256SUMS) on Fedora Linux and
+  reports it functioning. **This closes the one open verification the base move
+  carried:** no gate part reads `release.yml`, so nothing local could prove a
+  24.04 base builds - and the AppImage step, the one depending on host library
+  layout rather than package names, was the named risk. Both are now proven on
+  real hardware. Still untested by him at this point: the product itself on the
+  other two platforms, and the full feature pass the QA gate above enumerates.
+
 - **TWO OPEN VULNERABILITY ALERTS, surfaced 2026-07-29 within minutes of the
   owner enabling the alert feed.** The feed's first act was to find something,
   which is the argument for having enabled it before Renovate rather than with it.
@@ -1046,13 +1065,20 @@ Must be resolved before the first tagged release.
   which only an installed app can do, and the vulnerability alerts arriving the
   same day are the dependency-graph half. The session-27 HANDOFF said so
   plainly; the plan's acceptance row said the opposite, and the row won because
-  nobody re-read the HANDOFF against it. **What remains is a wait-and-see, not a
-  task:** the vendor documents a config commit as a route to onboarding but does
-  not say it overrides an ALREADY-CLOSED onboarding PR, so confirm Renovate
-  actually starts now that the config is on `master` - the observable is a
-  dependency-dashboard issue appearing, and none exists yet (checked
-  2026-07-29). The documented fallback, if it stays silent, is renaming the
-  closed PR. **The trigger below therefore still has not fired in its recorded
+  nobody re-read the HANDOFF against it. **ACTIVATION CONFIRMED 2026-07-29 (session 28): Renovate is
+  RUNNING.** The registered observable appeared - issue #2, `Dependency
+  Dashboard`, opened by `app/renovate` after the owner forced a run from the
+  hosted app's portal. Checked at the source before he did, so the forcing was
+  not a shot in the dark: `isOnboarded()` returns true as soon as a config file
+  exists on the default branch, so the closed onboarding PR is irrelevant once
+  `renovate.jsonc` is on `master`, and `config:recommended` extends
+  `:dependencyDashboard`, so the observable we had registered is one this
+  configuration actually produces. Nothing in the repository was blocking it; the
+  hosted service simply had not reached the repo yet. **Residue, cosmetic and the
+  owner's:** the `renovate/configure` branch from the closed onboarding PR is
+  still on the remote and is now inert - the agent's attempt to delete it was
+  refused by its own permission rules, branch deletion not being one of the
+  granted git shapes. **The trigger below therefore still has not fired in its recorded
   sense** - the deny.toml RUSTSEC pruning and the TS-7 bump wait for Renovate's
   first PRs, not for an owner action.
 

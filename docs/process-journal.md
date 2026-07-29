@@ -3209,3 +3209,64 @@ AppImage bundle step is the only one depending on host library layout rather
 than package names. The completion check built for the reach sweep is a one-shot
 instrument, deliberately not promoted into the gate - it parses prose, and the
 boundary it would encode was contested in the same round.
+
+## 2026-07-29 | Session close: the draft build, and Renovate actually running | session 28 (Peter, Opus 5)
+
+**Scope.** The tail after the release-base work, commits `fd78bfc..` this
+entry. No product code changed; the work was a build, two verifications on real
+hardware and a correction.
+
+**What the process caught, and this time it was the owner catching the
+controller.**
+- **Renovate's activation had been done in session 27 and the controller carried
+  it as open anyway**, through the plan-10 close, into the ROADMAP disposition
+  and into the HANDOFF. The session-27 HANDOFF said so plainly; the plan's
+  acceptance row said the opposite, and the row won because nobody re-read the
+  HANDOFF against it. The owner said "hab ich doch schon längst gemacht, nicht?"
+  and he was right. Verified afterwards on GitHub: the Renovate app had opened
+  and closed PR #1, which only an installed app can do, and the vulnerability
+  alerts arriving the same day were the dependency-graph half. Corrected in both
+  documents. **The lesson is not "read the HANDOFF" - it is that a plan's
+  acceptance row is a snapshot of what was true when the plan was written, and a
+  close that copies it forward without re-checking the volatile state ships a
+  stale claim as a current one.**
+- The controller had also dismissed a red CI run as superseded without looking
+  at it. Looked at afterwards: the Windows leg's choco mkvmerge install did not
+  produce the binary at the asserted path, on a docs-only commit, with both
+  neighbouring commits green and npm registry retries in the same minutes -
+  a network-flaky runner window. Recorded as a second, distinct flake class,
+  because that step is what makes "3-OS green" mean live-binary tests on three
+  of three; when it fails the guarantee silently degrades to two of three, and
+  it only fails loudly because the step asserts the path afterwards.
+
+**Verifications that closed open items.**
+- **The 24.04 base builds.** A draft rehearsal build was dispatched at the
+  owner's request (run `30491217194` on `fd78bfc`): all four bundle legs plus
+  assemble green, seven artifacts and SHA256SUMS. Nothing local could have shown
+  this - no gate part reads `release.yml` - and the AppImage step, the only one
+  depending on host library layout rather than package names, was the named risk.
+- **The owner installed and ran that build on Fedora and reports it working.**
+  QA round 2. The product's feature pass and the other two platforms remain
+  untested by him.
+- **Renovate is running.** The dashboard issue appeared after he forced a run
+  from the hosted portal. Checked at the vendor's source first, so the forcing
+  was informed rather than hopeful: a config file on the default branch makes
+  `isOnboarded()` true regardless of the closed onboarding PR, and
+  `config:recommended` extends `:dependencyDashboard`, so the registered
+  observable is one this configuration actually produces. The repository was
+  never the blocker; the hosted service had not reached it.
+
+**Friction.** The owner told the controller, in plain terms, that its reports
+were too long and written in project jargon that had stopped being readable -
+"du laberst viel zu viel, dann auch noch zum teil echter kauderwelsch in deinem
+eigens ausgedachten fachsprech". Taken as given and the register changed for the
+rest of the session. Worth recording because the same reports read as
+disciplined from inside the process and as noise from the outside, and only one
+of those two readings is the customer's.
+
+**Open threads.** Renovate's activation trigger fired and was deliberately
+re-deferred to a sharper observable - its first dependency PRs, expected 1 to 3
+August, since the cadence is monthly and nothing exists yet to obsolete a RUSTSEC
+ignore. The vulnerability vehicle. The inert `renovate/configure` branch, which
+the agent's own permission rules would not let it delete. And the product QA
+pass, still the only thing that can close 1.0 scope.
