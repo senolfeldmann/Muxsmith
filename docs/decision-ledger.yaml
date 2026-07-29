@@ -5035,3 +5035,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 amendment 1 (author's report, refuting the controller's amendment brief): the README's 'all 78 of them' review count. The brief assumed it may never have counted the unit its prose claims. Measured at 62aaf61, the commit that introduced the sentence, BOTH candidate units returned 78 - every verdict then lived in a verdicts/ directory - and later plans stopped using that subdirectory, so the units diverged silently. Today the basename rule returns 219 while the verdicts/-directory rule still returns 78, frozen. The same measurement found shape (2) in the neighbouring figure: the decision series has 103 distinct numbers reaching D105 (D73 and D74 reserved and never used), so 'D1 through D105' would have been a fresh wrong number in a sentence being repaired for staleness"}
+- id: an-incomplete-reference-is-invisible-to-grep-unlike-a-wrong-one
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "The reference sweep after a change has two halves that feel like one job and are not. A RENAME sweep chases a string: the old text is now WRONG, so every site is findable by grepping for it, and completeness is mechanical. A SCOPE sweep chases a set: the old text is not wrong, it is merely no longer COMPLETE, so nothing to grep for exists and the members have to be re-derived from the change's new content. The second is the one that gets missed, and being diligent about the first is no evidence about the second. Readable trigger: a unit of work gained an INPUT - a file on its Files list, a document it must honour, a fact it must check. Handle: treat its `Read first` list, its governing-document list and any other enumeration of its inputs as consumers of that change, and re-derive each from the new content rather than searching for something stale."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 delta review after amendments 1 and 2 (.superpowers/sdd/plan-10/plan-review-round-1.md), sole new finding: amendment 2 swept Task 4's NAME across all four sites correctly, including the awkward one where the old name has to survive because it belongs to the brief - and did not sweep the task's Read-first list, which grew at the same moment and for the same reason. It omitted docs/INSTALL.md, which the task now edits, and the ROADMAP entry the task's own new step orders the implementer to verify a string against"}
+- id: a-briefs-explanation-of-why-a-fact-is-wrong-is-itself-a-measurable-claim
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a brief does not merely state that a fact is wrong but explains HOW it came to be wrong, that explanation is a claim in its own right, and its evidence is historical rather than current - so verifying the fact against today's tree does not touch it. Check it where it happened: measure at the commit that introduced the statement, which git makes a one-command job. This is worth the command because the competing explanations prescribe different work. 'It never counted the right unit' and 'it was right and its unit later forked' look interchangeable in a brief and are not: only the second implies that a re-measurement under the original unit will REPRODUCE the stale figure and read as confirmation, and only that reading produces a step which makes the fork visible instead of trusting it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 amendment 1: the controller brief asserted the README's review count 'may never have counted the unit its prose claims'. The author measured at 62aaf61, the commit that introduced the sentence eighteen days earlier, and found both candidate units returned 78 there - the figure was right and the units forked afterwards, when later plans stopped using the verdicts/ subdirectory. Every earlier refutation in this package corrected a claim about the CURRENT state; this one corrected a claim about history"}
