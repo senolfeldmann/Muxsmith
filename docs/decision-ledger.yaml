@@ -4393,7 +4393,7 @@ entries:
   count: 2
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-8.5, the plan-amendment author running beside the Task-3 implementer: it staged only its own path, and its bare `git commit` (86bfd69) swept in the co-writer's staged draft-body.md anyway. Self-disclosed rather than smoothed over, repaired by soft reset plus a pathspec-scoped re-commit (29ef17b, verified to touch one file), 86bfd69 left unreferenced, nothing pushed; the co-writer's change was restored to its staged pre-incident state and it committed its own work afterwards"}
-    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 close, the CONTROLLER own near-miss: a house commit (d5382e7, ROADMAP plus ledger) was made while the close fix wave implementer had README.md, e2e/smoke.spec.ts and src/views/EditorView.vue modified in the same tree. The commit was safe only because the controller had staged its two paths explicitly and the implementer had staged nothing yet - git add plus a bare git commit is NOT the protection this entry prescribes, which is git commit -- <paths>. Verified after the fact that the commit contains exactly the two docs files. The plan own serial ruling also says no second writer is dispatched while a task is live; at a plan close the controller is that second writer"}
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 close, the CONTROLLER own violation, measured rather than recalled: FOUR house commits (af1fa7b, d5382e7, 90fae0e, b37eac1, all ROADMAP or ledger) landed while the close fix wave implementer had README.md, e2e/smoke.spec.ts and src/views/EditorView.vue modified in the same tree - the implementer reported the broken premise in its own concerns and re-ran all eleven gate parts and all four of its measurements at the new HEAD before trusting them. The commit was safe only because the controller had staged its two paths explicitly and the implementer had staged nothing yet - git add plus a bare git commit is NOT the protection this entry prescribes, which is git commit -- <paths>. Verified after the fact that the commit contains exactly the two docs files. The plan own serial ruling also says no second writer is dispatched while a task is live; at a plan close the controller is that second writer"}
 - id: dispatch-preconditions-name-zero-commits-ahead
   kind: pattern
   tier: 1
@@ -5250,3 +5250,17 @@ entries:
     - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 5 review finding 1 (docs/process-journal/artifacts/plan-10-sdd/task-5-verdict.md): the comment-sweep corpus is defined by two expressions whose FILE SELECTOR reads six source extensions; a surviving member of the swept class sits in .github/workflows/ci.yml, invisible to any sweep of that corpus. Found by deriving the cited-extension set from the tree own extension tally and running it over every non-docs file"}
     - {date: "2026-07-29", kind: decided, ref: "plan-10 Task 1 review finding 5 (docs/process-journal/artifacts/plan-10-sdd/task-1-verdict.md): the shipped gate-count check fixes its block set at three named markers and its sentence at four numbers, so a future FOURTH gate section carrying its own marker is invisible and the stated total stays green while the gate has grown. Routed as a ROADMAP trigger keyed on the readable event"}
     - {date: "2026-07-29", kind: decided, ref: "plan-10 whole-branch review NIT 5 (docs/process-journal/artifacts/plan-10-sdd/whole-branch-verdict.md): the same counter models backslash continuations and refuses on them, but models neither a trailing pipe nor a trailing && - a command wrapped in either form counts as two, silently. Ruled no-action at the close and recorded as a ROADMAP trigger; the reviewer reached it by asking what the counter cannot see"}
+- id: a-count-a-close-action-moves-needs-growth-proof-phrasing-or-a-standing-duty
+  kind: non-decision
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Repairing a count that a close action falsified fixes the instance and re-arms the mechanism: the NEXT package's salvage falsifies the new figure the same way. Two real options and neither is the controller's to pick alone - phrase the prose so growth cannot falsify it (a register decision on a document whose voice the owner owns), or attach a standing duty to the salvage step that re-measures every shipped count over the salvaged set. Recorded as a non-decision so the second close does not rediscover the first close's repair."
+  steelman: null
+  blocked_on: "external: an owner call on the README's phrasing, or a controller decision to add the re-measure duty to the salvage step"
+  status: blocked
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: deferred, ref: "plan-10 close fix wave concern 2 (docs/process-journal/artifacts/plan-10-sdd/close-fix-report.md): the README figure was raised 219 -> 225 after the plan-10 salvage added six verdict files, both readings of the unit verified to agree and the set difference empty in both directions. The implementer flagged that plan 11's salvage will falsify 225 identically, and deliberately left the phrasing alone because the README's register is the owner's call"}
