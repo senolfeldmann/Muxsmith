@@ -1,4 +1,4 @@
-<!-- Snapshot of HANDOFF.md at the session-28 close, third state: the Renovate activation correction. The HANDOFF itself is git-ignored and superseded in place; SI-5 requires this snapshot in the same turn as the rewrite. -->
+<!-- Snapshot of HANDOFF.md at the session-28 close, final state: Plan 10 closed, the Linux release base on ubuntu-24.04 and proven by a draft build the owner ran on Fedora, Renovate running. The HANDOFF itself is git-ignored and superseded in place; SI-5 requires this snapshot in the same turn as the rewrite. -->
 
 # Handoff
 
@@ -162,12 +162,17 @@ and plans on conflict.
 
 ## Current state (verified)
 
-- **master at the session-28 close head, nothing unpushed**
-  (checked with `git status` and `git rev-list origin/master..master`). The
-  eleven-part gate ran green before the push with every part's exit code
-  captured separately; the push-triggered CI run concluded **success** on all
-  five jobs - the three OS legs, `deny`, and `ledger-lint`, which now also
-  carries the new gate-count check.
+- **master at the session-28 close head - the commit that added this file's own
+  snapshot - and everything is pushed.** Re-derive rather than trusting this
+  line: `git log --oneline -1`, `git status`, `git rev-list origin/master..master`. The eleven-part gate
+  ran green before every push in this session, each part's exit code captured
+  separately. CI is green on the pushed heads; **one run in this session was
+  RED** and it is worth knowing about: on the docs-only commit `ad4746d` the
+  Windows leg's choco mkvmerge install did not produce the binary at the path it
+  asserts, while both neighbouring commits were green on all five jobs and the
+  same log carried npm registry retries. Recorded in the ROADMAP as a second,
+  distinct flake class, because that step is what makes "3-OS green" mean
+  live-binary tests on three of three.
 - **Plan 10 is EXECUTED AND CLOSED.** Five serial tasks in one tree, each with a
   fresh implementer and an independent reviewer; one task fix round; a
   whole-branch review on the top tier returning READY_WITH_MINORS; one close fix
@@ -184,8 +189,19 @@ and plans on conflict.
   vehicle in the ROADMAP's pre-1.0 gates, unscheduled against Plan 10 on purpose.
   The `cargo deny` / GitHub disagreement under them is still unmeasured, and
   until it is, neither mechanism may be quoted as coverage.
-- **House knowledge is at 545 entries**, up from 531 at the session start. One
-  entry promoted to Tier 2 on its third occurrence.
+- **House knowledge is at 548 entries**, up from 531 at the session start. One
+  entry promoted to Tier 2 on its third occurrence
+  (`a-search-whose-terms-come-from-memory-produces-a-false-absence`, whose
+  statement now carries the split that promoted it: a measuring expression has
+  two enumerations, what it READS and what it MATCHES).
+- **Renovate is RUNNING** since 2026-07-29: dependency-dashboard issue #2 exists.
+  Its activation trigger fired and was deliberately re-deferred to a sharper
+  observable, because the cadence is the 1st to 3rd of the month and no
+  dependency PR exists yet to obsolete a `deny.toml` RUSTSEC ignore or carry the
+  TypeScript-7 bump.
+- **The draft rehearsal build the owner tested is run `30491217194`** on
+  `fd78bfc`: four bundle legs plus assemble green, seven artifacts and
+  SHA256SUMS, never a tag, never published.
 
 ## The Linux release base moved, after the plan close
 
@@ -203,12 +219,13 @@ rejected because its 2.43 floor would drop Debian 13 too. Separately measured:
 the rpm hard-requires `libwebkit2gtk-4.1.so.0`, which stock RHEL 10 repositories
 do not carry - EPEL does - so RHEL support is qualified in both artifact tables.
 
-**Unproven until a draft release run**, and this is the one open verification
-that matters: no gate part reads `release.yml`, so nothing local can show that a
-24.04 base builds. The AppImage half of the bundle step is the likeliest
-breakage point, being the only step that depends on host library layout rather
-than package names. A `workflow_dispatch` draft off current master proves it and
-produces the build the owner's QA pass needs anyway.
+**PROVEN 2026-07-29, and this closes the base move's one open verification.**
+Nothing local could show it - no gate part reads `release.yml` - so a draft
+rehearsal build was dispatched (`workflow_dispatch` with the draft flag, run
+`30491217194` on `fd78bfc`): all four bundle legs plus assemble green, including
+the AppImage step, which was the named risk as the only step depending on host
+library layout rather than package names. **The owner then installed and ran that
+build on Fedora and reports it working.**
 
 **Two standing consequences for any future text:** every row or sentence telling
 a reader which systems an artifact runs on states the requirement rather than a
@@ -218,59 +235,82 @@ went stale within one afternoon.
 
 ## Next steps (priority order)
 
-1. **A draft release build off current master, then the owner's full product QA
-   pass.** The pass is what actually closes 1.0 scope, his timing condition
-   ("once the next plan is implemented") is now met, and nothing else on this
-   list gates the tag the way this does. The draft build serves twice: it is the
-   only proof that the new 24.04 base builds, and it is the artifact set his
-   pass needs. `workflow_dispatch` on release.yml with the draft flag; never a
-   tag, never published.
+1. **The owner's full product QA pass - the only thing that can close 1.0
+   scope.** His timing condition ("once the next plan is implemented") is met,
+   and the build he needs exists and works: run `30491217194` on `fd78bfc`,
+   seven artifacts plus SHA256SUMS, a draft that is not a tag and is not
+   published. **Round 2 is partly done** - he installed and ran it on Fedora and
+   reports it working, which also proved the new 24.04 base. What is still
+   untested by him: the same build on Windows and macOS, and the product's
+   feature surface, which the QA-gate section above enumerates (a real dry-run
+   and run over his own library, the profile editor including rule add and
+   remove, suggestion apply, the jobs view during a live batch with a mid-run
+   cancel, run history, the locale switch, help mode). A later build off a newer
+   head would need a fresh `workflow_dispatch` with the draft flag.
 2. **The vulnerability vehicle** (ROADMAP, pre-1.0 gates): its own one-task
-   plan. Bump `postcss` past 8.5.17 through the lockfile; MEASURE the
-   `cargo deny` disagreement in the same task rather than restating the
-   hypothesis; INVESTIGATE `glib` only, and if it cannot move independently of
-   Tauri's tree, say so and give it its own vehicle.
-3. **Renovate: nothing is owed by the owner.** His two actions were done in
-   session 27 - the app is installed (it opened and closed PR #1) and the
-   dependency graph is on (the vulnerability alerts arrived) - and the config
-   reached `master` in this session. The controller carried them as open anyway
-   through the plan-10 close and had to be corrected by the owner; the
-   session-27 HANDOFF had said so plainly and the plan's acceptance row said the
-   opposite. What is left is an observation, not a task: does Renovate start now
-   that the config is on `master`, given its onboarding PR was already closed?
-   The observable is a dependency-dashboard issue appearing; none existed at the
-   session-28 close. If it stays silent, rename the closed PR.
-4. **Three routed items waiting on a package that touches their file**: the
-   surviving `ci.yml` line-number citation, the `raw:` "byte-exact" wording (in
-   the spec, the matcher comment and the README at once), and the v1 spec's 8.1
-   synopsis omitting `validate`'s flags. All three carry vehicles in the
-   ROADMAP's "Docs accuracy" section.
+   plan, and the part that outranks both alerts is the disagreement, not the
+   bumps. Bump `postcss` past 8.5.17 through the lockfile; **MEASURE** why
+   `cargo deny check` is green on this tree while GitHub reports a Rust advisory,
+   rather than restating the informational-class hypothesis; **INVESTIGATE**
+   `glib` only, and if it cannot move independently of Tauri's tree, say so and
+   give it its own vehicle. Until that measurement exists, neither `cargo deny`
+   nor the GitHub feed may be quoted as coverage.
+3. **Renovate: nothing is owed by anyone, one thing is worth watching.** It is
+   running - dependency-dashboard issue #2 exists since 2026-07-29, after the
+   owner forced a run from the hosted portal. Its activation trigger fired and
+   was deliberately re-deferred to a sharper observable, because the config's
+   cadence is the 1st to 3rd of the month: **when its first dependency PRs land**
+   (expected 2026-08-01 to 08-03; security updates bypass the schedule), walk the
+   18 commented RUSTSEC ignores in `deny.toml` and drop the ones those PRs make
+   obsolete, and take the TypeScript-7 bump when the typescript-eslint ceiling
+   allows. Cosmetic residue, the owner's: the inert `renovate/configure` branch
+   from the closed onboarding PR is still on the remote; the agent's granted git
+   shapes do not include branch deletion.
+4. **Four routed items waiting on a package that touches their file**, all with
+   vehicles in the ROADMAP's "Docs accuracy" section: the one surviving
+   line-number citation in `.github/workflows/ci.yml` (now IN scope, since the
+   owner widened the ruling to CI and configuration comments on 2026-07-29); the
+   `raw:` "byte-exact" wording, which is wrong in the spec, the matcher's comment
+   and the README at once because `scalar_eq` compares Int against Float; the v1
+   spec's section 8.1 synopsis omitting `validate`'s flags; and `BUILDING.md`'s
+   three positional gate ordinals plus its one over-80 prose line.
 5. **Archive duty:** session 28 is archived by the NEXT session; session 27 was
    archived at the start of this one.
 
 ## Open questions / risks
 
-- **THREE OWNER QUESTIONS are waiting, all recorded in the tracker so they
-  cannot evaporate.** (a) Does the comment line-number ruling reach CI and
-  config comments? It was scoped to source comments and explicitly not widened,
-  and its form list names `//`, `///`, `//!`, `/* */` but not `#` - which is
-  where the one surviving member sits. (b) The runner-image exclusion in
-  `renovate.jsonc` (`github-runner` disabled, on D85's glibc-floor grounds) came
-  from the plan fence rather than from a named ruling of his, and
-  `ci-04-dependabot-cadence` never mentioned it; recorded as an occurrence
-  pending his confirmation. (c) The count-versus-salvage treadmill: repairing
-  the README's verdict figure re-arms it, since the next plan's salvage
-  falsifies the new number identically. Two options are on the table - a
-  standing re-measure duty at the salvage step, which the whole-branch reviewer
-  recommends, or growth-proof phrasing, which is a register call on his README.
+- **All three owner questions from this session are RULED**, so nothing waits on
+  him: the comment line-number ruling now reaches CI and configuration comments;
+  a growth-prone README figure loses its number rather than gaining a
+  maintenance duty, which he applied to both figures in that paragraph; and the
+  Linux release base is 24.04 with tests on 26.04. The runner-image exclusion in
+  `renovate.jsonc` was surfaced for his confirmation and he did not object while
+  ruling on the base move that motivates it; it stays as shipped, recorded on
+  `ci-04-dependabot-cadence`.
 - **The comment-citation class is closed WITHIN its corpus selector, not
   tree-wide.** Any sentence saying Plan 10 closed that class names the selector -
-  source files in six extensions - or it is false.
+  source files in six extensions - or it is false. One member survives in
+  `.github/workflows/ci.yml` and is routed.
+- **A shipped `deb` declares no `libc6` dependency**, so on a system below the
+  glibc floor `apt install` succeeds and the binary fails later with nothing
+  having warned the user. `docs/INSTALL.md` is the only channel that warns, which
+  is why its floor statement sits before the runtime-requirements list rather
+  than inside it. Do not move it back.
+- **The reach-claim checker exists but is deliberately not in the gate**
+  (ROADMAP candidate section): it parses prose, which is how such a check becomes
+  permanently red on correct content. Reconsider if a third artifact table
+  appears - the README's `placeholder(1.0)` mandates one at the tag.
 - **The controller's own error class stayed the most frequent, again**, and again
-  every instance was caught by something else: four commits into a tree with a
-  live product writer, using `git add` plus a bare commit rather than the
-  pathspec-scoped form; a review brief demanding byte-identity against a commit
-  the controller then moved; one verdict harvest mined after the next dispatch
-  instead of before it; and one occurrence written from recall (one commit) that
-  a measurement corrected to four. All four are ledgered.
+  every instance was caught by something else - twice by the owner directly.
+  Ledgered: four commits into a tree with a live product writer using `git add`
+  plus a bare commit rather than the pathspec-scoped form; a review brief
+  demanding byte-identity against a commit the controller then moved; one verdict
+  harvest mined after the next dispatch instead of before it; one occurrence
+  written from recall that a measurement corrected; a stale plan acceptance row
+  copied forward as current state (the Renovate activation, which the owner
+  corrected); and a red CI run dismissed as superseded without being read.
+- **The scoping lesson this session paid for three times, now a house rule:** when
+  a change moves a FACT that several texts assert, the scope unit is the set of
+  assertions, not a file list - derive it by grepping the tree for the fact, and
+  put the RULE in the brief rather than the member list.
 - Framework-side follow-ups are tracked agent-side.
