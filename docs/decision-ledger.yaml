@@ -5028,14 +5028,15 @@ entries:
   source: agent-emergent
   nature: process
   domain: process
-  statement: "Every number stated in prose asserts a UNIT as well as a value, and re-measuring the value does not check the unit. Two failure shapes, both live: (1) UNIT DRIFT - the figure was correct under the unit available when it was written, the world later made two units diverge, and re-measuring under the original unit reproduces the stale figure and reads as CONFIRMATION rather than as staleness; (2) RANGE IMPLIES COUNT - 'X through Y' asserts contiguity, so it states a count as a side effect, and a gap in the series makes the range true and the implied count false. Handle: name the unit the prose claims, establish which unit the ORIGINAL figure used (measure at the commit that introduced it, which git makes cheap), and measure today under both. Where they diverge, the prose is what broke, not the number. Where the claim is a range over a series, count the members rather than trusting the endpoints. Trigger is readable: you are re-measuring a figure an older document states, in order to decide whether it is still true."
+  statement: "Every number stated in prose asserts a UNIT as well as a value, and re-measuring the value does not check the unit. Two failure shapes, both live: (1) UNIT DRIFT - the figure was correct under the unit available when it was written, the world later made two units diverge, and re-measuring under the original unit reproduces the stale figure and reads as CONFIRMATION rather than as staleness; (2) RANGE IMPLIES COUNT - 'X through Y' asserts contiguity, so it states a count as a side effect, and a gap in the series makes the range true and the implied count false. Handle: name the unit the prose claims, establish which unit the ORIGINAL figure used (measure at the commit that introduced it, which git makes cheap), and measure today under both. Where they diverge, the prose is what broke, not the number. Where the claim is a range over a series, count the members rather than trusting the endpoints. Trigger is readable: you are re-measuring a figure an older document states, in order to decide whether it is still true. A unit is WELL-FORMED when its plausible re-readings converge: state it so that every reasonable reading of the words returns the same number, and say which reading you measured. That is a stronger property than merely naming a unit, and it is what lets the next reader re-derive the figure without guessing which sense was meant."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 amendment 1 (author's report, refuting the controller's amendment brief): the README's 'all 78 of them' review count. The brief assumed it may never have counted the unit its prose claims. Measured at 62aaf61, the commit that introduced the sentence, BOTH candidate units returned 78 - every verdict then lived in a verdicts/ directory - and later plans stopped using that subdirectory, so the units diverged silently. Today the basename rule returns 219 while the verdicts/-directory rule still returns 78, frozen. The same measurement found shape (2) in the neighbouring figure: the decision series has 103 distinct numbers reaching D105 (D73 and D74 reserved and never used), so 'D1 through D105' would have been a fresh wrong number in a sentence being repaired for staleness"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-10 Task 4 review, HARVEST 6 (.superpowers/sdd/plan-10/task-4-verdict.md): the well-formedness half, measured on both figures the task rewrote. The verdict sentence names files under docs/ with verdict in the name, and BOTH readings of in the name - basename and full path - return 219 with an empty set difference; the decision sentence returns 103 whether measured over the specs directory the plan prescribed or over all of docs/. Convergence under re-reading is the property that makes the corrected sentences durable, where the pre-state figure 78 was true under one reading and stale under the other"}
 - id: an-incomplete-reference-is-invisible-to-grep-unlike-a-wrong-one
   kind: pattern
   tier: 1
@@ -5176,3 +5177,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 3 review finding 2 (.superpowers/sdd/plan-10/task-3-verdict.md): the report's controller-facing section said the config 'is on master as of 630d418', while the ordering rider it was serving is about the repository GitHub serves before the owner installs the Renovate app. Measured: origin/master...HEAD was 0 5 and no remote branch contained the commit. The report states 'Not pushed' elsewhere, so it recovers, but the imprecise sentence sat in the section a controller acts on"}
+- id: byte-identity-is-proven-against-blobs-not-against-a-clean-git-status
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A duty to leave the tree unchanged is proven per FILE against the named commit's blobs - git hash-object <file> compared with git rev-parse <commit>:<file>, plus git diff --name-status <commit> to name every path that did move and who moved it - never by a clean git status. In a repository where a second writer may commit concurrently, a clean status proves only that nothing is uncommitted right now; HEAD can have moved off the commit the instruction named, which makes the prescribed proof unavailable in the exact form it was prescribed. Trigger is readable: you are about to cite a clean working tree as evidence, or you are writing 'leave the tree byte-identical to <sha>' into a brief."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 4 review, HARVEST 4 (.superpowers/sdd/plan-10/task-4-verdict.md): the review brief named e657263 as 'the tree' and demanded byte-identity against it; the CONTROLLER then committed a ROADMAP disposition (2f1dca0) while the review ran, moving HEAD. Nothing under review changed, and the reviewer proved that per file at blob level and named the moved path and its author - but the prescribed proof had become unprovable in its prescribed form. Both halves are the controller's: the brief's wording and the concurrent commit"}
+- id: an-evidence-line-naming-a-source-construct-cannot-carry-a-conclusion-about-a-runtime-observable
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A measurement's SCOPE decides which claim it can carry, and 'which code emits X' is not 'which invocations produce X'. A source-level grep sees constructs the author wrote; the reader's observable may have producers no such grep can see - a runtime default, a shell convention, a library's fallback. Trigger is readable: your evidence line names a SOURCE construct (an emitting site, a call site, a literal) while your conclusion names a RUNTIME observable (an exit status, a rendered string, a file on disk). Handle: reproduce the observable itself, with a control that varies the producer you did not measure. Sharper than the borrowed-measurement case, because the measurement here is your own and correctly executed."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 4 review finding 1 (.superpowers/sdd/plan-10/task-4-verdict.md): the implementer measured which command EMITS exit code 130 - only run, correctly, reproduced by the reviewer - and wrote the README sentence scoping 130 to run. The reader's observable is $?, which has a second producer no source grep sees: a dry-run interrupted by SIGINT is killed by signal 2 and the shell reports 130 by default disposition (reviewer's control: the same command signalled after completion reports 0). The sentence could mislead someone scripting dry-run; routed to a fix round"}
+- id: a-measurement-restated-in-shortened-form-invents-precision
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A measurement taken correctly goes wrong when it is RESTATED in abbreviated form - a truncated digest, a rounded count, a shortened quotation - because the abbreviation is regenerated from memory rather than copied from the run. Trigger is readable: you are about to write a shortened form of a value you measured. Handle: quote the full value, or re-derive the short form from the output rather than from what you remember it looked like. The abbreviation buys nothing a reader needs and costs the one property the value was cited for."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 Task 4 review, HARVEST 7 (.superpowers/sdd/plan-10/task-4-verdict.md): the verdict's own tree-identity section first quoted two sha256 sums truncated, and one tail was invented (...80f5 for a digest ending ...80b5). The measurement was correct when taken and went wrong when restated short. The reviewer caught it by diffing its quoted lines back against a live sha256sum, replaced both with full digests, and recorded it rather than fixing it quietly - a verdict committing the pattern it harvests in the same document"}
