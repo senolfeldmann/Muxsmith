@@ -5021,3 +5021,17 @@ entries:
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 fix round 1 (author's report on finding F2): the replacement self-audit reports nine sites, and the ninth is the audit sentence itself, which matches because it quotes its own expression. Stated in the plan rather than excluded, which is the handle this entry records"}
     - {date: "2026-07-29", kind: reinforced, ref: "plan-10 fix round 2 (author's report on N3): adding a scratch-line token to the audit sentence made that sentence match its own COMPANION expression, moving a stated count from one to two. Controller re-measured: `grep -nE '[0-9]+ (Rust|frontend|house-knowledge)'` returns two lines, :182 (the canonical sentence the task writes into BUILDING.md) and :619 (the audit sentence), with the pattern fired against a known-present line and a negative control at zero"}
+- id: a-number-in-prose-carries-a-unit-claim-that-re-measuring-does-not-check
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Every number stated in prose asserts a UNIT as well as a value, and re-measuring the value does not check the unit. Two failure shapes, both live: (1) UNIT DRIFT - the figure was correct under the unit available when it was written, the world later made two units diverge, and re-measuring under the original unit reproduces the stale figure and reads as CONFIRMATION rather than as staleness; (2) RANGE IMPLIES COUNT - 'X through Y' asserts contiguity, so it states a count as a side effect, and a gap in the series makes the range true and the implied count false. Handle: name the unit the prose claims, establish which unit the ORIGINAL figure used (measure at the commit that introduced it, which git makes cheap), and measure today under both. Where they diverge, the prose is what broke, not the number. Where the claim is a range over a series, count the members rather than trusting the endpoints. Trigger is readable: you are re-measuring a figure an older document states, in order to decide whether it is still true."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 amendment 1 (author's report, refuting the controller's amendment brief): the README's 'all 78 of them' review count. The brief assumed it may never have counted the unit its prose claims. Measured at 62aaf61, the commit that introduced the sentence, BOTH candidate units returned 78 - every verdict then lived in a verdicts/ directory - and later plans stopped using that subdirectory, so the units diverged silently. Today the basename rule returns 219 while the verdicts/-directory rule still returns 78, frozen. The same measurement found shape (2) in the neighbouring figure: the decision series has 103 distinct numbers reaching D105 (D73 and D74 reserved and never used), so 'D1 through D105' would have been a fresh wrong number in a sentence being repaired for staleness"}

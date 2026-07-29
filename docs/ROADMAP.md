@@ -874,7 +874,12 @@ Must be resolved before the first tagged release.
   documented steps and the SHA256SUMS commands in `docs/INSTALL.md` are correct,
   and verified the macOS CLI symlink. **The finding, on Fedora:**
   `Warning: skipped OpenPGP checks for 1 package from repository: @commandline`
-  during the rpm install. Expected in substance - agent and CI builds are
+  during `sudo dnf install ./muxsmith-<version>-linux-x86_64.rpm`, the command
+  `docs/INSTALL.md:82` documents. **The tool is `dnf`, not the `rpm` binary** -
+  this line first said "during the rpm install" meaning the rpm package, which
+  the Plan-10 author flagged as readable the other way; `@commandline` is dnf's
+  pseudo-repository for a package given by path, which is what makes the tool
+  identifiable from the warning at all. Expected in substance - agent and CI builds are
   deliberately unsigned, which is the same policy the macOS ad-hoc signing note
   documents - but `docs/INSTALL.md`'s Linux section does not mention it, so a
   first-time installer meets an unexplained security-shaped warning and has no
