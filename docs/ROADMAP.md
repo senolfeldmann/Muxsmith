@@ -703,7 +703,22 @@ action:
 - The `ubuntu-22.04` runner's deprecation or retirement is announced -> move
   the Linux release leg to `ubuntu-24.04` AND record the raised glibc/webkit
   floor in docs/INSTALL.md and the tar.gz README requirement line in the same
-  change. (Plan-8 design trigger 1, D85.)
+  change. (Plan-8 design trigger 1, D85.) **FIRED, discovered 2026-07-29
+  (session 28) while answering an owner question about the runner split.**
+  GitHub's announcement (actions/runner-images issue 14254): the Ubuntu-22-based
+  images begin deprecation **2026-09-17** and are fully unsupported
+  **2027-04-17**, with brownout periods failing jobs in between; the recommended
+  targets are `ubuntu-24.04`, `ubuntu-26.04` or `ubuntu-latest`. **NOT YET
+  CONSUMED - it is an owner decision, because the trigger's own prescription
+  moves the product's REACH, not just a pin.** Measured floors: Ubuntu 22.04
+  carries glibc 2.35, 24.04 carries 2.39, 26.04 carries 2.43; Debian 12 carries
+  2.36, Debian 13 carries 2.41. So building on 24.04 drops Ubuntu 22.04 and
+  Debian 12 users; building on 26.04 would drop Debian 13 as well. The owner's
+  stated instinct at the session-28 close is that the release and test legs
+  should run ONE sensible distro version rather than two; the counter-argument
+  on record is the vendor's own AppImage guidance to build on the oldest base
+  you intend to support, plus the fact that testing only on the release base
+  stops testing what current systems actually run. Decision pending.
 - A DATED windows-arm64 runner label appears (today only the undated
   `windows-11-arm` is GA) -> pin it, closing D85's recorded deviation from
   pin-everything. (Plan-8 design trigger 2.)

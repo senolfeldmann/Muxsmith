@@ -5265,3 +5265,17 @@ entries:
   occurrences:
     - {date: "2026-07-29", kind: deferred, ref: "plan-10 close fix wave concern 2 (docs/process-journal/artifacts/plan-10-sdd/close-fix-report.md): the README figure was raised 219 -> 225 after the plan-10 salvage added six verdict files, both readings of the unit verified to agree and the set difference empty in both directions. The implementer flagged that plan 11's salvage will falsify 225 identically, and deliberately left the phrasing alone because the README's register is the owner's call"}
     - {date: "2026-07-29", kind: deferred, ref: "plan-10 close delta review (docs/process-journal/artifacts/plan-10-sdd/whole-branch-verdict.md, delta section): the whole-branch reviewer RECOMMENDS option 2, the standing re-measure duty on the salvage step, on the ground that it passes the house trigger-and-handle filter - readable trigger (you are executing the step that adds members of the counted set) and mechanical handle (re-run the two fenced commands and update the figure in the salvage commit itself) - while growth-proof phrasing either keeps a number and re-arms anyway or drops the precision from a sell-tone sentence whose concrete figure is the point. Still the owner call, because killing the number is a register decision on his document"}
+- id: readme-growth-prone-figures-lose-the-number
+  kind: pattern
+  tier: 1
+  source: human
+  nature: product-scope
+  domain: docs
+  statement: "OWNER RULING 2026-07-29 (session 28): a figure in the README that the project's own process keeps moving loses the NUMBER rather than gaining a maintenance duty - 'einfach eine wachstumsfeste formulierung. unnoetig, das immer zu updaten'. The claim stays, the count goes. This settles the count-versus-salvage treadmill the plan-10 close surfaced: the alternative on the table was a standing re-measure duty attached to the salvage step, which the whole-branch reviewer recommended and the owner declined, on the ground that a recurring update chore is not worth a number in a sell-tone sentence. Scope as ruled: the verdict-file count. Whether the neighbouring decision-series figure in the same paragraph follows is a question put to him at the same close and is NOT decided here."
+  steelman: "The standing duty keeps a concrete figure, which is the kind of evidence a sell-tone paragraph is made of, and it passes the house trigger-and-handle filter cleanly - the trigger is the salvage step itself and the handle is two fenced commands. Declined because every close would then carry a chore whose only product is a number nobody verifies against anything, and a claim that says 'every preserved verdict' is true forever at no cost."
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-28 close, answering the controller's escalation of the plan-10 close fix wave's second concern (docs/process-journal/artifacts/plan-10-sdd/close-fix-report.md). The figure had just been repaired 219 -> 225 after the close's own salvage added six verdict files, and the implementer flagged that the next plan's salvage falsifies it identically"}
