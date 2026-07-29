@@ -1317,6 +1317,35 @@ Weigh it against the alternative of simply never writing the number outside
 `BUILDING.md`. The reviewer that surfaced this explicitly left it out of its own
 pass's scope.
 
+**MEASURED 2026-07-29 (session 27), and the measurement kills the cross-file
+form above.** Tracked files stating a gate part count: 12 outside the process
+journal, 143 including it. Ten of the twelve are retired plan documents, which
+are history by principle - their "nine-part gate" was true when written.
+`ROADMAP.md`'s own six hits are historical statements about closed plans, and
+`process-conventions.yaml`'s single hit is an occurrence `ref`, i.e. a dated
+event log entry. So EVERY current occurrence is a record of what the gate was
+at the time, and a lint comparing them against today's count would fire on all
+of them and demand that history be falsified. The distinction between a live
+normative claim and a historical record is not visible in the text, so the
+cross-file check cannot be built correctly.
+
+**What the measurement exposes instead is the real root:** `BUILDING.md` is
+called the single authoritative enumeration but never states the TOTAL. It says
+"The Rust gate (six parts...)" per section and leaves the reader to assemble
+eleven from three sections. A derived number with no canonical statement is
+exactly what diverged at the close pass.
+
+**NARROWED FORM, controller decision 2026-07-29, IN the pre-1.0 package:**
+`BUILDING.md` states the total once, canonically, and a check verifies that the
+stated total equals the number of commands actually enumerated in the gate
+blocks - one file, no cross-file matching, no history problem, no false
+positives. The check must be fire-verified (change the stated total, watch it go
+red) rather than shipped on the strength of a green run, since a check whose
+passing result is an absence proves nothing until it has been made to fire once.
+New documents keep citing "per BUILDING.md"; nothing polices their prose,
+because the only live consumers are plan documents and a plan's four-eyes review
+reads BUILDING.md anyway.
+
 ## Ledger hygiene
 
 - **ledger-lint duplicate-key gap (S21, 2026-07-22)**: a duplicated YAML
