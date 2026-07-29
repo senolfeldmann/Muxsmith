@@ -3132,3 +3132,80 @@ with the reviewer recommending a standing re-measure duty at the salvage step.
 Two vulnerability alerts on their own one-task vehicle. And the gate that
 decides everything: no 1.0 completeness claim is possible before the owner's
 manual QA and bug-hunting pass has run.
+
+## 2026-07-29 | Post-close riders: the Linux release base moves to 24.04 | session 28 (Peter, Opus 5)
+
+**Scope.** Everything after the Plan-10 close in the same session, commit range
+`8b98b86..709929c` plus the tracker/house commits around them. Four owner
+rulings, three implementer dispatches, three reviews (one resumed twice), one
+scoped re-review.
+
+**Decisions and their why.**
+- **Owner: the comment line-number ruling now reaches CI and configuration
+  files.** Its form list had named only the source comment forms, which is where
+  the one member surviving Plan 10's sweep sat. The ground he took: the ruling
+  exists because line numbers rot unnoticed, which is as true in a workflow file
+  as in Rust. The scope boundary is unchanged - process artifacts under `docs/`
+  still cite a line at a named commit, because there the moment is part of the
+  claim.
+- **Owner: growth-prone README figures lose the number rather than gaining a
+  maintenance duty.** The whole-branch reviewer had recommended a standing
+  re-measure duty on the salvage step; the owner declined it and ruled the
+  figures out instead, first the verdict count and then, asked separately, the
+  decision-series count. Recorded with his reasoning, so a later session does
+  not reinstate a number as helpful precision.
+- **Owner: the Linux release leg moves to `ubuntu-24.04`, tests stay on
+  `ubuntu-26.04`.** Triggered by GitHub's announced retirement of the Ubuntu-22
+  runner images (deprecation 2026-09-17, unsupported 2027-04-17). His own first
+  instinct was to unify both legs on one version; the counter-argument that
+  changed it is the vendor's AppImage guidance to build on the oldest base you
+  intend to support, plus that unifying on 26.04 would raise the floor to glibc
+  2.43 and drop Debian 13. What he accepted with the ruling is a product-reach
+  loss: the floor rises 2.35 -> 2.39, so Ubuntu 22.04 LTS and Debian 12 users
+  can no longer run any Linux artifact.
+
+**What the process caught.**
+- The registered deprecation trigger had FIRED and nobody had seen it. It
+  surfaced only because the owner asked whether the two-runner split was normal
+  practice and the answer had to be verified rather than asserted.
+- Review of the base move: the shipped deb declares no `libc6` dependency, so
+  `apt install` succeeds on a system below the floor and the binary fails later
+  with nothing having warned the user - while the only document that could warn
+  them filed the floor under a heading deb readers are told to skip.
+- Review of the riders: `Fedora & co.` is measurably false at the new floor -
+  EL9 carries glibc 2.34, openSUSE Leap 15.6 carries 2.38.
+- Delta review of the reach sweep: the rpm hard-requires the
+  `libwebkit2gtk-4.1.so.0` soname and stock RHEL 10 repositories carry no webkit
+  package at all; only EPEL does. Graded LOW rather than MEDIUM on the ground
+  that this failure is loud - `dnf` refuses - unlike the deb case.
+- The same reviewer found and named its own error: its sweep table marked a
+  tar.gz row correct while its own adjudication argued the opposite word made it
+  wrong, and it had applied that argument to one table and not its sibling.
+
+**Process mechanics.** Three implementer dispatches and one final repair pass,
+all Opus 5; three reviews on Opus 5, one of them resumed twice for deltas; one
+scoped four-line re-review on Sonnet 5, the first cheap-tier dispatch of this
+session, because the content was prescribed and only its transcription needed
+checking. House knowledge 546 -> 548 entries.
+
+**Friction and failure.** The scoping defect repeated three times before it was
+named: each change repaired the texts on its own exhaustive file list and left
+another asserting the old reach, and each leftover was caught by the next review
+rather than by the change. It converged only when a reviewer swept all 265
+candidate files, marked every site true/false/incomplete, and the next task was
+written as a RULE with that enumeration attached rather than as a list of
+one-line fixes. One controller brief said "three files" while enumerating four
+sites; the implementer kept the deliberate cross-document equality and reported
+the discrepancy instead of dropping a site.
+
+**Moments.** The pin comment in `release.yml` used to say the floor lived in
+"those two texts". The proposed repair was to change two to three. The reviewer
+refused it: that re-arms at the fourth text, and the owner had ruled that same
+afternoon that a growth-prone count loses its number. It now states a predicate
+and tells the reader to grep.
+
+**Open threads.** The 24.04 base is unproven until a draft release run; the
+AppImage bundle step is the only one depending on host library layout rather
+than package names. The completion check built for the reach sweep is a one-shot
+instrument, deliberately not promoted into the gate - it parses prose, and the
+boundary it would encode was contested in the same round.
