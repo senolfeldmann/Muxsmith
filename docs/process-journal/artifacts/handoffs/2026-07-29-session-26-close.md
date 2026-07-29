@@ -130,44 +130,70 @@ and plans on conflict.
 
 ## Current state (verified)
 
-- master at the close-pass fix round plus the controller's own follow-up
-  writes, clean. Several commits unpushed at the time of writing; the
-  session-close push runs the full eleven-part gate first.
-- **Plan 9 is CLOSED.** Seven tasks, five amendments, four task fix rounds and
-  a whole-branch fix round. The whole-branch review (top tier) returned
-  NEEDS_FIXES on two rustdoc claims that spec amendment S-8 had falsified, and
-  **READY** after the fix wave.
-- Close actions DONE: promotion sweep of the five owner-ruled entries into
-  their nature files (two needed a tense rewrite); `core-121` settled;
-  `core-d49-g1g2-experiment` written with a controller-composed statement that
-  discloses itself as such; blocked-pool sweep over 18 entries (none settled,
-  one premise-stale and corrected); ROADMAP anchor marked executed with its IN
-  items named against their commits and both D49 triggers dispositioned; SDD
-  salvage of 53 files, count verified in the commit, `diff -r` clean; journal
-  entry.
+- **master at `ff44b43`, working tree clean, nothing unpushed** (checked with
+  `git status` and `git rev-list origin/master..master` at the close, not from
+  memory). CI green on every pushed head of this session. The middle one,
+  `0e7171e`, is the first CI run under the widened rustdoc flag and it passed
+  on all three OS legs.
+- **Plan 9 is CLOSED and its close is complete.** Seven tasks, five amendments,
+  four task fix rounds, a whole-branch fix round, and a close pass with its own
+  fix round. The whole-branch review (top tier) returned NEEDS_FIXES on two
+  rustdoc claims that spec amendment S-8 had falsified, and **READY** after the
+  fix wave.
+- Close actions all DONE: the promotion sweep of the five owner-ruled entries
+  into their nature files (two needed a tense rewrite, which is why a promotion
+  is an edit and not a move); `core-121` settled; `core-d49-g1g2-experiment`
+  written with a controller-composed statement that discloses itself as such,
+  because the design fixed wording for its two clean branches and none for the
+  anomaly it also mandated be recorded; a blocked-pool sweep over 18 entries
+  (none settled, one premise-stale and corrected); the ROADMAP anchor marked
+  executed with its IN items named against their commits and both D49 triggers
+  dispositioned; the close pass `9dc3a4d` with its fix round `c8dfc6d`; the SDD
+  salvage, re-salvaged after the close generated its own work (58 files, count
+  verified in the commit, `diff -r` clean at the end); three journal entries.
+- **The gate changed at this close and BUILDING.md is its single authoritative
+  enumeration** - see the constraints above. Every house statement that carried
+  a part count was corrected, and where the number was incidental to the rule
+  it now names the file instead of a figure.
 
 ## Next steps (priority order)
 
 1. **Pre-1.0 gates** per the ROADMAP's "Pre-1.0 release gates" section. Plan 9
-   was the last planned work package before them, and its close is complete:
-   the text-corrections pass and both BUILDING.md gate edits landed in
-   `9dc3a4d` with their fix round `c8dfc6d`, each independently reviewed.
-2. **Archive duty:** session 26 is archived by the NEXT session; session 25 was
+   was the last planned work package before them.
+2. **One deliberately open item, to be put to the owner at that kickoff:** the
+   producer for D102's unguarded scope boundary. The contract (per-file
+   `diagnostics` and `batch_diagnostics` keep collection order while
+   `config_diagnostics` sorts) is asserted in three normative places including
+   a spec line Plan 9 itself added, and guarded in none - measured, by widening
+   the sort and watching the whole suite stay green. It did not ride the close
+   pass on purpose: that pass was scoped to text and the gate, and the owner's
+   test-coverage ruling does not reach a preserved-behaviour contract, so
+   building it is discretionary and was never put to him. The ROADMAP entry
+   carries the reasoning and the cheap producer's shape.
+3. **Archive duty:** session 26 is archived by the NEXT session; session 25 was
    archived at the start of this one.
 
 ## Open questions / risks
 
-- **Both owner questions from this close are RULED.** The D49 question stays
-  open until after 1.0 rather than being re-run now, and the registered trigger
-  was re-aimed at the event that would make it answerable: a re-fenced
-  experiment mutating the applier site only. Until such a run happens all three
-  guards stay. Nothing is scheduled for it.
-- **The controller's own error class stayed the most frequent, again.** Two
-  claims of mine were refuted downstream by measurement (a commit count in a
-  review brief, a ledger occurrence that widened a literal-phrase measurement
-  into a claim about the class), and two YAML edits of mine damaged the house
-  files structurally and were caught by `ledger-lint` seconds later. The rate
-  is the thing to watch; the lint is doing its job.
+- **Both owner questions raised at this close are RULED.** The D49 question
+  stays open until after 1.0 rather than being re-run now, and the registered
+  trigger was re-aimed at the event that would make it answerable: a re-fenced
+  experiment mutating the applier site only, which a reviewer measured turns
+  all three guards red through their own assertions. Until such a run happens
+  all three guards stay, and nothing is scheduled for it.
+- **The controller's own error class stayed the most frequent.** Four claims of
+  mine reached an artifact and were refuted downstream by measurement this
+  session (a commit count in a brief; a ledger occurrence that widened a
+  literal-phrase measurement into a claim about a class; a fenced text block
+  quoted into a brief that contradicted a measurement in its own source
+  document; a brief header miscounting its own file list), and two YAML edits
+  of mine damaged the house files structurally and were caught by `ledger-lint`
+  within seconds. Every one was found by something other than me. The rate is
+  the thing to watch.
+- **A fence is a licence boundary, not a truth warrant.** When a brief quotes a
+  fenced text from an earlier verdict as binding, the fencing party owes it a
+  re-read against the measurement in its own document first. This cost a fix
+  round.
 - **A defect class this plan hit twice: a design's substance right, its stated
   form impossible.** Amendment 4's pinned invocation, amendment 5's bearerless
   assertion. Both were caught on code contact by the executing agent, neither
