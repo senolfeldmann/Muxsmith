@@ -1365,6 +1365,25 @@ ten is recomputed.
 
 ## Docs accuracy
 
+- **ONE member of the comment line-citation class SURVIVES Plan 10's sweep, and
+  it is outside the corpus's file selector** (Task-5 review finding 1,
+  2026-07-29). `.github/workflows/ci.yml` carries a comment citing
+  `queue.rs:73`, which is itself already stale - at HEAD that line is
+  `pub struct QueueOpts {` while the link the comment means sits two lines
+  later. Both prescribed corpus expressions read only `*.rs *.ts *.vue *.mjs
+  *.js *.py`, so no sweep of that corpus could ever see it; the reviewer found
+  it by deriving the cited-extension set from the tree's own extension tally and
+  running it over every non-`docs/` file (exactly one hit, fired control 1,
+  negative control 0). **Consequence for how this package is described: the
+  class is NOT closed tree-wide.** Any statement that Plan 10 closed it names
+  the selector - source files in those six extensions - or it is false.
+  **Vehicle: whichever package next edits `.github/workflows/ci.yml`.**
+  **OPEN OWNER QUESTION riding the same line:** the ruling
+  `comments-locate-by-symbol-never-by-line-number` was scoped by the owner to
+  SOURCE comments and explicitly not widened, and its comment-form enumeration
+  names `//`, `///`, `//!` and `/* */` - not `#` or `<!-- -->`. Whether a CI
+  workflow comment is in scope is his call, not the controller's.
+
 - **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
   Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the
   binary; verified by the controller the same turn). The spec line reads

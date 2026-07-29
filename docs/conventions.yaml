@@ -1121,6 +1121,7 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff, on the controller's report of a second stale citation: 'solche kommentare die datei und dann auch noch zeilennummern referenzieren sind bloedsinn. das schreibt kein dev so. datei vielleicht noch, aber niemals zeilenname ... man sagt einfach den richtigen namespace worauf man sich bezieht'. Corpus: 20 comment lines across 13 files in Rust, TypeScript and Vue - the controller's same-turn count said 17 and was wrong, having enumerated the cited file extensions without `.md`; refuted by the plan author against the tree"}
+    - {date: "2026-07-29", kind: reinforced, ref: "plan-10 Task 5 executed the sweep (commit 1a23283, .superpowers/sdd/plan-10/task-5-verdict.md): 24 matched lines across 16 files rewritten as 21 comments - the union of the filename-citation and the bare-span forms, where the occurrence above records only the 20/13 of the first expression. Two measurements make the ruling case stronger than its own argument did: NINE of the 24 citations were already stale at HEAD, each verified at its target; and src-tauri/src/lib.rs citation never once pointed at its target in a committed tree - at the parent of the commit that introduced it the target sat at :557, and that same commit own diff moved it to :694 while writing the comment. The keep-it-updated counter-argument fails against a citation that was born wrong. One member survives the sweep, outside its selector: a comment in .github/workflows/ci.yml, routed in the ROADMAP, and whether this ruling reaches CI/config comments at all is an open owner question"}
