@@ -245,7 +245,10 @@ from the report):**
   empty (bash-only; zsh spells it `$pipestatus[1]`). Surfaced by Task 1's
   implementer. Carried verbatim into every remaining task brief.
 
-## Plan close, in progress
+## Plan close - COMPLETE
+
+**Plan 10 is EXECUTED AND CLOSED, 2026-07-29 (session 28).** Commit range
+`754cb73..ad4746d`. Every close action below ran; the order is the record.
 
 - **Entry condition MET.** Tasks 1-5 committed, tree clean; the full eleven-part
   gate per `BUILDING.md` run as one blocking chain with every part's exit code
@@ -257,9 +260,30 @@ from the report):**
   its only role), against the plan, the plan brief, the ROADMAP entries the
   brief cites and the spec, with the two deferred findings handed to it for an
   explicit ruling.
-- Still to do after it returns: verdict harvest, blocked-pool sweep, ROADMAP
-  dispositions, SDD salvage with its `diff -r` re-check and the file count
-  verified IN THE COMMIT, journal entry, HANDOFF snapshot.
+- **Whole-branch verdict: READY_WITH_MINORS** (`whole-branch-verdict.md`), three
+  findings routed into ONE close fix wave (`1805949`, fresh implementer per the
+  doctrine's tiny-fix rule), all three verdicted **ADDRESSED** by the resumed
+  whole-branch reviewer in the appended delta section. Acceptance map: 21 of 22
+  halves PASS under the reviewer's own instruments, W4-c correctly OPEN (owner
+  action).
+- **Salvage** `3c4a878` (30 files, count verified IN THE COMMIT), **citation
+  re-point** `af1fa7b` (28 refs, every target checked for existence),
+  **re-salvage** after the close fix wave (3 files; scratch and archive synced
+  in both directions first, because the delta verdict had been appended to the
+  ARCHIVE copy - a plain re-copy would have overwritten it; `diff -r` clean
+  afterwards, 32 files in the tree and 32 tracked).
+- **Blocked-pool sweep:** 17 `status: blocked` entries across all four house
+  files, enumerated by parsing the files rather than from memory. None stale -
+  no `blocked_on` condition has cleared and no deferred work landed in the tree
+  regardless. Nothing to surface.
+- **ROADMAP dispositions:** D102 (with WHICH halves got producers, since a
+  measurement decided that), the gate-count section, the citation-sweep entry
+  (with the corrected corpus size AND the selector caveat), the README entry's
+  first bullet, the OWNER QA PASS finding (closed; the entry itself stays open),
+  and Renovate (config half done, activation half OPEN, trigger NOT fired).
+- **Journal entry** `ab0a6a3`; **HANDOFF rewritten and snapshotted** `ad4746d`.
+- **Final gate** eleven parts, every exit code captured, all 0; **pushed**
+  `80e5c19..ad4746d`, logged in `gh-log.md`.
 
 ## Controller notes
 
