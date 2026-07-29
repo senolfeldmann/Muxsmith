@@ -1431,9 +1431,10 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
 // `docs/decision-ledger.yaml`) between spec 8.2's "detail editor per rule"
 // promise and the read-only grid Task 11 built for it. Selection is a
 // native `<button data-testid="editor-rule-select">` with `:aria-current`
-// (the `RunHistory.vue:168-173` house precedent, not a hand-rolled
-// interactive `<tr>`); the panel renders the selected rule through
-// `SectionWidget` over the `trackRule` registry -- byte-for-byte the
+// (the `jobs-history-run` button in `RunHistory.vue` is the house
+// precedent, not a hand-rolled interactive `<tr>`); the panel renders the
+// selected rule through `SectionWidget` over the `trackRule` registry --
+// byte-for-byte the
 // machinery `ListWidget` already uses for AttachmentRule items
 // (`attachments.rules`), so track-rule editing becomes the same code path,
 // adding zero new catalog keys and zero new components. Mounted through

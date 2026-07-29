@@ -45,7 +45,7 @@
 // the closed editor catalog budget, `editor-generic-action-keys`) -- not
 // `editor-attachment-rule-add`/`-drop`, which
 // now caption only the AttachmentRule fields they are the registry labels
-// for (`registries.ts:185-189`).
+// for (`attachmentRuleFields` in `registries.ts`).
 import { computed, inject, useId } from "vue";
 import type { EditableFieldOf } from "./shared";
 import { editorDiagnosticsByPath, worstSeverity } from "../diagAnchor";

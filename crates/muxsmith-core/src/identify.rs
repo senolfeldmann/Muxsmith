@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(a.get("nope"), None);
     }
 
-    // parse_attachment's contract (identify.rs:224-225): required fields
+    // parse_attachment's contract (its own doc comment): required fields
     // (id, file_name, size) missing OR WRONG-TYPED drop the entry. A
     // string-typed id fails the `as_u64` extraction, so the whole attachment
     // is filtered out by `from_json`'s `filter_map`, not just its id field.

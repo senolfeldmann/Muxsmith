@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // D45 field widget: `{ kind: "optionalFlag" }`. NOT a native checkbox
 // v-model: the off-state is absence (`undefined`), not `false`
-// (validate.rs:466-472 rejects `Some(false)`; model.rs's own doc says "the
-// only valid value is true" -- a tri-state control would offer a value the
-// validator rejects), so `:checked`/`@change` are wired by hand instead of
-// letting `v-model` write a bare `false`.
+// (`validate_locator` in profile/validate.rs rejects `Some(false)`;
+// model.rs's own doc says "the only valid value is true" -- a tri-state
+// control would offer a value the validator rejects), so `:checked`/
+// `@change` are wired by hand instead of letting `v-model` write a bare
+// `false`.
 import { useId } from "vue";
 import type { EditableFieldOf } from "./shared";
 import { useDiagAnchor } from "../diagAnchor";

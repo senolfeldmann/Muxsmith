@@ -2223,7 +2223,7 @@ mod tests {
         );
     }
 
-    // D40 (report/json.rs:44 panic fix, whole-branch-verdict.md Finding 1):
+    // D40 (the `batch_document` panic fix, whole-branch-verdict.md Finding 1):
     // `TitleAction`/`ChapterSource`/`PrimaryAttachments` are all
     // `#[serde(tag = "kind")]`; serde's internally-tagged representation
     // requires a map-shaped payload per variant, so `Set`/`External`/

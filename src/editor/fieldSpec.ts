@@ -62,8 +62,9 @@ export type RegistryName =
 export type FieldWidget =
   | { kind: "text"; syntax: TextSyntax; multiline: boolean }
   | { kind: "bool" }
-  // checked -> Some(true), unchecked -> absent (validate.rs:466-472 rejects
-  // Some(false); not a tri-state).
+  // checked -> Some(true), unchecked -> absent (`validate_locator` in
+  // profile/validate.rs rejects Some(false) for `match_to_source`; not a
+  // tri-state).
   | { kind: "optionalFlag" }
   | { kind: "select"; options: readonly string[] }
   | { kind: "keywordOrBlock"; keywords: readonly string[]; block: RegistryName }

@@ -158,7 +158,7 @@ pub fn run_document(
 }
 
 /// Serializes `plan` for [`batch_document`]'s per-file `"plan"` field
-/// without ever panicking (D40, report/json.rs:44's fix): every `Plan`
+/// without ever panicking (D40, `batch_document`'s panic fix): every `Plan`
 /// enum on the wire (`TitleAction`/`ChapterSource`/`PrimaryAttachments`) is
 /// now a struct variant under `#[serde(tag = "kind")]`, so `to_value`
 /// cannot fail for any `Plan` this crate can construct today (pinned by

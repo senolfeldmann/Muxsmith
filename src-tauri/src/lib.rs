@@ -727,7 +727,8 @@ mod tests {
             "validate_profile carries no model"
         );
 
-        // A load failure (missing file, the same fixture shape as lib.rs:557-563):
+        // A load failure (missing file, the same fixture shape as
+        // validate_profile_body_reports_load_failure_with_no_mkvmerge_key):
         // "profile" is null and the single diagnostic still matches validate's.
         let missing = dir.path().join("missing.yaml"); // never written
         let loaded_missing = load_profile_body(&missing);

@@ -1012,8 +1012,9 @@ fn yaml_scalar(v: &Scalar) -> String {
 
 // The scalar `apply_suggestion` spliced for `property`, read out of whichever
 // arm the edit's variant targets: AddExact -> `exact`, AddNotExact -> the first
-// `not` entry's `exact` (delta_for's two exact-bearing arms, planner.rs:1812,
-// :1817). Returns None if the key is absent, which is itself a guard failure.
+// `not` entry's `exact` (delta_for's two exact-bearing arms in planner.rs, the
+// `AddExact` and `AddNotExact` ones). Returns None if the key is absent, which
+// is itself a guard failure.
 fn spliced_scalar<'a>(
     applied: &'a Profile,
     edit: &StructuredEdit,
@@ -1032,7 +1033,8 @@ fn spliced_scalar<'a>(
 // core-03, type dimension: the delta apply splices must be the delta the engine
 // simulated, for a Boolean property. Guards the D49 seam: a display-string edit
 // (`Scalar::Str("true")`) would make `scalar_eq` fall through to `false`
-// (matcher.rs:202-212 has no (Str, Bool) arm) and the rule would match nothing.
+// (`scalar_eq` in matcher.rs has no (Str, Bool) arm) and the rule would match
+// nothing.
 #[test]
 fn apply_splices_the_simulated_scalar_for_a_bool_property() {
     let (batch, _dir) = plan(P_AMBIGUOUS);
@@ -1068,8 +1070,9 @@ fn apply_splices_the_simulated_scalar_for_a_bool_property() {
 }
 
 // core-03, type dimension, Integer property. `id` is PropType::Integer
-// (generated.rs:42); a `Scalar::Str("1")` would fall through `scalar_eq` exactly
-// as the Bool case does.
+// (its `MATCHABLE_PROPERTIES` entry in capability/generated.rs); a
+// `Scalar::Str("1")` would fall through `scalar_eq` exactly as the Bool case
+// does.
 #[test]
 fn apply_splices_the_simulated_scalar_for_an_int_property() {
     let (batch, _dir) = plan_multi(P_SUBS_BY_LANGUAGE, &[("Show.S01E01.mkv", CODEC_ID_ONLY)]);

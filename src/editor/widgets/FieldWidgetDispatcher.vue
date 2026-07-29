@@ -3,10 +3,10 @@
 // renders the component matching its `widget.kind`. `widgetComponentFor`'s
 // switch carries an explicit `const _exhaustive: never = kind` default
 // arm (D45's own deliberate, minimal improvement over the existing house
-// shape at `src/jobRowState.ts:44-55`, which relies on plain control-flow
-// exhaustiveness with no such arm): a `FieldWidget` variant added without
-// a case here fails the *build* with TS2322 naming the unhandled kind,
-// not just an unreachable `default` at runtime.
+// shape in `jobStateKey` (`src/jobRowState.ts`), which relies on plain
+// control-flow exhaustiveness with no such arm): a `FieldWidget` variant
+// added without a case here fails the *build* with TS2322 naming the
+// unhandled kind, not just an unreachable `default` at runtime.
 //
 // The registry forces label+widget EXISTENCE per field, not
 // type-suitability (D45); this dispatcher mirrors that by passing `spec`

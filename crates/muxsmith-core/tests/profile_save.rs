@@ -92,7 +92,7 @@ fn the_core83_passthrough_profile_survives_a_save() {
 }
 
 /// D48 guard 2: schema-default honesty. Asserts, for each of the 17
-/// defaulted fields (design `:1517-1535`), that the published JSON
+/// defaulted fields (design D48), that the published JSON
 /// Schema's `default` annotation equals the value below. The expected
 /// values are hand-written literals, not calls into the model's own
 /// default-producing functions: comparing the schema against a value

@@ -80,10 +80,11 @@
 //
 // Task 13b (D45, spec 8.2, amended 2026-07-16, detail-editor routing): row
 // selection on the grid (a native `<button data-testid="editor-rule-
-// select">` with `:aria-current`, the `RunHistory.vue:168-173` house
-// precedent -- keyboard-reachable for free, no hand-rolled interactive
-// `<tr>`) plus the per-rule detail panel beneath the grid. The panel is
-// pure registry composition, byte-for-byte the machinery `ListWidget.vue`
+// select">` with `:aria-current`, the `jobs-history-run` button in
+// `RunHistory.vue` being the house precedent -- keyboard-reachable for
+// free, no hand-rolled interactive `<tr>`) plus the per-rule detail panel
+// beneath the grid. The panel is pure registry composition, byte-for-byte
+// the machinery `ListWidget.vue`
 // already uses for AttachmentRule items: it synthesizes a `{ kind:
 // "section", of: "trackRule" }` spec, mounts `SectionWidget`, and writes
 // the selected rule back immutably (`setRuleValue`). No new component, no

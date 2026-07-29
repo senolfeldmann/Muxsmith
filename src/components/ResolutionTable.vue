@@ -29,7 +29,7 @@ const fluent = useFluent();
 function resolvedTrackLabel(a: PlanAssignment): string {
   // The `|| a.track_kind === null` half of this check is TypeScript
   // narrowing, not a second fallback case in practice: core's
-  // `Assignment::track_kind` doc comment (`planner.rs:53`) states
+  // `Assignment::track_kind` doc comment (`planner.rs`) states
   // `track_kind` is `None` exactly when `track_id` is `None`. It is
   // needed because `Option<String>` binds to `string | null` and
   // `fluent.$t`'s `FluentVariable` params reject `null`.

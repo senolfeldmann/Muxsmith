@@ -6,8 +6,8 @@
 //! binary. This file supplies the other committed artifact ts-rs cannot
 //! produce on its own: `keywords.ts`. ts-rs exports types, not values, and
 //! the four keyword domains are `pub const` value arrays, so a small
-//! hand-written emitter writes them as TypeScript `as const` arrays (D44
-//! `:592-611`). Both artifacts share one destination, `TS_RS_EXPORT_DIR`
+//! hand-written emitter writes them as TypeScript `as const` arrays (D44).
+//! Both artifacts share one destination, `TS_RS_EXPORT_DIR`
 //! (`.cargo/config.toml`).
 #![cfg(feature = "ts")]
 

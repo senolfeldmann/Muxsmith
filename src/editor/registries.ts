@@ -9,8 +9,7 @@
  *
  * 42 of the 43 fields are `EditableField`; the sole `FixedField` is
  * `Profile.profile_version` (spec 4 pins it at 1). Widget choices come
- * straight from the 43-row table in D45 (design `:889-936`); do not
- * re-derive them here.
+ * straight from the 43-row table in D45; do not re-derive them here.
  */
 import type {
   AttachmentRule,

@@ -270,8 +270,9 @@ fn zero_rule_keep_profile_is_a_pure_passthrough() {
     );
 }
 
-/// D40 regression (report/json.rs:44, whole-branch-verdict.md Finding 1):
-/// the README's passthrough recipe (README.md:71-78) inlined verbatim --
+/// D40 regression (the `batch_document` panic, whole-branch-verdict.md
+/// Finding 1): the README's passthrough recipe (the YAML block under its
+/// "Pure passthrough: a profile with zero rules" heading) inlined verbatim --
 /// deliberately NOT read from the file at test time, so a change to either
 /// side (recipe or test) is a visible diff, not a silent divergence; if the
 /// README recipe's YAML ever changes, this literal must be updated to
@@ -312,7 +313,8 @@ fn readme_passthrough_recipe_with_title_template_survives_dry_run_and_run() {
             .success()
     );
 
-    // README.md:71-78, verbatim.
+    // The YAML block under README.md's "Pure passthrough: a profile with
+    // zero rules" heading, verbatim.
     let profile = dir.path().join("p.yaml");
     fs::write(
         &profile,
@@ -323,8 +325,9 @@ fn readme_passthrough_recipe_with_title_template_survives_dry_run_and_run() {
     let runs_root = dir.path().join("runs");
 
     // `dry-run --json`: exit 0, exactly one valid JSON document on stdout
-    // (pre-fix: panics at report/json.rs:44 building the `Set` plan value,
-    // per README.md:91 "every command takes --json").
+    // (pre-fix: panicked in `batch_document` while building the `Set` plan
+    // value; `--json` per README.md's "What you get" section, "Scriptable
+    // everything" bullet).
     let dry = support::muxsmith(&[
         "dry-run",
         profile.to_str().unwrap(),
@@ -357,8 +360,9 @@ fn readme_passthrough_recipe_with_title_template_survives_dry_run_and_run() {
     );
 
     // `run`: exit 0 (pre-fix: exit 101 -- the mux itself already succeeded,
-    // but `run.rs`'s unconditional run-document build then panicked on the
-    // same `Set` value, run.rs:274-275).
+    // but the unconditional `run_document(batch_document(..))` build in
+    // `crates/muxsmith-cli/src/commands/run.rs`'s `run` then panicked on the
+    // same `Set` value).
     let run = support::muxsmith(&[
         "run",
         profile.to_str().unwrap(),
