@@ -301,15 +301,16 @@ entries:
   source: human
   nature: operational
   domain: ci
-  statement: "Dependabot/Renovate activation is a firm PRE-1.0 commitment (owner call 2026-07-29), no longer deferred to a later decision. The cadence is still open and is settled when the config is written; it is a CI-cost decision, because every dependency PR triggers the full 3-OS matrix, which is where the 'monthly' lean comes from rather than from preference."
+  statement: "Dependabot/Renovate activation is a firm PRE-1.0 commitment (owner call 2026-07-29), no longer deferred to a later decision. CADENCE, settled by the owner the same day: monthly, grouped per ecosystem (Cargo, npm, GitHub Actions), with security updates immediate and ungrouped. The driver is CI cost - every dependency PR triggers the full 3-OS matrix - which is why grouping plus a monthly window beat per-dependency PRs. The accepted price is named rather than glossed: a broken dependency can sit unnoticed for up to four weeks, and a grouped PR that goes red has to be taken apart to find which member did it."
   steelman: null
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 2
+  count: 3
   occurrences:
     - {date: "2026-07-08", kind: deferred, ref: "journal 2026-07-08 open threads + ROADMAP residue R3"}
     - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff: 'renovate machen wir vor dem 1.0 release'. The deferral's condition was his own activation call, so the call clears it; the entry moved from the ROADMAP's near-1.0 section into its pre-1.0 gates in the same change, and the now-empty near-1.0 section was removed"}
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling minutes later in the same kickoff, on the controller's recommendation with its cost stated: monthly, grouped per ecosystem, security updates immediate and ungrouped. Settled BEFORE the plan brief rather than left to the implementer, because an open cadence would be an unresolved design question reaching a dispatch"}
 - id: ci-13-packaging-deferred
   kind: non-decision
   tier: 2

@@ -945,12 +945,22 @@ polish entry.
   override - a case-scoped exception to the writeup-stimme rule; WIP
   banner; full CLI usage reference; AI-collab story section; links
   BUILDING.md instead of absorbing it; all four 2026-07-11 content
-  anchors implemented, provenance in this entry's git history). Remaining
-  at the 1.0 tag: resolve the four `placeholder(1.0)` comments (GIF,
-  dry-run output snippet, release artifacts, GUI screenshot), drop the
-  WIP banner, re-check the CLI reference and the exact-typed-matching
-  paragraph against the shipped surface (reviewer warning: "easy to
-  lose").
+  anchors implemented, provenance in this entry's git history). **Split by
+  owner ruling 2026-07-29** (session-27 kickoff), because the two halves have
+  different preconditions:
+  - **Rides the pre-1.0 product package now**: re-check the CLI reference and
+    the exact-typed-matching paragraph against the shipped surface (reviewer
+    warning: "easy to lose"), and write in the content anchor below.
+  - **Stays for the tag pass, deliberately**: the four `placeholder(1.0)`
+    comments (GIF, dry-run output snippet, release artifacts, GUI screenshot)
+    and the WIP banner. The owner ruled the placeholders may remain as
+    placeholders for now, on the reasoning that the README already states
+    publicly that the project is a work in progress. Two of the four need
+    artifacts that do not exist yet (real release asset names, a running GUI)
+    and two are his taste call (what the GIF and the screenshot show). The
+    banner's own text ties it to the tag ("until the 1.0 tag"), so dropping it
+    is a tag-time edit and a 1.0 README still carrying it would contradict
+    itself.
   - Content anchors (append every "README-worthy" remark HERE the moment
     it is uttered; fold into the README on next touch):
     - Şenol 2026-07-12: properties with language-like matching MAGIC must
