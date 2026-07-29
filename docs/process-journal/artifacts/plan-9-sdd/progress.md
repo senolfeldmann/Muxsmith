@@ -275,6 +275,40 @@ never a ticked box in the plan.
 - **ROADMAP bookkeeping** (`922bec9`): anchor marked executed and closed, IN
   items named against their commits, both D49 trigger lines dispositioned.
 
+## The close pass (2026-07-29, owner-instructed in the same session)
+
+- **Seven items, nine files, `9dc3a4d`, then a six-finding fix round
+  `c8dfc6d`.** Both independently reviewed; the delta verdict is APPROVED.
+  Content: BatchView's else-branch text, the three overclaiming assertion
+  strings, the `IdentifyCache` doc's exclusive constructor claim, the e2e
+  installer's disclosure, the two ambiguous `[`run`]` links, the gate's own
+  definition at both consuming sites, and D64's snapshot claim in count and in
+  kind.
+- **The gate change was proven load-bearing, not assumed.** The reviewer
+  restored the two broken links and measured the same tree red under the flag
+  and green without it. That is the argument for the flag, and nobody had it
+  before.
+- **Three findings were of the form "the new sentence is not true".** One was
+  mine: I put a fenced text block from an earlier verdict into the brief, and
+  that block contradicted a measurement forty lines above it in its own
+  document. The implementer applied it verbatim, as fenced, and reported the
+  contradiction - which is the correct behaviour and the reason the defect
+  surfaced at all. **A fence is a licence boundary, not a truth warrant.**
+- One finding was the same class in the other direction: the sentence written
+  to disclose what a mock omits enumerated the settings consumers exclusively,
+  three where the tree has six, in the same commit whose item 3 exists to fix
+  that exact shape. The rule fired three times in one package.
+- **The count finding is the structural one.** `BUILDING.md` enumerated ten
+  commands after the change while the ruling said eleven and six consumers
+  derive their number "per BUILDING.md" - so the HANDOFF rewrite I owed would
+  have been false against the file it cites. `pnpm build` was in the file but
+  not in a checks block. Fixed; the file now enumerates eleven and every
+  external derivation checks out.
+- **Controller follow-up** (`f3d25b7`): five house statements corrected, and
+  where the number was incidental they now name BUILDING.md instead of a
+  figure. Two of the five were found by the review against the implementer's
+  own stale-count list rather than by that list.
+
 ## Post-authoring ground-truth edits (controller notes)
 
 - 2026-07-28 05:06: added `source: human` + `nature: technical-code` to `exec-43-runsroot-debug-gated` in `docs/decision-ledger.yaml` (commit 2155c1d), resolving the NEEDS_CONTEXT the plan author routed. The plan document authored at 05:04 therefore carries a corrections-table row and a close-action rider whose evidence line no longer reproduces; the routing is SATISFIED, not open. Ledger anchors cited by the plan shifted by two lines (`gui-d23-reset-gating-form` :4535 -> :4537).
