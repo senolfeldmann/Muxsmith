@@ -20,8 +20,8 @@ file, so only the GUI is directly runnable - deb/rpm put `muxsmith` on
 PATH; the tar.gz carries both binaries for you to place.
 
 <!-- When code signing lands (registered ROADMAP trigger), the
-     SmartScreen and Gatekeeper sections below shrink to the signed-app
-     reality; keep the CLI/PATH halves. -->
+     SmartScreen, Gatekeeper and Linux unsigned-package sections below
+     shrink to the signed-app reality; keep the CLI/PATH halves. -->
 
 ## Windows
 
@@ -83,6 +83,16 @@ Artifacts (x86_64):
 - `muxsmith-<version>-linux-x86_64.AppImage` - any distro: `chmod +x` the file, then run it
 - `muxsmith-<version>-linux-x86_64.tar.gz` - portable archive with both binaries; see its
   `README.txt`
+
+**Unsigned packages (Fedora):** the `dnf install` above prints
+`Warning: skipped OpenPGP checks for 1 package from repository: @commandline`
+before it proceeds. `@commandline` is dnf's own name for a package you
+handed it by path, and the line says what it means: the rpm carries no
+OpenPGP signature for dnf to check. That is deliberate - the same
+unsigned-artifact policy the Windows and macOS sections describe - and
+it is a warning, not a gatekeeping dialog: nothing blocks, nothing needs
+clicking, the install completes. Check the download against `SHA256SUMS`
+as above instead.
 
 No gatekeeping dialog exists on Linux. deb/rpm install both `muxsmith`
 and `muxsmith-gui` to `/usr/bin` (already on PATH). The deb/rpm packages

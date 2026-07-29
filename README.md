@@ -50,7 +50,14 @@ tracks:
       changes: { track_name: German forced, default_track: true }
 ```
 
-Matching is **typed, not stringly**. `exact` compares every property in its own domain: booleans as booleans, numbers numerically (`6` equals `6.0`), languages as languages - `de` matches a file tagged `ger`, and `pt-BR` does **not** match `pt-PT`. For the properties that genuinely are strings - track names, codec IDs - `substring` (case-insensitive containment) and `regex` do the messy-reality work, and `any`/`not` combine expressions into whatever your library's chaos requires. Aiming `substring` or `regex` at a non-string property is a config-time error, not a silent never-match. Rule order is output track order.
+Matching is **typed, not stringly**. `exact` compares each known property in its own domain: booleans as booleans, numbers numerically (`6` equals `6.0`), languages as languages - `de` matches a file tagged `ger`, and `pt-BR` does **not** match `pt-PT`. For the properties that genuinely are strings - track names, codec IDs - `substring` (case-insensitive containment) and `regex` do the messy-reality work, and `any`/`not` combine expressions into whatever your library's chaos requires. Point `substring` or `regex` at a known property that is not string-typed and you get a config-time error, not a silent never-match; `codec_kind` rejects both conditions even though it is string-typed, because a pattern over a curated alias is ill-defined - pattern-match `codec_id` instead. Rule order is output track order.
+
+Three places where `exact` does more than compare, and one where it deliberately does less. Worth knowing by name, because everything else is a plain value comparison:
+
+- **`language` normalizes, and reads both fields.** ISO 639 spellings and BCP-47 tags are reduced to canonical form before comparison, and the value is matched against both `language` and `language_ietf` as mkvmerge reports them. One `language: de` therefore covers a file that tags `ger`, one that tags `de`, and one that only fills the IETF field.
+- **Boolean flags are false when absent.** mkvmerge emits the vanity flags (`flag_commentary`, `flag_original`, `flag_hearing_impaired`, `flag_visual_impaired`) only when they are set, and Matroska defines them false otherwise - so `exact: { flag_commentary: false }` matches a track that never mentioned the flag. No `not:` gymnastics required.
+- **`type` and `codec_kind` have curated closed domains.** A value outside them - `type: subtitle` where the domain says `subtitles`, a codec alias that does not exist - is a config-time error, not a rule that quietly never matches. The typo surfaces at validate time instead of after 400 files came out wrong.
+- **`raw:` is the deliberate opt-out.** Prefix a property name with `raw:` to match a field your mkvmerge reports but this build's schema does not know yet, and every convenience above switches off: byte-exact value equality against that one field, named verbatim. No language normalization, no codec aliasing, no false-when-absent, and no type check on `substring`/`regex` either - you asked for untyped, you get untyped.
 
 Then:
 
@@ -88,7 +95,7 @@ Validation announces the passthrough with an info notice (`passthrough-profile`)
 - **Chapters, tags, and title policies**: keep, drop, or clear - stated in the profile, not remembered in your head.
 - **Collision protection twice over**: an `on_collision` policy for outputs, plus a guard that refuses to overwrite any file that is also a mux *source*.
 - **A parallel job engine** with per-job logs: every run persists the full command line and output of every job (auto-pruned after 14 days). Exit codes mean something; `--fail-fast` exists.
-- **Scriptable everything**: every command takes `--json` and emits a structured report. `muxsmith schema` prints the profile's JSON Schema.
+- **Scriptable everything**: `validate`, `dry-run`, `identify` and `run` each take `--json` and emit a structured report. `muxsmith schema` needs no flag - it prints the profile's JSON Schema and nothing else.
 - **Two surfaces, one core**: the CLI and the desktop GUI (Tauri + Vue) share the same Rust engine - same profiles, same semantics, same logs.
 - **Localized**: English today, German landing for 1.0; diagnostics are structured, prose is generated per locale.
 
@@ -112,7 +119,7 @@ Toolchain versions are pinned in the repo (`rust-toolchain.toml`, `mise.toml`); 
 
 ## 🖥️ Using the CLI
 
-Five subcommands, one shape. Every one of them takes `--json` (structured report for scripting; the human output renders the same data) and `--locale` (message language override).
+Five subcommands, one shape. Four of them - `validate`, `dry-run`, `identify`, `run` - take `--json` (structured report for scripting; the human output renders the same data) and `--locale` (message language override; the default is your system locale, falling back to English). `muxsmith schema` takes neither: it writes the schema to stdout and has no rendered messages to translate.
 
 ### `muxsmith validate <profile>`
 
@@ -133,6 +140,8 @@ $ muxsmith identify S01E01.mkv
 ### `muxsmith dry-run <profile> [--source DIR] [--output DIR] [--on-collision <policy>]`
 
 Plans the whole batch: scan, identify, resolve every rule against every file. Prints the per-file resolution, all diagnostics, and paste-ready suggestions. Touches nothing on disk, ever.
+
+`--on-collision` decides what happens when a planned output already exists: `error` refuses it (the default policy), `skip` skips it with a warning, `overwrite` replaces the pre-existing file. Left unset, it falls back to the profile's `output.on_collision`.
 
 ```console
 $ muxsmith dry-run series.yaml --source /media/series --output /media/clean
@@ -178,7 +187,7 @@ settings = {
 
 Bind it in editor settings, not with the in-file `# yaml-language-server: $schema=...` modeline. The modeline is one line and no editor config, which is exactly why it is a trap: it lives inside a YAML comment, and the GUI's save does not preserve comments, key order, or formatting - it writes the profile fresh from its own model. Wire up a modeline, then save the same profile once from the GUI, and the binding is gone. No error, no warning: the file still works, your editor just quietly stops helping. Bind the schema in your editor's own settings instead, and it survives every save because it never lived in the file the GUI rewrites.
 
-Two conventions that hold everywhere: **command-line flags override profile-stored values** (`--source`, `--output`, `--on-collision`), and **exit codes mirror mkvmerge's own**: `0` clean, `1` finished with warnings, `2` errors - your scripts already speak this dialect.
+Two conventions that hold everywhere: **command-line flags override profile-stored values** (`--source`, `--output`, `--on-collision`), and **exit codes mirror mkvmerge's own**: `0` clean, `1` finished with warnings, `2` errors - your scripts already speak this dialect. One code is Muxsmith's own: a `run` you interrupt with Ctrl-C exits `130`, the shell's convention for a signalled process, after killing in-flight jobs and deleting their partial output.
 
 ## 🖱️ The GUI
 
@@ -190,7 +199,7 @@ The desktop app wraps the same engine: a batch view (pick a profile, pick direct
 
 Muxsmith existed twice. The first time as Ruby CLI drafts in a drawer - the classic personal-tool fate. The second time as a deliberate experiment: what happens when you build a real product with a fleet of AI agents under tight human direction?
 
-The setup: implementer agents write code, independent reviewer agents tear it apart (fresh context, their ground truth is the spec, not the implementation), and a controller session orchestrates plans, briefs, and merges - asking the human at every decision that matters. Every design decision is numbered and recorded with its rationale and rejected alternatives (D1 through D35 so far). The whole process is public in this repo: [docs/](docs/) carries the process journal, every plan, and the preserved review verdicts - all 78 of them, including the ones that hurt.
+The setup: implementer agents write code, independent reviewer agents tear it apart (fresh context, their ground truth is the spec, not the implementation), and a controller session orchestrates plans, briefs, and merges - asking the human at every decision that matters. Every design decision is numbered and recorded with its rationale and rejected alternatives: 103 of them so far, running up to `D105` because two numbers were reserved for a plan that never spent them. The whole process is public in this repo: [docs/](docs/) carries the process journal, every plan, and the preserved review verdicts - 219 files under `docs/` with `verdict` in the name, including the ones that hurt.
 
 It has been a journey, and the journal does not hide the failures: bugs that slipped through when discipline slipped, process holes found by auditing our own transcripts, rules written in the ashes of the mistake that motivated them. That is the point. The code is the product; the process record is the experiment's data.
 
