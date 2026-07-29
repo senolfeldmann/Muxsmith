@@ -504,3 +504,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "commit 90bc3ae (ROADMAP Plan 9 anchor, owner ruling at the S24 kickoff). Origin: plan-5.5 task-16-verdict.md:36-37 (T16-m1, 'cosmetic wart') and whole-branch-verdict.md:92 (DEFER to Plan 6); the recon's section 6 established the never-matching consequence and that no ledger entry existed"}
+- id: linux-artifacts-carry-the-build-base-glibc-floor
+  kind: pattern
+  tier: 2
+  source: human
+  nature: product-scope
+  domain: packaging
+  statement: "OWNER RULING 2026-07-29 (session 28), superseding D85's ubuntu-22.04 base: the Linux release artifacts build on ubuntu-24.04 while the test matrix stays on ubuntu-26.04. The split itself is unchanged and deliberate - Tauri's AppImage guidance is to build on the oldest base you intend to support, because glibc is backward but not forward compatible - only the base moved, forced by GitHub retiring the Ubuntu-22 runner images (deprecation from 2026-09-17, unsupported from 2027-04-17). THE PRODUCT CONSEQUENCE THE OWNER ACCEPTED: the minimum glibc rises 2.35 -> 2.39, so Ubuntu 22.04 LTS (2.35) and Debian 12 (2.36) can no longer run any Linux artifact, the AppImage included. Building on 26.04 was rejected because its 2.43 floor would drop Debian 13 (2.41) as well. Two consequences bind every future text: every row or sentence telling a reader which systems an artifact runs on states the REQUIREMENT rather than a distribution family standing in for it, and moving this pin again moves the reach - the texts that state it are found by grepping the tree, never from an enumeration, because two enumerations of them went stale within one afternoon. Separate from the floor and measured at the same time: the rpm hard-requires libwebkit2gtk-4.1.so.0, which stock RHEL 10 repositories do not carry (EPEL does), so RHEL support is qualified rather than plain."
+  steelman: "Keeping ubuntu-22.04 preserves the widest reach and costs nothing until the runner actually disappears. Rejected because the disappearance is scheduled, brownouts fail jobs before the hard cutoff, and discovering the move under a failing release pipeline is worse than choosing it. Unifying release and test on one version was the owner's own first instinct and was talked through rather than overruled: it either raises the floor further (26.04) or stops testing on what current systems run (24.04 everywhere)."
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-28 close, on the controller's report that the registered ubuntu-22.04 deprecation trigger had fired: 'release auf 24.04, test auf 26.04'. Landed in e260845 (pins, policy comment, tar.gz README and INSTALL.md floors), d9a4fa2 and c38bb0b (the reach claims in both artifact tables) and 709929c (the EPEL qualifier, the tar.gz row, the pin comment's own coverage). This entry is the decision record the Plan-8 design spec's D85 no longer provides - that archived spec stays frozen as history and is cited by live files, which is why the superseding statement lives here rather than in an edit to it"}

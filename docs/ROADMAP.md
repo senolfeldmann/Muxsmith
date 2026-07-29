@@ -708,17 +708,33 @@ action:
   GitHub's announcement (actions/runner-images issue 14254): the Ubuntu-22-based
   images begin deprecation **2026-09-17** and are fully unsupported
   **2027-04-17**, with brownout periods failing jobs in between; the recommended
-  targets are `ubuntu-24.04`, `ubuntu-26.04` or `ubuntu-latest`. **NOT YET
-  CONSUMED - it is an owner decision, because the trigger's own prescription
-  moves the product's REACH, not just a pin.** Measured floors: Ubuntu 22.04
+  targets are `ubuntu-24.04`, `ubuntu-26.04` or `ubuntu-latest`. **CONSUMED
+  2026-07-29 (session 28) by owner ruling: release on 24.04, tests stay on
+  26.04.** It was his decision and not the controller's because the trigger's
+  prescription moves the product's REACH, not just a pin. Landed in `e260845`
+  (the three pins, the policy comment, the two requirement texts), `d9a4fa2` and
+  `c38bb0b` (the reach claims in the install notes and the release body) and
+  `709929c` (the rpm's EPEL requirement on RHEL, the tar.gz row, the pin
+  comment's own coverage). **One half of the prescription is a measured no-op
+  and is recorded as such rather than silently dropped:** the trigger names a
+  raised "glibc/**webkit**" floor, and the webkit half does not move - Debian 13
+  ships webkit 2.52.5 against noble's build-time 2.52.3 and the package name is
+  unchanged. What the follow-on reviews then found is not in the trigger's
+  prescription at all: on RHEL 10 the rpm needs EPEL for `webkit2gtk4.1`, which
+  stock repositories do not carry. Measured floors: Ubuntu 22.04
   carries glibc 2.35, 24.04 carries 2.39, 26.04 carries 2.43; Debian 12 carries
   2.36, Debian 13 carries 2.41. So building on 24.04 drops Ubuntu 22.04 and
   Debian 12 users; building on 26.04 would drop Debian 13 as well. The owner's
-  stated instinct at the session-28 close is that the release and test legs
+  stated instinct at the session-28 close was that the release and test legs
   should run ONE sensible distro version rather than two; the counter-argument
   on record is the vendor's own AppImage guidance to build on the oldest base
   you intend to support, plus the fact that testing only on the release base
-  stops testing what current systems actually run. Decision pending.
+  stops testing what current systems actually run. **He ruled the middle:** the
+  release leg moves to a supported LTS, the test leg stays on the newest, and
+  the split survives with its reason intact. **Where the floor is now stated is
+  deliberately NOT enumerated here** - an enumeration of texts is what went
+  stale twice in one afternoon; the handle is to grep the tree, which is also
+  what `release.yml`'s own policy comment now says.
 - A DATED windows-arm64 runner label appears (today only the undated
   `windows-11-arm` is GA) -> pin it, closing D85's recorded deviation from
   pin-everything. (Plan-8 design trigger 2.)

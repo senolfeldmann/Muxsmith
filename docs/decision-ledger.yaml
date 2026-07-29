@@ -5271,7 +5271,7 @@ entries:
   source: human
   nature: product-scope
   domain: docs
-  statement: "OWNER RULING 2026-07-29 (session 28): a figure in the README that the project's own process keeps moving loses the NUMBER rather than gaining a maintenance duty - 'einfach eine wachstumsfeste formulierung. unnoetig, das immer zu updaten'. The claim stays, the count goes. This settles the count-versus-salvage treadmill the plan-10 close surfaced: the alternative on the table was a standing re-measure duty attached to the salvage step, which the whole-branch reviewer recommended and the owner declined, on the ground that a recurring update chore is not worth a number in a sell-tone sentence. Scope as ruled: the verdict-file count. Whether the neighbouring decision-series figure in the same paragraph follows is a question put to him at the same close and is NOT decided here."
+  statement: "OWNER RULING 2026-07-29 (session 28): a figure in the README that the project's own process keeps moving loses the NUMBER rather than gaining a maintenance duty - 'einfach eine wachstumsfeste formulierung. unnoetig, das immer zu updaten'. The claim stays, the count goes. This settles the count-versus-salvage treadmill the plan-10 close surfaced: the alternative on the table was a standing re-measure duty attached to the salvage step, which the whole-branch reviewer recommended and the owner declined, on the ground that a recurring update chore is not worth a number in a sell-tone sentence. Scope as ruled: the verdict-file count. The neighbouring decision-series figure in the same paragraph was put to him at the same close and he ruled it the same way ('ja, auch raus damit, das muss nicht in die readme'); both figures left the README in c38bb0b's predecessor d9a4fa2."
   steelman: "The standing duty keeps a concrete figure, which is the kind of evidence a sell-tone paragraph is made of, and it passes the house trigger-and-handle filter cleanly - the trigger is the salvage step itself and the handle is two fenced commands. Declined because every close would then carry a chore whose only product is a number nobody verifies against anything, and a claim that says 'every preserved verdict' is true forever at no cost."
   blocked_on: null
   status: settled
@@ -5279,3 +5279,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-28 close, answering the controller's escalation of the plan-10 close fix wave's second concern (docs/process-journal/artifacts/plan-10-sdd/close-fix-report.md). The figure had just been repaired 219 -> 225 after the close's own salvage added six verdict files, and the implementer flagged that the next plan's salvage falsifies it identically"}
+- id: when-a-fact-moves-the-scope-unit-is-the-set-of-assertions-not-a-file-list
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "When a change moves a FACT that several texts assert independently - a supported version, a floor, a default, a location - scoping the work by FILE LIST guarantees leftovers, because the file list is drawn from where the change starts and the fact lives wherever anyone repeated it. The trigger is readable: your change makes a statement false that you did not write in this change. The handle is to derive the assertion set from the artifact before writing the brief - grep the tree for the fact, not for the file - and to write the RULE into the task rather than the member list, so a reviewer can re-derive the same set. Corollary for the texts themselves: a document that enumerates WHERE a fact is stated re-arms on the next text; state the predicate and the grep instead."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "the ubuntu-24.04 base move and its three follow-on rounds (docs/process-journal/artifacts/plan-10-sdd/ is a neighbour, the artifacts here are .superpowers/sdd/runner-base-move-*, close-riders-* and reach-sweep-*). Each round repaired the texts on its own exhaustive file list and left another asserting the old reach, and each leftover was caught by the next review rather than by the change: the runner move falsified renovate.jsonc's comment; the floor repair left the same document's own artifact table claiming the AppImage runs on 'any distro'; the release-body repair left release.yml's policy comment counting two texts where there were more. It converged only when a reviewer swept all 265 candidate files, marked every site true/false/incomplete, and the next task was written as a rule with that enumeration attached. Its own policy comment now states the predicate plus the grep rather than a count"}
