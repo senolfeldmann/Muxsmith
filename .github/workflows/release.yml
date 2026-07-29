@@ -19,14 +19,17 @@ permissions:
 # Pinning policy: actions pinned to release commit SHAs, runner images
 # pinned to explicit versions (ci.yml policy comment is the authority).
 # Two recorded deviations (D85): windows-11-arm has no dated label
-# (the only GA windows-arm64 image); ubuntu-22.04 here deliberately
+# (the only GA windows-arm64 image); ubuntu-24.04 here deliberately
 # diverges from the test matrix's ubuntu-26.04 - release artifacts are
-# built on the oldest supported base (Tauri AppImage guidance) while
-# tests run on the newest.
+# built on the oldest base we intend to support (Tauri AppImage
+# guidance, glibc being backward but not forward compatible) while
+# tests run on the newest. That base sets the shipped glibc floor at
+# 2.39; docs/INSTALL.md and the tar.gz README state it, so moving this
+# pin moves the product's reach and those two texts with it.
 
 jobs:
   guard:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read   # gh run list (gate-green check)
@@ -78,7 +81,7 @@ jobs:
             os: macos-15
             bundles: dmg
           - leg: linux-x86_64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             bundles: deb,rpm,appimage
     runs-on: ${{ matrix.os }}
     steps:
@@ -183,7 +186,7 @@ jobs:
 
   assemble:
     needs: [guard, bundle]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write   # draft-release creation + asset upload (D77)
     steps:

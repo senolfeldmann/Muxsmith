@@ -106,3 +106,8 @@ yourself:
   (`libwebkit2gtk-4.1-0` on Debian/Ubuntu, `webkit2gtk4.1` on Fedora) -
   the deb/rpm declare these as hard dependencies; the AppImage bundles
   them; for the tar.gz install them via your package manager.
+- **glibc 2.39 or newer** - not a package you install but what your
+  distribution ships: every Linux artifact here, the AppImage
+  included, is built on Ubuntu 24.04 (glibc 2.39), so systems below
+  that floor - Ubuntu 22.04 LTS (2.35), Debian 12 (2.36) - cannot
+  run them.
