@@ -717,3 +717,18 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the session-24 close, on the finding that the ten-part gate does not include ledger-lint while CI runs it as a separate job: 'die luecke soll jetzt geschlossen werden'. The measurement that settled the surrounding question is on does-the-ten-part-gate-bind-doc-only-pushes"}
+- id: a-document-never-cites-a-line-number-inside-itself
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "A document never cites a line NUMBER inside ITSELF. Name what the line IS - the sentence, the table row, the fenced block, the section - because the name survives every insertion above it and the number does not. Owner ruling 2026-07-29, taken over the alternative of an update duty on his own reasoning that updating can simply be forgotten: a rule that requires someone to NOTICE is decoration. What makes the ban narrow rather than blunt is that the alternative costs nothing - a self-citation has a nameable container in every real case, and where it has none, giving that container a name improves the document. SCOPE, deliberately tight: this covers a citation into the SAME document only. A citation to ANOTHER file at a named commit stays permitted and wanted, because there the moment is part of the claim; the owner ruled the same day that comments-locate-by-symbol-never-by-line-number stays scoped to SOURCE comments and is NOT widened by this. Trigger is readable: you are typing a colon and digits pointing at the file you are writing in. Handle: name the container instead."
+  steelman: "Keep the number and update it when it moves. Rejected by the owner in the same breath as it was raised, and the rejection is the rule's whole argument: an update duty has no readable trigger, so it is discharged only by someone remembering, and the number is wrong in the interval nobody noticed."
+  blocked_on: null
+  status: settled
+  promoted_at: 2
+  count: 2
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 delta review after fix round 3 (.superpowers/sdd/plan-10/plan-review-round-1.md): the plan's self-review cited its own line :182 for the companion sweep, and the acceptance row inserted by that same fix round moved the target to :183. The document's only self-pointing citation, sitting in the package whose subject is that line citations go stale, falsified inside one round of its own edits. Repaired symbolically rather than renumbered"}
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling on the controller's recommendation, which had put both options with their costs: 'dann schreibe das verbieten fest'. The recommendation rested on the asymmetry with the cross-file case - there a dated citation carries information the name does not, here the number carries nothing the container name lacks, so the ban loses nothing"}

@@ -869,6 +869,21 @@ Must be resolved before the first tagged release.
   pre-1.0 scope, so any claim that 1.0 is content-complete before that pass
   has run is premature by construction. The pass needs a current build on his
   hardware; arranging that build is itself pre-1.0 work.
+- **OWNER QA PASS, round 1 (2026-07-29): install paths CLEAN on all three OSes,
+  one finding.** He installed and launched on all three platforms, confirmed the
+  documented steps and the SHA256SUMS commands in `docs/INSTALL.md` are correct,
+  and verified the macOS CLI symlink. **The finding, on Fedora:**
+  `Warning: skipped OpenPGP checks for 1 package from repository: @commandline`
+  during the rpm install. Expected in substance - agent and CI builds are
+  deliberately unsigned, which is the same policy the macOS ad-hoc signing note
+  documents - but `docs/INSTALL.md`'s Linux section does not mention it, so a
+  first-time installer meets an unexplained security-shaped warning and has no
+  way to tell it from a real problem. **RULED 2026-07-29: signing is deferred as
+  a 1.x item** (see the v1.x entry below), so the disposition here is to DOCUMENT
+  the warning in `docs/INSTALL.md`'s Linux section the way the macOS Gatekeeper
+  flow is documented - what it means, that unsigned artifacts are the deliberate
+  policy, and that it is not a defect. **Vehicle: Plan 10 amendment 2**, which
+  widens Task 4 from a README pass to a user-facing-documentation pass.
 - **Dependabot/Renovate activation: FIRM PRE-1.0, owner ruling 2026-07-29**
   (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is
   essentially done" formulation, which left the timing to a later decision.
@@ -1514,6 +1529,15 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   both skills carry mutually pointing, mutually exclusive descriptions -
   each names the other for the out-of-scope case - so skill selection
   never rests on inference alone.
+- **Artifact signing: firm 1.x, owner ruling 2026-07-29.** Previously
+  trigger-gated on a first external complaint about unsigned-install hurdles;
+  that trigger stays as an accelerator but no longer decides whether the work
+  happens. The occasion was his own QA pass hitting Fedora's
+  `skipped OpenPGP checks` warning on the unsigned rpm, and the same pass
+  confirming the ad-hoc-signed macOS bundle needs its Gatekeeper detour. Scope
+  when it runs: per-OS, and the plan-8 record's recommendation to evaluate
+  GitHub artifact attestations FIRST still stands. Pre-1.0 the warnings are
+  documented rather than removed.
 - **macOS on Intel: serve x64 users (owner call 2026-07-27, 1.x)**. The
   1.0 matrix is Apple-Silicon only (D78, ruled at the plan-8 kickoff). The
   owner wants Intel Macs served - not gated on someone asking, which is how

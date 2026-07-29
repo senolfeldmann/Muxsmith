@@ -5021,17 +5021,3 @@ entries:
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 fix round 1 (author's report on finding F2): the replacement self-audit reports nine sites, and the ninth is the audit sentence itself, which matches because it quotes its own expression. Stated in the plan rather than excluded, which is the handle this entry records"}
     - {date: "2026-07-29", kind: reinforced, ref: "plan-10 fix round 2 (author's report on N3): adding a scratch-line token to the audit sentence made that sentence match its own COMPANION expression, moving a stated count from one to two. Controller re-measured: `grep -nE '[0-9]+ (Rust|frontend|house-knowledge)'` returns two lines, :182 (the canonical sentence the task writes into BUILDING.md) and :619 (the audit sentence), with the pattern fired against a known-present line and a negative control at zero"}
-- id: a-live-line-citation-into-a-document-still-being-edited-goes-stale-in-its-own-round
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: process
-  domain: process
-  statement: "A line citation that points INTO the document currently being edited is a live pointer, not a dated record, and the next insertion above it falsifies it - including an insertion made in the same review round. Name what the line IS (the sentence, the row, the fenced block) rather than where it sits. NOTE ON SCOPE, because this sits in a gap: the Tier-2 rule comments-locate-by-symbol-never-by-line-number governs comments in SOURCE files, and its controller-set boundary exempts dated evidence citations in PROCESS artifacts on the ground that those record where something was at a named moment. A process artifact's citation into ITSELF is neither - not a source comment, and not dated. Whether the Tier-2 rule should widen to cover live pointers in any authored document is an OWNER question, since that rule is his; this entry records the gap and its evidence rather than widening his rule."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 1
-  occurrences:
-    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 delta review after fix round 3 (.superpowers/sdd/plan-10/plan-review-round-1.md): the plan's self-review cited its own line :182 for the companion sweep, and the acceptance row inserted by that same fix round moved the target to :183. Controller re-measured before routing. It is the plan's only self-pointing line citation and it sits in the package whose entire subject is that line citations go stale - falsified inside one round of its own edits, which is the sharpest evidence for the owner's ruling this project has produced"}
