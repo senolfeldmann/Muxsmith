@@ -1033,22 +1033,28 @@ Must be resolved before the first tagged release.
     security updates bypass the schedule by the owner's ruling - but it is not
     live and its config lands in Plan 10's Task 3, so this vehicle exists to own
     the window rather than to duplicate what Renovate will later do.
-- **CONFIG HALF DONE 2026-07-29 (session 28), Plan 10 Task 3, commit `630d418`;
-  ACTIVATION HALF OPEN.** `renovate.jsonc` is on `master`, expressing the ruled
-  cadence and shape, validated clean by the vendor's own validator in both plain
-  and `--strict` mode, and all fifteen premises the plan fenced were re-verified
-  at the vendor's SOURCE (not its rendered docs, where `prHourlyLimit`'s default
-  reads as `prConcurrentLimit`'s). **What remains is two OWNER actions, in this
-  order:** install the Renovate app against this repository, and enable the
-  repository's dependency graph and Dependabot alerts so the immediate-security
-  half exists at all. The config had to reach `master` FIRST, which is what
-  suppresses the vendor's onboarding PR. **The trigger below has NOT fired** -
-  its condition is activation, not configuration - so the deny.toml RUSTSEC
-  pruning and the TS-7 bump still wait. One check belongs to whoever observes
-  activation: the vendor documents a config commit as a route to onboarding but
-  does not say it overrides an ALREADY-CLOSED onboarding PR, so confirm Renovate
-  actually starts (the observable is a dependency-dashboard issue appearing); the
-  documented fallback is renaming the closed PR.
+- **CONFIG DONE 2026-07-29 (session 28), Plan 10 Task 3, commit `630d418`.**
+  `renovate.jsonc` is on `master`, expressing the ruled cadence and shape,
+  validated clean by the vendor's own validator in both plain and `--strict`
+  mode, and all fifteen premises the plan fenced were re-verified at the vendor's
+  SOURCE (not its rendered docs, where `prHourlyLimit`'s default reads as
+  `prConcurrentLimit`'s).
+  **THE OWNER'S TWO ACTIONS WERE ALREADY DONE IN SESSION 27, and the controller
+  wrongly carried them as open** through the plan-10 close, into this
+  disposition and into the HANDOFF - corrected on the owner's objection and
+  verified on GitHub: the Renovate app opened and closed PR #1 on 2026-07-29,
+  which only an installed app can do, and the vulnerability alerts arriving the
+  same day are the dependency-graph half. The session-27 HANDOFF said so
+  plainly; the plan's acceptance row said the opposite, and the row won because
+  nobody re-read the HANDOFF against it. **What remains is a wait-and-see, not a
+  task:** the vendor documents a config commit as a route to onboarding but does
+  not say it overrides an ALREADY-CLOSED onboarding PR, so confirm Renovate
+  actually starts now that the config is on `master` - the observable is a
+  dependency-dashboard issue appearing, and none exists yet (checked
+  2026-07-29). The documented fallback, if it stays silent, is renaming the
+  closed PR. **The trigger below therefore still has not fired in its recorded
+  sense** - the deny.toml RUSTSEC pruning and the TS-7 bump wait for Renovate's
+  first PRs, not for an owner action.
 
 - **Dependabot/Renovate activation: FIRM PRE-1.0, owner ruling 2026-07-29**
   (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is

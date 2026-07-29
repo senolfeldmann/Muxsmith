@@ -1,4 +1,4 @@
-<!-- Snapshot of HANDOFF.md at the session-28 close, superseding the earlier same-session snapshot: Plan 10 closed AND the Linux release base moved to ubuntu-24.04. The HANDOFF itself is git-ignored and superseded in place; SI-5 requires this snapshot in the same turn as the rewrite. -->
+<!-- Snapshot of HANDOFF.md at the session-28 close, third state: the Renovate activation correction. The HANDOFF itself is git-ignored and superseded in place; SI-5 requires this snapshot in the same turn as the rewrite. -->
 
 # Handoff
 
@@ -230,13 +230,16 @@ went stale within one afternoon.
    `cargo deny` disagreement in the same task rather than restating the
    hypothesis; INVESTIGATE `glib` only, and if it cannot move independently of
    Tauri's tree, say so and give it its own vehicle.
-3. **Renovate activation: two OWNER actions, in order** - the config is already
-   on `master`, which is what suppresses the vendor's onboarding PR; then
-   install the app against this repository, and enable the dependency graph and
-   Dependabot alerts. Whoever observes activation confirms Renovate actually
-   starts (the observable is a dependency-dashboard issue appearing); the
-   documented fallback is renaming the closed onboarding PR. The ROADMAP trigger
-   stays NOT FIRED until then.
+3. **Renovate: nothing is owed by the owner.** His two actions were done in
+   session 27 - the app is installed (it opened and closed PR #1) and the
+   dependency graph is on (the vulnerability alerts arrived) - and the config
+   reached `master` in this session. The controller carried them as open anyway
+   through the plan-10 close and had to be corrected by the owner; the
+   session-27 HANDOFF had said so plainly and the plan's acceptance row said the
+   opposite. What is left is an observation, not a task: does Renovate start now
+   that the config is on `master`, given its onboarding PR was already closed?
+   The observable is a dependency-dashboard issue appearing; none existed at the
+   session-28 close. If it stays silent, rename the closed PR.
 4. **Three routed items waiting on a package that touches their file**: the
    surviving `ci.yml` line-number citation, the `raw:` "byte-exact" wording (in
    the spec, the matcher comment and the README at once), and the v1 spec's 8.1
