@@ -529,6 +529,12 @@ diff created), so building it is a discretionary call that was never put to
 him. **Carry it into the pre-1.0 gates as an owner question**, together with
 the measurement above: widening the sort to all three arrays leaves the whole
 suite green.
+**RULED 2026-07-29 (owner, session-27 kickoff): BUILD IT.** The producer is an
+IN item of the pre-1.0 product package, in the shape the Task-5 review named: a
+`batch_document` case with a mixed-severity `batch_diagnostics` vector
+asserting it is NOT reordered. The controller's argument that carried it: a
+contract asserted in three normative places, one of them the spec, with no
+producer anywhere is a claim nobody can rely on, and this producer is cheap.
 
 **DONE at the close 2026-07-29** (`9dc3a4d` + `c8dfc6d`). **Two text corrections routed to the close, from the Task-5 review and its
 delta (2026-07-28).** Neither is user-visible; both are developer-facing prose
@@ -590,7 +596,8 @@ Details live at the pointed-to entries; this list only names event ->
 action:
 
 - Renovate/Dependabot activated -> prune deny.toml RUSTSEC ignores; TS-7
-  bump arrives via its PRs (near-1.0 entry riders).
+  bump arrives via its PRs (riders on the activation entry, which moved into
+  the pre-1.0 gates section by the 2026-07-29 owner ruling).
 - A bulk profile shows regex compilation dominating -> promote the
   regex-cache line from v1.x into hardening scope (v1.x entry).
 - mkvtoolnix/mkvmerge version bump (dev machine or CI) -> re-verify the
@@ -837,8 +844,31 @@ action:
 
 ## Pre-1.0 release gates
 
-Must be resolved before the first tagged release; none blocks Plan 6 work.
+Must be resolved before the first tagged release.
 
+- **OWNER QA GATE, ruled 2026-07-29 (session-27 kickoff): no 1.0 release
+  happens before Şenol has run a manual QA and bug-hunting pass himself.**
+  This is a precondition on the tag, not a review of finished work, and its
+  output is first-class scope input in the three shapes he named: real bugs;
+  behaviour he does not like even where it matches the spec; and items
+  currently parked in v1.x that he decides he wants in 1.0 after all.
+  Consequence for planning, stated because it is the part that is easy to
+  forget: finishing every other item in this section does NOT close the
+  pre-1.0 scope, so any claim that 1.0 is content-complete before that pass
+  has run is premature by construction. The pass needs a current build on his
+  hardware; arranging that build is itself pre-1.0 work.
+- **Dependabot/Renovate activation: FIRM PRE-1.0, owner ruling 2026-07-29**
+  (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is
+  essentially done" formulation, which left the timing to a later decision.
+  Free since the repo went public; SHA-pinned actions and exact dep pins are
+  ready for it. Two riders (2026-07-11, docs-tree sweep): prune the 18
+  commented RUSTSEC ignores in deny.toml as Renovate PRs obsolete them (S8);
+  TypeScript is deliberately held at 6.0.3 under the typescript-eslint ceiling
+  - Renovate will offer the TS-7 bump when the ecosystem catches up (S14).
+  Cadence rationale (residue R3, recovered from Plan 1): every dep PR triggers
+  the full 3-OS matrix, so the cadence choice is a CI-cost decision - the
+  "monthly" lean exists because of that cost, not preference. The cadence
+  itself is still open and is settled when the config is written.
 - **DONE 2026-07-28 (Plan 8.5, owner-accepted on hardware). BLOCKER: the macOS dmg's app does not launch - "the app is damaged"**
   (owner R8 walk-through on real Apple-Silicon hardware, 2026-07-27; the
   first human execution of the documented install path). Measured on the
@@ -929,8 +959,12 @@ polish entry.
       boolean flags comparing false for exact, type/codec_kind curated
       domains; contrast with raw:'s no-magic byte-exact single-field rule
       (D32 addendum, B-8 ratification).
-- **Guide + blog posts (process + product)**: 1.0 deliverables, produced
-  at 1.0 on Şenol's go. Format interview DONE 2026-07-11; decisions:
+- **Guide + blog posts (process + product): MOVED TO 1.x, owner ruling
+  2026-07-29** (session-27 kickoff). They are written after 1.0 has shipped,
+  not as a condition of the tag - so this entry no longer gates the release
+  and only lives in this section because its format decisions were taken
+  here. Everything below stays valid and is what the 1.x round executes;
+  only the timing changed. Format interview DONE 2026-07-11; decisions:
   - **Guide**: single `docs/GUIDE.md`, English, maximal scope - cookbook/
     workflows AND architecture/contributor part AND exhaustive reference;
     Şenol prunes at review ("I want them all, I decide what I keep").
@@ -1371,10 +1405,16 @@ pass's scope.
   human-care mechanism demonstrably missed for three days and a machine caught
   in one run.
 
-## Near-1.0
+## v1.x candidates
 
-- **Requirements-catalog derivation (product-baseline-desktop)**: at 1.0,
-  mine this repo's registers, memos, and spec into a NEW
+Deferred with reasons; source: Plan-5 whole-branch triage (ledger, archived
+at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
+
+- **Requirements-catalog derivation (product-baseline-desktop): 1.x, owner
+  ruling 2026-07-29** (session-27 kickoff; it stood at "at 1.0" from
+  2026-07-11 until then, and moved for the same reason as the guide and blog
+  posts - it is work ABOUT the finished product, so it is not a condition of
+  the tag). Mine this repo's registers, memos, and spec into a NEW
   product-baseline-desktop skill - the desktop-app counterpart to
   product-baseline-saas (renamed from product-baseline 2026-07-11; stays
   SaaS-scoped and is NOT fed from here). D34 (CSP for webview apps) is a
@@ -1382,22 +1422,6 @@ pass's scope.
   both skills carry mutually pointing, mutually exclusive descriptions -
   each names the other for the out-of-scope case - so skill selection
   never rests on inference alone.
-- **Dependabot/Renovate activation**: Şenol's call, timing "when 1.0 is
-  essentially done". Free since the repo went public; SHA-pinned actions
-  and exact dep pins are ready for it. Two riders (2026-07-11, docs-tree
-  sweep): prune the 18 commented RUSTSEC ignores in deny.toml as Renovate
-  PRs obsolete them (S8); TypeScript is deliberately held at 6.0.3 under
-  the typescript-eslint ceiling - Renovate will offer the TS-7 bump when
-  the ecosystem catches up (S14). Cadence rationale (residue R3,
-  recovered from Plan 1): every dep PR triggers the full 3-OS matrix, so
-  the cadence choice is a CI-cost decision - the "monthly" lean exists
-  because of that cost, not preference.
-
-## v1.x candidates
-
-Deferred with reasons; source: Plan-5 whole-branch triage (ledger, archived
-at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
-
 - **macOS on Intel: serve x64 users (owner call 2026-07-27, 1.x)**. The
   1.0 matrix is Apple-Silicon only (D78, ruled at the plan-8 kickoff). The
   owner wants Intel Macs served - not gated on someone asking, which is how

@@ -286,28 +286,30 @@ entries:
   source: human
   nature: process
   domain: process
-  statement: "1.0 documentation formats are fixed (single-file EN GUIDE.md at maximal scope + two EN+DE blog posts) but the authoring itself is deferred to the 1.0 tag via three fresh sessions."
+  statement: "1.0 documentation formats are fixed (single-file EN GUIDE.md at maximal scope + two EN+DE blog posts) and the authoring runs in three fresh sessions. TIMING RE-RULED 2026-07-29: the authoring happens AFTER 1.0 has shipped, as a 1.x item, so these deliverables are not a condition of the tag - the earlier reading deferred them to the 1.0 tag, which made them look like release blockers."
   steelman: null
-  blocked_on: "external: awaiting the 1.0 tag"
+  blocked_on: "external: awaiting the shipped 1.0 release (re-pointed 2026-07-29 from 'the 1.0 tag'; the deliverables describe a finished product, so they follow the release rather than gating it)"
   status: blocked
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-11", kind: deferred, ref: "journal session-8 close (format interview) (E8[90])"}
+    - {date: "2026-07-29", kind: deferred, ref: "owner ruling at the session-27 kickoff: 'die produktdeliverables machen wir spaeter wenn 1.0 released wurde, 1.x item' - recorded in ROADMAP pre-1.0 gates, guide+blog entry, which now states that it no longer gates the release"}
 - id: ci-04-dependabot-cadence
-  kind: non-decision
+  kind: pattern
   tier: 2
   source: human
   nature: operational
   domain: ci
-  statement: "Dependabot/Renovate activation is deferred to Şenol's call; the eventual cadence is a CI-cost decision because every dependency PR triggers the full 3-OS matrix."
+  statement: "Dependabot/Renovate activation is a firm PRE-1.0 commitment (owner call 2026-07-29), no longer deferred to a later decision. The cadence is still open and is settled when the config is written; it is a CI-cost decision, because every dependency PR triggers the full 3-OS matrix, which is where the 'monthly' lean comes from rather than from preference."
   steelman: null
-  blocked_on: "Şenol's activation call at near-1.0 (the go-public half cleared 2026-07-10; re-pointed by the plan-6 close sweep - ROADMAP near-1.0 carries the timing)"
-  status: blocked
+  blocked_on: null
+  status: settled
   promoted_at: 1
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-08", kind: deferred, ref: "journal 2026-07-08 open threads + ROADMAP residue R3"}
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff: 'renovate machen wir vor dem 1.0 release'. The deferral's condition was his own activation call, so the call clears it; the entry moved from the ROADMAP's near-1.0 section into its pre-1.0 gates in the same change, and the now-empty near-1.0 section was removed"}
 - id: ci-13-packaging-deferred
   kind: non-decision
   tier: 2
@@ -684,6 +686,20 @@ entries:
     - {date: "2026-07-28", kind: decided, ref: "Owner ruling on the Task-3 escalation (plan-9 task-3-verdict.md F1 + its HARVEST 2): the precedence sentence above, plus the companion plan-review handle recorded in the controller doctrine - every acceptance observable is walked in its HALVES to a named producing test, because Task 3's gap came from a plan whose acceptance map claimed one producer for an observable with a rendered and a persisted side. Owner chose that pairing over routing every instance as NEEDS_CONTEXT: the review handle removes the cause, the precedence makes the remainder cheap"}
     - {date: "2026-07-28", kind: decided, ref: "Owner ruling at the Plan 9 plan-approval gate, overturning a controller routing: during the design fix round the controller routed the two producer-less acceptance observables (D101's GUI Run-gate consequence, D103's edited branch) as 'restate honestly, add no e2e tests'. Both scenarios fit the existing Playwright plus mock-IPC harness, so only the scenarios were missing. Routed into plan-9 amendment 1 (.superpowers/sdd/plan-9/amendment-1-brief.md)"}
     - {date: "2026-07-28", kind: reinforced, ref: "plan-9 Task 5: the rule fired at execution time for the second consecutive task, and again on a TOTAL gap. D102's hoisted sort is applied at two call sites and the plan enumerated a producer for one; the implementer measured the other unguarded (workspace green with batch_document's sort removed), ran the four conditions, and BUILT the missing producer rather than routing it. The reviewer re-measured with a symmetric mutation pair and sharpened the datum: each call site has exactly one guard, the guards are disjoint, neither test is redundant (.superpowers/sdd/plan-9/task-5-verdict.md adjudication 1). The same review corrected the implementer's reasoning on a SECOND consequence: the GUI display order does satisfy condition 3, and what disposes of it is that the shipped core and CLI tests already produce it - the stated failed-condition reason would have licensed skipping a genuinely uncovered core-produced consequence next time"}
+- id: owner-manual-qa-gates-the-1-0-release
+  kind: pattern
+  tier: 2
+  source: human
+  nature: process
+  domain: process
+  statement: "No 1.0 release is cut before Şenol has personally run a manual QA and bug-hunting pass against a current build on his own hardware. It is a precondition on the tag, not a review of finished work, and three shapes of output are first-class scope input by his own framing: real bugs; behaviour he does not like even where it matches the spec; and items parked in v1.x that he decides belong in 1.0 after all. Trigger is readable: you are about to call the pre-1.0 scope complete, propose the tag, or plan the release. Handle: establish whether that pass has run and produced its findings - if it has not, the remaining scope is unknown and no completeness claim about 1.0 may be made, however short the ROADMAP's open list looks. Two corollaries: finishing every item in the ROADMAP's pre-1.0 gates section does NOT close 1.0 scope, and a build he can install has to exist before the pass can run at all, which makes producing that build pre-1.0 work in its own right. PRECEDENCE against the neighbouring rule: this stacks on the doctrine's milestone gate rather than replacing it - this pass gates the SCOPE and runs first, the milestone gate still runs its trigger sweep, leak audit and claim-language check immediately before the irreversible step."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: 1
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: decided, ref: "owner ruling at the session-27 kickoff: 'es wird kein 1.0 release gemacht, bevor ich nicht manuell qa test und bug hunting gemacht habe. es wird vielleicht bugs geben. es wird vielleicht verhalten geben, was ich nicht mag. es wird vielleicht dinge geben, die ich nach 1.x gesetzt habe aber doch lieber in 1.0 haben will' - recorded as the first entry of the ROADMAP's pre-1.0 gates section in the same change"}
 - id: ledger-lint-runs-before-every-push
   kind: pattern
   tier: 2
