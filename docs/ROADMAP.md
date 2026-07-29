@@ -1415,6 +1415,19 @@ house statements that could drop the number have since been rewritten to name
 the file instead, which shrinks the surface but does not close it - a HANDOFF or
 a plan still has to state a count to be useful.
 
+**A neighbouring class, surfaced by the Plan-10 author and ROUTED here
+2026-07-29 so it is not left in a plan step, which is not a tracker.**
+`BUILDING.md` also carries POSITIONAL gate ordinals - "the cross-target clippy
+run (part 6)" and "CI runs Rust-gate parts 1-4". They are Rust-block-local
+positions rather than totals, so the canonical-total check does not cover them
+and covering them would need a second parser over a numbering the canonical
+sentence does not define. They are also newly ambiguous once the file states a
+total: "part 6" acquires a second possible referent, the sixth of eleven, which
+only section context resolves. **Vehicle: whichever package next edits
+`BUILDING.md`'s gate blocks after Plan 10's Task 1 lands** - deliberately not
+Task 1 itself, whose scope is the total and its check, and where adding a second
+numbering concern would widen a task the owner approved at its current size.
+
 **Candidate, not a commitment:** `scripts/ledger-lint.py` is the natural home
 for a cheap invariant - parse `BUILDING.md`'s check blocks, count the commands,
 and compare against any "N parts per BUILDING.md" claim in the tracked docs.
