@@ -1,4 +1,4 @@
-<!-- Snapshot of HANDOFF.md at the session-27 close (SI-5), refreshed after the two vulnerability alerts landed. -->
+<!-- Snapshot of HANDOFF.md at the final session-27 close (SI-5). -->
 
 # Handoff
 
@@ -152,10 +152,20 @@ and plans on conflict.
 
 ## Current state (verified)
 
-- **master at `09c37b3`**, working tree clean apart from the session-close
-  writes, nothing unpushed at the close (checked with `git status` and
-  `git rev-list origin/master..master`, not from memory). CI green on the
-  pushed heads of this session.
+- **master at `b72d6a7` plus the session-close commit**, nothing unpushed
+  (checked with `git status` and `git rev-list origin/master..master`, not from
+  memory). Gate green before every push except two doc-only commits that went
+  out before it ran; those were gated retroactively green and the lapse is
+  recorded in the ledger, because a retroactive green is not the same evidence
+  as a gate that ran first.
+- **Two vulnerability alerts are OPEN** and the gate disagreement under them is
+  the part that outranks both: `cargo deny check` is gate part 5 and is GREEN on
+  this tree while GitHub reports a Rust advisory that `deny.toml` does not
+  silence. **Until that is measured, neither mechanism may be quoted as
+  coverage.** Details and the ruled vehicle are in the ROADMAP's pre-1.0 gates.
+- **House knowledge is at 531 entries**, up from 517 at the session start.
+  Almost every new one is about the same failure: when a check asserts something
+  it did not measure. Two of them are owner-ruled Tier-2 conventions.
 - **Plan 10 is authored, reviewed, approved and twice amended**:
   `docs/superpowers/plans/2026-07-29-plan-10-pre-1.0-package.md`. Five serial
   tasks, one tree, no worktrees. Task 1 the canonical gate total and its check;
@@ -177,37 +187,30 @@ and plans on conflict.
 
 ## Next steps (priority order)
 
-1. **Şenol reviews the plan.** Four-eyes approval precedes his read, not
-   replaces it.
-2. **Execute Plan 10** in a fresh session - five serial tasks, fresh implementer
-   and independent reviewer each, per the plan's own model-tier table. The
-   context this plan was authored in is spent.
-3. **The owner QA pass** runs independently of execution; none of the five tasks
-   changes shipped product behaviour, so the build under test is the same either
-   way. His findings become the NEXT package, not an amendment to this one.
-4. **Renovate: the owner did both actions on 2026-07-29, and the app went on
-   BEFORE `renovate.jsonc` exists, so the vendor opened its onboarding PR.** The
-   alert feed is on and that half is done. The onboarding PR is to be CLOSED, not
-   merged - merging would create a competing default config that Task 3 would
-   then collide with. Closing is the documented opt-out and is reversible by
-   committing a config to the default branch, which is exactly what Task 3 does.
-   **Unverified at the vendor and worth one check after Task 3 lands:** the docs
-   list a config commit as a route to onboarding but do not say in so many words
-   that it overrides an already-closed onboarding PR. If Renovate stays silent
-   after Task 3 - no dependency-dashboard issue - the documented fallback is to
-   rename the closed PR.
-5. **Two open vulnerability alerts, and a gate disagreement under them** (ROADMAP,
-   pre-1.0 gates). `postcss` HIGH, transitive in the pnpm lockfile, build-time
-   only and needing untrusted CSS this project does not have, so low exposure
-   behind a high label - fix it anyway, it is a lockfile bump on a public repo.
-   `glib` MEDIUM through the Tauri/GTK stack, where the first question is
-   whether it can move independently of Tauri's own tree. **The part that
-   outranks both:** `cargo deny check` is a gate part and is GREEN on this tree
-   while GitHub reports a Rust advisory that `deny.toml` does not silence. Until
-   that disagreement is explained - the hypothesis is RustSec's `informational`
-   class for unsoundness, unmeasured - neither mechanism may be quoted as
-   coverage. Owner decides the vehicle at the execution kickoff.
-6. **Archive duty:** session 27 is archived by the NEXT session; session 26 was
+1. **Execute Plan 10. The owner approved it and gave the go on 2026-07-29.**
+   Five serial tasks, one tree, no worktrees, fresh implementer and independent
+   reviewer per task, per the plan's own model-tier table. Start in a FRESH
+   session: the context that authored it is spent. Nothing else blocks this.
+2. **The vulnerability vehicle** (ROADMAP, pre-1.0 gates): its own one-task
+   plan, owner-ruled rather than a Plan-10 rider. Bump `postcss` past 8.5.17
+   through the lockfile; MEASURE the `cargo deny` disagreement in the same task
+   rather than restating the hypothesis; INVESTIGATE `glib` only, and if it
+   cannot move independently of Tauri's tree, say so and give it its own
+   vehicle. Unscheduled against Plan 10 on purpose - neither touches the other's
+   files.
+3. **Renovate: both owner actions are DONE and the onboarding PR is closed**
+   (PR #1, 2026-07-29). The alert feed is live and already produced the two
+   findings above. **One check remains, and it belongs to whoever lands Task 3:**
+   the vendor documents a config commit as a route to onboarding but does not
+   say in so many words that it overrides an ALREADY-CLOSED onboarding PR. After
+   `renovate.jsonc` reaches master, confirm Renovate actually starts - the
+   observable is a dependency-dashboard issue appearing. If it stays silent, the
+   documented fallback is renaming the closed PR.
+4. **The owner's full product QA pass**, which is what actually closes 1.0
+   scope. He ruled the timing on 2026-07-29: it comes later, probably once the
+   next plan is implemented. Round 1 covered install paths only; the product is
+   untested. Until that pass has run, 1.0 scope is unknown by construction.
+5. **Archive duty:** session 27 is archived by the NEXT session; session 26 was
    archived at the start of this one.
 
 ## Open questions / risks
@@ -225,20 +228,28 @@ and plans on conflict.
   the other shape: the decision series is not contiguous, 103 numbers reaching
   D105, so a range claim would state a false count as a side effect.
 - **`BUILDING.md`'s positional gate ordinals** ("part 6", "parts 1-4") were
-  surfaced as OUT of Task 1 and await controller routing. They are
-  Rust-block-local positions rather than totals, and covering them would need a
-  second parser.
+  surfaced as OUT of Task 1 and ROUTED at this close to whichever package next
+  edits those gate blocks after Task 1 lands. They are Rust-block-local
+  positions rather than totals, and they become newly ambiguous once the file
+  states a total, since "part 6" then has a second possible referent.
 - **A coverage fact now tracked in the ROADMAP** (D102 paragraph, Plan 9 anchor), not this package's problem: the guard
   for the sorted half of the D102 contract is `have_mkvmerge()`-gated, so that
   half is unguarded on any machine without mkvmerge.
-- **The controller's own error class stayed the most frequent, again.** Four of
-  this session's defects were mine and every one was caught by something else: a
-  corpus count measured with a search whose cited-extension list was composed
-  from recall; a push-log commit count written without counting; an unmeasured
-  claim in a commit message, amended pre-push; and a review brief that told a
-  read-only reviewer to re-run fires that are prescriptions against a deliverable
-  which does not exist yet. Two ledger entries and one near-miss on a stretched
-  promotion came out of it.
+- **The controller's own error class stayed the most frequent, again, and every
+  instance was caught by something other than the controller.** Enumerated
+  rather than counted from memory: a corpus count whose search enumerated cited
+  file extensions from recall and omitted one; a push-log commit count written
+  without counting; an unmeasured "fourth time this session" in a commit
+  message, amended pre-push; a review brief conflating measurements a reviewer
+  can reproduce with fires prescribed against an unbuilt deliverable; an
+  amendment brief asserting HOW a stale figure came to be wrong, refuted by
+  measuring at the commit that introduced it; a tracker line reading "during the
+  rpm install" that meant the package and reads as the tool; the interactive
+  `cp` alias blocking two consecutive steps on an operation an existing entry
+  already names; and two doc-only commits pushed before the gate ran rather than
+  after. Several became ledger entries; one near-miss on a stretched promotion
+  was caught by re-reading the statement-fit rule rather than by anything
+  mechanical, which is the one with no handle yet.
 - **One flaky test, owner-ruled a 1.x fix** (ROADMAP "Test flakiness"):
   `dry_run_json_emits_a_document_when_the_language_query_fails`. It has not
   reappeared.

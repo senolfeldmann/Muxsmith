@@ -869,6 +869,16 @@ Must be resolved before the first tagged release.
   pre-1.0 scope, so any claim that 1.0 is content-complete before that pass
   has run is premature by construction. The pass needs a current build on his
   hardware; arranging that build is itself pre-1.0 work.
+  **TIMING, owner 2026-07-29: the full product pass comes LATER, probably once
+  the next plan is implemented.** Round 1 covered the install paths only - three
+  OSes installed and launched, the documented steps and SHA commands confirmed,
+  the macOS CLI symlink verified, one finding. The product itself is untested:
+  a real dry-run and run over his own library, the profile editor including rule
+  add and remove, suggestion apply, the jobs view during a live batch with a
+  mid-run cancel, run history, the locale switch, help mode. This timing does
+  NOT relax the gate - it moves when the gate is satisfied, not whether - so the
+  window between now and that pass is the window in which 1.0 scope is still
+  unknown.
 - **OWNER QA PASS, round 1 (2026-07-29): install paths CLEAN on all three OSes,
   one finding.** He installed and launched on all three platforms, confirmed the
   documented steps and the SHA256SUMS commands in `docs/INSTALL.md` are correct,
@@ -916,11 +926,26 @@ Must be resolved before the first tagged release.
     hypothesis and must be measured before it is repeated. **Two mechanisms we
     rely on disagree, and until the disagreement is explained neither can be
     quoted as coverage.**
-  - **Vehicle: owner decision at the Plan-10 execution kickoff** - either a
-    rider on Plan 10 or its own one-task vehicle. Renovate would raise the
-    postcss fix immediately once live (security updates bypass the schedule by
-    his ruling), but it is not live yet and the config lands in Task 3, so there
-    is a window and this entry is what keeps it from being the thing nobody owns.
+  - **RULED 2026-07-29: its OWN one-task vehicle, not a Plan-10 rider**, on the
+    controller's recommendation and its reasoning - the fix has nothing to do
+    with Plan 10's five work items, and a package reopened for every incoming
+    finding stops being a contract. Three parts, in one task:
+    1. **Bump `postcss`** past 8.5.17 through the lockfile. It is transitive, so
+       this is a lockfile decision rather than a pinned-dependency one.
+    2. **Measure the `cargo deny` disagreement in the same task**, because it is
+       cheap to measure and the result decides whether gate part 5 has a hole.
+       The hypothesis on offer - RustSec's `informational` class for unsoundness
+       not failing our configuration - is a hypothesis, and the task's output is
+       the measurement, not the hypothesis restated.
+    3. **`glib`: investigate only, do not fix.** Establish whether it can move
+       independently of Tauri's own dependency tree. If it cannot, the finding is
+       that this is an upgrade project rather than a bump, and it gets its own
+       vehicle rather than being forced here.
+    Sequencing against Plan 10 is deliberately unconstrained: neither touches the
+    other's files. Renovate would raise the postcss fix by itself once live -
+    security updates bypass the schedule by the owner's ruling - but it is not
+    live and its config lands in Plan 10's Task 3, so this vehicle exists to own
+    the window rather than to duplicate what Renovate will later do.
 - **Dependabot/Renovate activation: FIRM PRE-1.0, owner ruling 2026-07-29**
   (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is
   essentially done" formulation, which left the timing to a later decision.

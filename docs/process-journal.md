@@ -2979,3 +2979,46 @@ they had a real problem.
 exists, so the vendor opened its onboarding PR; it is to be closed rather than
 merged, and whether a later config commit overrides an already-closed onboarding
 PR is not stated in the vendor's docs and wants one check after Task 3 lands.
+
+## 2026-07-29 | Session 27 close | session 27 (Peter, Opus 5 1M)
+
+**Scope.** `0fee52a..HEAD`, the close itself. No plan closed, so no salvage pass:
+Plan 10 is approved and unexecuted, and its SDD scratch stays live for the
+execution session.
+
+**What the close produced.**
+
+- **The owner's QA round 1** ran on the rehearsal build: three OSes installed and
+  launched, the documented steps and SHA commands confirmed correct, the macOS
+  CLI symlink verified. One finding, Fedora's `skipped OpenPGP checks` on the
+  unsigned rpm, which he ruled into documentation now and signing into 1.x.
+- **The alert feed he enabled found two vulnerabilities within minutes of being
+  switched on**, which is the argument for having enabled it ahead of Renovate
+  rather than alongside it. `postcss` HIGH, transitive, build-time only and
+  needing untrusted CSS this project does not process. `glib` MEDIUM through the
+  Tauri/GTK stack.
+- **The finding under both of them is a disagreement between two mechanisms we
+  quote as coverage**: `cargo deny check` is a gate part and is green on a tree
+  where GitHub reports a Rust advisory that `deny.toml` does not silence. The
+  standing explanation - RustSec's `informational` class for unsoundness not
+  failing our configuration - is a hypothesis, recorded as one, and measuring it
+  is part of the vehicle the owner ruled for the fixes.
+- **Rulings:** the vulnerability work gets its own one-task vehicle rather than
+  a Plan-10 rider, since a package reopened for every incoming finding stops
+  being a contract; execution of Plan 10 is approved; the full product QA pass
+  moves to after the next plan is implemented, which changes when the gate is
+  satisfied and not whether.
+
+**Friction, both mine and both caught by something else.** The interactive `cp`
+alias blocked two consecutive two-minute steps on the same operation an existing
+Tier-2 entry already names - `cp -f` does not clear it either, only the
+alias-proof form does. And two doc-only commits went out after the gate had run
+rather than before it, which is precisely the exemption the owner rejected on
+measurement; re-run retroactively green, so the state was sound and only the
+ordering was not, and the entry records that those are not the same evidence.
+
+**Open threads.** Execution of Plan 10 in a fresh session, five serial tasks.
+The vulnerability vehicle, unscheduled against Plan 10 because neither touches
+the other's files. The owner's full product pass, which is what actually closes
+1.0 scope. `BUILDING.md`'s positional gate ordinals, routed at this close to
+whichever package next edits those blocks after Task 1 lands.
