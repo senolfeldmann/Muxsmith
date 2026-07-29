@@ -4950,3 +4950,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-29", kind: decided, ref: "plan-10 plan review round 1, HARVEST boundary-stop 1 (.superpowers/sdd/plan-10/plan-review-round-1.md): the controller brief told the reviewer to re-run three fires in Task 1 and a control in Task 5. The controls were re-runnable and reproduced; the three fires were prescriptions against a check the task had not yet built. The reviewer graded them as designs instead and that evaluation produced finding F8 - three of the four absence-shaped checks have no prescribed red state at all - which the flattened phrasing had not asked for"}
+- id: a-pipeline-that-searches-its-own-output-shape-reports-a-false-absence
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A search whose pattern can match the SHAPE of its own pipeline's output returns a false absence even when the pattern was derived correctly from the artifact. The canonical instance: `git grep -n` prefixes every result line with `<file>:<line>:`, so a one-pipeline form that greps that output for a filename-colon-digits pattern matches its own prefix on every line and filters everything away, reporting a clean tree. Distinct from a-search-whose-terms-come-from-memory-produces-a-false-absence, and deliberately kept separate: there the terms are wrong, here the terms are right and the instrument's own output shape is the defect - so careful derivation does not prevent it and only the fire test does. Handle: run the pattern against a known-present line before reporting the empty result, and prefer a per-file form over a single pipeline when the pattern mentions filenames at all."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-29", kind: violated-corrected, ref: "plan-10 fix round 1, author's own report: measuring whether unbackticked bare line-spans exist beyond the three known ones, the first control reported a clean tree because the one-pipeline form matched its own `git grep -n` prefix. The per-file form then found the member the review's F11 had named (suggestions.rs:1016), and the failure mode is now written into the task's own step rather than left as report prose"}
