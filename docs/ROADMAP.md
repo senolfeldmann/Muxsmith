@@ -889,6 +889,38 @@ Must be resolved before the first tagged release.
   flow is documented - what it means, that unsigned artifacts are the deliberate
   policy, and that it is not a defect. **Vehicle: Plan 10 amendment 2**, which
   widens Task 4 from a README pass to a user-facing-documentation pass.
+- **TWO OPEN VULNERABILITY ALERTS, surfaced 2026-07-29 within minutes of the
+  owner enabling the alert feed.** The feed's first act was to find something,
+  which is the argument for having enabled it before Renovate rather than with it.
+  - **`postcss` HIGH**, npm, transitive in `pnpm-lock.yaml` at 8.5.16, patched
+    at 8.5.18. Path traversal in source-map auto-loading leading to arbitrary
+    `.map` file disclosure. **Build-time only** - postcss runs during
+    `pnpm build` and ships in nothing - and the attack needs untrusted CSS
+    input, which this project does not have. So the real exposure is low while
+    the severity label is high, and the fix is a transitive lockfile bump rather
+    than a pinned-dependency decision. Recommend fixing it anyway and soon: it
+    is cheap, it is a public repo where the alert is visible, and "low exposure"
+    is an argument that ages badly.
+  - **`glib` MEDIUM**, Rust, transitive in `Cargo.lock`, vulnerable
+    `>= 0.15.0, < 0.20.0`, patched at 0.20.0. Unsoundness in the `Iterator` and
+    `DoubleEndedIterator` impls for `VariantStrIter`. It arrives through the
+    Tauri/GTK stack, so whether it can move independently of Tauri's own tree is
+    the first thing to establish, not the fix.
+  - **The gap worth more than either alert:** `cargo deny check` is gate part 5
+    and it is GREEN on this tree, while GitHub reports a Rust advisory.
+    `deny.toml`'s ignore list does not mention glib - it covers the unic family,
+    proc-macro-error, the archived GTK3 crates and quick-xml - so this is not a
+    silenced advisory. The likely explanation is that RustSec classes
+    unsoundness as `informational` rather than as a vulnerability and our
+    `cargo deny` configuration does not fail on that class, but that is a
+    hypothesis and must be measured before it is repeated. **Two mechanisms we
+    rely on disagree, and until the disagreement is explained neither can be
+    quoted as coverage.**
+  - **Vehicle: owner decision at the Plan-10 execution kickoff** - either a
+    rider on Plan 10 or its own one-task vehicle. Renovate would raise the
+    postcss fix immediately once live (security updates bypass the schedule by
+    his ruling), but it is not live yet and the config lands in Task 3, so there
+    is a window and this entry is what keeps it from being the thing nobody owns.
 - **Dependabot/Renovate activation: FIRM PRE-1.0, owner ruling 2026-07-29**
   (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is
   essentially done" formulation, which left the timing to a later decision.
