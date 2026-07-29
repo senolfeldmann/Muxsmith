@@ -84,16 +84,15 @@
 // `RunHistory.vue` being the house precedent -- keyboard-reachable for
 // free, no hand-rolled interactive `<tr>`) plus the per-rule detail panel
 // beneath the grid. The panel is pure registry composition, byte-for-byte
-// the machinery `ListWidget.vue`
-// already uses for AttachmentRule items: it synthesizes a `{ kind:
-// "section", of: "trackRule" }` spec, mounts `SectionWidget`, and writes
-// the selected rule back immutably (`setRuleValue`). No new component, no
-// new registry, no new catalog key: the panel is labelled via
-// `aria-labelledby` pointing at the selected grid row's own id
-// (`editor-rule-row-${index}`), and `SectionWidget`'s legend reuses
-// `editor-tracks-rules` ("Rules"), already the grid heading/caption.
-// Selection is cleared on reorder (`onDrop`) so a post-reorder edit can
-// never land on a rule the user did not re-select.
+// the machinery `ListWidget.vue` already uses for AttachmentRule items: it
+// synthesizes a `{ kind: "section", of: "trackRule" }` spec, mounts
+// `SectionWidget`, and writes the selected rule back immutably
+// (`setRuleValue`). No new component, no new registry, no new catalog key:
+// the panel is labelled via `aria-labelledby` pointing at the selected
+// grid row's own id (`editor-rule-row-${index}`), and `SectionWidget`'s
+// legend reuses `editor-tracks-rules` ("Rules"), already the grid
+// heading/caption. Selection is cleared on reorder (`onDrop`) so a
+// post-reorder edit can never land on a rule the user did not re-select.
 import { computed, onMounted, provide, ref, watch } from "vue";
 import { useFluent } from "fluent-vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";

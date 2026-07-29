@@ -1434,12 +1434,11 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
 // (the `jobs-history-run` button in `RunHistory.vue` is the house
 // precedent, not a hand-rolled interactive `<tr>`); the panel renders the
 // selected rule through `SectionWidget` over the `trackRule` registry --
-// byte-for-byte the
-// machinery `ListWidget` already uses for AttachmentRule items
-// (`attachments.rules`), so track-rule editing becomes the same code path,
-// adding zero new catalog keys and zero new components. Mounted through
-// the Task-10 harness (`mount.ts`), not the served app, per Tasks 11-13's
-// own precedent above.
+// byte-for-byte the machinery `ListWidget` already uses for AttachmentRule
+// items (`attachments.rules`), so track-rule editing becomes the same code
+// path, adding zero new catalog keys and zero new components. Mounted
+// through the Task-10 harness (`mount.ts`), not the served app, per Tasks
+// 11-13's own precedent above.
 test.describe("editor view: rule detail editor (Task 13b, D45 / spec 8.2)", () => {
   const twoRuleProfile: Profile = {
     profile_version: 1,
