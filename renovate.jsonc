@@ -1,0 +1,84 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // config:best-practices is deliberately NOT extended: it pulls
+  // :maintainLockFilesWeekly (a weekly lock-file refresh, which contradicts
+  // the ruled monthly cadence) and docker:pinDigests (this repo has no
+  // Docker surface). security:minimumReleaseAgeNpm is deliberately not used
+  // either: its interaction with a narrow schedule window is unverified, and
+  // a monthly cadence already means most picked-up versions are weeks old.
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+
+  "timezone": "Europe/Berlin",
+
+  // NOT the schedule:monthly preset. That preset is ['* 0-3 1 * *'] - a
+  // four-hour window on the 1st - and the hosted service runs a repo's job
+  // no more often than its own backend cadence allows, which the vendor
+  // documents as something repo config cannot tighten. A four-hour window
+  // on one day per month can therefore be missed entirely, for months. The
+  // three-day window below is the same monthly cadence with no starvation.
+  // Do not "simplify" this back to the preset.
+  "schedule": ["* * 1-3 * *"],
+
+  // The schema default is 2, which would dribble the ecosystem group PRs
+  // across successive jobs instead of opening them in one pass.
+  "prHourlyLimit": 0,
+
+  // separateMajorMinor is deliberately absent. Its default is true and it
+  // has priority over package groups, so major updates already get their
+  // own PRs even inside the groups below - which is the ruled behaviour
+  // (ci-04-dependabot-cadence). Setting it to false here would fold them in.
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "cargo dependencies",
+      // The cargo manager's default is the global rangeStrategy "auto",
+      // which resolves to update-lockfile for cargo in the normal case:
+      // Cargo.lock moves and the Cargo.toml version string stays put. This
+      // repo's manifest pins are meant to be read as true, so bump.
+      "rangeStrategy": "bump"
+    },
+    {
+      "matchManagers": ["npm"],
+      "groupName": "npm dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchDepTypes": ["action"],
+      "groupName": "github actions"
+    },
+    {
+      // release.yml pins ubuntu-22.04 on purpose (D85: the oldest supported
+      // base for the AppImage glibc floor) while the test matrix runs
+      // ubuntu-26.04. Renovate cannot know that distinction, so runner
+      // images are not managed at all.
+      "matchManagers": ["github-actions"],
+      "matchDepTypes": ["github-runner"],
+      "enabled": false
+    },
+    {
+      // pnpm is pinned in BOTH mise.toml and package.json's packageManager
+      // field, as a deliberate mirror: CI takes its pnpm from mise, a
+      // developer without mise takes it from corepack via package.json.
+      // Managing one side while the other stands still breaks the mirror
+      // instead of maintaining it, so both move by hand until mise leaves.
+      // This rule follows the npm group above on purpose: later rules win.
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["packageManager"],
+      "enabled": false
+    },
+    {
+      // Owner ruling: mise is slated to leave the setup anyway, so it is
+      // not worth managing in the meantime.
+      "matchManagers": ["mise"],
+      "enabled": false
+    },
+    {
+      // Its own group, by owner ruling: a toolchain bump's characteristic
+      // failure is new lints under -D warnings, and that must not hold an
+      // unrelated dependency bump hostage inside a shared PR.
+      "matchManagers": ["rust-toolchain"],
+      "groupName": "rust toolchain"
+    }
+  ]
+}
