@@ -5261,6 +5261,7 @@ entries:
   blocked_on: "external: an owner call on the README's phrasing, or a controller decision to add the re-measure duty to the salvage step"
   status: blocked
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-29", kind: deferred, ref: "plan-10 close fix wave concern 2 (docs/process-journal/artifacts/plan-10-sdd/close-fix-report.md): the README figure was raised 219 -> 225 after the plan-10 salvage added six verdict files, both readings of the unit verified to agree and the set difference empty in both directions. The implementer flagged that plan 11's salvage will falsify 225 identically, and deliberately left the phrasing alone because the README's register is the owner's call"}
+    - {date: "2026-07-29", kind: deferred, ref: "plan-10 close delta review (docs/process-journal/artifacts/plan-10-sdd/whole-branch-verdict.md, delta section): the whole-branch reviewer RECOMMENDS option 2, the standing re-measure duty on the salvage step, on the ground that it passes the house trigger-and-handle filter - readable trigger (you are executing the step that adds members of the counted set) and mechanical handle (re-run the two fenced commands and update the figure in the salvage commit itself) - while growth-proof phrasing either keeps a number and re-arms anyway or drops the precision from a sell-tone sentence whose concrete figure is the point. Still the owner call, because killing the number is a register decision on his document"}

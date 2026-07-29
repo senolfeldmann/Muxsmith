@@ -944,6 +944,17 @@ Must be resolved before the first tagged release.
   flow is documented - what it means, that unsigned artifacts are the deliberate
   policy, and that it is not a defect. **Vehicle: Plan 10 amendment 2**, which
   widens Task 4 from a README pass to a user-facing-documentation pass.
+  **THE FINDING IS CLOSED 2026-07-29 (session 28), commit `e657263`**: the note
+  sits beside the Linux section's existing "no gatekeeping dialog exists on
+  Linux" sentence, carries the warning string byte-identical to the record in
+  this entry (checked by grep against this entry rather than against the plan),
+  attributes it to `dnf` rather than the `rpm` binary - `@commandline` is dnf's
+  pseudo-repository for a package given by path - and claims nothing about what
+  the deb path prints, because nobody measured that. The file-top comment's
+  enumeration of the sections that shrink when signing lands was extended by the
+  same edit, since the note is a third member. **THE ENTRY ITSELF DOES NOT
+  CLOSE:** the owner QA gate is a standing precondition on the tag, further
+  rounds are expected, and artifact signing stays a ruled 1.x item.
 - **TWO OPEN VULNERABILITY ALERTS, surfaced 2026-07-29 within minutes of the
   owner enabling the alert feed.** The feed's first act was to find something,
   which is the argument for having enabled it before Renovate rather than with it.
@@ -991,6 +1002,23 @@ Must be resolved before the first tagged release.
     security updates bypass the schedule by the owner's ruling - but it is not
     live and its config lands in Plan 10's Task 3, so this vehicle exists to own
     the window rather than to duplicate what Renovate will later do.
+- **CONFIG HALF DONE 2026-07-29 (session 28), Plan 10 Task 3, commit `630d418`;
+  ACTIVATION HALF OPEN.** `renovate.jsonc` is on `master`, expressing the ruled
+  cadence and shape, validated clean by the vendor's own validator in both plain
+  and `--strict` mode, and all fifteen premises the plan fenced were re-verified
+  at the vendor's SOURCE (not its rendered docs, where `prHourlyLimit`'s default
+  reads as `prConcurrentLimit`'s). **What remains is two OWNER actions, in this
+  order:** install the Renovate app against this repository, and enable the
+  repository's dependency graph and Dependabot alerts so the immediate-security
+  half exists at all. The config had to reach `master` FIRST, which is what
+  suppresses the vendor's onboarding PR. **The trigger below has NOT fired** -
+  its condition is activation, not configuration - so the deny.toml RUSTSEC
+  pruning and the TS-7 bump still wait. One check belongs to whoever observes
+  activation: the vendor documents a config commit as a route to onboarding but
+  does not say it overrides an ALREADY-CLOSED onboarding PR, so confirm Renovate
+  actually starts (the observable is a dependency-dashboard issue appearing); the
+  documented fallback is renaming the closed PR.
+
 - **Dependabot/Renovate activation: FIRM PRE-1.0, owner ruling 2026-07-29**
   (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is
   essentially done" formulation, which left the timing to a later decision.
@@ -1096,6 +1124,24 @@ polish entry.
   - **Rides the pre-1.0 product package now**: re-check the CLI reference and
     the exact-typed-matching paragraph against the shipped surface (reviewer
     warning: "easy to lose"), and write in the content anchor below.
+    **DONE 2026-07-29 (session 28), Plan 10 Task 4, commits `e657263` +
+    `845cf89` + the close fix wave `1805949`.** The CLI surface was re-derived
+    from the BINARY rather than the source: twelve rows examined at flag
+    granularity, five divergent and corrected - the two blanket claims that
+    every subcommand takes `--json` and `--locale` (false for `schema`, which
+    accepts only `-h`), `--on-collision`'s value domain, `--locale`'s default,
+    and exit code `130`, which the sentence had omitted entirely. The
+    exact-typed-matching paragraph lost two absolutes the code does not support,
+    and the content anchor's four items were written in, each verified against
+    its spec section AND its core symbol. Widened by amendment 1 to carry the
+    paragraph's two stale counts, both now naming the unit they count: the
+    decision series as a count plus a reach (103 decisions reaching D105, the
+    series being non-contiguous, so a range would state a false count as a side
+    effect) and the verdict figure re-measured at 225 after this close's own
+    salvage moved it. Two review rounds found four further defects in the prose
+    the pass produced, including an exit-code claim that would have misled
+    someone scripting `dry-run`; all landed. **The second bullet below stays
+    open for the tag pass.**
   - **Stays for the tag pass, deliberately**: the four `placeholder(1.0)`
     comments (GIF, dry-run output snippet, release artifacts, GUI screenshot)
     and the WIP banner. The owner ruled the placeholders may remain as
