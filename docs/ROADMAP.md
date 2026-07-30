@@ -791,6 +791,15 @@ action:
 - An accidental-rule-deletion report arrives -> route to the v1.x editor
   undo/redo entry below, NOT to a confirmation dialog (D66 records that
   rejection with its steelman). (Plan-7.5 design trigger 5.)
+  **CONSUMED EARLY 2026-07-30 by owner ruling, without having fired:** no
+  accidental-deletion report ever arrived; the owner pulled undo/redo into
+  pre-1.0 (Plan 12), so this trigger's target is being built and the trigger has
+  nothing left to route. Recorded as consumed-without-firing rather than deleted,
+  and deliberately NOT recorded as fired - the same distinction the e2e
+  `name()`-helper trigger above got wrong once. D66's rejection of the
+  confirmation dialog stands and is strengthened rather than reopened: its
+  premise was that undo/redo is the durable answer, and that premise is now
+  being satisfied.
 - The owner wants the rule grid's Add/Remove buttons help-annotated after
   all -> that is a D54 id/host-set owner change reopening D71's resolution,
   not an implementation nicety. (Plan-7.5 design trigger 6.)
@@ -1004,6 +1013,311 @@ Must be resolved before the first tagged release.
   layout rather than package names, was the named risk. Both are now proven on
   real hardware. Still untested by him at this point: the product itself on the
   other two platforms, and the full feature pass the QA gate above enumerates.
+
+- **OWNER QA PASS, round 3 (2026-07-30): the first pass over the PRODUCT surface,
+  on Windows, and it stops after two findings.** He is testing Windows only for
+  now. Everything he could reach without a profile looked correct; the second
+  finding is what ended the pass, because it removes the precondition for every
+  remaining item the QA gate enumerates. Both findings are the gate's first-class
+  scope input, and their dispositions are OPEN: a read-only reconnaissance pass
+  over the tree was dispatched the same turn to establish the mechanism of the
+  first and to settle whether the second is an absent feature or an
+  undiscoverable one. Nothing here is classified as a defect until that returns.
+  - **Finding 1: the settings view disagrees with the effective locale on first
+    run, and saving destroys the correct detection.** On a Windows system whose
+    display language is German, with no configuration ever saved on that machine,
+    the interface came up in German while the settings view showed the language
+    as English. Pressing Save switched the application to English. Observed by
+    the owner; the resolution chain and the spec classification (violation versus
+    spec-conformant behaviour he dislikes, which carry different dispositions)
+    are what the reconnaissance measured.
+    **CAUSE MEASURED 2026-07-30, and the controller's first suspicion was right
+    in shape and wrong in location.** The config type does NOT collapse the two
+    states: the Rust model carries `locale: Option<String>` whose own doc comment
+    says `None` falls back to the system locale, and the wire type is
+    `string | null` defaulting to `null`. The collapse is in the frontend, and it
+    is that ONE nullable field is read with TWO different fallbacks in two files
+    that nothing reconciles: `resolveLocale` in `src/main.ts` falls back to
+    `navigator.language`, while the settings dialog's form init falls back to the
+    literal `"en"`. So the control displays neither the effective locale nor
+    "unset" but a third thing. Its save path then always writes a concrete
+    string, never `null`, and the option set is exactly `en` and `de` with no
+    "system" member - so the first Save creates an override the user never
+    requested and the spec's system-locale branch becomes unreachable through the
+    UI forever.
+    **Spec classification, three-way rather than binary.** The German first-run
+    UI is COMPLIANT: spec 8.4 reads "Locale selection: system locale with manual
+    override in app settings (takes effect live, without restart; D56) and
+    `--locale` on the CLI; falls back to English per message." The control's
+    displayed value is spec-SILENT - 8.2's app-settings enumeration does not list
+    locale at all, so the surface was never specified - though the shipped
+    catalog hint claims the control says which language the interface uses, which
+    is false in this state. Only the unrequested irreversible override is a
+    DEFECT against the spec's two-state model, and that reading rests on the
+    adjective "manual" rather than on a quoted prohibition. Stated this way
+    because the three parts carry different dispositions.
+    **The frontend fallback was CORRECT when written** (Plan 5, when only English
+    existed) and was made wrong by German landing later, with nothing re-reading
+    it because D56's scope statement declared the settings write out of scope by
+    name.
+    **A test is BLIND to the defect - and the controller's first heading here
+    said it "asserts the symptom as correct behaviour", which overstates what
+    the same paragraph then measured. Corrected 2026-07-30 on the Plan-12
+    author's refutation.** The smoke suite's settings-dialog case expects the
+    locale control to hold `en`, and that expectation is CORRECT under the ruled
+    shape too, because its scenario mocks a stored `locale: "en"` and a stored
+    `"en"` still displays as English. The defect is that the assertion would pass
+    identically under `locale: null`, so it cannot distinguish the two states. It
+    therefore needs no correction, only a companion that supplies the unset
+    state. The blindness is
+    bought deliberately and is not an oversight: plan-5 D29 pins the test locale
+    to English so role names match the `en` catalog, and the Playwright config
+    pins `en-US`, so no test in the suite can observe a non-English system locale.
+    **RULED 2026-07-30 by the owner: shape A, a third "system language" option in
+    the settings control** that represents "no override" and is preselected on
+    first run. His words on the finding: exactly that option is what is missing.
+    The rejected alternative, recorded so it is not re-litigated: initialise the
+    control from the effective locale and leave the option set at two. Steelman -
+    it is one line, needs no catalog key and no shared resolution helper, and it
+    removes the visible disagreement the owner actually reported. Rejected
+    because it is defective on any system whose locale is neither German nor
+    English (the control would hold a value absent from its own option list) and
+    because the first Save would still lock the user out of system-following
+    permanently, which is the part of the finding that is a spec defect rather
+    than a display mismatch.
+    **Known cost, accepted with the ruling rather than discovered later:** the
+    rule "absent means system locale" currently exists in exactly one place, so
+    the dialog needs a shared resolution seam rather than a duplicated rule; a
+    select cannot bind `null`, so a sentinel maps to it in both directions; the
+    new option needs a catalog key in BOTH locales, where cross-locale parity is
+    a hard gate failure rather than a warning; and a test covering it needs a
+    non-English browser locale, which no test has today by the deliberate
+    decision named above. This is a model change, not a two-line repair, and it
+    is scoped accordingly.
+  - **Finding 2: the GUI offers only profile LOAD, with no way to create a new
+    profile - and QA stops there.** Without a profile he cannot reach the profile
+    editor, rule add and remove, suggestion apply, a dry-run, a run, the jobs
+    view or run history, which is the whole surface the QA gate lists. His words:
+    the function is missing, and one cannot continue working this way.
+    **This is an OWNER-LEVEL product decision, not a controller call**, and it is
+    recorded as such: the shape of a user-visible creation path (a blank profile,
+    a template or example, or a guided derivation from files the user points at)
+    sets a product boundary, and the promotion matrix escalates a product-scope
+    question rather than letting an agent settle it.
+    **CONFIRMED ABSENT 2026-07-30, and structurally so rather than merely
+    unbuilt.** Two independent locks in `EditorView.vue`: the entire editing
+    surface is gated on `model`, which is assigned in exactly one place
+    (`openPath`), and `saveDisabled` additionally requires `currentPath`, set in
+    the same one place. There is no Save-as. So a profile that did not come from
+    a file could not be written even if it reached the model. Six file-dialog
+    call sites exist in `src/` and the two that bring a profile in are both
+    `open`. The absence is corroborated in the SHIPPED artifact, not only in
+    source: the built bundle contains exactly `editor-open`, `editor-rule-add`,
+    `editor-rule-remove`, `editor-save` and no create key, and the catalog is an
+    enforced inventory because `check-i18n.mjs` hard-fails on an unresolved key.
+    Contributing to why the gap reads as a missing button rather than a missing
+    feature: the editor's empty state renders a "Diagnostics" heading over a
+    panel with no `v-else`, so it displays literally nothing and no explanatory
+    text.
+    **Never decided, rather than specified-and-unbuilt or deliberately
+    excluded.** Spec 8.2 owes the editor "detail editor per rule, panels for
+    attachments/chapters/tags/title, open/save YAML, recent profiles" with no
+    create clause; a Plan-6 design reviewer struck the create premise explicitly
+    ("Spec 8.2 ... does not say create. Saving an opened profile is not creating
+    one."); and section 11's non-goals, `product-boundaries.yaml`, `IDEAS.md` and
+    the ledger carry no entry either way. The documented first-run story is
+    hand-authoring: the README's "Three steps: write a profile, dry-run it, run
+    it" with a copy-pasteable example, `muxsmith schema` blessed as a user
+    feature (D47) for editor autocompletion, the README's GUI section describing
+    "pick a profile" without mentioning the editor at all, and the in-app help
+    naming open-or-reopen as the entry set.
+    **Parity, two-part and both parts load-bearing.** mkvtoolnix-gui carries
+    `actionMergeNew` as the FIRST entry of its Multiplexer menu, before Open and
+    Save, on Ctrl+N, with an empty state that names both paths. But the mechanism
+    difference is a JUSTIFIED DIVERGENCE: its default state is already a valid
+    executable configuration so it has no bootstrap problem, and the suite has no
+    preset or profile concept at all, so "mkvtoolnix scaffolds, therefore we
+    should" is false. The honest parity question is whether a user with nothing
+    saved can do useful work - there yes, here no - and on that framing it is a
+    GENUINE GAP. The weight in it: the interactive tool, which could most afford
+    to demand a configuration, still ships New as its first menu item.
+    **RULED 2026-07-30 by the owner, and he ruled BOTH shapes in rather than
+    choosing one:**
+    - **Shape A, a blank profile via New, is approved and is the unblocking
+      item.** His reason: without it one cannot get any further. It sits inside
+      existing precedent - spec 8.2 already blesses "Add appends an empty rule -
+      incomplete until filled, announced by a validation warning" - so an
+      incomplete-and-warned profile is the same idiom one level up.
+    - **Shape C, deriving a profile from a file the user selects whose structure
+      is read out, is also a PRE-1.0 item** by his ruling, not a v1.x candidate.
+      It was recommended against and he overruled that, so the recommendation is
+      recorded as having lost rather than as unresolved: the argument against was
+      cost (the suggestion engine is narrow-only by design and cannot create a
+      rule, so this needs new core mapping machinery) and the "Muxsmith does not
+      guess" boundary the README stakes out.
+    - **Shape B, a bundled template or example profile, was neither chosen nor
+      raised by him and stays unbuilt.** Recorded so it is not revived by
+      implication from C: its defect was that a shipped template becomes a
+      de-facto recommendation and that it opens a packaging surface no Tauri
+      config has today.
+    **BOUNDARY against the recorded restraints C brushes against, drawn here
+    because otherwise the next author reads "derivation" as licence for a class
+    the owner has twice refused.** `IDEAS.md` 1 and 2 (language and flag
+    derivation) are ruled a hard no, and the plan-7.5 design records his
+    rejection of prefilled match conditions. C does NOT collide with either, and
+    the discriminator is not the word "derive" but the two properties those
+    rulings actually turn on: (1) the source is the CONTAINER's measured track
+    structure, not a FILENAME, and the IDEAS rulings are filename-derivation
+    rulings by their own text; (2) it fires ONCE at authoring time on one file
+    the user picked, and its output lands in an editor the user reviews before
+    saving, whereas the IDEAS ruling's stated reason is a guess that "would fire
+    unseen across hundreds of files with no review step". Consequence that
+    therefore binds C's design: the derived rules are presented as a REVIEWABLE
+    proposal, never silently written, because the review step is what makes the
+    ruling not apply. A variant that writes derived rules without review
+    re-enters the refused class.
+    **The owner SHARPENED that requirement on 2026-07-30, and his formulation is
+    narrower than the controller's, so his is the binding one:** the derived
+    rules POPULATE THE PROFILE IN THE EDITOR - the editor itself is the review
+    surface - and the profile is NOT YET SAVED at that point. Two design variants
+    the controller's looser wording had left open are therefore excluded: a
+    separate preview or confirmation surface ahead of populating the model, and
+    any path that persists the derived profile before the user saves it.
+    **Cross-package dependency this creates, recorded because it is the kind that
+    gets lost between two packages:** the derivation feature produces an
+    UNSAVED, POPULATED profile in the editor, and Plan 12's decision on how an
+    unsaved profile is handled (tab switch, opening another profile, closing the
+    app) is made for an unsaved BLANK one. A mechanism that carries only the
+    blank case would have to be re-decided here. Plan 12 is therefore asked to
+    STATE whether its chosen mechanism carries a populated unsaved profile, and
+    to name it as a known consequence if it does not - an information duty, not a
+    licence to build speculative seams for a package that is out of its scope.
+    **SECOND OWNER RULING on the derivation package, 2026-07-30, and its
+    ORDERING is part of the ruling rather than an implementation detail:** when
+    the container to derive from is about to be selected and the editor's current
+    profile is not new/empty, a warning appears that must be CONFIRMED, stating
+    that the existing profile in the editor will be overwritten by loading the
+    container's track structure. The confirmation comes BEFORE the container is
+    chosen, so the sequence is confirm, then file dialog, then populate - not
+    populate-then-warn and not warn-after-selecting. Two dimensions his wording
+    leaves open, recorded as marked controller readings so the design round does
+    not fill them silently and he can contradict either:
+    - **Reading 1: a blank new profile the user has already edited DOES warn.**
+      "New or empty" is read as the untouched state, because the ruling's purpose
+      is to protect editor content and an edited blank profile has content.
+    - **Reading 2, SUPERSEDED by the owner the same day - see the ruling below.**
+      It read the warning as independent of unsaved state, firing for any
+      non-empty profile including a loaded unmodified one. He confirmed reading 1
+      and revised this one.
+    **THE DISCARD-GUARD FAMILY IS RULED, owner 2026-07-30, and it closes what was
+    an open question here for one exchange.** He was asked whether the
+    confirm-before-discard extends to the other actions that replace the editor's
+    content; he ruled the whole family at once, and revised the container guard
+    into it:
+    - **All guards in this family are gated on SAVE STATE**: the warning appears
+      only when unsaved changes exist. This supersedes reading 2 above, including
+      for the container trigger - his words: a warning that only comes for an
+      unsaved, non-empty/non-default profile is enough there too.
+    - **Opening another profile over the current one: warns.**
+    - **Switching tabs: must not affect the editor's content at all**, and
+      therefore warns not at all. **Already satisfied by existing structure**,
+      measured 2026-07-30: `App.vue` mounts all three views with `v-show` rather
+      than `v-if` and says so in a comment. So the work there is to ASSERT the
+      invariant with a test, not to build a mechanism.
+    - **Closing the app: warns.** **A close handler already exists**, measured
+      2026-07-30: `src-tauri/src/run.rs` handles `WindowEvent::CloseRequested`
+      and decides from the run slot, i.e. close is already intercepted for an
+      active batch run. So this guard integrates with an existing mechanism, and
+      it creates a decision NEITHER the ruling nor the brief names: the
+      precedence between the two reasons to block a close, and whether the user
+      sees one prompt or two when both hold.
+    **The controller AGREED with the revision rather than only recording it, and
+    the argument it gives up is recorded so it is not rediscovered:** an
+    unconditional warning cannot fail in the direction of data loss, because it
+    needs no state to be correct. A save-state-gated one does: **no change
+    tracking exists in the editor today** (measured 2026-07-30: zero occurrences
+    of dirty/isDirty/unsaved/modified in `EditorView.vue`), so the gate must be
+    built, and the guard's correctness becomes exactly the change flag's
+    correctness. A mutation path that fails to set the flag makes the warning
+    silently not fire, which is worse than a warning that fires too often.
+    **Accepted consequence, carried into Plan 12 as a safeguard rather than as
+    advice:** every path that mutates the profile model is enumerated from the
+    tree and covered per path, not by one test for the flag. An unenumerated
+    mutation set in that position is the latitude-by-omission shape one level
+    below the guard.
+    **EDITOR UNDO/REDO PULLED INTO PRE-1.0, owner ruling 2026-07-30, and the
+    package is then CLOSED.** He declined the offer to pull the unblocking half
+    (blank profile plus the locale option) forward for a faster build, and added
+    undo/redo instead, on the reasoning that change tracking is being built
+    anyway. His words closed the scope in the same breath: that is it for Plan 12.
+    This is the third of the three shapes he named for QA-gate output, a v1.x item
+    he decides he wants in 1.0 after all.
+    - **It reverses his OWN ruling** of 2026-07-22 (S22, the plan-7.5 kickoff),
+      which put undo/redo wholesale in 1.x on the ground that at 1.0 the
+      explicit-save model bounds the loss. The v1.x entry keeps its enumeration
+      and its design note and now points here; it is not duplicated.
+    - **The requirement set was already written**: field edits, rule add/remove
+      including the deliberately unconfirmed delete, drag-reorder, list/map
+      widget mutations, with the editor's single in-memory model named as the
+      natural command/snapshot boundary.
+    - **The undo history SUBSUMES the save-state flag**, and this makes the
+      safeguard above cheaper rather than doubled: unsaved-changes becomes "the
+      current history position differs from the position at the last save", so
+      the discard guards' gate is DERIVED rather than separately maintained. The
+      failure direction inverts with it - a hand-set boolean that a mutation path
+      forgets fails silently toward data loss, while a history-derived flag fails
+      visibly, because a mutation the history missed also breaks undo for that
+      operation. One enumeration of mutation paths now serves both, and the
+      per-path coverage obligation stands unchanged.
+    - **D66's premise is consumed rather than reopened.** D66 removed the
+      confirmation dialog for rule removal precisely because undo/redo, not a
+      dialog, is the durable answer to accidental destruction. So Plan 12 does
+      not introduce a removal confirmation and does not weaken spec 8.2's
+      "Remove deletes the selected rule without confirmation"; the dialog stays
+      a recorded rejected alternative, not a revived option.
+    - **Trigger to consume, controller duty:** the Triggers section's
+      accidental-rule-deletion entry routes to the v1.x undo/redo entry, and this
+      plan builds its target.
+    - Honest consequence, stated because it is the price of the ruling: Plan 12
+      now carries the locale option, blank profile creation, change tracking, the
+      three discard guards and undo/redo, so the build the owner needs to resume
+      his QA pass is further out than the unblocking half alone would have been.
+      He chose that knowingly against a recorded controller recommendation not to
+      split, which had argued the opposite direction - that shipping New without
+      a guard would let the first QA action destroy work silently.
+    mkvtoolnix does exactly this shape
+    (`SourceFile::setDefaults` / `Track::setDefaults` prefill in memory,
+    persisted only when the user saves), which is the parity precedent for the
+    review requirement rather than for the derivation.
+    **Sequencing, controller decision, because the owner ruled the WHAT and not
+    the packaging:** A ships first, with the locale finding, in Plan 12; C gets
+    its own package with a design round ahead of it. Reason: A is what unblocks
+    the owner QA pass that is currently stopped, C introduces core machinery and
+    a product boundary that needs its own ADR, and making A wait on C's design
+    would keep the QA gate closed for the sake of packaging tidiness.
+    **What the fix actually costs, measured, and it is smaller than it looks:**
+    the backend already supports writing a new profile end to end (`save_profile`
+    takes an arbitrary path and core's `save::to_file` uses `fs::write`, which
+    creates the file), and the save-dialog capability is already granted and
+    already used once for the job-log export. So no new capability and no
+    packaging surface. The real blocker is a CONFLATION: `currentPath` doubles as
+    "where to save" and as "may I edit and validate at all".
+    **CORRECTED 2026-07-30: that statement was wrong in one half and is replaced
+    rather than left standing.** Measured by the Plan-12 author and confirmed:
+    EDITING is gated on `model`, not on `currentPath` - the whole editing surface
+    sits inside a `v-if` on `model`. `currentPath` has ONE write site (`openPath`)
+    and gates four duties besides the save target: the validation watcher, the
+    Save guard, the path display and the recents affordance. So it is a four-way
+    split to unpick rather than a two-way one, and the consequence that matters
+    is unchanged - a created-but-unsaved profile would not revalidate.
+    **One measurement that shapes A's seed and must not be guessed:** a
+    schema-minimum profile type-checks and satisfies every JSON Schema
+    `required`, but fails validation with two errors (empty extensions list, no
+    track rules), and Save is disabled while any error exists - so a genuinely
+    bare New would greet the user with a dead Save button. The exact seed is a
+    design decision that gets measured against the validator rather than
+    reasoned about, and the recommendation on record is a seed following the
+    existing empty-rule-plus-warning idiom.
 
 - **TWO OPEN VULNERABILITY ALERTS, surfaced 2026-07-29 within minutes of the
   owner enabling the alert feed.** The feed's first act was to find something,
@@ -1501,6 +1815,52 @@ ten is recomputed.
 
 ## Docs accuracy
 
+- **THE README'S FIRST EXAMPLE PROFILE DOES NOT LOAD** (surfaced by the Plan-12
+  author 2026-07-30 while measuring seed candidates against the validator;
+  mechanism confirmed by the controller at the source the same turn). The
+  example's `input:` block supplies `extensions` and `recursive` only, while
+  `Input::pattern` is a non-optional `String` with no serde default and `Input`
+  carries `deny_unknown_fields`, so deserialization fails with a missing-field
+  error before any diagnostic runs. The author reports exit 2 from
+  `muxsmith validate`; the controller verified the model, not the run. The
+  README's SECOND example, the passthrough one, validates clean.
+  **It matters out of proportion to its size, and that is the reason it is filed
+  at the top of this section rather than in line order.** The README is the
+  documented first-run path - "Three steps: write a profile, dry-run it, run it" -
+  and the entire profile-creation finding above rests on hand-authoring being the
+  intended on-ramp. The example that on-ramp hands a new user is the one that does
+  not load. It is also the first code block a reader copies.
+  **This does NOT reduce the need for the New action**, and the two must not be
+  traded against each other: a correct example still requires the user to leave
+  the application, create a file and paste into it.
+  **Vehicle: Plan 11, folded into the fix round its plan review produces.** Plan
+  11's stream A already owns README edits (the `raw:` wording repair set includes
+  the README), so the package that touches the file owns the routed item, per the
+  house rule. Deliberately NOT a drive-by edit and deliberately not its own plan:
+  an amendment authored by that plan's own author costs a round-trip, a separate
+  plan costs a close. It adds no task, so it is a one-pair amendment - the author
+  and reviewer already in that plan's loop - rather than the four-role case.
+  **RULED 2026-07-30 by the owner, and he rejected the controller's
+  recommendation.** The recommendation was to give `Input::pattern` a serde
+  default of `.*`, on the argument that two independent sites (this example and
+  the Plan-12 blank-profile seed) each had to invent the same meaningless value,
+  which usually means the default belongs one level down. **He rejected it as
+  magic:** Muxsmith is absolutely explicit about the configuration and the bulk
+  operations it drives, so where the field is missing it gets `.*` written out
+  and is then valid. So: the example gains the line; the model does not change;
+  the Plan-12 seed's explicit `.*` is now the correct form rather than a
+  workaround, and needs no revisiting.
+  **Controller reading of the ruling's BOUNDARY, marked as a reading because he
+  stated a principle and not a scope, and the next agent will otherwise
+  over-apply it:** this does NOT become "no serde defaults in the profile model".
+  D48's table already carries 17 fields that have them, so an absolute reading
+  would contradict the shipped model. The discriminator that makes both true:
+  `pattern` SELECTS the input set and defines the identifier, so a default
+  silently changes which files are processed and how they are grouped, while the
+  17 existing defaults REFINE behaviour within an already-selected set. A field
+  that decides what the bulk operation acts on stays explicit; a field that tunes
+  how it acts may default. Contradict this reading if it is wrong.
+
 - **ONE member of the comment line-citation class SURVIVES Plan 10's sweep, and
   it is outside the corpus's file selector** (Task-5 review finding 1,
   2026-07-29). `.github/workflows/ci.yml` carries a comment citing
@@ -1747,6 +2107,48 @@ ROADMAP triggers rather than left implicit:** a fourth marked gate block would b
 invisible to the check, and a command wrapped with a trailing `|` or `&&` is not
 modelled.
 
+## Every documented example is validated against the real binary (owner-approved 2026-07-30)
+
+**Approved in principle by the owner 2026-07-30** ("every example should be
+verified against the real code"), proposed by the controller after the README's
+headline example turned out not to load (see the Docs-accuracy entry at the top
+of that section). It is the check that would have caught it, and it guards the
+documented on-ramp: hand-authoring is the intended first-run path, so a broken
+example is a defect on the product's primary route in.
+
+**Deliberately distinguished from the reach-claim checker below, which was
+rejected for parsing PROSE.** This one reads fenced YAML blocks and feeds them to
+the shipped binary: structured input, deterministic verdict, no
+permanently-red-on-correct-content failure mode. The recorded reason the reach
+checker stayed out therefore does not transfer, and the distinction is stated here
+so nobody cites that rejection against this.
+
+**The load-bearing design question, named rather than left for an implementer:
+the corpus contains fragments as well as whole profiles.** The README carries
+suggestion snippets and partial blocks that are not valid standalone profiles, so
+a naive run over every fenced YAML block fails on correct content - exactly the
+failure mode the reach checker was rejected for, reintroduced by the back door.
+The two candidate answers are an explicit marker on blocks that are complete
+profiles, and a heuristic (does the block carry `profile_version`). **The marker
+is the one that matches the owner's stated line** - explicit over magic, ruled the
+same day on `Input::pattern` - but this is a decision its plan settles with the
+corpus measured, not an assumption.
+
+**Vehicle: its own one-task plan, NOT a Plan-11 amendment.** Reason: it adds a
+task, which the doctrine's amendment sizing puts in the four-role case, and Plan
+11 is mid-fix-round on its plan review. Its own vehicle costs a close and buys a
+clean contract. **Scheduling RULED PRE-1.0 by the owner
+2026-07-30**, on the controller's recommendation and with his own reason: it is
+essential for the entry path. Supporting reasons on record: the class it prevents
+just occurred on that entry path, and the corpus is small today and grows at the
+1.0 documentation deliverables.
+
+Secondary consequence to settle in that plan rather than discover: the check
+becomes a gate command, so `BUILDING.md`'s stated per-block and total counts move,
+and `scripts/ledger-lint.py` verifies those statements. That is the invariant
+working as designed, not a conflict - but note the registered trigger about a
+FOURTH marked gate block, which this must not silently create.
+
 ## Reach-claim checker (candidate, not a commitment; from the session-28 reach sweep)
 
 A one-shot instrument exists and worked: a script parsing every Linux artifact
@@ -1866,6 +2268,52 @@ again. The instrument itself is in the salvaged rider artifacts.
 Deferred with reasons; source: Plan-5 whole-branch triage (ledger, archived
 at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
 
+- **`glib` unsoundness RUSTSEC-2024-0429: address it properly at 1.x. Owner
+  ruling 2026-07-30**, who asked explicitly that the deferral carry full context
+  rather than a pointer, so the entry below is written to be re-read cold.
+  **What it is.** Unsoundness in the `Iterator` and `DoubleEndedIterator` impls
+  for `glib::VariantStrIter`. Vulnerable `>= 0.15.0, < 0.20.0`, patched at
+  0.20.0. Reported by GitHub's dependency alert feed as MEDIUM against
+  `Cargo.lock`; classed by RustSec as `informational = "unsound"` rather than as
+  a vulnerability, with the GHSA alias matching the GitHub advisory, so the two
+  feeds see ONE advisory and never disagreed about its existence.
+  **Why our own gate was green, measured 2026-07-30 and not hypothesised.** This
+  was recorded for two sessions as an unexplained disagreement between two
+  mechanisms we rely on, and the first explanation offered (that cargo-deny does
+  not evaluate the unsound class at all, or cannot be configured to) was wrong in
+  both halves - the plan author asserted it, the plan reviewer refuted it, and
+  the controller reproduced the refutation with its own config copy.
+  cargo-deny 0.19.9 has an `[advisories] unsound` key whose scope defaults to
+  `workspace`; `glib` arrives transitively through Tauri's GTK stack, so the
+  default scope excludes it. With `unsound = "all"` the same tree exits 1 with
+  `error[unsound] ... ID: RUSTSEC-2024-0429`. **Blast radius measured at the same
+  time: exactly that one advisory fires, one `error[unsound]` and no other error
+  or warning class, and set-differencing the fired IDs against the existing
+  ignore list leaves exactly it.** So enabling the scope produces precisely the
+  finding GitHub already reports, with no collateral.
+  **Why it cannot simply be bumped.** Eleven direct parents in the lock, every
+  one from the same gtk-rs 0.18 generation, nothing 0.20-or-newer anywhere in the
+  tree. Moving `glib` means moving that generation, which means moving Tauri's own
+  dependency set. It is an upgrade project in someone else's tree, not a bump, and
+  not Muxsmith's to drive.
+  **Interim disposition, ruled 2026-07-30 and NOT the same thing as the deferral:**
+  turn the scope on and ignore this one advisory with its reason, exactly as the
+  18 existing ignores work. That is strictly better than the status quo, where the
+  class was not checked at all, and afterwards gate part 5 and the GitHub feed
+  agree, so both may be quoted as coverage again - which neither could be while
+  the disagreement stood. The `deny.toml` change rides Plan 11's dependency task.
+  **What addressing it properly means at 1.x**, so the next reader does not have
+  to re-derive the shape: establish whether our own code paths can reach
+  `VariantStrIter` at all (if they cannot, the correct end state is a documented
+  non-exposure rather than an upgrade); then take the gtk-rs 0.20 generation when
+  Tauri's tree does, verifying that the ignore entry can be dropped rather than
+  merely re-dated.
+  **Trigger, observable rather than remembered:** a dependency PR or a Tauri
+  release moves the gtk-rs generation past 0.18 in `Cargo.lock` -> re-run
+  `cargo deny check advisories`, drop the ignore entry if the advisory is gone,
+  and close this item. Renovate's monthly PRs are the mechanism that will surface
+  it; its first ones are expected 2026-08-01 to 08-03.
+
 - **Requirements-catalog derivation (product-baseline-desktop): 1.x, owner
   ruling 2026-07-29** (session-27 kickoff; it stood at "at 1.0" from
   2026-07-11 until then, and moved for the same reason as the guide and blog
@@ -1947,7 +2395,15 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   the 46-key budget. Plan-7 T4 verdict harvest + whole-branch triage
   item 3; owner acknowledged as 1.x budget decision (S21, 2026-07-22).
 
-- **Editor undo/redo, all operations (owner ruling S22, 2026-07-22,
+- **PULLED INTO PRE-1.0 by owner ruling 2026-07-30 - no longer a v1.x
+  candidate.** It is Plan 12 work; the pre-1.0 gates section's "OWNER QA PASS,
+  round 3" entry carries the ruling, the reversal of the S22 ruling below, and
+  the consequences (the undo history subsumes the discard guards' save-state
+  gate). This entry is retained UNCHANGED below rather than rewritten, because
+  its enumeration and its design note are the requirement set the plan works
+  from, and because the S22 reasoning is the losing argument that should stay
+  legible.
+  **Editor undo/redo, all operations (owner ruling S22, 2026-07-22,
   plan-7.5 kickoff)**: full undo/redo across every editor mutation -
   field edits, rule add/remove (incl. the deliberately unconfirmed
   delete), drag-reorder, list/map widget mutations. Ruled 1.x wholesale
