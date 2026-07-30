@@ -28,6 +28,7 @@ Three steps: write a profile, dry-run it, run it.
 profile_version: 1
 
 input:
+  pattern: '.*'              # every candidate file; the whole basename is the identifier
   extensions: [mkv]
   recursive: true
 
@@ -57,7 +58,7 @@ Three places where `exact` does more than compare, and one where it deliberately
 - **`language` normalizes, and reads both fields.** ISO 639 spellings and BCP-47 tags are reduced to canonical form before comparison, and the value is matched against both `language` and `language_ietf` as mkvmerge reports them. One `language: de` therefore covers a file that tags `ger`, one that tags `de`, and one that only fills the IETF field.
 - **Boolean flags are false when absent.** mkvmerge emits the vanity flags (`flag_commentary`, `flag_original`, `flag_hearing_impaired`, `flag_visual_impaired`) only when they are set, and Matroska defines them false otherwise - so `exact: { flag_commentary: false }` matches a track that never mentioned the flag. No `not:` gymnastics required.
 - **`type` and `codec_kind` have curated closed domains.** A value outside them - `type: subtitle` where the domain says `subtitles`, a codec alias that does not exist - is a config-time error, not a rule that quietly never matches. The typo surfaces at validate time instead of after 400 files came out wrong.
-- **`raw:` is the deliberate opt-out.** Prefix a property name with `raw:` to match a field your mkvmerge reports but this build's schema does not know yet, and every convenience above switches off: byte-exact value equality against that one field, named verbatim. No language normalization, no codec aliasing, no false-when-absent, and no type check on `substring`/`regex` either - you asked for untyped, you get untyped.
+- **`raw:` is the deliberate opt-out.** Prefix a property name with `raw:` to match a field your mkvmerge reports but this build's schema does not know yet, and every convenience above switches off: plain value equality against that one field, named verbatim, and no type conversion either: `6` matches a reported `6`, never a reported `6.0`. No language normalization, no codec aliasing, no false-when-absent, and no type check on `substring`/`regex` either - you asked for untyped, you get untyped.
 
 Then:
 

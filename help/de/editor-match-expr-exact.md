@@ -20,4 +20,4 @@ mkvmerge meldet Flags wie `flag_hearing_impaired` nur, wenn sie gesetzt sind. `e
 
 ## Der `raw:`-Bypass
 
-Ein Eigenschaftsname mit dem Präfix `raw:` (etwa `raw:dolby_complexity_index`) matcht eine Eigenschaft, die das Schema dieses Builds noch nicht kennt: keine Existenz-, Typ- oder Domänenprüfung, keine Sprachnormalisierung, kein Fehlend-heißt-false - nur byte-genaue Wertgleichheit gegen die wörtlich benannte Eigenschaft. Die Diagnosen markieren jeden Bypass. Nutze ihn nur für Eigenschaften, die ein neueres mkvmerge meldet; ein Tippfehler in einem `raw:`-Namen matcht still nie.
+Ein Eigenschaftsname mit dem Präfix `raw:` (etwa `raw:dolby_complexity_index`) matcht eine Eigenschaft, die das Schema dieses Builds noch nicht kennt: keine Existenz-, Typ- oder Domänenprüfung, keine Sprachnormalisierung, kein Fehlend-heißt-false und keine Typumwandlung - ein Wert matcht nur einen gemeldeten Wert derselben Art; `6` matcht hier also kein gemeldetes `6.0`, anders als bei der typisierten Gleichheit oben. Die Diagnosen markieren jeden Bypass. Nutze ihn nur für Eigenschaften, die ein neueres mkvmerge meldet; ein Tippfehler in einem `raw:`-Namen matcht still nie.

@@ -93,14 +93,20 @@ pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -
 
 fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &LanguageIndex) -> bool {
     if let Some(bare) = prop.strip_prefix("raw:") {
-        // `raw:` opt-in (D32, spec 9.2): untyped byte-literal value equality
-        // against the property named verbatim. It bypasses the `language`
+        // `raw:` opt-in (D32, spec 9.2; semantics D111): matched untyped -
+        // the capability model is not consulted - and with NO type conversion
+        // in the comparison itself: value equality against the property named
+        // verbatim, holding only where the profile value and the reported
+        // value carry the same kind, so an `Int` scalar does not match a
+        // reported `Float` (case B-7, ruled 2026-07-30). The typed `exact`
+        // path keeps that coercion in `scalar_eq`; this arm calls
+        // `scalar_eq_same_type`. It also bypasses the `language`
         // normalization and `codec_kind` alias arms below, and it takes no
-        // false-when-absent Boolean shortcut - the bare name's type is unknown
-        // to the capability model (`matchable_type` is `None`), so an absent
-        // raw: property simply does not match (B-6).
+        // false-when-absent Boolean shortcut - the bare name's type is
+        // unknown to the capability model (`matchable_type` is `None`), so an
+        // absent raw: property simply does not match (B-6).
         return match item.get(bare) {
-            Some(have) => scalar_eq(want, &have),
+            Some(have) => scalar_eq_same_type(want, &have),
             None => false,
         };
     }
@@ -196,19 +202,39 @@ fn item_str<M: Matchable>(prop: &str, item: &M) -> Option<String> {
     }
 }
 
-/// Value equality between a profile `Scalar` and a track `PropValue`, with
-/// int/float cross-comparison (spec 4.3, `exact`). Strings compare
-/// case-sensitively (language is special-cased before reaching here).
-fn scalar_eq(want: &Scalar, have: &PropValue) -> bool {
+/// Value equality WITHOUT any type conversion, for the `raw:` opt-in path
+/// (spec 4.4, 9.2): a profile `Scalar` equals a reported `PropValue` only when
+/// both carry the same kind. Deliberately NO int/float cross arms - `raw:` is
+/// the declared untyped path, where Muxsmith takes no type decision on the
+/// user's behalf, so `raw:x: 6` does not match a reported `6.0`. Strings
+/// compare byte-wise, `language` is not normalized here (the `raw:` arm runs
+/// before that special case). The typed `exact` path uses [`scalar_eq`],
+/// which is exactly this function plus the two numeric cross arms; a new
+/// `Scalar`/`PropValue` kind is added here, not there.
+fn scalar_eq_same_type(want: &Scalar, have: &PropValue) -> bool {
     match (want, have) {
         (Scalar::Str(a), PropValue::Str(b)) => a == b,
         (Scalar::Bool(a), PropValue::Bool(b)) => a == b,
         (Scalar::Int(a), PropValue::Int(b)) => a == b,
-        (Scalar::Int(a), PropValue::Float(b)) => (*a as f64) == *b,
         (Scalar::Float(a), PropValue::Float(b)) => a == b,
-        (Scalar::Float(a), PropValue::Int(b)) => *a == (*b as f64),
         _ => false,
     }
+}
+
+/// Value equality for the TYPED `exact` path (spec 4.3): the same-type
+/// equality of [`scalar_eq_same_type`] plus int/float cross-comparison, so a
+/// profile `6` matches a reported `6.0` on a known property - documented
+/// behaviour (README, spec 4.3) that mkvmerge's own float-typed properties
+/// need, since it reports an integral `max_luminance` as `400.0`. Strings
+/// compare case-sensitively (`language` is special-cased before reaching
+/// here). The `raw:` path deliberately does NOT call this function.
+fn scalar_eq(want: &Scalar, have: &PropValue) -> bool {
+    scalar_eq_same_type(want, have)
+        || match (want, have) {
+            (Scalar::Int(a), PropValue::Float(b)) => (*a as f64) == *b,
+            (Scalar::Float(a), PropValue::Int(b)) => *a == (*b as f64),
+            _ => false,
+        }
 }
 
 #[cfg(test)]
@@ -404,10 +430,39 @@ mod tests {
         ));
     }
 
+    // SAFEGUARD: the TYPED `exact` path KEEPS its int/float cross-comparison.
+    // `scalar_eq`'s two cross arms are correct there (spec 4.3, README: "6
+    // equals 6.0") and mkvmerge's five float-typed properties need them, since
+    // it reports an integral `max_luminance` as `400.0`. If this test fails,
+    // someone stripped the cross arms from `scalar_eq` instead of leaving the
+    // no-coercion rule to `scalar_eq_same_type` and the `raw:` path.
+    #[test]
+    fn typed_exact_still_cross_compares_int_and_float() {
+        let reported_float = track("video", &[("max_luminance", PropValue::Float(400.0))]);
+        assert!(matches(
+            &expr("exact: { max_luminance: 400 }"),
+            &reported_float,
+            &lang()
+        ));
+        let reported_int = track("video", &[("max_luminance", PropValue::Int(400))]);
+        assert!(matches(
+            &expr("exact: { max_luminance: 400.0 }"),
+            &reported_int,
+            &lang()
+        ));
+        // Negative control: the cross arms compare values; they do not make
+        // any number match any number.
+        assert!(!matches(
+            &expr("exact: { max_luminance: 401 }"),
+            &reported_float,
+            &lang()
+        ));
+    }
+
     // D32 / Task 16: `raw:` opt-in matcher cases B-5..B-8 (untyped comparison).
 
     // B-5: a raw: unknown property present on the track compares untyped by
-    // value; scalar_eq(Int, Int) holds.
+    // value; scalar_eq_same_type(Int, Int) holds.
     #[test]
     fn b5_raw_unknown_present_matches_untyped() {
         let t = track("audio", &[("dolby_complexity_index", PropValue::Int(3))]);
@@ -441,11 +496,37 @@ mod tests {
         ));
     }
 
-    // B-7: int/float cross-comparison works through the raw: path.
+    // B-7 (semantics CHANGED 2026-07-30 by owner ruling, ADR D111: no type
+    // casting under `raw:`): int/float cross-comparison does NOT happen on the
+    // `raw:` path. Both directions are reachable from a real mkvmerge file - it
+    // reports an integral `max_luminance` as `400.0` and `audio_channels` as
+    // `1` - so both are pinned here, each with its same-kind counterpart so the
+    // test cannot pass by matching nothing.
     #[test]
-    fn b7_raw_int_float_cross_compare() {
-        let t = track("audio", &[("new_gain", PropValue::Float(6.0))]);
-        assert!(matches(&expr("exact: { raw:new_gain: 6 }"), &t, &lang()));
+    fn b7_raw_does_not_cross_compare_int_and_float() {
+        let reported_float = track("audio", &[("new_gain", PropValue::Float(6.0))]);
+        assert!(!matches(
+            &expr("exact: { raw:new_gain: 6 }"),
+            &reported_float,
+            &lang()
+        ));
+        assert!(matches(
+            &expr("exact: { raw:new_gain: 6.0 }"),
+            &reported_float,
+            &lang()
+        ));
+
+        let reported_int = track("audio", &[("new_gain", PropValue::Int(6))]);
+        assert!(!matches(
+            &expr("exact: { raw:new_gain: 6.0 }"),
+            &reported_int,
+            &lang()
+        ));
+        assert!(matches(
+            &expr("exact: { raw:new_gain: 6 }"),
+            &reported_int,
+            &lang()
+        ));
     }
 
     // B-8: raw:language opts out of language normalization and dual-field
@@ -467,6 +548,41 @@ mod tests {
         assert!(matches(&expr("exact: { raw:language: ger }"), &t, &lang()));
         // Contrast: normal language matching normalizes de == ger.
         assert!(matches(&expr("exact: { language: de }"), &t, &lang()));
+    }
+
+    // The `raw:` comparator's full type matrix: a profile value equals a
+    // reported value only within one kind - no int/float coercion, no stringly
+    // comparison, no bool/number equivalence. The four values are chosen so
+    // that every diagonal pair is equal and every off-diagonal pair could only
+    // match through a conversion, so this matrix IS the same-type rule.
+    #[test]
+    fn raw_compares_only_within_one_kind() {
+        let wants = [
+            Scalar::Bool(true),
+            Scalar::Int(6),
+            Scalar::Float(6.0),
+            Scalar::Str("6".into()),
+        ];
+        let haves = [
+            PropValue::Bool(true),
+            PropValue::Int(6),
+            PropValue::Float(6.0),
+            PropValue::Str("6".into()),
+        ];
+        for (i, want) in wants.iter().enumerate() {
+            for (j, have) in haves.iter().enumerate() {
+                let t = track("audio", &[("probe", have.clone())]);
+                let e = MatchExpr {
+                    exact: Some(BTreeMap::from([("raw:probe".to_string(), want.clone())])),
+                    ..MatchExpr::default()
+                };
+                assert_eq!(
+                    matches(&e, &t, &lang()),
+                    i == j,
+                    "raw:probe {want:?} against reported {have:?}"
+                );
+            }
+        }
     }
 
     #[test]
