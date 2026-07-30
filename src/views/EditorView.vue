@@ -68,10 +68,10 @@
 // them this view's own New affordance (`editor-action-new`,
 // `editor-empty`, `editor-unsaved`, D107). The Open button, the
 // currently-open-path line, and the file-dialog filter name reuse
-// `batch-profile-pick`/`batch-profile-
-// current`/`batch-profile-filter-name` (BatchView's own "choose + show a
-// profile path" affordance -- their content is generic, not batch-
-// specific, and cross-view key reuse already has two precedents:
+// `batch-profile-pick`/`batch-profile-current`/`batch-profile-filter-name`
+// (BatchView's own "choose + show a profile path" affordance -- their
+// content is generic, not batch-specific, and cross-view key reuse already
+// has two precedents:
 // `browse-button`'s own documented reuse across BatchView/FirstRun/
 // SettingsDialog, and `JobsView.vue`'s `<h2>` reusing `nav-jobs`
 // internally rather than a bespoke `jobs-view-heading`). Save reuses
@@ -308,13 +308,30 @@ function blankProfile(): Profile {
 // it only refuses to run while one of those round trips is in flight, the
 // same guard `pickAndOpen` uses.
 //
-// The statement ORDER is load-bearing. `diagnostics` is cleared before the
-// model is replaced, so a previous profile's findings can never render
-// against the new one; `sessionActive` is set BEFORE `model`, so the
-// `watch(model)` above -- which fires on that very assignment -- validates
-// the seed instead of returning early on a still-false gate; and the
-// seeded rule is selected (index 0) so the detail panel opens on the one
-// field the warning is about, mirroring Add's own behaviour (D67).
+// The statement ORDER inside this body is NOT load-bearing, and an earlier
+// version of this comment claimed it was. Measured: swapping
+// `sessionActive` and `model`, and moving the `diagnostics` clear after the
+// model assignment, each leave the whole suite green. The reason is that
+// `watch(model)` above runs at Vue's default `flush: "pre"` -- the callback
+// is QUEUED, not run at the assignment -- so by the time it reads
+// `sessionActive` this entire synchronous body has finished and every write
+// is visible to it whichever order they were made in. The same fact covers
+// `diagnostics`: no render happens between two synchronous ref writes, so a
+// previous profile's findings cannot paint against the new model from any
+// position. The order below is kept for readability (clear, then establish,
+// then assign) and nothing depends on it.
+//
+// What IS load-bearing is that the gate and the model are established in the
+// SAME synchronous block. Measured: inserting an `await` between
+// `model.value = ...` and `sessionActive.value = true` fails three cases --
+// the queued watcher runs at that microtask boundary, reads a still-false
+// gate and returns early, so the seed is never validated. That is the
+// constraint this function's synchronicity buys, and the one to preserve
+// when this funnel later gains a guard in front of it.
+//
+// The seeded rule is selected (index 0) so the detail panel opens on the one
+// field the warning is about, mirroring Add's own behaviour (D67, D107
+// decision 9).
 function createBlank(): void {
   if (opening.value || saving.value) {
     return;

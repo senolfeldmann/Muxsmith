@@ -1647,8 +1647,10 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
   const PICKED_PATH = "/profiles/created-by-new.yaml";
   // Case 6's already-open profile: a second distinct literal, so "Save
   // wrote the OPENED path and never opened a dialog" cannot be satisfied
-  // by the dialog's own scripted return value.
-  const OPENED_PATH = "/profiles/already-pathed.yaml";
+  // by the dialog's own scripted return value. Named for its role rather
+  // than reusing `OPENED_PATH`, which the recents describe above already
+  // binds to a different value in its own scope.
+  const ALREADY_PATHED_PATH = "/profiles/already-pathed.yaml";
 
   const seedWarning: Diagnostic = {
     code: "empty-match-expression",
@@ -1827,6 +1829,23 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
       .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|save").length)
       .toBe(1);
 
+    // The dialog's own arguments, not just that it was opened: both are
+    // fixed by D107 decision 5, and reading only the RESULT would leave the
+    // suggested filename and the reused filter uncovered. The filter name
+    // comes from the en catalog rather than a duplicated literal, so a
+    // catalog edit cannot silently desynchronize this from what the dialog
+    // actually shows.
+    const dialogCalls = recorded.filter((r) => r.cmd === "plugin:dialog|save");
+    const dialogOptions = (
+      dialogCalls[0].args as {
+        options: { defaultPath: string; filters: { name: string; extensions: string[] }[] };
+      }
+    ).options;
+    expect(dialogOptions.defaultPath).toBe("profile.yaml");
+    expect(dialogOptions.filters).toEqual([
+      { name: en("batch-profile-filter-name"), extensions: ["yaml", "yml"] },
+    ]);
+
     await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
     const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
     const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
@@ -1888,7 +1907,7 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
     const recorded = await installTauriMocks(page, {
       commands: {
         detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
-        "plugin:dialog|open": [resolveWith(OPENED_PATH)],
+        "plugin:dialog|open": [resolveWith(ALREADY_PATHED_PATH)],
         load_profile: [resolveWith(openedDoc)],
         validate_profile_model: [resolveWith(cleanReport)],
         // Scripted deliberately: if the dialog branch ever opened here it
@@ -1902,7 +1921,7 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
     const editor = await gotoEditor(page);
     await editor.getByRole("button", name("batch-profile-pick")).click();
     await expect(
-      editor.getByText(en("batch-profile-current", { path: OPENED_PATH })),
+      editor.getByText(en("batch-profile-current", { path: ALREADY_PATHED_PATH })),
     ).toBeVisible();
 
     const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
@@ -1914,7 +1933,7 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
     await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
     const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
     const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
-    expect(saveArgs.path).toBe(OPENED_PATH);
+    expect(saveArgs.path).toBe(ALREADY_PATHED_PATH);
     expect(saveArgs.profile.input.pattern).toBe("^S[0-9]+E[0-9]+");
 
     // The regression guard for the new branch: an already-pathed save
@@ -1923,5 +1942,41 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
     // ...and never re-feeds the recents memory. The one `set_settings` on
     // record is the OPEN's, which existed before this task.
     expect(recorded.filter((r) => r.cmd === "set_settings")).toHaveLength(1);
+  });
+
+  // Case 7, the producer for D107 decision 9, added in fix round 1 under the
+  // owner-ruled precedence clause of `tests-ship-with-the-feature-never-after`
+  // (Tier 2, `docs/process-conventions.yaml`): the implementer BUILDS a
+  // missing producer rather than routing it when the test is additive, runs on
+  // existing infrastructure, covers a consequence this diff creates, and is
+  // named in the report. All four hold -- `selectedIndex.value = 0` in
+  // `createBlank` had no producer at all (measured: the whole suite stayed
+  // green with the line deleted), the `editor-rule-detail` testid it observes
+  // is the same one the T13b describe above already asserts, and Task 4 clears
+  // `selectedIndex` on every history apply, so an unguarded seeded selection
+  // can be dropped there against a green suite.
+  test("New selects the seeded rule, so the detail panel opens on the field the warning names", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        validate_profile_model: [resolveWith(warnReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-new").click();
+
+    // The panel is reactive on `selectedRule` alone (no focus call anywhere,
+    // D67), so its presence IS the selection.
+    const panel = editor.getByTestId("editor-rule-detail");
+    await expect(panel).toBeVisible();
+    // ...and it is the SEEDED rule that is selected, not merely some rule:
+    // the panel labels itself by the selected row's own id, and the row's
+    // select button carries `aria-current`. With one rule in the seed these
+    // pin index 0 from both ends.
+    await expect(panel).toHaveAttribute("aria-labelledby", "editor-rule-row-0");
+    await expect(editor.getByTestId("editor-rule-select")).toHaveAttribute("aria-current", "true");
   });
 });
