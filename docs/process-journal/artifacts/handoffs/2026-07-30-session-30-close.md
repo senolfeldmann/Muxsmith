@@ -172,7 +172,16 @@ Re-derive rather than trusting these lines: `git log --oneline -1`,
   ROADMAP trigger entry say so. Renovate's first dependency PRs (expected
   2026-08-01 to 08-03) are the most likely cause.
 - **The full gate ran a fourth time** on the Plan-11.5 state, all eleven parts
-  green, 507 Rust tests.
+  green, 507 Rust tests. **CI is green on every pushed head** (`71cce6a`,
+  `0554454`, `af85a7a`, `d55adbf`); the branch is at `ad611a4` with the tracker
+  repairs on top.
+- **One correction worth carrying, because it was reported the wrong way round
+  first:** the guard reaches FURTHER than its implementer's report claimed. An
+  ignored advisory id that exists in no database at all is caught too - measured
+  at exit 1, against a no-key control at 0. The report had predicted the opposite
+  from reading cargo-deny's source without running it, and its reviewer refuted
+  the prediction. The one thing no config key can catch is deletion of the key
+  itself; that is review's job and is recorded in the ROADMAP trigger entry.
 
 ## What Plan 12 needs before its first dispatch
 
