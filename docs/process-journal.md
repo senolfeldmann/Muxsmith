@@ -3270,3 +3270,146 @@ August, since the cadence is monthly and nothing exists yet to obsolete a RUSTSE
 ignore. The vulnerability vehicle. The inert `renovate/configure` branch, which
 the agent's own permission rules would not let it delete. And the product QA
 pass, still the only thing that can close 1.0 scope.
+
+## 2026-07-30 | Plans 11 and 12 authored and approved by review | session 29 (Peter, Opus 5 1M)
+
+**Scope.** Session 29, commits `2c04ac4..0325923`. No plan executed. Two plans
+authored four-eyes and carried to reviewer approval; the owner's first
+product-surface QA pass produced two findings and five rulings; the two-session-old
+cargo-deny question was answered by measurement.
+
+**Decisions and their why.**
+- Owner QA round 3 (Windows) stopped on a missing feature: the GUI can only OPEN a
+  profile, never create one, so nothing behind a profile was testable. Confirmed
+  structurally absent, not merely unbuilt: the editing surface is gated on a model
+  assigned in one place (open), and Save additionally needs a path set in the same
+  place, with no Save-as. Never specified either way - spec 8.2 lists "open/save
+  YAML" and a Plan-6 reviewer had struck the create premise - so the shape was an
+  owner decision, not a controller call.
+- He ruled a blank New (cheapest, and the only shape consistent with his own
+  earlier rejection of prefilled guesses) AND pulled deriving-a-profile-from-a-
+  selected-container into pre-1.0 against the controller's recommendation. That
+  ruling had to be fenced against his two filename-derivation "hard no"s: the
+  discriminator is not the word "derive" but the container being MEASURED rather
+  than a filename guessed, and the edit landing in a reviewable editor rather than
+  firing unseen across hundreds of files.
+- The locale defect: one nullable field read with two unreconciled fallbacks (the
+  startup path falls back to the system locale, the settings dialog to the literal
+  "en"), so saving wrote an override the user never requested and made the spec's
+  system-locale branch unreachable through the UI. Ruled: a third "system" option.
+  Rejected alternative recorded: initialise the control from the effective locale
+  and keep two options - defective on any locale outside {de,en}.
+- Undo/redo pulled out of v1.x, reversing his own S22 ruling, because change
+  tracking was being built anyway. The controller's argument for accepting it:
+  the undo history SUBSUMES the dirty flag, which inverts the failure direction
+  from silent (a mutation path forgets a boolean) to visible (undo breaks).
+- `Input::pattern` keeps no serde default. The controller recommended one after
+  two independent sites had to invent `.*`; he rejected it as magic, on the ground
+  that the field selects the input set. Controller reading of the boundary,
+  recorded as a reading: fields that SELECT stay explicit, the 17 that REFINE may
+  default.
+- German ships in the same change, always. This overturned a plan that had
+  accepted an English-only shell dialog with a recorded reason.
+
+**What the process caught.** All of these were found by review or by a controller
+re-measurement, none by the author that shipped them.
+- The cargo-deny/GitHub disagreement, open for two sessions, was not a tool
+  limitation: cargo-deny 0.19.9 has an `[advisories] unsound` key defaulting to
+  workspace scope, and glib is transitive. Plan 11's author asserted the class was
+  unevaluatable; the plan reviewer refuted it at the tool's `Default` impl; the
+  controller reproduced it independently. Blast radius measured: exactly one
+  advisory fires, no collateral. Origin: plan, from reading silence in output as a
+  statement about capability.
+- Plan 12's save path never marked the history position, so the change flag would
+  never have cleared and every discard guard would have stayed armed forever after
+  the first save - the disposition the owner had just overruled. Its two-sided
+  observable had one producer, covering the side that cannot fail. Caught by plan
+  review (F4).
+- The repair then introduced the same defect with the sign flipped: it marked the
+  LIVE history position rather than the profile the save captured, across two
+  awaits with a live editing surface, so the editor would be marked clean against
+  an older file - data loss where the ADR promises annoyance. Caught by delta
+  review (N-F1). Root cause: a mkvtoolnix precedent borrowed without the condition
+  that licensed it, namely being fully synchronous.
+- Plan 12's shell-locale parity safeguard - itself the repair for a
+  controller-demanded check that would have been green before and after - was green
+  under BOTH its own prescribed red states, because the per-message [requested, en]
+  chain sat between mutation and assertion. Third instance of that family in one
+  session, second inside a repair for the first. Caught by plan review (F2).
+- Plan 11's prescribed soundness control could not fire: its alternation required a
+  phrase absent from the sites it was meant to survive on. Caught by plan review.
+- Three of four figures a mechanical sweep moved sat on expressions that were NOT
+  EXECUTABLE as written - two read stdin because the target sat outside the fence,
+  one carried its pathspec in prose (2117 literal hits against a stated 100), one
+  sat in a table cell whose pipe escape made it match a literal backslash and
+  return 0 against three real hits. A fifth had a backtick inside its character
+  class, closing its own code span. This class is invisible to any re-run, because
+  retyping supplies what the document omits.
+- Running the "benign" premise on a close-path precedent found a third direction
+  the paragraph did not cover: the close decision is read once, the callback dialog
+  leaves the webview live and speaks only about jobs, and confirming quits without
+  re-reading. Recorded as a residual whose two closing costs each contradict a
+  settled owner decision, so the choice was routed to him.
+- Noise, for honesty: most of Plan 11's 23 findings and Plan 12's 27 were figures,
+  labels and wording, not defects. The five above are the ones that would have
+  reached code.
+
+**Process mechanics.** Zero implementers dispatched; both plans are contracts, not
+code. Two four-eyes plan pairs: Plan 11 author + reviewer over four rounds (23
+findings raised, 23 addressed, 0 disputed), Plan 12 author + reviewer over four
+rounds (27 findings, 0 disputed, 2 author divergences both upheld). Every dispatch
+on Opus 5 at xhigh - the plan-close whole-branch tier was never reached because no
+plan closed. Two read-only recon passes (Opus 5) on the QA findings; one archival
+subagent (Opus 5). Controller re-measured five load-bearing claims itself. Six
+house-knowledge entries mined at verdict arrival; ledger 548 -> 556. Eleven-part
+gate run once, green, each part's exit code captured separately; one push.
+
+**Friction and failure.**
+- The controller's own error class was again the most frequent. Two ROADMAP
+  statements were refuted by plan authors against the tree (the `currentPath` duty
+  split was four-way, not two-way; a test headline said "asserts the symptom as
+  correct behaviour" where the same paragraph had measured "is blind"). One
+  controller-demanded check would have been green before and after the fix it was
+  meant to verify - the absence-check failure committed in the instruction
+  demanding an absence check. One controller-fenced figure (a ledger entry count)
+  was moved by the controller's own writing during the same session, which would
+  have failed the task on a correct tree.
+- Four addenda to one plan brief existed only as subagent messages for several
+  hours, against this project's own rule that an instruction existing only as a
+  message is unsalvageable. Written to disk when the reviewer needed them.
+- A plan author attributed to the controller a requirement that came from the
+  reviewer's verdict; corrected in the delta dispatch, because it changed who was
+  being diverged from.
+- Both fix loops widened twice inside one family before the convergence question
+  was asked. The reviewer raised it first, not the controller.
+
+**Moments.**
+- The reviewer argued its own approval of Plan 11 from two monotone series rather
+  than from sufficiency: worst-finding severity fell 2 blocking, 3 Important, 2
+  Important + 1 Minor, 1 Minor, while the plan's self-review share rose 10, 12, 17,
+  21 percent. It then wrote "do not run the clause again on this artifact".
+- The clincher against a fenced count: the plan said 548, the sweep measured 550,
+  the reviewer measured 552, and it stood at 555 by the next round. Same session.
+- A Plan-11 fix bit back: removing a table cell's pipe escape fixed the expression
+  and broke the table render, so the escape was load-bearing and the actual fix was
+  to stop restating an expression in a cell at all.
+
+**Deltas.** Plan 12 grew from 2 work items to 5 and 3 tasks to 7 across five
+controller addenda, all inside the brief's own decision 14 territory plus one owner
+addition. The author judged it should still ship as one plan (the guards' gate is
+derived from undo/redo's history, whose baseline is set by blank-profile creation,
+and three items amend one spec paragraph); the controller agreed.
+
+**Open threads.**
+- Both plans are reviewer-approved and await the governing human's approval. Plan
+  12 carries an itemized editor-catalog budget list (46 -> 54) for him to strike
+  from; that budget is an owner-ruled hard boundary.
+- One owner decision open: how the close-path residual is closed - a widened abort
+  message, a second prompt (contradicts D109 decision 5), or a documented residual
+  (contradicts his save-state ruling). Nothing else in the package depends on it.
+- Plan 11 carries one non-gating Minor by decision: a markup-span count describing
+  the author's extractor rather than the tree.
+- The 1.0 scope remains unknown by construction: the owner's product QA pass is
+  stopped on the missing New action and resumes only on a build carrying Plan 12.
+- Deferred to the plan closes: moving each plan's per-finding narration out of the
+  plan document into the SDD scratch and this journal.
