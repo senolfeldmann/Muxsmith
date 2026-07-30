@@ -4,11 +4,14 @@
 
 [advisories]
 yanked = "deny"
-# cargo-deny's `unsound` scope defaults to `workspace`, which excludes every
-# external crate - so a transitive unsound advisory produced no error, no
-# warning and not even an ignored note, while `unmaintained` (default `all`)
-# reported its 18. `all` rather than `transitive`: it keeps one scope posture
-# for both informational classes, and `transitive` would exempt first-party
+# cargo-deny scopes only the two informational classes, and their defaults
+# differ: `unmaintained` defaults to `all`, `unsound` to `workspace`. A
+# `workspace` scope reaches only crates a workspace member depends on
+# directly, and glib sits deeper, so its unsound advisory produced no error,
+# no warning and not even an ignored note, while the unmaintained advisories
+# beside it all reported. (A real vulnerability has no scope key at all and
+# always fires.) `all` rather than `transitive`: it keeps one scope posture
+# for both scoped classes, and `transitive` would exempt first-party
 # unsoundness, which is the case we would most want to hear about. Both
 # values behave identically on today's tree.
 unsound = "all"
