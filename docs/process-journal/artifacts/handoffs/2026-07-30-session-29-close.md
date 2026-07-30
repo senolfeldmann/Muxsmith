@@ -1,10 +1,10 @@
-<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), superseding the earlier same-day snapshots after the post-approval owner rulings. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), final state after both amendments were authored, reviewed and approved. Supersedes the earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
 
 # Handoff
 
 > Self-contained context transfer. A fresh session should be able to resume from this file alone. Lifecycle and publication rules: SI-5.
 
-**Date:** 2026-07-30 (session 29 close; Plans 11 and 12 authored and reviewer-approved, neither executed)
+**Date:** 2026-07-30 (session 29 close; Plans 11 and 12 authored, amended and fully approved; neither executed)
 **Active agent:** Peter (~/agents/peter)
 **Working directory / repo:** ~/Git/Muxsmith (github.com/senolfeldmann/Muxsmith, public, master tracks origin/master)
 
@@ -108,7 +108,8 @@ section's heading.)
 
 Muxsmith v1: rule-based bulk MKV muxing tool (Rust core + CLI + Tauri 2/Vue 3
 GUI, MIT, public). **Next milestone: 1.0.** Plans 1 through 10 are closed. Plans
-11 and 12 exist as approved-by-review contracts and have NOT been executed.
+11 and 12 are FULLY APPROVED contracts - owner and independent review, amendments
+included - and have NOT been executed. Execution is the next session's first work.
 
 ## The gate that changes what "done" means
 
@@ -138,19 +139,32 @@ Re-derive rather than trusting these lines: `git log --oneline -1`,
 - **The eleven-part gate ran green**, each part's exit code captured separately
   rather than trusting an aggregate: 505 Rust tests over 39 suites, 68 e2e cases,
   `check-i18n` clean over 7 catalogs against a second locale.
-- **Plan 11 is APPROVED by its independent reviewer** and awaits Şenol.
+- **Plan 11 is APPROVED by owner and by independent reviewer, amendment included.**
   Four review rounds, 23 findings raised, 23 addressed, 0 disputed. Document:
   `docs/superpowers/plans/2026-07-30-plan-11-dependency-alerts-docs-accuracy.md`.
-- **Plan 12 is APPROVED by its independent reviewer** and awaits Şenol.
+- **Plan 12 is APPROVED by owner and by independent reviewer, amendment included.**
   Four rounds, 0 disputed, two author divergences both upheld on their evidence.
   Document: `docs/superpowers/plans/2026-07-30-plan-12-qa-round-3-findings.md`.
-- **House knowledge is at 556 entries**, up from 548 at the session start; six
+- **House knowledge is at 560 entries**, up from 548 at the session start; six
   entries were mined at verdict arrival, and `ledger-lint` is green.
 - **No plan was executed and no worktree was created.** Both plans are contracts.
   All SDD scratch for them lives in `.superpowers/sdd/plan-11/` and
   `.superpowers/sdd/plan-12/` and is UNSALVAGED, because salvage belongs to the
   plan close, not to a session close - the reviewer verdict files and the
   consolidated addenda record are there.
+
+## One question is escalated TO the owner, with a recommendation
+
+Nothing blocks on it. **A `raw:` comparison that can never match is not reported at
+config time**, and the runtime diagnostics were measured not to carry the signal: no
+error severity, no suggestion, no proposed narrowing, an exit code identical on
+success (1 for a `raw:` match, 1 for an optional non-match, 2 for a required one),
+and a skew warning that fires whether or not the comparison succeeded. The only
+signal is the human rendering naming the unmatched rule. D111 therefore leaves
+`RawOnKnownProperty`'s scope unchanged and escalates a config-time never-match
+guard as its own package, with a recommendation to build it. That figure was
+corrected three times before it was right; the ROADMAP entry carries all three
+versions and what each got wrong.
 
 ## Owner decisions: ALL RULED at the session close, nothing waits on him
 
@@ -186,21 +200,25 @@ the ROADMAP; this is the index.
 
 ## Next steps (priority order)
 
-1. **Plan 12 first, and it needs a one-paragraph amendment before task 1.** Both
-   plans are approved, but Plan 12 carries ruling 1 above: the close-path residual
-   paragraph presently offers two options and picks neither, and the owner picked
-   B. That is a one-pair amendment (no task added, removed or re-cut) authored by
-   the plan's own author with the original reviewer judging the delta. Then
-   execute. Plan 12 goes first regardless of numbering because it is the only
-   thing that unblocks the stopped owner QA pass.
-2. **Plan 11 needs a FOUR-ROLE amendment before execution**, per ruling 2 above,
-   because its task A3 changes from a documentation task into a behaviour change
-   with tests. Do not start Plan 11's execution before that amendment is authored
-   and reviewed. The rest of the plan - the dependency task, the `BUILDING.md`
-   ordinals, the surviving line citations, the spec synopsis, the README example -
-   is unaffected and stays as approved.
-3. **Then Plan 11's execution.** Two streams in separate worktrees, merged
-   sequentially with a full gate run per merged state, per its document.
+1. **Execute Plan 12. Nothing is owed before task 1.** Both amendments the four
+   post-approval rulings required are DONE, authored and independently reviewed
+   within session 29, and both plans carry an unambiguous reviewer approval on top
+   of the owner's. Plan 12 goes first regardless of numbering because it is the
+   only thing that unblocks the stopped owner QA pass. Serial tasks in one
+   worktree, per its own document.
+2. **Then Plan 11.** Two streams in separate worktrees, merged sequentially with a
+   full gate run per merged state, per its document. **Read D111
+   (`docs/superpowers/specs/2026-07-30-plan11-raw-bytewise-design.md`) before task
+   A3** - the plan points at it per-site rather than duplicating its twelve
+   replacement strings, and that is a ruled decision with a hardening clause in
+   A3's Must-not-decide: transcribing those fences into the plan is deliberately
+   NOT wanted, because nothing compares the applied text against D111, so a drifted
+   duplicate would stay green while the wrong sentence shipped.
+3. **The one thing an implementer must not get backwards, restated because it is
+   the expensive mistake:** `scalar_eq`'s int/float cross arms STAY - they are
+   documented, intended behaviour of the typed `exact` path. Only the `raw:` call
+   site re-points, to a same-type comparator. Test T-1 exists to catch a strip, and
+   the reviewer measured that none of A3's other eight checks would.
 4. **A draft build for his QA pass** once Plan 12 lands: `workflow_dispatch` on
    release.yml with the draft flag, never a tag, never published.
 5. **At each plan close**, beyond the standard gate: execute the recorded close
