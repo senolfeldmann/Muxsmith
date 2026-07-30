@@ -3582,3 +3582,46 @@ with the round's yield folded in. Plan 11's position in that order is his to nam
 Each plan close still owes the deferred move of its per-finding narration out of the
 plan document, which two reviewers recommended and one measured at 21 and 23 percent
 of the respective documents.
+
+## 2026-07-30 | The order settled, and one method gap closed | session 29 close addendum (Peter, Opus 5 1M)
+
+**Scope.** The exchange after the third entry, commits `3ff3e14..HEAD`. No code. One
+ordering ruling that settled a question three earlier formulations had left open, and
+one change to the method this project runs on.
+
+**Decisions and their why.**
+- **The execution order is six steps and Plan 11 goes FIRST**: Plan 11, Plan 12, his
+  QA round, his feedback, spec-and-design Plan 13, implement Plan 13. This is the
+  fourth formulation of the QA timing in two days; all four are kept dated in the
+  ROADMAP rather than replaced, so the losing arguments stay legible.
+- **It wins on a reason the controller had raised against every earlier ordering and
+  then not applied to its own recommendation**: with Plan 11 first, his QA build
+  contains both plans, so it exercises the user-visible `raw:` behaviour change too.
+  Every earlier order - including the controller's own "Plan 12 first, it unblocks
+  the pass" - left that change untested by him. The price he accepts is one package
+  longer without access to the product.
+- **The controller obligation this creates is recorded rather than left to be
+  remembered**: Plan 12's document was authored and measured against the tree BEFORE
+  Plan 11 lands, and both plans amend the v1 spec in different sections. So at Plan
+  12's pre-execution gate, after Plan 11 merges, every fenced replace-exactly string
+  is re-verified to occur exactly once and every tree-measured figure is re-run.
+  Different sections means no textual conflict is expected; expecting is not
+  measuring.
+- **A gap in the method itself, closed.** The write-at-creation rule said reviewer
+  verdicts are files at creation and said nothing about the CONTROLLER's own
+  instructions. This session had four addenda to one plan brief living only as
+  subagent messages for hours, and the reviewer had to be handed a consolidated
+  requirement list separately before it could grade coverage against anything but
+  the artifact's own self-report. The rule now covers briefs, addenda, fix dispatches
+  and relayed rulings, with the reason stated - a brief is the input a four-eyes
+  round grades against - and scoped explicitly against the neighbouring rule on how
+  an instruction reaches a running agent, which it complements rather than replaces.
+
+**Friction and failure.** The ordering question was answered four times because the
+controller kept reporting a recommendation without carrying its own strongest
+counter-argument into it. The counter existed in writing from the first exchange -
+that a QA pass before a package does not exercise it - and was applied to the
+derivation package while being omitted from the plan order. The owner supplied it.
+
+**Open threads.** Nothing waits on him for Muxsmith. Framework-side follow-ups are
+tracked agent-side, including one scheduled to run in its own session after Plan 12.
