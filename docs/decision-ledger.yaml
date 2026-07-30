@@ -4307,21 +4307,6 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 whole-branch verdict adjudication 7 (whole-branch-verdict.md): of seven recorded stale-WiX-language sites, one was not stale (design :1012), one pointed at the wrong artifact (plan :718 instead of design :1966), and one real site was unrecorded; the brief's locate-by-content instruction caught all three, the recorded :line list would have propagated all three"}
-- id: gitignored-paths-need-command-grep
-  kind: pattern
-  tier: 1
-  source: agent-emergent
-  nature: operational
-  domain: process
-  statement: "On this dev machine the interactive shell binds `grep` to a function that honours .gitignore, so a rooted recursive sweep (grep -r over a directory) silently skips git-ignored trees - notably .superpowers/ - and returns a FALSE EMPTY rather than an error. Use `command grep` (or `git grep` for tracked files) whenever the search surface includes ignored paths. Refinement measured 2026-07-27: with an explicit path to a single ignored FILE the function still returns the hit, so the trap is specific to the recursive sweep form, which is exactly the form used when checking that something does not exist anywhere."
-  steelman: null
-  blocked_on: null
-  status: settled
-  promoted_at: null
-  count: 2
-  occurrences:
-    - {date: "2026-07-27", kind: violated-corrected, ref: "controller session-23 close work: grep -rl over .superpowers/ and docs/ for two rehearsal run ids returned only the handoff snapshot, implying the rehearsal evidence had never been written to an artifact; command grep on the same pattern found 12 hits in task-6-report.md. The false empty would have read as a write-at-creation violation that had not occurred"}
-    - {date: "2026-07-27", kind: reinforced, ref: "plan-8 whole-branch verdict HARVEST 5 (whole-branch-verdict.md): the reviewer tested the brief's warning and found the single-file explicit-path form unaffected, narrowing the trap to the rooted -r sweep; it used command grep throughout regardless"}
 - id: salvage-is-the-last-close-write
   kind: pattern
   tier: 1
