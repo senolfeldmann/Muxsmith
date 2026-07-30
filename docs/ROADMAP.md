@@ -964,7 +964,13 @@ Must be resolved before the first tagged release.
   has run is premature by construction. The pass needs a current build on his
   hardware; arranging that build is itself pre-1.0 work.
   **TIMING, owner 2026-07-29: the full product pass comes LATER, probably once
-  the next plan is implemented.** Round 1 covered the install paths only - three
+  the next plan is implemented.** **SUPERSEDED 2026-07-30: the pass comes once
+  BOTH Plan 12 and Plan 11 are fully implemented**, his ruling, replacing the
+  earlier next-plan formulation and also replacing the controller's
+  recommendation to run it directly after Plan 12 so its yield would be known
+  before the derivation package is designed. So the derivation package is
+  designed WITHOUT that yield, and its design round must not assume the QA pass
+  has informed it. Round 1 covered the install paths only - three
   OSes installed and launched, the documented steps and SHA commands confirmed,
   the macOS CLI symlink verified, one finding. The product itself is untested:
   a real dry-run and run over his own library, the profile editor including rule
@@ -2261,6 +2267,32 @@ statement about a closed plan. **Two boundaries of what shipped are recorded as
 ROADMAP triggers rather than left implicit:** a fourth marked gate block would be
 invisible to the check, and a command wrapped with a trailing `|` or `&&` is not
 modelled.
+
+## A config-time guard for a `raw:` comparison that can never match (owner-ruled 2026-07-30: BUILD IT)
+
+**Ruled 2026-07-30: build it, as its own package**, on the controller's
+recommendation and D111's escalation. The measured ground is that a `raw:`
+comparison which cannot match is reported nowhere today: no error severity, no
+suggestion, no proposed narrowing, an exit code identical on a successful match (1
+for a match, 1 for an optional non-match, 2 for a required one), and a skew warning
+that fires whether or not the comparison succeeded. The only signal is the human
+rendering naming the unmatched rule, and an OPTIONAL rule produces no error at all.
+The figure behind that was corrected three times before it was right; the
+`"byte-exact"` entry in "Docs accuracy" carries all three versions.
+
+Why it belongs at config time rather than as a runtime diagnostic: Muxsmith already
+rejects a mistyped property NAME at config time instead of letting it silently
+never-match, on the ground that a silent never-match is the worst failure mode for
+a declarative batch tool. A `raw:` comparison that cannot match by type is the same
+failure with a different cause and belongs caught at the same moment.
+
+**The owner attached a DOCUMENTATION requirement to it, and it is a requirement on
+the package rather than a nicety:** the `raw:` story is genuinely hard for a user to
+understand, so whatever ships must be well documented. Read that as covering both
+halves - the guard's own diagnostic text, and a user-facing explanation of what
+`raw:` compares and why, which is exactly the surface D111's twelve wording repairs
+touch. The package that builds the guard owns making that explanation good, not
+merely accurate.
 
 ## Every documented example is validated against the real binary (owner-approved 2026-07-30)
 

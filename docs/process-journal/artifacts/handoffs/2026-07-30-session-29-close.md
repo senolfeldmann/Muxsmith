@@ -1,4 +1,4 @@
-<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), final state after both amendments were authored, reviewed and approved. Supersedes the earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), final state after both amendments and the four late owner rulings. Supersedes the earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
 
 # Handoff
 
@@ -128,6 +128,13 @@ apply, a dry-run, a run, the jobs view or run history. Plan 12 is what unblocks
 it. **Until that pass completes, 1.0 scope is unknown by construction and no
 completeness claim about 1.0 may be made.**
 
+**TIMING, ruled 2026-07-30: he runs the pass once BOTH Plan 12 and Plan 11 are
+fully implemented**, not after Plan 12. This supersedes the earlier next-plan
+formulation and overrides the controller's recommendation to run it right after
+Plan 12 so its yield would inform the derivation design. Consequence to carry: the
+derivation package is designed WITHOUT that yield, and its design round must not
+assume the QA pass has informed it.
+
 ## Current state (verified)
 
 Re-derive rather than trusting these lines: `git log --oneline -1`,
@@ -226,12 +233,19 @@ the ROADMAP; this is the index.
    the SDD scratch and the journal. Plan 11's reviewer measured its self-review
    share rising to 21 percent of the document and recommended the move at the
    close rather than during review, where it is load-bearing.
-6. **Two items remain unscheduled with their own vehicles**, both pre-1.0 by owner
-   ruling and neither started: deriving a profile from a selected container whose
-   structure is read (needs its own design round first), and validating every
-   documented YAML example against the shipped binary (its load-bearing design
-   question is already named in the ROADMAP: the corpus contains fragments, so a
-   naive run goes red on correct content).
+6. **THREE items remain unscheduled with their own vehicles**, all pre-1.0 by owner
+   ruling and none started. In the controller's recommended order:
+   - **The example validator**: every documented YAML example run against the
+     shipped binary. Its load-bearing design question is already named - the corpus
+     contains fragments, so a naive run goes red on correct content, and the
+     explicit marker is the answer that matches the owner's line.
+   - **The `raw:` never-match guard**, ruled 2026-07-30, with a documentation
+     requirement attached: the `raw:` story is hard for a user to understand, so the
+     package owns making the explanation good and not merely accurate.
+   - **Deriving a profile from a selected container** whose structure is read. The
+     largest single item before the tag; needs its own design round first, and the
+     owner's binding shape is that the derived rules populate the profile IN THE
+     EDITOR, unsaved, with the editor as the review surface.
 7. **Archive duty:** session 29 is archived by the NEXT session. Session 28 was
    archived at the start of this one, verified, with its `/tmp` artifacts caught up.
 
