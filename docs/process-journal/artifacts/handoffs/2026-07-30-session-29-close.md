@@ -1,4 +1,4 @@
-<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), final state after both amendments and the four late owner rulings. Supersedes the earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), the definitive state: both amendments approved and the four late owner rulings folded in, including the Plan 13 definition and the final QA sequencing. Supersedes all earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
 
 # Handoff
 
@@ -128,12 +128,13 @@ apply, a dry-run, a run, the jobs view or run history. Plan 12 is what unblocks
 it. **Until that pass completes, 1.0 scope is unknown by construction and no
 completeness claim about 1.0 may be made.**
 
-**TIMING, ruled 2026-07-30: he runs the pass once BOTH Plan 12 and Plan 11 are
-fully implemented**, not after Plan 12. This supersedes the earlier next-plan
-formulation and overrides the controller's recommendation to run it right after
-Plan 12 so its yield would inform the derivation design. Consequence to carry: the
-derivation package is designed WITHOUT that yield, and its design round must not
-assume the QA pass has informed it.
+**TIMING, final form ruled 2026-07-30: the pass comes AFTER PLAN 12.** That is the
+third formulation in two days and supersedes his own earlier same-day ruling that it
+came after both Plan 12 and Plan 11; all three versions and what each got wrong are
+kept in the ROADMAP rather than replaced. The controller's original recommendation
+was exactly this, so it now stands - by his ruling, and with the reasoning it rested
+on restored: the round's yield is known BEFORE Plan 13 is designed, which is why
+Plan 13's scope is deliberately open until the round returns.
 
 ## Current state (verified)
 
@@ -207,47 +208,49 @@ the ROADMAP; this is the index.
 
 ## Next steps (priority order)
 
-1. **Execute Plan 12. Nothing is owed before task 1.** Both amendments the four
-   post-approval rulings required are DONE, authored and independently reviewed
-   within session 29, and both plans carry an unambiguous reviewer approval on top
-   of the owner's. Plan 12 goes first regardless of numbering because it is the
-   only thing that unblocks the stopped owner QA pass. Serial tasks in one
-   worktree, per its own document.
-2. **Then Plan 11.** Two streams in separate worktrees, merged sequentially with a
-   full gate run per merged state, per its document. **Read D111
-   (`docs/superpowers/specs/2026-07-30-plan11-raw-bytewise-design.md`) before task
-   A3** - the plan points at it per-site rather than duplicating its twelve
-   replacement strings, and that is a ruled decision with a hardening clause in
-   A3's Must-not-decide: transcribing those fences into the plan is deliberately
-   NOT wanted, because nothing compares the applied text against D111, so a drifted
-   duplicate would stay green while the wrong sentence shipped.
-3. **The one thing an implementer must not get backwards, restated because it is
-   the expensive mistake:** `scalar_eq`'s int/float cross arms STAY - they are
+**The sequence is owner-ruled 2026-07-30. Do not reorder it without him.**
+
+1. **Implement Plan 12.** Nothing is owed before task 1: both amendments the
+   post-approval rulings required are authored, independently reviewed and approved
+   within session 29, and both plans carry an owner approval on top. Serial tasks in
+   one worktree, per its own document. Plan 12 goes first because it is the only
+   thing that unblocks the stopped owner QA pass.
+2. **He runs a QA round on a draft build of that state.** `workflow_dispatch` on
+   release.yml with the draft flag, never a tag, never published. This is the round
+   whose yield decides Plan 13's final scope, so it is a gate on authoring Plan 13
+   and not merely a milestone.
+3. **Author Plan 13, folding in the round's yield, then implement it.** Its floor is
+   three members and its scope is OPEN by his ruling - it may grow. See the ROADMAP
+   section "Plan 13" for the three and their recorded design questions:
+   the example validator (whose design question is the fragment marker), the `raw:`
+   never-match guard (with his documentation requirement attached), and deriving a
+   profile from a selected container (the largest, needing its own design round, with
+   his binding shape: the derived rules populate the profile IN THE EDITOR, unsaved,
+   the editor being the review surface).
+4. **Plan 11's position in this order is HIS to name and is deliberately unresolved
+   here.** He named Plan 12 and Plan 13 for the coming sessions and did not mention
+   Plan 11, which is fully approved and blocks nothing. Controller reading, marked as
+   a reading: it stays in the queue with after the QA round as the natural slot. The
+   consequence worth raising with him: Plan 11 carries the user-visible `raw:`
+   behaviour change, so a QA round before it does not exercise that change. **Ask;
+   do not assume.**
+5. **Read D111** (`docs/superpowers/specs/2026-07-30-plan11-raw-bytewise-design.md`)
+   before Plan 11's task A3. The plan points at it per-site rather than duplicating
+   its twelve replacement strings, and that is a ruled decision with a hardening
+   clause in A3's Must-not-decide: transcribing those fences into the plan is
+   deliberately NOT wanted, because nothing compares the applied text against D111,
+   so a drifted duplicate would stay green while the wrong sentence shipped.
+6. **The one thing an implementer must not get backwards**, restated because it is
+   the expensive mistake: `scalar_eq`'s int/float cross arms STAY - they are
    documented, intended behaviour of the typed `exact` path. Only the `raw:` call
    site re-points, to a same-type comparator. Test T-1 exists to catch a strip, and
    the reviewer measured that none of A3's other eight checks would.
-4. **A draft build for his QA pass** once Plan 12 lands: `workflow_dispatch` on
-   release.yml with the draft flag, never a tag, never published.
-5. **At each plan close**, beyond the standard gate: execute the recorded close
-   action moving that plan's per-finding narration out of the plan document into
-   the SDD scratch and the journal. Plan 11's reviewer measured its self-review
-   share rising to 21 percent of the document and recommended the move at the
-   close rather than during review, where it is load-bearing.
-6. **THREE items remain unscheduled with their own vehicles**, all pre-1.0 by owner
-   ruling and none started. In the controller's recommended order:
-   - **The example validator**: every documented YAML example run against the
-     shipped binary. Its load-bearing design question is already named - the corpus
-     contains fragments, so a naive run goes red on correct content, and the
-     explicit marker is the answer that matches the owner's line.
-   - **The `raw:` never-match guard**, ruled 2026-07-30, with a documentation
-     requirement attached: the `raw:` story is hard for a user to understand, so the
-     package owns making the explanation good and not merely accurate.
-   - **Deriving a profile from a selected container** whose structure is read. The
-     largest single item before the tag; needs its own design round first, and the
-     owner's binding shape is that the derived rules populate the profile IN THE
-     EDITOR, unsaved, with the editor as the review surface.
-7. **Archive duty:** session 29 is archived by the NEXT session. Session 28 was
-   archived at the start of this one, verified, with its `/tmp` artifacts caught up.
+7. **At each plan close**, beyond the standard gate: execute the recorded close
+   action moving that plan's per-finding narration out of the plan document into the
+   SDD scratch and the journal. Two reviewers recommended it and one measured the
+   share at 21 and 23 percent of the respective documents.
+8. **Archive duty:** session 29 is archived by the NEXT session. Session 28 was
+   archived at the start of this one, verified, with its `/tmp` artefacts caught up.
 
 ## Open questions / risks
 
