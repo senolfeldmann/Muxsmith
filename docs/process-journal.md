@@ -3778,3 +3778,101 @@ trigger, which the controller had spent three messages treating as a side issue.
 config file cannot guard its own presence, and that boundary is recorded rather
 than papered over. Plan 12 is next, in a fresh session, with the re-verification
 of its quoted passages as its first step.
+
+## 2026-07-31 | Plan 12 tasks 1-3 of 7 | session 31 (Peter, Opus 5 1M)
+
+**Scope.** Plan 12 (owner QA round-3 findings) tasks 1 to 3 executed, reviewed
+and closed. Commits `bd3aa34..6ca7685`, 13 total: 5 product, 8 house-knowledge.
+Nothing pushed - the plan prescribes one push at its close. Tasks 4 to 7 remain.
+
+**Decisions and why.**
+- Pre-execution: Plan 12 was authored against `148f19f`, before Plans 11 and
+  11.5 landed, and both amend the same spec. A recon pass re-validated every
+  fenced OLD string and every tree-measured figure before task 1. 31 strings
+  present exactly once; 49 figures re-run, 3 moved, none reached by a task step.
+  The structural reason it was clean: no file Plan 12 touches changed in the
+  delta. Expecting that is not measuring it, which is why it ran.
+- Two controller rulings, both internal test/type mechanics, both recorded as
+  files rather than messages so the reviewer grades against the requirement and
+  not the artifact's self-report. Task 2: interaction locators follow the
+  RENDERING locale (the file's `en()` convention encodes "resolve through the
+  catalog", and its premise is the rendering language); and case 3 splits into
+  its two directions because the merged form cannot exercise the live path under
+  a stateless mock. Task 3: one token off the fenced `doSave`, because the
+  fenced form does not type-check.
+- Owner decision parked, not decided: after a profile fails to parse the editor
+  shows "Selected profile: X" and "no profile open" simultaneously, and the
+  recents list returns. Three options costed; the deciding measurement is that
+  the rendered parse error carries a detail and NOT the file path, so the path
+  line is the only place the failing file is named. Memo in the plan scratch.
+- House knowledge: 566 -> 570 entries, and `gitignored-paths-need-command-grep`
+  promoted to tier 2 on its third strict-fit event.
+
+**What the process caught.** Separated by origin, since that is the whole
+question the multi-stage review exists to answer.
+- PLAN defects, both found by implementers at code contact, neither resolvable
+  by reading: the fenced `doSave` body does not type-check (an aliased narrowing
+  condition TypeScript will not honour once the alias's subject is reassigned);
+  and a prescribed test case is always-red against a correct implementation
+  because the mock is stateless. The plan had passed two independent review
+  rounds and an amendment review before the owner approved it.
+- CONTROLLER defects, all found downstream: characterising that always-red case
+  as a false-green, which then propagated into a committed source comment that
+  cited the ruling as its authority; and building a review package over a
+  task-boundary range that contained the controller's own ledger commit, which
+  would have shown the reviewer a house-knowledge file in a task's file list.
+- FIX-ROUND defect, found by the reviewer's counterfactual: the corrected
+  ordering comment replaced a false claim with a different false claim, built on
+  one mutation that varied two things at once. Live trap - task 5 makes that
+  function async and "order does not matter" licenses the one failing shape.
+- IMPLEMENTER defects: two absence checks narrated instead of pasted; a report
+  claim contradicting its own pasted output; a load-bearing-order comment that
+  measurably was not; one shipped behaviour with no producer.
+- Noise: none of the 13 minors was a false positive on re-measurement; three
+  were the reviewer's own figures, one of which a third measurement overturned
+  in the implementer's favour.
+
+**Process mechanics.** 3 tasks, 12 fresh dispatches and 7 resumptions, all on
+Opus 5 - the same model as the controller and the session, no overrides, since
+the top tier serves only the whole-branch review at the plan close. 5 fix
+rounds (1 / 2 / 2), 2 NEEDS_CONTEXT returns, 4 delta re-reviews, every one to
+the resumed original reviewer. 32 artifacts in the plan scratch. Reviewers built
+and ran mutations unprompted; task 3's built 17.
+
+**Friction and failure.**
+- The controller read a build's exit status through a pipeline and got the
+  tail's `0` while the build had failed with `2` - one hour after recording that
+  exact trap in the ledger. Caught only because the error text was visible.
+- The controller's own grep filter for a known-present comment was derived from
+  memory of its wording rather than from the file, and missed one of two sites.
+  Caught only because a site was expected and absent.
+- One code comment took three attempts and was confidently wrong in two opposite
+  directions before a measurement settled it.
+- A fix round's `git checkout --` destroyed that round's own edits in the file it
+  was mutating; caught by an unexpectedly short `git status`.
+
+**Moments.**
+- Task 2's implementer refused two forks rather than working around them, and
+  both were real. The second would have shipped a test asserting a live locale
+  switch that could never have observed one.
+- Task 3's reviewer ran the counterfactual a fix round had not, and found the
+  correction wrong in the direction that would have trapped task 5.
+- A reviewer overturned its own verdict's subtotal on a third measurement,
+  adopting the implementer's figure.
+
+**Deltas.** Two plan defects reached execution through four eyes and an owner
+approval. Both were of the class reading cannot catch: one needs a compiler, the
+other needs the suite to run against a fixture. The plan's prose was correct
+about both mechanisms and wrong about both consequences.
+
+**Open threads.**
+- Owner decision on the failed-load empty state, parked with three costed
+  options; task 5 touches the same surface and is its natural vehicle.
+- Task 5 inherits two measured constraints: the session gate must stay above the
+  model assignment in `createBlank` once that function becomes async, and an async
+  funnel makes concurrent entry possible while the existing busy guard does not
+  cover a second call.
+- Tasks 4 and 5 append to the same catalogs under a placement clause that is
+  under-determined once a further section sits between; their dispatches carry an
+  explicit placement.
+- 13 unpushed commits; the single push is a plan-close action.
