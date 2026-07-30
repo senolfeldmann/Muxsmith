@@ -4677,9 +4677,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 3 report, controller item 2 (.superpowers/sdd/plan-9/task-3-report.md): the implementer mutated a catalog fixture to fire the placeholder-leak guard, then restored with a bare cp; the interactive alias blocked and the foreground run hung to its 600s timeout while the tree carried the mutation. Recovered with command cp -f and verified IDENTICAL, and the committed content matches the pre-mutation copy - but the same shape sits in Task 7's D49 experiment, whose whole protocol is mutate-measure-restore"}
+    - {date: "2026-07-31", kind: reinforced, ref: "plan-12 task-3 fix round (.superpowers/sdd/plan-12/task-3-report.md): the restore itself destroyed work. `git checkout -- src/views/EditorView.vue` after a mutation ALSO discarded the same round's own fix edits in that file, because by then the file carried both. Caught by `git status` showing an unexpectedly short modified list, re-applied and re-verified by content before the gate ran. **A revert-by-file is only sound while the file carries nothing but the mutation**; once the round has edited the file it is mutating, the restore needs a targeted inverse edit or a re-apply-and-recheck"}
 - id: a-house-rule-is-cited-by-id-and-file-never-by-commit-hash
   kind: pattern
   tier: 1
@@ -5566,3 +5567,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: decided, ref: "plan-12 task-1 verdict H4 (.superpowers/sdd/plan-12/task-1-verdict.md): D106's 'duplicate the resolution rule in the dialog rather than extracting a seam', D110's 'let the shell resolve its own locale' and D110's 'write the parity check in check-i18n.mjs instead of Rust' are all rejected on one ground - it would be a second or third implementation of a rule that already exists"}
+- id: a-controller-commit-between-task-commits-pollutes-a-range-review-package
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A review package built from a task-boundary range (last task commit .. fix commit) silently includes any CONTROLLER commit that landed in between - a ledger occurrence, a tracker write - and presents it to the reviewer as part of the task's diff. The reviewer then grades the task against a file the task is forbidden to touch. Trigger is readable: you are about to build a review package and you have committed something yourself since the base. Handle: build the package from the fix commit's own parent, and check the package's own commit count against the number of commits the task made."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: decided, ref: "plan-12 task-3 fix round: the first package built over 2cc0650..6904e4a carried the controller's own ledger commit c9f9350, so docs/decision-ledger.yaml appeared in the task's file list - a file the plan's Global Constraints forbid any task to edit. Caught by the controller reading the package's file list before dispatch and re-checking the fix commit alone, which touches two files; the package was rebuilt from 6904e4a^ and the reviewer never saw the false shape"}
