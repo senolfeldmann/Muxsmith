@@ -1983,14 +1983,22 @@ ten is recomputed.
     run the design's argument actually needs and did not make: **exit 1**, no error,
     info plus skew warning only, no zero-tracks warning, `suggestions: []`, and the
     human rendering prints `rule 1 -> track -`.
-  **So "fails silently" is false of both probes**: the exit is non-zero and the
-  rendering always names the unmatched rule. What survives is narrower and is the
-  part that matters: no ERROR severity, no suggestion, no proposed narrowing, and
-  the skew warning fires whether or not the comparison succeeded, so it is not a
-  signal about this at all.
-  **The pattern in the two corrections is worth more than either figure: both were
-  reasoned from a partial probe rather than measured, once in each direction** -
-  first overstating the diagnostic support, then overstating its absence. The
+  **CORRECTED A THIRD TIME, by the design author going further than the correction
+  asked for: the exit code carries NO signal about this at all.** A successful
+  `raw:` match also exits 1 (a required non-match exits 2). So the non-zero exit,
+  which the previous version of this paragraph offered as evidence that the failure
+  is not silent, does not distinguish a match from a non-match and is not evidence
+  of anything here. **The only surviving signal is the human rendering, which
+  prints `rule N -> track -`.** "Fails silently" remains false, but on one ground
+  instead of two.
+  What survives, final: no ERROR severity, no suggestion, no proposed narrowing, an
+  exit code that is identical on success, and a skew warning that fires whether or
+  not the comparison succeeded. The rendering names the unmatched rule.
+  **The pattern across the three corrections is worth more than any of the figures:
+  every version was reasoned from a partial probe rather than measured** - first
+  overstating the diagnostic support, then overstating its absence, then offering as
+  evidence a value that is the same in the passing case. Each was caught by the next
+  reader, never by the writer. The
   ruling stands on its other three grounds and on the owner's stated principle, and
   the genuine gap - no error and no narrowing on a path a user can reach - is why
   the design escalates a config-time never-match guard instead of relying on
