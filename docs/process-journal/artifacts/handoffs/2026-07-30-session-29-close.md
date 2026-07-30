@@ -1,4 +1,4 @@
-<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), superseding the earlier same-day snapshot after four owner rulings landed post-approval. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), superseding the earlier same-day snapshots after the post-approval owner rulings. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
 
 # Handoff
 

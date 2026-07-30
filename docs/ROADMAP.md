@@ -1922,9 +1922,40 @@ ten is recomputed.
   whichever package next amends the v1 spec** - same vehicle as the 8.1
   synopsis item below; both are spec-wording repairs and the README follows
   whatever the spec settles.
-  **RULED 2026-07-30: `raw:` MUST compare byte-exactly. The documents were right
-  and the CODE is the defect, so this entry inverts** - it is no longer a
-  wording repair. The owner: type casting must simply not happen under `raw:`.
+  **RULED 2026-07-30, and the ruling was refined in the same exchange, so read the
+  refinement before acting: BOTH the code and the wording are defective, in
+  different ways.** The owner's requirement is that no type casting happens under
+  `raw:`; his final disposition is the SMALL variant (same-type value equality)
+  together with documenting it precisely. An earlier version of this entry said
+  the documents were right and only the code was the defect - that was wrong and
+  is corrected here.
+  **Why the wording is still defective after the fix, measured at the code:** both
+  sides are parsed before any comparison happens. A `raw:` value goes through YAML
+  into a typed `Scalar`, and the reported side goes through `serde_json`, whose
+  conversion tries `as_i64()` and falls back to `as_f64()` - so `6.0` and `6.00`
+  both arrive as `Float(6.0)` on either side and the textual difference is gone
+  before the comparator exists. Dropping the cross arms therefore makes `6` stop
+  matching `6.0`, which is the defect the owner objected to, and leaves `6.0`
+  equal to `6.00`, which no comparator can change. **So "byte-exact" and
+  "byte-literal" were never true of numeric comparison and will not become true.**
+  The wording target is a same-type value equality without cross-type coercion,
+  stated precisely; the exact phrasing is the amendment's to settle, under the
+  constraint that no site may claim byte-exactness for a numeric comparison, and
+  the nine string-scoped sites are re-examined for consistency rather than assumed
+  retained.
+  **The rejected larger variant, with its steelman, so it is not rediscovered:**
+  compare both sides as their retained source text, which would make `6.0` differ
+  from `6.00` and take no type decision at all - literally what the owner's "no
+  help whatsoever" asks for, since deciding an unknown property's value IS a
+  number is itself an assumption. Rejected by him after the cost was named: it
+  requires the `raw:` value to keep its YAML source form instead of being typed
+  and the reported side to keep mkvmerge's JSON number token, which the default
+  conversion discards, so it reaches into the identify layer; and it would have
+  needed its own rule about whether a JSON string's quotes are part of the
+  literal, which relocates the type question rather than removing it. Supporting
+  it: the `6.0` versus `6.00` case is probably unreachable from mkvmerge's side,
+  because JSON writers emit the shortest round-tripping form - **stated as
+  reasoning, NOT measured**, and cheap to measure if it is ever load-bearing.
   He also ruled that **Plan 11 must be adjusted rather than shipping the
   accurate-for-today wording**, overruling the controller's recommendation to let
   it ship and amend the same sentences later.
@@ -1966,10 +1997,12 @@ ten is recomputed.
   schema grows.
   **Vehicle: an amendment to Plan 11, and it is the four-role case** - it re-cuts
   task A3 from a documentation task into a behaviour change with its own tests,
-  which the doctrine's amendment sizing puts beyond a one-pair amendment. The nine
-  retained wording sites stay retained (they concern `language` and `codec_kind`,
-  which are genuinely byte-literal); the six repair sites are no longer repairs,
-  because the sentences they carry become true again.
+  which the doctrine's amendment sizing puts beyond a one-pair amendment. The task
+  keeps BOTH halves: the comparator change and a wording repair, the latter now
+  aimed at a precise same-type statement rather than at describing today's
+  coercion. Do not read the ruling as removing the documentation work - that
+  misreading was live for one exchange and is what this paragraph exists to
+  prevent.
 
 - **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
   Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the
