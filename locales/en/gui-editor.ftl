@@ -143,3 +143,9 @@ editor-action-remove = Remove
 # Presentation-only 1-based index column; not a registry label, so no
 # .tooltip. The digit itself is locale-neutral data rendered in the cell.
 editor-track-rule-order = Order
+
+## Profile creation and the pre-session state
+
+editor-action-new = New profile
+editor-empty = No profile open. Create one with New profile, or choose an existing profile file.
+editor-unsaved = New profile, not saved yet.

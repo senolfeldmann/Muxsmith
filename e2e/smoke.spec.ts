@@ -865,7 +865,8 @@ test.describe("german locale", () => {
 // `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
 // NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
 // the AttachmentRule fields they are the registry labels for. Catalog
-// budget is 45 (42 labels + 1 save-surface note + 2 generic action keys).
+// budget is 49 (42 labels + 1 save-surface note + 2 generic action keys +
+// 1 rule-grid ordinal + 3 profile-creation keys).
 test.describe("editor widgets: mount-harness rendering", () => {
   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
     await mountComponent(page, {
@@ -1619,5 +1620,308 @@ test.describe("editor view: recent profiles (Task 13c, spec 8.2 / recents routin
     const written = (writes[0].args as { settings: AppSettings }).settings;
     expect(written.recent_profiles[0]).toBe(OPENED_PATH);
     expect(written.recent_profiles).toContain(RECENT_PATH);
+  });
+});
+
+// Plan 12 W2 (D107, ROADMAP round-3 finding 2, spec 8.2): the editor gains
+// a New action that seeds a blank profile in memory and touches no file,
+// and `currentPath` stops standing in for "a profile is in the editor" --
+// it keeps only its path duties (the save target and the open-path line),
+// while `sessionActive` carries the funnel fact and `model` carries the
+// has-content fact. The seed is MEASURED rather than chosen: through the
+// CLI (`muxsmith validate --json`) and through `validate::config_
+// diagnostics` on the deserialized model, `{ pattern: ".*", extensions:
+// ["mkv"], rules: [{ match: {} }] }` produces exactly one diagnostic,
+// `empty-match-expression` at WARNING severity on `tracks[0].match` -- so
+// the profile is incomplete-and-announced (spec 8.2's Add idiom, one level
+// up) and Save is alive, whereas a schema-minimum seed carries
+// `empty-extensions` at ERROR severity and would ship a dead Save button.
+// Served-app tests (nav to the editor), matching Tasks 13/13c's precedent
+// rather than the mount harness, because the whole point is the IPC the
+// bare mount deliberately never fires.
+test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () => {
+  // The path the save dialog returns. Distinct from every other path
+  // literal in this file (`echo-mock-distinct-fixture-values`), so an
+  // identity assertion on it cannot pass on a value some other fixture
+  // also carries.
+  const PICKED_PATH = "/profiles/created-by-new.yaml";
+  // Case 6's already-open profile: a second distinct literal, so "Save
+  // wrote the OPENED path and never opened a dialog" cannot be satisfied
+  // by the dialog's own scripted return value.
+  const OPENED_PATH = "/profiles/already-pathed.yaml";
+
+  const seedWarning: Diagnostic = {
+    code: "empty-match-expression",
+    severity: "warning",
+    config_path: "tracks[0].match",
+    params: {},
+    rendered: "empty-match-expression",
+  };
+
+  const warnReport: ReportDocument = {
+    config_diagnostics: [seedWarning],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  const cleanReport: ReportDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  // Case 6's opened profile: a real, pathed profile, deliberately NOT the
+  // seed, so "the save wrote what was in the editor" is checkable.
+  const openedProfile: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [{ match: { exact: { type: "video" } } }] },
+  };
+
+  const openedDoc: LoadProfileDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+    profile: openedProfile,
+  };
+
+  // The static half of the open-path line, taken FROM the catalog at
+  // runtime (rendered with an empty path, Fluent's isolate marks stripped)
+  // rather than typed from memory, so the "no open-path line" assertions
+  // below cannot pass because the term drifted from what the catalog
+  // actually says. Its fired control is case 4, where the same locator
+  // resolves once the profile acquires a path.
+  const PROFILE_LINE_PREFIX = visibleText(en("batch-profile-current", { path: "" })).trim();
+
+  // Absence check E1's expression, shared by the zero-state assertion and
+  // its fire so the two cannot drift apart.
+  const DIAGNOSTICS_SECTION = 'section[aria-labelledby="editor-diagnostics-heading"]';
+
+  async function gotoEditor(page: Page) {
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+    return editor;
+  }
+
+  test("New seeds the editor with the blank profile and validates it with no path in existence", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-new").click();
+
+    // The seed reached the model and the grid renders it.
+    await expect(editor.getByTestId("editor-rule-row")).toHaveCount(1);
+    await expect(editor.getByRole("textbox", name("editor-input-pattern"))).toHaveValue(".*");
+
+    // Pathless, and the view says so: the unsaved line instead of the
+    // open-path line.
+    await expect(editor.getByTestId("editor-unsaved")).toBeVisible();
+    await expect(editor.getByText(PROFILE_LINE_PREFIX)).toHaveCount(0);
+
+    // The pre-session empty state is gone now that the editor holds
+    // something.
+    await expect(editor.getByTestId("editor-empty")).toHaveCount(0);
+
+    // The wire half of the decoupling, and real invocation evidence rather
+    // than a UI echo: validate-on-edit fired for a profile that has no
+    // path at all, carrying the seed itself. Under the old `currentPath`
+    // gate this call could not exist.
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "validate_profile_model").length)
+      .toBeGreaterThan(0);
+    const validateCalls = recorded.filter((r) => r.cmd === "validate_profile_model");
+    const validated = (validateCalls[0].args as { profile: Profile }).profile;
+    expect(validated.input.extensions).toEqual(["mkv"]);
+    expect(validated.tracks.rules).toHaveLength(1);
+  });
+
+  test("the seeded rule is warned, not blocked: the diagnostic renders and Save stays enabled", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        validate_profile_model: [resolveWith(warnReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-new").click();
+
+    await expect(
+      editor.getByText(
+        en("batch-diagnostic-line", {
+          severity: en("severity-warning"),
+          message: en("empty-match-expression"),
+        }),
+      ),
+    ).toBeVisible();
+    // The whole point of the measurement: a warning announces the hole,
+    // an error would have disabled the button the user needs next.
+    await expect(editor.getByTestId("editor-save")).toBeEnabled();
+  });
+
+  test("the pre-session state names both entry paths, and the diagnostics section does not render over nothing", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        validate_profile_model: [resolveWith(warnReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await expect(editor.getByTestId("editor-empty")).toBeVisible();
+
+    // ABSENCE CHECK E1: before this task the editor rendered a
+    // "Diagnostics" heading over an empty panel in this exact state --
+    // literally nothing, with no explanatory text (round-3 finding 2's own
+    // contributing observation). The section is now gated on content.
+    await expect(editor.locator(DIAGNOSTICS_SECTION)).toHaveCount(0);
+    await assertNoSeriousA11yViolations(page);
+
+    // E1's FIRE, in this same test and with the same locator: the seed's
+    // warning makes the section resolve, so the zero above is a measured
+    // absence rather than a selector that matches nothing anywhere.
+    await editor.getByTestId("editor-new").click();
+    await expect(editor.locator(DIAGNOSTICS_SECTION)).toHaveCount(1);
+    await expect(editor.getByTestId("editor-empty")).toHaveCount(0);
+    await assertNoSeriousA11yViolations(page);
+  });
+
+  test("Save on a pathless profile opens the save dialog, writes the picked path, and remembers it", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        validate_profile_model: [resolveWith(cleanReport)],
+        "plugin:dialog|save": [resolveWith(PICKED_PATH)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-new").click();
+    const saveButton = editor.getByTestId("editor-save");
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|save").length)
+      .toBe(1);
+
+    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
+    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+    expect(saveArgs.path).toBe(PICKED_PATH);
+    expect(saveArgs.profile.tracks.rules).toHaveLength(1);
+
+    // The picked path became the profile's path from then on: the
+    // open-path line replaces the unsaved one. This is also the fired
+    // control for `PROFILE_LINE_PREFIX`, which cases 1 and 5 assert to
+    // zero.
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: PICKED_PATH })),
+    ).toBeVisible();
+    expect(await editor.getByText(PROFILE_LINE_PREFIX).count()).toBeGreaterThan(0);
+    await expect(editor.getByTestId("editor-unsaved")).toHaveCount(0);
+
+    // A profile that just acquired a path is exactly what the recents
+    // memory is for.
+    await expect.poll(() => recorded.filter((r) => r.cmd === "set_settings").length).toBe(1);
+    const writes = recorded.filter((r) => r.cmd === "set_settings");
+    const written = (writes[0].args as { settings: AppSettings }).settings;
+    expect(written.recent_profiles[0]).toBe(PICKED_PATH);
+  });
+
+  test("a cancelled save dialog writes nothing", async ({ page }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        validate_profile_model: [resolveWith(cleanReport)],
+        "plugin:dialog|save": [resolveWith(null)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-new").click();
+    const saveButton = editor.getByTestId("editor-save");
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+
+    // The flow RAN and reached the dialog -- this is E2's fire (together
+    // with case 4's non-zero counter for the same command), so the zero
+    // below cannot be "the save was never attempted".
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|save").length)
+      .toBe(1);
+    // End state: still pathless. A successful write would have set the
+    // path and swapped these two lines.
+    await expect(editor.getByTestId("editor-unsaved")).toBeVisible();
+    await expect(editor.getByText(PROFILE_LINE_PREFIX)).toHaveCount(0);
+
+    // ABSENCE CHECK E2: a cancelled dialog writes no file.
+    expect(recorded.filter((r) => r.cmd === "save_profile")).toHaveLength(0);
+  });
+
+  test("an already-pathed save is unchanged: no dialog, and the opened path is what gets written", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(OPENED_PATH)],
+        load_profile: [resolveWith(openedDoc)],
+        validate_profile_model: [resolveWith(cleanReport)],
+        // Scripted deliberately: if the dialog branch ever opened here it
+        // would return a DIFFERENT path, so the assertions below fail
+        // loudly instead of silently agreeing.
+        "plugin:dialog|save": [resolveWith(PICKED_PATH)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByRole("button", name("batch-profile-pick")).click();
+    await expect(
+      editor.getByText(en("batch-profile-current", { path: OPENED_PATH })),
+    ).toBeVisible();
+
+    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
+    await patternField.fill("^S[0-9]+E[0-9]+");
+    const saveButton = editor.getByTestId("editor-save");
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+
+    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
+    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+    expect(saveArgs.path).toBe(OPENED_PATH);
+    expect(saveArgs.profile.input.pattern).toBe("^S[0-9]+E[0-9]+");
+
+    // The regression guard for the new branch: an already-pathed save
+    // never reaches the dialog...
+    expect(recorded.filter((r) => r.cmd === "plugin:dialog|save")).toHaveLength(0);
+    // ...and never re-feeds the recents memory. The one `set_settings` on
+    // record is the OPEN's, which existed before this task.
+    expect(recorded.filter((r) => r.cmd === "set_settings")).toHaveLength(1);
   });
 });

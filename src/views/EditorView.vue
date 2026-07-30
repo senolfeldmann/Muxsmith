@@ -53,18 +53,22 @@
 // block, no v-model, no shared editor state there. This keeps
 // `EditorView` mountable from an injected `modelValue` alone -- the Tasks
 // 10-12 mount-harness specs feed one directly, install no IPC mock, and
-// never click Open, so the validate-on-edit watcher below is gated on
-// `currentPath` (only Open's own IPC round trip ever sets it): a bare-
-// mounted `EditorView` edits its model plenty (drag-reorder, widget
+// never click Open or New, so the validate-on-edit watcher below is gated
+// on `sessionActive`, which only this view's own two funnels set
+// (`openPath` on a completed load, `createBlank` on a fresh seed -- D107):
+// a bare-mounted `EditorView` edits its model plenty (drag-reorder, widget
 // input) but never triggers `validate_profile_model`, keeping those specs
 // green with no injected mock (mount-harness amendment's own review-
 // check).
 //
 // No new `gui-editor.ftl`/`gui-common.ftl` keys: D45's design-doc catalog
 // table enumerates every Fluent key the whole plan adds, and Task 13
-// carries none (`gui-editor.ftl` stays 45, the brief's own Files list
-// carries no `.ftl`). The Open button, the currently-open-path line, and
-// the file-dialog filter name reuse `batch-profile-pick`/`batch-profile-
+// carries none (the brief's own Files list carries no `.ftl`). Later
+// packages did add to it: `gui-editor.ftl` carries 49 ids today, three of
+// them this view's own New affordance (`editor-action-new`,
+// `editor-empty`, `editor-unsaved`, D107). The Open button, the
+// currently-open-path line, and the file-dialog filter name reuse
+// `batch-profile-pick`/`batch-profile-
 // current`/`batch-profile-filter-name` (BatchView's own "choose + show a
 // profile path" affordance -- their content is generic, not batch-
 // specific, and cross-view key reuse already has two precedents:
@@ -95,7 +99,7 @@
 // post-reorder edit can never land on a rule the user did not re-select.
 import { computed, onMounted, provide, ref, watch } from "vue";
 import { useFluent } from "fluent-vue";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { Profile, TrackRule } from "../bindings/profile";
 import { SOURCE_KEYWORDS } from "../bindings/keywords";
 import type { EditableField } from "../editor/fieldSpec";
@@ -117,6 +121,17 @@ const fluent = useFluent();
 // --- Task 13: open/save/validate state ----------------------------------
 
 const currentPath = ref<string | null>(null);
+
+// D107: a profile entered the editor through one of its own funnels,
+// `openPath` or `createBlank`. It exists rather than the gates below
+// reusing `currentPath` because a CREATED profile has no path at all --
+// gating validation on `currentPath` would leave a new profile
+// unvalidated until its first save. It is also not `model`: the bare
+// mount-harness case (a spec injects `modelValue` and installs no IPC
+// mock) must keep firing no IPC, which is a safeguard bought deliberately
+// in plan 6 and preserved here rather than dropped.
+const sessionActive = ref(false);
+
 const diagnostics = ref<Diagnostic[]>([]);
 const opening = ref(false);
 const saving = ref(false);
@@ -182,13 +197,14 @@ function ruleRowSeverity(index: number) {
 // The one sanctioned frontend affordance (spec 7, D41 binding point):
 // Save is disabled while any error-severity diagnostic exists.
 const saveDisabled = computed(
-  () => !model.value || !currentPath.value || hasErrors.value || saving.value || opening.value,
+  () => !model.value || hasErrors.value || saving.value || opening.value,
 );
 
 let validationGeneration = 0;
 
 // Spec 7 ("every profile edit"): revalidates through `validate_profile_model`
-// whenever the held model changes. Gated on `currentPath` -- see the doc
+// whenever the held model changes. Gated on `sessionActive`, which both of
+// this view's funnels set (`openPath` and `createBlank`) -- see the doc
 // comment above for why a bare mount-harness `EditorView` never reaches
 // this. Every top-level `model.value =` assignment throughout the widget
 // tree is a fresh object (`SectionWidget.vue`'s own `{ ...model.value,
@@ -199,7 +215,7 @@ let validationGeneration = 0;
 // blocking-task thread pool (D42's own doc on why it is `async` at all),
 // so rapid edits can resolve out of order.
 watch(model, async (value) => {
-  if (!currentPath.value || !value) {
+  if (!sessionActive.value || !value) {
     return;
   }
   const generation = ++validationGeneration;
@@ -229,6 +245,7 @@ async function openPath(path: string): Promise<void> {
   try {
     const doc = await loadProfile(path);
     currentPath.value = path;
+    sessionActive.value = true;
     diagnostics.value = doc.config_diagnostics;
     model.value = doc.profile ?? undefined;
     // Background bookkeeping only (mirrors BatchView's identical
@@ -263,14 +280,94 @@ async function pickAndOpen(): Promise<void> {
   await openPath(picked);
 }
 
-async function doSave(): Promise<void> {
-  if (saveDisabled.value || !model.value || !currentPath.value) {
+// D107 decision 1, spec 8.2: the seed New puts in the editor. A FUNCTION
+// rather than a shared constant, so every New gets a fresh object no
+// earlier session's edits can reach -- the same immutable-rebuild
+// discipline every other write in this view follows.
+//
+// `input.extensions` carries a value because the validator forces one, not
+// for convenience: an empty list is `empty-extensions` at ERROR severity
+// (measured), and an error disables Save, so a bare schema-minimum seed
+// would greet the user with a dead Save button. What the seed does produce
+// is exactly one diagnostic, `empty-match-expression` at WARNING severity
+// on `tracks[0].match` -- incomplete-until-filled and announced, the same
+// idiom spec 8.2 already blesses for Add's empty rule, one level up.
+// `pattern: ".*"` over `""`: both are diagnostic-free, and `.*` makes the
+// identifier the whole basename rather than the empty string for every
+// file, so the seed is immediately usable in a dry run.
+function blankProfile(): Profile {
+  return {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [{ match: {} }] },
+  };
+}
+
+// The creation funnel (D107), sibling of `openPath`: it touches no file,
+// so it is synchronous and holds no `opening`/`saving` flag of its own --
+// it only refuses to run while one of those round trips is in flight, the
+// same guard `pickAndOpen` uses.
+//
+// The statement ORDER is load-bearing. `diagnostics` is cleared before the
+// model is replaced, so a previous profile's findings can never render
+// against the new one; `sessionActive` is set BEFORE `model`, so the
+// `watch(model)` above -- which fires on that very assignment -- validates
+// the seed instead of returning early on a still-false gate; and the
+// seeded rule is selected (index 0) so the detail panel opens on the one
+// field the warning is about, mirroring Add's own behaviour (D67).
+function createBlank(): void {
+  if (opening.value || saving.value) {
     return;
   }
+  ipcErrorCode.value = null;
+  currentPath.value = null;
+  diagnostics.value = [];
+  sessionActive.value = true;
+  model.value = blankProfile();
+  selectedIndex.value = 0;
+}
+
+async function doSave(): Promise<void> {
+  if (saveDisabled.value || !model.value) {
+    return;
+  }
+  // Captured before the dialog gap: the native save dialog can stay open
+  // indefinitely, and the model may change underneath it -- what gets
+  // written must be the profile that was in the editor when Save was
+  // clicked (same rule as the job-log export in `RunHistory`).
+  const profile = model.value;
+  let path = currentPath.value;
+  const needsPath = path === null;
   saving.value = true;
   ipcErrorCode.value = null;
   try {
-    await saveProfile(currentPath.value, model.value);
+    // Tested directly rather than through `needsPath`, and the two are
+    // deliberately NOT unified: `path` is reassigned just below, so the
+    // alias narrows nothing and only a direct null test makes `path` a
+    // `string` at `saveProfile`; the second `needsPath` further down must
+    // keep asking the ORIGINAL question, since by then `path === null` is
+    // false and the recents write is gated on the path being NEWLY
+    // established (D107 decision 5).
+    if (path === null) {
+      const picked = await saveDialog({
+        defaultPath: "profile.yaml",
+        filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
+      });
+      if (typeof picked !== "string") {
+        return;
+      }
+      path = picked;
+    }
+    await saveProfile(path, profile);
+    currentPath.value = path;
+    if (needsPath) {
+      // A profile that just acquired a path is exactly what the recents
+      // memory is for; an already-pathed save leaves it alone, as before.
+      const persisted = await rememberRecentProfile(path);
+      if (persisted) {
+        recents.value = persisted.recent_profiles;
+      }
+    }
   } catch (e) {
     const err = e as IpcError;
     ipcErrorCode.value = err.code;
@@ -483,6 +580,14 @@ function removeSelectedRule() {
   >
     <button
       type="button"
+      data-testid="editor-new"
+      :disabled="opening || saving"
+      @click="createBlank"
+    >
+      {{ $t("editor-action-new") }}
+    </button>
+    <button
+      type="button"
       data-testid="editor-open"
       :disabled="opening || saving"
       :aria-busy="opening"
@@ -493,9 +598,21 @@ function removeSelectedRule() {
     <p v-if="currentPath">
       {{ $t("batch-profile-current", { path: currentPath }) }}
     </p>
+    <p
+      v-else-if="sessionActive"
+      data-testid="editor-unsaved"
+    >
+      {{ $t("editor-unsaved") }}
+    </p>
+    <p
+      v-if="!model"
+      data-testid="editor-empty"
+    >
+      {{ $t("editor-empty") }}
+    </p>
 
     <section
-      v-if="!currentPath && recents.length"
+      v-if="!model && recents.length"
       aria-labelledby="editor-recents-heading"
       data-testid="editor-recents"
     >
@@ -526,7 +643,10 @@ function removeSelectedRule() {
       {{ $t(ipcErrorCode, ipcErrorParams) }}
     </p>
 
-    <section aria-labelledby="editor-diagnostics-heading">
+    <section
+      v-if="diagnostics.length"
+      aria-labelledby="editor-diagnostics-heading"
+    >
       <h3 id="editor-diagnostics-heading">
         {{ $t("batch-diagnostics-heading") }}
       </h3>
