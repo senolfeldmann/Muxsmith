@@ -964,13 +964,16 @@ Must be resolved before the first tagged release.
   has run is premature by construction. The pass needs a current build on his
   hardware; arranging that build is itself pre-1.0 work.
   **TIMING, owner 2026-07-29: the full product pass comes LATER, probably once
-  the next plan is implemented.** **SUPERSEDED 2026-07-30: the pass comes once
-  BOTH Plan 12 and Plan 11 are fully implemented**, his ruling, replacing the
-  earlier next-plan formulation and also replacing the controller's
-  recommendation to run it directly after Plan 12 so its yield would be known
-  before the derivation package is designed. So the derivation package is
-  designed WITHOUT that yield, and its design round must not assume the QA pass
-  has informed it. Round 1 covered the install paths only - three
+  the next plan is implemented.** **SUPERSEDED TWICE ON THE SAME DAY, and the
+  final form is the third: the pass comes after PLAN 12.** The first formulation
+  was "once the next plan is implemented" (2026-07-29); the second was "once BOTH
+  Plan 12 and Plan 11 are implemented" (2026-07-30); the ruling that stands is
+  **after Plan 12**, same day. The controller's own recommendation had been exactly
+  that, so it is now what happens - but by his ruling, not by that recommendation,
+  and the reasoning it rested on is restored with it: the round's yield is known
+  BEFORE the derivation package is designed, which is why Plan 13's scope is
+  deliberately open until the round returns. See the "Sequencing" section for the
+  full order and for the one question it leaves open. Round 1 covered the install paths only - three
   OSes installed and launched, the documented steps and SHA commands confirmed,
   the macOS CLI symlink verified, one finding. The product itself is untested:
   a real dry-run and run over his own library, the profile editor including rule
@@ -2267,6 +2270,53 @@ statement about a closed plan. **Two boundaries of what shipped are recorded as
 ROADMAP triggers rather than left implicit:** a fourth marked gate block would be
 invisible to the check, and a command wrapped with a trailing `|` or `&&` is not
 modelled.
+
+## Plan 13: the three remaining pre-1.0 items as ONE plan, with an open scope (owner-ruled 2026-07-30)
+
+**Ruled 2026-07-30, and it reverses the controller's recommendation of three
+separate vehicles:** the three remaining pre-1.0 items become **one plan, Plan 13**.
+The controller had argued for three contracts on the ground that they share nothing
+and each closes independently; he ruled one plan. Its members:
+
+1. **Every documented YAML example validated against the shipped binary** (its own
+   section below carries the design question: the corpus contains fragments, so an
+   explicit marker for complete-profile blocks is what keeps the check from going
+   red on correct content).
+2. **The config-time guard for a `raw:` comparison that can never match** (its own
+   section below, including the documentation requirement he attached).
+3. **Deriving a profile from a file the user selects, whose track structure is read
+   out** (recorded in the "OWNER QA PASS, round 3" entry with its binding shape -
+   the derived rules populate the profile IN THE EDITOR, unsaved, the editor being
+   the review surface - and its fencing against the two filename-derivation
+   rulings).
+
+**PLAN 13's SCOPE IS DELIBERATELY OPEN UNTIL HIS QA ROUND IS DONE.** His words: it
+can still grow, so it may contain more than these three. That is a hard sequencing
+constraint rather than a note, and it decides when the plan may be authored at all:
+**Plan 13 is not authored before the QA round returns**, because a contract whose
+scope is knowingly incomplete is not a contract. The three members above are its
+floor, not its content.
+
+## Sequencing, ruled 2026-07-30, and it supersedes an earlier ruling of his own
+
+1. **Plan 12 is implemented.** It is the only thing that unblocks the stopped QA
+   pass.
+2. **He runs a QA round.** **This supersedes his ruling of the same day that the
+   pass comes once BOTH Plan 12 and Plan 11 are implemented** - it now comes after
+   Plan 12. The controller's own earlier recommendation (right after Plan 12) is
+   therefore what stands, but by his ruling and not by that recommendation.
+3. **Plan 13 is authored with the QA yield folded in, then implemented.**
+
+**OPEN QUESTION, and it is NOT resolved here because he did not name it:** where
+Plan 11 sits in that sequence. He named Plan 12 and Plan 13 for the coming
+sessions and did not mention Plan 11, which is fully approved and blocks nothing.
+**Controller reading, marked as a reading:** Plan 11 stays in the queue and its
+position is open, with after the QA round as the natural slot. **The consequence
+worth his attention, because it is the same shape as the one that produced this
+sequencing discussion:** Plan 11 carries the `raw:` behaviour change, which is
+user-visible, so a QA round that runs before Plan 11 does not exercise it. Whether
+that matters is his call - a GUI-focused pass is unlikely to reach `raw:` matching
+either way.
 
 ## A config-time guard for a `raw:` comparison that can never match (owner-ruled 2026-07-30: BUILD IT)
 

@@ -3517,3 +3517,68 @@ is escalated to the owner with a recommendation: a config-time guard for a `raw:
 comparison that can never match, since the runtime diagnostics were measured not to
 carry the signal. Each plan close owes the deferred move of its per-finding
 narration out of the plan document.
+
+## 2026-07-30 | Session close, four late rulings, Plan 13 defined | session 29 close (Peter, Opus 5 1M)
+
+**Scope.** The session's final exchange, commits `b8e4068..HEAD`. No code, no plan
+execution: four owner rulings, two of which reversed decisions taken earlier the
+same day, and the third journal entry of one session.
+
+**Decisions and their why.**
+- **The three remaining pre-1.0 items become ONE plan, Plan 13**, reversing the
+  controller's recommendation of three separate vehicles. The controller's argument
+  was that they share nothing and each closes independently; his ruling was one
+  plan. Recorded with the reversal named, because the earlier reasoning is what a
+  later reader would otherwise re-derive.
+- **Plan 13's scope is deliberately OPEN until his QA round returns** - it may grow
+  beyond the three. That converts an ordering preference into a hard constraint:
+  the plan cannot be authored before the round, because a contract whose scope is
+  knowingly incomplete is not a contract.
+- **The QA round comes after Plan 12**, which is the third formulation of that
+  timing in two days and supersedes his own ruling of a few hours earlier that it
+  came after both Plan 12 and Plan 11. The controller's original recommendation was
+  exactly this, so it now stands - but by his ruling, and the reasoning it rested
+  on is restored with it: the round's yield is known before the derivation is
+  designed.
+- **The `raw:` never-match guard is to be built**, with a documentation requirement
+  attached in his own words: the `raw:` story is hard for a user to understand. The
+  controller recorded that as covering both the guard's diagnostic text and a
+  user-facing explanation of what `raw:` compares, i.e. the same surface D111's
+  twelve wording repairs touch.
+
+**What the process caught.** Nothing new in an artifact; the catch was in the
+controller's own bookkeeping. His sequencing ruling left ONE thing unnamed - where
+Plan 11 sits, since he named only 12 and 13 for the coming sessions - and the
+controller recorded it as an open question with a marked reading rather than
+filling the gap with the obvious answer. The consequence surfaced with it: Plan 11
+carries the user-visible `raw:` change, so a QA round before it does not exercise
+that change, which is the same shape as the argument that produced the sequencing
+discussion in the first place.
+
+**Friction and failure.**
+- **A timing decision took three formulations in two days**, and each superseded a
+  written record rather than an intention. The controller's handling improved
+  across them: the first supersession replaced the text, the third recorded all
+  three versions with what each got wrong. The lesson is the same one this session
+  paid for repeatedly, one level up from figures: a superseded ruling is not
+  deleted, it is dated and kept, or the next reader re-derives the losing argument.
+- **The controller recommended three vehicles and was overruled in one sentence.**
+  The recommendation was not wrong on its stated ground (independent closability)
+  and was outweighed by one it had not weighed: a single plan whose scope stays
+  open can absorb the QA yield without a new authoring round. Worth recording as an
+  argument the controller did not consider rather than as a preference difference.
+- The session-close sweep found one uttered ruling with no durable home yet: his
+  choice on how transcript-archive documents are dated. Agent-side material, so not
+  in this repo, but the sweep is what caught it and the sweep is the reason the
+  gate has that step.
+
+**Deltas.** The session was planned as a resume-and-continue and became a
+three-journal-entry session: a close, then two plan amendments the owner's
+post-approval rulings forced, then this. The plan-close gate never fired because no
+plan closed; every artifact produced was a contract or a record.
+
+**Open threads.** Plan 12 executes first, then his QA round, then Plan 13 authored
+with the round's yield folded in. Plan 11's position in that order is his to name.
+Each plan close still owes the deferred move of its per-finding narration out of the
+plan document, which two reviewers recommended and one measured at 21 and 23 percent
+of the respective documents.
