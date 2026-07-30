@@ -5581,3 +5581,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: decided, ref: "plan-12 task-3 fix round: the first package built over 2cc0650..6904e4a carried the controller's own ledger commit c9f9350, so docs/decision-ledger.yaml appeared in the task's file list - a file the plan's Global Constraints forbid any task to edit. Caught by the controller reading the package's file list before dispatch and re-checking the fix commit alone, which touches two files; the package was rebuilt from 6904e4a^ and the reviewer never saw the false shape"}
+- id: a-mutation-answers-its-own-question-never-the-constraint-built-on-it
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A mutation result licenses exactly the claim its own configuration encodes. Writing a BROADER constraint from it - 'therefore X and Y must hold together' - is unbounded until the counterfactual that would falsify the broader form has been run. Trigger is readable: you are about to write a general rule whose evidence is one mutation. Handle: enumerate the configurations the general rule forbids and run the ones the mutation did not, especially the one nearest the shipped state; a single mutation that varies TWO things at once cannot separate them, and the round usually already holds the material to bound it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-3 delta verdict D-1 (.superpowers/sdd/plan-12/task-3-delta-verdict.md): a fix round replaced a measured-false ordering claim with a synchronicity claim built on ONE mutation that varied both the order and an inserted await. The reviewer ran the counterfactuals: shipped order plus an await between the two, and after both, each leave the suite green, so the synchronicity constraint does not exist and the relative ORDER - which the same paragraph called inconsequential - is what is load-bearing. The trap was live: Task 5 makes that function async, and 'nothing depends on the order' licenses precisely the one failing configuration"}
