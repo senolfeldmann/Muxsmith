@@ -15,6 +15,17 @@ yanked = "deny"
 # unsoundness, which is the case we would most want to hear about. Both
 # values behave identically on today's tree.
 unsound = "all"
+# Escalate cargo-deny's default warning to an error when an entry in
+# `ignore` matched nothing. An entry counts as hit only when its advisory
+# actually fires, so this catches both ways of losing one silently: drop the
+# `unsound` scope key and that class stops being evaluated, leaving its
+# ignore entry suppressing nothing while the check still reports success;
+# and an advisory that gets fixed upstream, or whose crate leaves Cargo.lock,
+# stops matching for the good reason. The second is the expected day-to-day
+# outcome and the point of the key - a failing gate printing `no crate
+# matched advisory criteria` at the exact line is the tool telling you to
+# delete an ignore entry that has done its job, not a regression.
+unused-ignored-advisory = "deny"
 # All entries below are transitive, from Tauri 2's Linux windowing stack
 # (Task 4 scaffold) - not dependencies we chose directly. Re-run
 # `cargo deny check` periodically; drop an ID once its crate is gone from
