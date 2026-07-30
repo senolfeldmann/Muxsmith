@@ -5351,3 +5351,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: decided, ref: "plan-11 round-2 fix sweep: the plan fenced ledger-lint's entry count at 548, and the controller's own harvest mining moved it to 550 during the same session, which would have failed the task on a correct tree. Unfenced in favour of the exit code, the 'across 4 files plus BUILDING.md's gate enumeration' shape and the 'all invariants hold' tail. Surfaced by a mechanical re-run of every stated figure rather than by a review finding - one of two figures that sweep moved which no finding had named"}
+- id: a-synchronous-parity-precedent-loses-its-licence-when-translated-into-async
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: cross
+  statement: "A borrowed pattern from the reference tool carries the CONDITIONS that made it correct there, and the commonest silently-dropped condition is synchronicity. `saved = current()` is sound in a synchronous handler because nothing can move between the read and the write; translated into a path with an await between capture and mark, the same line reads a state the write did not use. Trigger, readable: you are citing a reference-tool precedent for an assignment, and your version of that code path contains an await, a callback, a dialog or any yield the original did not. Handle: mark the value the operation actually USED, captured before the first yield, not the live value at completion time - and when citing the precedent, state the condition that licensed it rather than only its shape. This is a caveat on the project's standing parity duty (SI-3), not an argument against it: the comparison is still owed, and it is the precedent's LICENCE that has to cross the boundary with its shape."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-12 delta review N-F1 (.superpowers/sdd/plan-12/plan-delta-review-round-1.md): the save path's clean-marking step assigned the LIVE history position rather than the profile the save had captured and written, citing mkvtoolnix's `Tab::onSaveConfig` doing `savedState = currentState()` - which is licensed there only by being fully synchronous. Two awaits sit between capture and mark (the save dialog, then the write) and the editing surface stays live through both, so a model change in either window marks the editor clean while the file holds the older profile, disarming every discard guard over unsaved changes. It is the previous round's F4 with the sign flipped and it fails toward DATA LOSS where the ADR promises annoyance; no prescribed check saw it, including the safeguard that round added, because nothing moves during that test's gap"}
+- id: a-producer-is-graded-by-whether-it-would-pass-with-the-mechanism-broken
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Reviewing coverage by asking `does this observable have a producer?` finds missing rows and misses useless ones - the row exists, so nothing looks absent. The sharper question, asked per producer rather than per observable: WOULD THIS PRODUCER STILL PASS IF THE MECHANISM IT COVERS WERE BROKEN? Where the answer is yes, the row is documentation, not coverage, and the observable is uncovered while the map says otherwise. Trigger: you are ticking a coverage map. Handle: for each row, name the concrete broken state and predict the row's result; a row that survives its own mechanism's failure is rewritten or split, and the half that cannot fail says so in its own text. Generalizes the acceptance-halves rule from `each side needs a producer` to `each side needs a producer that discriminates`."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: reinforced, ref: "plan-12 rounds 1 and 2 (.superpowers/sdd/plan-12/plan-review-round-1.md F4, plan-delta-review-round-1.md N-F1): the reviewer names this as the instrument that found both defects where a presence-based walk had passed. F4's producer (`undo still available after a save`) covered the side of a two-sided observable that cannot fail, so the missing save-path marking was invisible; N-F1's fresh safeguard passed because nothing moves during its gap, so a clean-mark against a stale profile was invisible too. Both rows existed and both were green"}
