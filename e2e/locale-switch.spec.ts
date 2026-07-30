@@ -163,8 +163,13 @@ const SYSTEM_SETTINGS: AppSettings = {
  *  continuation of one page, because this mock is stateless -- `set_settings`
  *  does not feed `get_settings`, and `open()` re-reads the baseline, so a
  *  second save inside one page would compare `null` against `null`, the
- *  live-switch guard would stay false, and the case would pass while
- *  measuring nothing on the live path (controller ruling 1, Plan 12 Task 2). */
+ *  live-switch guard would stay false, and the merged case would go RED
+ *  against a correct implementation: its `set_settings` assertion still
+ *  passes (`null` is persisted), while both rendering assertions fail --
+ *  the German heading never comes back and `<html lang>` stays `en`. So the
+ *  split is here because that direction cannot be made green inside one page
+ *  without a reload or a second fixture state, NOT because a merged form
+ *  would be a false green (controller ruling 1, Plan 12 Task 2). */
 const EN_OVERRIDE_SETTINGS: AppSettings = { ...SYSTEM_SETTINGS, locale: "en" };
 
 test.describe("system-locale default (D106)", () => {
