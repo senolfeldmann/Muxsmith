@@ -4263,9 +4263,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "wording-fix report (wording-fix-report.md): first run 4 failed / 58 passed, all help-mode sidebar compares old-vs-new wording; pnpm build flipped dist/ to current, re-run 62/62; root cause named from the config's own comment"}
+    - {date: "2026-07-31", kind: reinforced, ref: "plan-12 task-3 verdict (.superpowers/sdd/plan-12/task-3-verdict.md): the reviewer measured the sharper consequence. `pnpm test:e2e` does not rebuild `dist/`, and the type-check lives in the separate `vue-tsc` step of `pnpm build` rather than in `vite build`, so reverting a source token that breaks COMPILATION leaves the e2e suite exiting 0 against the previous tree's bundle while `git status` reads clean. Only `pnpm build` sees that defect class, which makes the gate's build-before-e2e ordering load-bearing rather than conventional - and makes an e2e-only re-run an unsound way to check that a revert took"}
 - id: borrowed-qualifier-verified-like-a-quote
   kind: pattern
   tier: 1
