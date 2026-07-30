@@ -1970,11 +1970,30 @@ ten is recomputed.
   byte-exact non-match fails VISIBLY because the suggestion engine reports it with a
   proposed narrowing. Measured: `suggestions` is `[]` and `missing-track` carries
   empty params both for a `raw:` non-match and for a known-property control, so the
-  failure is visible for a REQUIRED rule but carries no narrowing - and an
-  **OPTIONAL** rule produces no error at all, exit 0. **So under byte-exactness an
-  optional `raw:` rule that stops matching fails silently.** The ruling stands on
-  its other three grounds and on the owner's stated principle; this is precisely
-  why the design escalates a config-time never-match guard instead of relying on
+  failure is visible for a REQUIRED rule but carries no narrowing.
+  **CORRECTED TWICE ON THE SAME FIGURE, and the second version - this entry's own
+  earlier claim that an optional rule "produces no error at all, exit 0" and
+  therefore "fails silently" - was ALSO wrong.** The design review measured both
+  probes at its own path:
+  - single-rule optional, `raw:max_luminance: 7` against a reported `6.0`: **exit
+    1**, not 0 (`severity_exit` maps a warning-severity worst to 1), and the output
+    carries the info, the skew warning AND a `This plan resolves to zero output
+    tracks` warning that fires precisely BECAUSE the rule matched nothing;
+  - multi-rule, one matching rule plus one optional `raw:` rule that does not - the
+    run the design's argument actually needs and did not make: **exit 1**, no error,
+    info plus skew warning only, no zero-tracks warning, `suggestions: []`, and the
+    human rendering prints `rule 1 -> track -`.
+  **So "fails silently" is false of both probes**: the exit is non-zero and the
+  rendering always names the unmatched rule. What survives is narrower and is the
+  part that matters: no ERROR severity, no suggestion, no proposed narrowing, and
+  the skew warning fires whether or not the comparison succeeded, so it is not a
+  signal about this at all.
+  **The pattern in the two corrections is worth more than either figure: both were
+  reasoned from a partial probe rather than measured, once in each direction** -
+  first overstating the diagnostic support, then overstating its absence. The
+  ruling stands on its other three grounds and on the owner's stated principle, and
+  the genuine gap - no error and no narrowing on a path a user can reach - is why
+  the design escalates a config-time never-match guard instead of relying on
   runtime diagnostics.
   He also ruled that **Plan 11 must be adjusted rather than shipping the
   accurate-for-today wording**, overruling the controller's recommendation to let
