@@ -3730,3 +3730,51 @@ measurement. The retained `raw:` vocabulary, deliberately without a vehicle. A
 false-coverage test name routed to Plan 13. The line-citation class under `docs/`
 - 12 design/spec documents governed by nothing. Two documents where an
 unverifiable platform claim now lives only in the user-facing one.
+
+## 2026-07-30 | Plan 11.5 complete, session close | session 30 (Peter, Opus 5)
+
+**Scope.** One task, `937ae42..af85a7a`: `unused-ignored-advisory = "deny"` added
+to `deny.toml`, plus two repaired ROADMAP passages and the scratch salvage.
+
+**Decision and its why.** The owner ruled the key in, and his reason replaced the
+controller's framing entirely: we want security-relevant findings in transitive
+dependencies too, not only in direct ones, and the configuration expressing that
+must not be able to lapse unnoticed. The controller had presented this as a
+trade-off between a silent regression and a false alarm. There is no false alarm:
+the "side effect" - the gate reddening when an ignored advisory legitimately stops
+applying - is the entire purpose, because it converts a trigger nobody watches
+into a message the tool sends by itself, naming file, line and reason.
+
+**What the process caught.**
+- The controller's brief for the task was wrong in three places, all found by the
+  implementer and reported rather than silently worked around: a run designed to
+  simulate obsolescence that also unignored the advisory, so it would have exited
+  1 with or without the key; a `git diff --exit-code` prescribed as proof in a
+  task whose deliverable is a change to that file, which cannot hold in either
+  direction; and a verification that could not attribute its own result.
+- The implementer then predicted one exit code from reading the source instead of
+  running it, and the prediction was wrong: it reported that an ignored id absent
+  from every advisory database escapes the key. The reviewer ran it - exit 1,
+  `error[advisory-not-detected]` alongside `warning[unknown-advisory]`, with a
+  no-key control at 0. The guard is stronger than the report credited.
+- MAJOR, controller-owned: the ROADMAP trigger entry had been re-pointed to the
+  mechanical form in its headline while its tail still said the reviewer advised
+  against setting the key and that the question was parked. The headline is the
+  literal error string, so the first person to meet that failure would land in
+  that paragraph and read the opposite of what the file's own comment says. Found
+  by the review of `937ae42`, repaired before the push.
+
+**Friction.** Three unverified borrowed claims from the controller in one session,
+each one measurable in about a minute: a mechanism written into the ledger from a
+subagent's first report; a confounded measurement presented to the owner as proof;
+and this task's stated limitation, relayed from a prediction. All three were
+caught downstream, none by the controller.
+
+**Moments.** The owner asked what the trigger would be for eventually deleting the
+glib ignore entry - and the answer was that the key he had just approved IS the
+trigger, which the controller had spent three messages treating as a side issue.
+
+**Open threads.** The residual the key cannot catch is deleting the key itself; a
+config file cannot guard its own presence, and that boundary is recorded rather
+than papered over. Plan 12 is next, in a fresh session, with the re-verification
+of its quoted passages as its first step.
