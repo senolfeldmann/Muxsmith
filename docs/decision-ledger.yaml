@@ -5393,3 +5393,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: decided, ref: "plan-11 round 3, implementing the controller's convergence clause after the same family widened twice (.superpowers/sdd/plan-11/plan-delta-review-round-2.md NEW-1/NEW-2). Half A executed 57 of 236 verbatim candidates and moved four figures, of which THREE were not executable as written at all - two read stdin because the target sat outside the fence, one carried its pathspec in prose (2117 literal hits against a stated 100), and one lived in a table cell whose pipe escape made it match a literal backslash and return 0 against a file with three real hits. A fifth had a backtick inside its character class, closing the inline code span, so the section's promise that a reviewer could re-run it was false as rendered. One repair bit back and taught the authoring rule: removing the table escape broke the table, so the escape was load-bearing and the right fix was to stop restating the expression in a cell"}
+- id: a-review-loop-has-converged-when-severity-falls-while-meta-text-rises
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A fix loop's stopping point is readable from two monotone series rather than from a judgement about whether the artifact is good enough: the severity of each round's worst finding, and the share of the artifact taken up by its own self-review and amendment narration. While severity falls round on round and the meta-text share rises round on round, the next round is buying less than it costs, and the honest move is to stop applying the instrument to THIS artifact - not to declare it defect-free. Trigger: you are deciding whether to route another round. Handle: state both series with their measured values and let them decide; and where a general clause was introduced mid-loop, say explicitly that it must not be run again here, because a clause that earned its keep is exactly what gets re-applied out of habit. Related but distinct from the widen-twice convergence trigger, which fires on the SHAPE of two consecutive findings; this fires on the loop's economics."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: decided, ref: "plan-11 delta review round 3 (.superpowers/sdd/plan-11/plan-delta-review-round-3.md), the reviewer's own stopping argument at the approval: severity fell 2 blocking, then 3 Important, then 2 Important plus 1 Minor, then 1 Minor, while the plan's meta-text share rose 10 to 12 to 17 to 21 percent. It approved the plan, ruled the one remaining Minor non-gating, and wrote 'do not run the clause again on this artifact' - the clause having been introduced two rounds earlier and having found, that round, a class no re-run could see. Four rounds, 23 findings raised, 23 addressed, 0 disputed"}
