@@ -99,7 +99,7 @@ and an ambiguity that exists only once a private module joins the documented
 namespace (`src-tauri/src/lib.rs`'s `run` module beside its `run` function,
 which the flag caught the moment it was added) - stays invisible.
 
-The cross-target clippy run (part 6) type-checks the workspace for Windows
+The cross-target clippy run type-checks the workspace for Windows
 without linking, so it runs on any OS. It catches what a host-only clippy
 cannot see - cfg-gated imports and Windows-only lints - the class that went
 CI-red twice in Plan 5 and sat unobserved for five runs in Plan 8 (an
@@ -131,12 +131,13 @@ the three marked gate blocks enumerate, so changing a gate block without the
 sentence, or the sentence without the blocks, turns this part red. Needs
 PyYAML; CI runs it from a throwaway venv as its own job.
 
-CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-4 natively on all
-three OS legs (its Windows leg covers natively what part 6 cross-checks
-from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and
-`pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`
-and `scripts/ledger-lint.py` (house-knowledge and gate-count invariants, Plan-8 rider)
-run as independent jobs.
+CI (`.github/workflows/ci.yml`) runs the Rust block's `cargo fmt`,
+`cargo clippy`, `cargo test` and `cargo doc` commands natively on all three
+OS legs (its Windows leg covers natively what the cross-target clippy run
+cross-checks from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`,
+and `pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`
+and `scripts/ledger-lint.py` (house-knowledge and gate-count invariants,
+Plan-8 rider) run as independent jobs.
 
 ### Reproducing a release bundle locally
 
