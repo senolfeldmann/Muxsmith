@@ -1,5 +1,5 @@
-# D48 guard 1 fixture: every one of the 17 defaulted fields (design
-# :1517-1535) set to a value that is NOT its default. A predicate that
+# D48 guard 1 fixture: every one of the 17 defaulted fields (design D48)
+# set to a value that is NOT its default. A predicate that
 # skips a non-default value silently destroys it on save; this fixture
 # exercises all 17 at once so no row can hide behind another.
 profile_version: 1
