@@ -5379,3 +5379,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: reinforced, ref: "plan-12 rounds 1 and 2 (.superpowers/sdd/plan-12/plan-review-round-1.md F4, plan-delta-review-round-1.md N-F1): the reviewer names this as the instrument that found both defects where a presence-based walk had passed. F4's producer (`undo still available after a save`) covered the side of a two-sided observable that cannot fail, so the missing save-path marking was invisible; N-F1's fresh safeguard passed because nothing moves during its gap, so a clean-mark against a stale profile was invisible too. Both rows existed and both were green"}
+- id: a-stated-expression-is-verified-by-executing-the-documents-own-text
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Re-running an expression to check its figure is not the same as executing the expression the document CONTAINS, and the gap is invisible from inside: a reader who retypes the command silently supplies the target file the document forgot, the pathspec that lives in the surrounding prose, or the pattern the markup mangled - and then reports a figure the document cannot produce. Trigger: you are about to verify a figure by running its expression. Handle: copy the expression's characters out of the document and execute THAT string; where it is not self-contained, the defect is the document, not your run. Corollaries measured in one round: an expression split between a fenced command and prose that names its scope is not executable; a table cell escapes pipe characters, so a pattern pasted into one matches a literal backslash and returns zero; a character class containing a backtick closes its own inline code span, so what renders is not what was written. Consequence for authoring: fence the WHOLE invocation - flags, target and pathspec - and never restate an expression in a table cell; reference the fenced copy instead."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: decided, ref: "plan-11 round 3, implementing the controller's convergence clause after the same family widened twice (.superpowers/sdd/plan-11/plan-delta-review-round-2.md NEW-1/NEW-2). Half A executed 57 of 236 verbatim candidates and moved four figures, of which THREE were not executable as written at all - two read stdin because the target sat outside the fence, one carried its pathspec in prose (2117 literal hits against a stated 100), and one lived in a table cell whose pipe escape made it match a literal backslash and return 0 against a file with three real hits. A fifth had a backtick inside its character class, closing the inline code span, so the section's promise that a reviewer could re-run it was false as rendered. One repair bit back and taught the authoring rule: removing the table escape broke the table, so the escape was load-bearing and the right fix was to stop restating the expression in a cell"}
