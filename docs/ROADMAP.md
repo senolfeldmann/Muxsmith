@@ -1896,6 +1896,16 @@ ten is recomputed.
   whichever package next amends the v1 spec** - same vehicle as the 8.1
   synopsis item below; both are spec-wording repairs and the README follows
   whatever the spec settles.
+  **OPEN OWNER QUESTION, put to him 2026-07-30 and UNANSWERED, recorded here
+  because it was living only in a plan brief, which is scratch rather than a
+  tracker.** The disposition above assumes the BEHAVIOUR is intended and only the
+  wording is wrong, which is how the finding was written and how Plan 11 repairs
+  it. The question he has not answered is whether `raw:` should in fact compare
+  byte-exactly, in which case the coercion is a behaviour defect with its own
+  vehicle and the wording repair was aimed at the wrong side. Nothing blocks on
+  it: Plan 11's repair makes the documents true about today's behaviour either
+  way, and a later behaviour change would amend them again. Reconsider when the
+  spec is next amended, or when he answers.
 
 - **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
   Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the
