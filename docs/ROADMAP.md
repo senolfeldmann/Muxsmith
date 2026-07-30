@@ -2290,6 +2290,21 @@ and each closes independently; he ruled one plan. Its members:
    the review surface - and its fencing against the two filename-derivation
    rulings).
 
+**A fourth member, routed here from Plan 11's Task A3 review (2026-07-30), because
+the plan's floor is explicitly not its content.** `crates/muxsmith-core/src/matcher.rs`
+carries a test named `numeric_exact_compares_across_int_and_float` that compares
+only `Int` against a reported `Int` - it stays GREEN under the mutation its own
+name describes, so it is a false-coverage name sitting in the same test group as
+the safeguard Plan 11 added to catch exactly that mutation. Measured by the A3
+reviewer, which also measured that the real safeguard (`typed_exact_still_cross_compares_int_and_float`)
+is the SOLE workspace-wide failure when the cross arms are stripped. It is
+pre-existing and Task A3 was right not to touch it - it sits outside every fence
+in ADR D111 and outside that task's Files list. **Rename or widen; the choice is
+the implementer's to propose and the review's to grade, since both repairs make
+the name true.** Routed to Plan 13 rather than to a vehicle of its own because it
+is a two-line change in a file Plan 13 may well touch anyway, and because a
+standalone plan for one test name is more machinery than the defect is worth.
+
 **PLAN 13's SCOPE IS DELIBERATELY OPEN UNTIL HIS QA ROUND IS DONE.** His words: it
 can still grow, so it may contain more than these three. That is a hard sequencing
 constraint rather than a note, and it decides when the plan may be authored at all:

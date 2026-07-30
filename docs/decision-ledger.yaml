@@ -5508,3 +5508,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: reinforced, ref: "plan-11 Task B1 review (task-b1-verdict.md, HARVEST 5 and finding 3): the plan prescribed three runs - shipped green, scope live, and the control proving the scope rather than the ignore does the work - and all three describe the change itself. The reviewer's own fourth state, the key dropped with the ignore entry kept, is what refuted the plan's deferral premise: it showed both that `unused-ignored-advisory` would catch the regression with one key in the same table, and that cargo-deny already emits warning[advisory-not-detected] naming the exact ignore line, so the loss is not silent at defaults"}
+- id: echo-expands-what-printf-passes-through
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A search pattern, fenced string or path is written to a file or piped onward with `printf '%s\\n'`, a quoted heredoc, or a file write - never with `echo`. The ambient shell here is zsh, whose `echo` expands backslash escapes by default, so a pasted pattern containing `\\x00`, `\\t`, `\\n` or `\\0` is silently TRANSFORMED rather than transmitted; a NUL in particular turns the destination into a binary file, after which `grep` reports `Binary file matches` instead of the lines, and a later reader sees a check that found nothing. The failure is silent in both directions - the command succeeds and the data is wrong. Trigger, readable: you are about to `echo` a string you did not author yourself, most often a regex or a quotation you are moving between a document and a report. Distinct from shell-dialect-assumptions-in-agent-scripts, whose failure mode is an ABORT that a bash invocation fixes: this one completes successfully with corrupted output, and `bash -c` does not fix it because echo's escape handling varies by build and by shell option."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 Task B1 fix round (task-b1-report.md, process note): the implementer echoed a grep pattern carrying a `\\x00` into its report file; zsh expanded it to a literal NUL byte, which made the whole report a binary file for grep and defeated every subsequent search over it. Caught and repaired byte-wise, report re-verified as clean text. Same session's second ambient-shell hazard in one task, the other being the interactive cp alias proc-noninteractive-file-ops-in-agents already records"}
