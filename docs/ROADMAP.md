@@ -1956,6 +1956,26 @@ ten is recomputed.
   it: the `6.0` versus `6.00` case is probably unreachable from mkvmerge's side,
   because JSON writers emit the shortest round-tripping form - **stated as
   reasoning, NOT measured**, and cheap to measure if it is ever load-bearing.
+  **MEASURED 2026-07-30 by the D111 design author, and the unmeasured half was HALF
+  WRONG in the direction that matters.** `--max-luminance 0:6.00` reports `6.0`, so
+  the conclusion holds and the `6.0`-versus-`6.00` case is not reachable from
+  mkvmerge's side. But mkvmerge does **not** emit the shortest round-tripping form:
+  it writes `400.0` where `400` would round-trip. **That habit is what makes the
+  `(Int, Float)` direction reachable from an ordinary file**, so a profile writing
+  `raw:max_luminance: 400` against a reported `400.0` meets the coercion today for
+  real rather than only in a constructed case. The design pins both directions in
+  its tests on the strength of it, where the old B-7 test covered one.
+  **A SECOND controller claim, PARTLY REFUTED, and it was one of the four arguments
+  on which this ruling was recommended to the owner.** The recommendation said a
+  byte-exact non-match fails VISIBLY because the suggestion engine reports it with a
+  proposed narrowing. Measured: `suggestions` is `[]` and `missing-track` carries
+  empty params both for a `raw:` non-match and for a known-property control, so the
+  failure is visible for a REQUIRED rule but carries no narrowing - and an
+  **OPTIONAL** rule produces no error at all, exit 0. **So under byte-exactness an
+  optional `raw:` rule that stops matching fails silently.** The ruling stands on
+  its other three grounds and on the owner's stated principle; this is precisely
+  why the design escalates a config-time never-match guard instead of relying on
+  runtime diagnostics.
   He also ruled that **Plan 11 must be adjusted rather than shipping the
   accurate-for-today wording**, overruling the controller's recommendation to let
   it ship and amend the same sentences later.
