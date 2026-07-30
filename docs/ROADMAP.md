@@ -2297,26 +2297,44 @@ constraint rather than a note, and it decides when the plan may be authored at a
 scope is knowingly incomplete is not a contract. The three members above are its
 floor, not its content.
 
-## Sequencing, ruled 2026-07-30, and it supersedes an earlier ruling of his own
+## Sequencing, FINAL FORM ruled 2026-07-30 - all six steps, and it settles Plan 11
 
-1. **Plan 12 is implemented.** It is the only thing that unblocks the stopped QA
-   pass.
-2. **He runs a QA round.** **This supersedes his ruling of the same day that the
-   pass comes once BOTH Plan 12 and Plan 11 are implemented** - it now comes after
-   Plan 12. The controller's own earlier recommendation (right after Plan 12) is
-   therefore what stands, but by his ruling and not by that recommendation.
-3. **Plan 13 is authored with the QA yield folded in, then implemented.**
+**The order, in his words and complete:**
 
-**OPEN QUESTION, and it is NOT resolved here because he did not name it:** where
-Plan 11 sits in that sequence. He named Plan 12 and Plan 13 for the coming
-sessions and did not mention Plan 11, which is fully approved and blocks nothing.
-**Controller reading, marked as a reading:** Plan 11 stays in the queue and its
-position is open, with after the QA round as the natural slot. **The consequence
-worth his attention, because it is the same shape as the one that produced this
-sequencing discussion:** Plan 11 carries the `raw:` behaviour change, which is
-user-visible, so a QA round that runs before Plan 11 does not exercise it. Whether
-that matters is his call - a GUI-focused pass is unlikely to reach `raw:` matching
-either way.
+1. **Plan 11 is implemented.**
+2. **Plan 12 is implemented.**
+3. **He runs his QA round** on that state.
+4. **He gives feedback.**
+5. **Plan 13 is specced and designed** with that feedback folded in.
+6. **Plan 13 is implemented.**
+
+**This is the THIRD formulation of the QA timing in two days and the earlier two
+are kept rather than replaced**, so nobody re-derives a losing argument: the first
+was "once the next plan is implemented" (2026-07-29); the second was "once BOTH
+Plan 12 and Plan 11 are implemented" (2026-07-30); the third was "after Plan 12"
+(same day); this is the fourth and final, and it puts **Plan 11 FIRST**.
+
+**It also settles the open question the previous form left**, and settles it against
+the controller's marked reading, which had put Plan 11 after the QA round on the
+ground that Plan 12 alone unblocks the pass. The consequence of his order is the
+better one and is worth stating as the reason it wins: his QA build contains BOTH
+plans, so it exercises the user-visible `raw:` behaviour change as well - which the
+controller had flagged as the gap in every earlier ordering. The price he accepts is
+one package longer without access to the product.
+
+**Plan 13 gets a DESIGN round before its plan** ("speccen und designen"), which is
+what the derivation member needs anyway, and its scope stays open until step 4
+delivers.
+
+**CONTROLLER OBLIGATION this order creates, recorded because it is the class this
+project keeps paying for and it is not his to remember:** Plan 12's document was
+authored and measured against the tree as it stands BEFORE Plan 11 lands. Both
+plans amend the v1 spec - Plan 11 in sections 4.4, 8.1 and 9.2, Plan 12 in 8.2 -
+and Plan 12 carries fenced replace-exactly strings plus figures measured over the
+tree. So at Plan 12's PRE-EXECUTION gate, after Plan 11 has merged: re-verify every
+fenced OLD string still occurs exactly once, and re-run every tree-measured figure
+in the plan. Different sections means no textual conflict is expected; expecting is
+not measuring.
 
 ## A config-time guard for a `raw:` comparison that can never match (owner-ruled 2026-07-30: BUILD IT)
 

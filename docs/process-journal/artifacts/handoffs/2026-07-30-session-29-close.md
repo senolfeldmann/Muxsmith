@@ -1,4 +1,4 @@
-<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), the definitive state: both amendments approved and the four late owner rulings folded in, including the Plan 13 definition and the final QA sequencing. Supersedes all earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), definitive: both plans approved, and the owner-ruled six-step order with Plan 11 first. Supersedes all earlier same-day snapshots. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
 
 # Handoff
 
@@ -206,51 +206,53 @@ the ROADMAP; this is the index.
 4. **The editor catalog budget rises 46 to 54** with his approval of Plan 12; the
    plan itemizes every new key in two tables so a strike stays possible later.
 
-## Next steps (priority order)
+## Next steps - the order is owner-ruled and complete
 
-**The sequence is owner-ruled 2026-07-30. Do not reorder it without him.**
+**Six steps, ruled 2026-07-30 in his own words. Do not reorder without him.**
 
-1. **Implement Plan 12.** Nothing is owed before task 1: both amendments the
-   post-approval rulings required are authored, independently reviewed and approved
-   within session 29, and both plans carry an owner approval on top. Serial tasks in
-   one worktree, per its own document. Plan 12 goes first because it is the only
-   thing that unblocks the stopped owner QA pass.
-2. **He runs a QA round on a draft build of that state.** `workflow_dispatch` on
-   release.yml with the draft flag, never a tag, never published. This is the round
-   whose yield decides Plan 13's final scope, so it is a gate on authoring Plan 13
-   and not merely a milestone.
-3. **Author Plan 13, folding in the round's yield, then implement it.** Its floor is
-   three members and its scope is OPEN by his ruling - it may grow. See the ROADMAP
-   section "Plan 13" for the three and their recorded design questions:
-   the example validator (whose design question is the fragment marker), the `raw:`
-   never-match guard (with his documentation requirement attached), and deriving a
-   profile from a selected container (the largest, needing its own design round, with
-   his binding shape: the derived rules populate the profile IN THE EDITOR, unsaved,
-   the editor being the review surface).
-4. **Plan 11's position in this order is HIS to name and is deliberately unresolved
-   here.** He named Plan 12 and Plan 13 for the coming sessions and did not mention
-   Plan 11, which is fully approved and blocks nothing. Controller reading, marked as
-   a reading: it stays in the queue with after the QA round as the natural slot. The
-   consequence worth raising with him: Plan 11 carries the user-visible `raw:`
-   behaviour change, so a QA round before it does not exercise that change. **Ask;
-   do not assume.**
-5. **Read D111** (`docs/superpowers/specs/2026-07-30-plan11-raw-bytewise-design.md`)
-   before Plan 11's task A3. The plan points at it per-site rather than duplicating
-   its twelve replacement strings, and that is a ruled decision with a hardening
-   clause in A3's Must-not-decide: transcribing those fences into the plan is
-   deliberately NOT wanted, because nothing compares the applied text against D111,
-   so a drifted duplicate would stay green while the wrong sentence shipped.
-6. **The one thing an implementer must not get backwards**, restated because it is
-   the expensive mistake: `scalar_eq`'s int/float cross arms STAY - they are
-   documented, intended behaviour of the typed `exact` path. Only the `raw:` call
-   site re-points, to a same-type comparator. Test T-1 exists to catch a strip, and
-   the reviewer measured that none of A3's other eight checks would.
-7. **At each plan close**, beyond the standard gate: execute the recorded close
-   action moving that plan's per-finding narration out of the plan document into the
-   SDD scratch and the journal. Two reviewers recommended it and one measured the
-   share at 21 and 23 percent of the respective documents.
-8. **Archive duty:** session 29 is archived by the NEXT session. Session 28 was
-   archived at the start of this one, verified, with its `/tmp` artefacts caught up.
+1. **Implement Plan 11.** Two streams in separate worktrees, merged sequentially
+   with a full gate run per merged state, per its document. **Read D111
+   (`docs/superpowers/specs/2026-07-30-plan11-raw-bytewise-design.md`) before task
+   A3**: the plan points at it per-site rather than duplicating its twelve
+   replacement strings, and a hardening clause in A3's Must-not-decide says
+   transcribing those fences into the plan is deliberately NOT wanted, because
+   nothing compares the applied text against D111, so a drifted duplicate would
+   stay green while the wrong sentence shipped.
+2. **Implement Plan 12.** Serial tasks in one worktree, per its document.
+   **CONTROLLER OBLIGATION at its pre-execution gate, created by this ordering:**
+   Plan 12 was authored and measured against the tree BEFORE Plan 11 lands, and
+   both plans amend the v1 spec (Plan 11 in 4.4, 8.1, 9.2; Plan 12 in 8.2). So
+   after Plan 11 merges, re-verify that every fenced OLD string in Plan 12 still
+   occurs exactly once and re-run every tree-measured figure in it. Different
+   sections means no textual conflict is EXPECTED; expecting is not measuring.
+3. **He runs his QA round** on a draft build of that state - `workflow_dispatch` on
+   release.yml with the draft flag, never a tag, never published. His build then
+   contains both plans, so it exercises the user-visible `raw:` change too, which
+   is why he put Plan 11 first.
+4. **He gives feedback.** This is the input that closes Plan 13's scope, so it is a
+   gate on authoring Plan 13, not a milestone.
+5. **Spec and design Plan 13**, then author its plan. Its floor is three members and
+   its scope is OPEN by his ruling - it may grow from step 4. The three, with their
+   recorded design questions, are in the ROADMAP section "Plan 13": the example
+   validator (design question: the fragment marker), the `raw:` never-match guard
+   (with his documentation requirement attached), and deriving a profile from a
+   selected container (largest; his binding shape is that the derived rules populate
+   the profile IN THE EDITOR, unsaved, the editor being the review surface).
+6. **Implement Plan 13.**
+
+**The one thing an implementer must not get backwards**, restated because it is the
+expensive mistake: `scalar_eq`'s int/float cross arms STAY - documented, intended
+behaviour of the typed `exact` path. Only the `raw:` call site re-points, to a
+same-type comparator. Test T-1 exists to catch a strip, and the reviewer measured
+that none of A3's other eight checks would.
+
+**At each plan close**, beyond the standard gate: execute the recorded close action
+moving that plan's per-finding narration out of the plan document into the SDD
+scratch and the journal. Two reviewers recommended it; one measured the share at 21
+and 23 percent of the respective documents.
+
+**Archive duty:** session 29 is archived by the NEXT session. Session 28 was
+archived at the start of this one, verified, with its `/tmp` artefacts caught up.
 
 ## Open questions / risks
 
