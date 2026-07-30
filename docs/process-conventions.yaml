@@ -630,8 +630,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 5
+  count: 6
   occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "session-30 close, CONTROLLER again, on the same operation as the S22 and session-27 instances: refreshing the HANDOFF snapshot with a bare cp. Blocked to the two-minute tool timeout with the prompt unanswered. The sharpest instance the entry has, because the same controller had written this exact hazard into two implementer briefs earlier in the SAME session, quoting the handle - and then reached for the aliased form itself minutes later. Third controller instance, always this one operation. The handle is not knowledge, it is typing `command cp -f` by default"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "S22 close (gh-log final entry): the CONTROLLER itself hit the interactive cp alias on the handoff snapshot copy (2-minute tool timeout), redone with command cp -f - post-promotion instance showing the rule binds controller-side shell use too, not only subagent briefs"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T3 implementer report (task-3-report.md): the Step-4 fire-test restore cp hit the interactive cp -i alias and blocked to the tool timeout, leaving README.md in the mutated state; recovered with /usr/bin/cp -f, restoration verified by grep-count and empty diff against the backup"}
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T5 implementer report (task-5-report.md): second instance same day, different agent - the Step-5 fire-test restore cp blocked on the interactive alias with ci.yml mutated; restored deterministically from a scratchpad backup, re-verified 17/0 numstat and no fire-test string in the commit"}
