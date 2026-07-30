@@ -640,9 +640,13 @@ action:
   cadence is the 1st to 3rd of the month, so no dependency PR exists yet to
   obsolete a RUSTSEC ignore or to carry the TypeScript bump. **New observable:
   Renovate's first dependency PRs land** - expected 2026-08-01 to 08-03, though
-  security updates bypass the schedule and could arrive sooner. Then walk the 18
+  security updates bypass the schedule and could arrive sooner. Then walk the
   commented RUSTSEC ignores in `deny.toml` and drop the ones its PRs have made
   obsolete, and take the TS-7 bump when the typescript-eslint ceiling allows.
+  **The count is deliberately not stated here** (it was 18 and Plan 11 made it
+  19): a number over a list built to accumulate goes stale on the next addition,
+  which this one did inside the very commit that last asserted it. The handle is
+  to count them when you walk them.
 - A bulk profile shows regex compilation dominating -> promote the
   regex-cache line from v1.x into hardening scope (v1.x entry).
 - mkvtoolnix/mkvmerge version bump (dev machine or CI) -> re-verify the
@@ -1436,8 +1440,10 @@ Must be resolved before the first tagged release.
   (session-27 kickoff), superseding the earlier "Şenol's call, when 1.0 is
   essentially done" formulation, which left the timing to a later decision.
   Free since the repo went public; SHA-pinned actions and exact dep pins are
-  ready for it. Two riders (2026-07-11, docs-tree sweep): prune the 18
-  commented RUSTSEC ignores in deny.toml as Renovate PRs obsolete them (S8);
+  ready for it. Two riders (2026-07-11, docs-tree sweep): prune the
+  commented RUSTSEC ignores in deny.toml as Renovate PRs obsolete them (S8;
+  count deliberately unstated, see the Triggers entry - it was 18 and is 19
+  since Plan 11);
   TypeScript is deliberately held at 6.0.3 under the typescript-eslint ceiling
   - Renovate will offer the TS-7 bump when the ecosystem catches up (S14).
   Cadence rationale (residue R3, recovered from Plan 1): every dep PR triggers
