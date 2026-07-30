@@ -358,15 +358,20 @@ Rules that keep it DRY:
 ### 8.1 CLI
 
 ```
-muxsmith validate <profile>
-muxsmith dry-run  <profile> [--source DIR] [--output DIR] [--json]
-muxsmith run      <profile> [--source DIR] [--output DIR] [--jobs N] [--fail-fast] [--json]
-muxsmith identify <file> [--json]
+muxsmith validate <profile> [--json] [--locale LOCALE]
+muxsmith dry-run  <profile> [--source DIR] [--output DIR]
+                            [--on-collision POLICY] [--json] [--locale LOCALE]
+muxsmith run      <profile> [--source DIR] [--output DIR]
+                            [--on-collision POLICY] [--jobs N] [--fail-fast]
+                            [--json] [--locale LOCALE]
+muxsmith identify <file> [--json] [--locale LOCALE]
 muxsmith schema                      # print the profile JSON Schema
 ```
 
 - Flags override profile-stored run inputs.
-- Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors.
+- Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors, plus 130 for a
+  cancelled batch (D16). Only `run` returns 130; no other subcommand installs
+  a SIGINT handler.
 - `--json` emits the structured report for scripting; default output is human-readable rendering of the same data, including suggestion YAML fragments.
 - `muxsmith schema` is a supported user feature, not only a debug aid (D47): the README's "Using the CLI" section documents redirecting its output to a file and binding it in editor settings (`yaml.schemas` in VS Code, the equivalent `lspconfig` block for Neovim/Helix) for autocompletion and inline validation while hand-authoring a profile.
 
