@@ -1336,7 +1336,7 @@ Must be resolved before the first tagged release.
     `DoubleEndedIterator` impls for `VariantStrIter`. It arrives through the
     Tauri/GTK stack, so whether it can move independently of Tauri's own tree is
     the first thing to establish, not the fix.
-  - **The gap worth more than either alert:** `cargo deny check` is gate part 5
+  - **The gap worth more than either alert:** the `cargo deny check` gate part
     and it is GREEN on this tree, while GitHub reports a Rust advisory.
     `deny.toml`'s ignore list does not mention glib - it covers the unic family,
     proc-macro-error, the archived GTK3 crates and quick-xml - so this is not a
@@ -1353,7 +1353,8 @@ Must be resolved before the first tagged release.
     1. **Bump `postcss`** past 8.5.17 through the lockfile. It is transitive, so
        this is a lockfile decision rather than a pinned-dependency one.
     2. **Measure the `cargo deny` disagreement in the same task**, because it is
-       cheap to measure and the result decides whether gate part 5 has a hole.
+       cheap to measure and the result decides whether the `cargo deny check`
+       gate part has a hole.
        The hypothesis on offer - RustSec's `informational` class for unsoundness
        not failing our configuration - is a hypothesis, and the task's output is
        the measurement, not the hypothesis restated.
@@ -2299,7 +2300,8 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   **Interim disposition, ruled 2026-07-30 and NOT the same thing as the deferral:**
   turn the scope on and ignore this one advisory with its reason, exactly as the
   18 existing ignores work. That is strictly better than the status quo, where the
-  class was not checked at all, and afterwards gate part 5 and the GitHub feed
+  class was not checked at all, and afterwards the `cargo deny check` gate part
+  and the GitHub feed
   agree, so both may be quoted as coverage again - which neither could be while
   the disagreement stood. The `deny.toml` change rides Plan 11's dependency task.
   **What addressing it properly means at 1.x**, so the next reader does not have

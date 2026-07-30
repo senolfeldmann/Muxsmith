@@ -5294,3 +5294,59 @@ entries:
   occurrences:
     - {date: "2026-07-29", kind: violated-corrected, ref: "the ubuntu-24.04 base move and its three follow-on rounds (docs/process-journal/artifacts/plan-10-sdd/ is a neighbour, the artifacts here are .superpowers/sdd/runner-base-move-*, close-riders-* and reach-sweep-*). Each round repaired the texts on its own exhaustive file list and left another asserting the old reach, and each leftover was caught by the next review rather than by the change: the runner move falsified renovate.jsonc's comment; the floor repair left the same document's own artifact table claiming the AppImage runs on 'any distro'; the release-body repair left release.yml's policy comment counting two texts where there were more. It converged only when a reviewer swept all 265 candidate files, marked every site true/false/incomplete, and the next task was written as a rule with that enumeration attached. Its own policy comment now states the predicate plus the grep rather than a count"}
     - {date: "2026-07-29", kind: violated-corrected, ref: "the same session, one level down: a controller brief for the reach sweep enumerated FOUR sites while its Files-list header said three, because one repair spans two documents whose cells are deliberately character-identical. The implementer kept the equality and reported the discrepancy rather than dropping a site. Same defect shape as the entry above - the count came from the file list while the work is defined by the assertion set - and it appeared in the brief written to fix that very shape"}
+- id: a-red-state-must-defeat-the-fallback-in-the-mechanism-under-test
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: process
+  statement: "When the mechanism a check exercises contains a FALLBACK - a per-message locale chain, a default branch, a retry, a coalescing `or` - a red state mutated upstream of that fallback never reaches the assertion, so the check passes in the exact state it exists to forbid. The fire looks correct: something was broken, the check was run, it went green, and green was the expected outcome for a healthy tree. Trigger, readable while writing the check: the code path under test names a fallback, a default or an `unwrap_or` between your mutation and your assertion. Handle: the red state must DEFEAT the fallback, not merely disturb its input - assert the single lookup without the chain, and pin one concrete value on the far side rather than asserting a non-empty non-key result, because a fallback's output is also non-empty and also not the key. Distinct from a-fired-check-still-needs-a-reachable-failing-input, where the mutation reaches the assertion but no real emitter produces it; here the mutation is realistic and the fallback eats it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-12 plan review F2 (.superpowers/sdd/plan-12/plan-review-round-1.md): the shell-locale parity safeguard was itself the repair for a controller-demanded check that would have been green before and after the fix, and it repeated the class one level in. Its assertion ran through the shell's own lookup, which carries a per-message [requested, en] chain, so both prescribed red states - pointing the de row at the en catalog, deleting a de key - resolved to English, non-empty and not the key, and passed. The check could not distinguish a shell that serves German from a shell that falls back to English for everything, which is the state the ADR exists to end. Third instance of the wider absence-check family in one session; the other two had different mechanisms, so this entry is deliberately narrow"}
+- id: a-restated-count-carries-its-expression-or-points-at-the-computing-site
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A count written at more than one site in one document is N claims, not one, and the copies drift while the computing site stays right - so the document ends up contradicting itself with a correct statement of the same figure elsewhere in it. Trigger: you are typing a number that already appears somewhere in this document. Handle: either carry the expression that produces it next to every restatement, or state it once at the site that computes it and have the other sites point there instead of repeating the digit. Prose restatements are where this lands, because a table's number is recomputed when the table is edited and a sentence's is not."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-12 plan review F8 (.superpowers/sdd/plan-12/plan-review-round-1.md): four normative counts in one plan document were stale against their own tables - 'four decision records' against 5, '38 requirements' against 41 rows reaching R41, 'six corrections' twice against 7 rows - and THREE of them were contradicted by a correct statement of the same figure elsewhere in the same document. The author had itself audited repeated figures in the round before and updated seven sites stating the ADR set, which is why the surviving four are prose restatements rather than table cells"}
+- id: an-enumeration-over-a-document-is-invalidated-by-editing-that-document
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A self-referential enumeration - a paragraph that classifies every occurrence of some construction WITHIN its own document - is falsified by the edit that repairs one of those occurrences, because the repair, the deletion record and the classifying paragraph's own quoted tokens are themselves new occurrences. The classification is correct at the moment it is written and wrong one commit later, and the author is also its only reader, so nothing external notices. Trigger, readable: your sentence says every hit falls in one of N kinds, and the hits are in the file you are editing. Handle: re-run the expression AFTER the last edit, not before it; expect the classifying paragraph and any amendment or deletion record to appear as hits and give them their own kind; and state in the paragraph that editing the document invalidates the count, so the next author re-runs instead of trusting it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 round-2 fix (delta review N2, .superpowers/sdd/plan-11/plan-delta-review-round-1.md): the plan's gate-count self-audit enumerated four kinds and asserted every hit falls in one; the delta review found a new bare positional ordinal falling in none. Repairing the sentence was not sufficient - re-running the audit after that edit falsified the enumeration a SECOND way, because the audit paragraph now quoted its own kind-4 tokens, so its 'two references to the canonical total' was falsified by the paragraph classifying them. Fixed with a fifth kind plus the general statement; found by the author's own re-run, not by a finding"}
+- id: a-figure-a-concurrent-writer-moves-is-never-fenced-in-a-task-contract
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A plan or brief that fences an exact figure as an acceptance value must first ask who else writes the thing that figure counts. Where a co-writer appends to it during the run - the controller writing ledger entries, a parallel task adding catalog keys - a fenced number converts that legitimate append into a spurious task failure, and the implementer's correct move becomes arguing with its own contract. Trigger: the figure counts rows, entries or keys in a file the acceptance step does not own. Handle: fence the INVARIANT rather than the value - the exit code, the output's shape, the phrase that means all checks passed - and let the count float. This is not licence to drop figures generally: a figure over an artifact the task DOES own stays fenced, because there the drift is the defect."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: decided, ref: "plan-11 round-2 fix sweep: the plan fenced ledger-lint's entry count at 548, and the controller's own harvest mining moved it to 550 during the same session, which would have failed the task on a correct tree. Unfenced in favour of the exit code, the 'across 4 files plus BUILDING.md's gate enumeration' shape and the 'all invariants hold' tail. Surfaced by a mechanical re-run of every stated figure rather than by a review finding - one of two figures that sweep moved which no finding had named"}
