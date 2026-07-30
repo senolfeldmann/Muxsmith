@@ -4175,9 +4175,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-27", kind: violated-corrected, ref: "plan-8 T2 implementer report concern 2 (task-2-report.md): bash PIPESTATUS under zsh aborted a fire-test before its restore step, leaving tauri config mutated for one turn; caught immediately, restored via /usr/bin/cp -f with sha256 confirmation, committed blobs re-verified from git show"}
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-2 fix round 2 (.superpowers/sdd/plan-12/task-2-report.md section 10): two gate parts had their exit status read through the bash array PIPESTATUS and came back BLANK rather than erroring - this shell is zsh, where the array is spelled pipestatus and indexed from 1 - so an empty reading sat one careless step from being taken for success on a gate part; caught by the implementer and re-run with the exit code captured directly"}
 - id: test-fixture-dates-outside-retention-windows
   kind: pattern
   tier: 1
