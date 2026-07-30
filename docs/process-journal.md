@@ -3625,3 +3625,108 @@ derivation package while being omitted from the plan order. The owner supplied i
 
 **Open threads.** Nothing waits on him for Muxsmith. Framework-side follow-ups are
 tracked agent-side, including one scheduled to run in its own session after Plan 12.
+
+## 2026-07-30 | Plan 11 complete | session 30 (Peter, Opus 5)
+
+**Scope.** Plan 11, authored and approved in session 29, executed and closed here:
+`5378264..71cce6a`. Two streams in separate worktrees, merged A then B. Stream A:
+four serial documentation-accuracy tasks, one of which was re-cut into the plan's
+only behaviour change. Stream B: the two open dependency-vulnerability alerts.
+
+**Decisions and their why.**
+- A ROADMAP rider gated on "the next ci.yml-touching change" prescribed a fenced
+  replacement text citing a BUILDING.md gate ordinal that Task A1 had removed
+  hours earlier, and Task A2 was that change with the rider's target inside its
+  authorized write region. Recorded as FIRED and deliberately RE-DEFERRED with a
+  new observable, rather than consumed. The fenced text was NOT repaired: a
+  replacement string destined for a source comment is product content, which the
+  controller does not author. A2's brief carried the prohibition verbatim.
+- Reports whose claims a review refuted were ANNOTATED with dated errata, not
+  rewritten. A report is a dated record of what an implementer measured; the
+  house does not falsify dated records. Applied to two implementer reports and to
+  the controller's own task brief.
+- A count in a shipped config comment was DROPPED rather than corrected. Ground:
+  a number over a list built to accumulate goes stale on the next addition. The
+  same reasoning independently produced two more decisions this session (two
+  ROADMAP rider sites lost their count instead of moving 18 to 19).
+- Six plan defects found at execution were batched into ONE amendment rather than
+  fixed per finding, scaled one-pair because no task was added, removed or
+  re-cut. Its reviewer measured the scale call rather than accepting it: 40 of 40
+  acceptance rows and 8 of 8 deferral rows unchanged.
+- A refuted deferral premise did NOT become its opposite. The reviewer measured
+  that a permanent guard needs one config key rather than new infrastructure, and
+  simultaneously recommended against setting it blind, since it also reddens the
+  gate when an ignored advisory legitimately disappears upstream. Parked as a
+  one-key owner decision with the measurement attached.
+
+**What the process caught.** Real defects, none noise:
+- The rider above, which would have re-created A1's deleted construction in a
+  second file, invisibly to every check A2 runs. Task review (A1), originated in
+  the tracker.
+- A soundness control in the plan that cannot fire: it named a file carrying only
+  spelled ordinals as the known-present case for a digit-form expression. Caught
+  by the implementer, which refused to adjust the plan and substituted the
+  authoring section's own control. Originated in the plan.
+- A restore instruction in the controller's brief that would have discarded the
+  deliverable: `git checkout` restores from HEAD, and the work was uncommitted at
+  that step. Implementer, originated in the brief.
+- Two independent falsehoods in a comment the plan mandated be shipped verbatim:
+  a count belonging to a different class (implementer), and a claim about what
+  the tool's default scope excludes (reviewer, proven with a throwaway crate).
+  The count was caught before the commit; the sentence was not. Every instrument
+  in this project points at numbers.
+- An edit instruction that named a POSITION and would have produced a duplicate
+  config key and a parse failure against the state the fix round actually held.
+  Amendment review, both readings fired.
+- Two pasted grep outputs in one report that are not what their commands return,
+  one labelled "the full enumeration" over a list short by one. The claims were
+  independently true, so nothing failed. Task review (A4).
+- An inverted dependency direction in the plan's own measurement (implementer),
+  and a pre-existing test whose name claims a cross-type comparison it never
+  makes - it stays green under exactly the mutation its name describes, in the
+  same group as the safeguard this plan added to catch that mutation (A3 review).
+
+**Process mechanics.** 5 tasks, 1 plan amendment, 2 fix rounds (one on the
+amendment, one on a task), 7 fresh implementer dispatches, 7 review dispatches
+plus 3 resumed re-reviews. Implementers and task reviewers on Opus 5; the
+whole-branch review on Fable 5, the only role this project's convention still
+gives the top tier; controller loop Opus 5. The full eleven-part gate ran three
+times - stream A's worktree, the state after merging A, the state after merging
+B - each part's exit code captured separately: 507 Rust tests over 39 suites, 68
+e2e cases, zero failures. One push at the close. The postcss alert cleared on the
+push; the glib alert stays open by design.
+
+**Friction and failure.** Four controller defects, all caught downstream, none by
+the controller: the brief instruction above; an amendment brief asserting that
+"three of the six defects appear at more than one site", a set size never
+measured (a fourth was multi-site, found by the author searching instead of
+working the list); both merge commits written without the mandatory agent
+trailer, recorded rather than rewritten because the SHAs are already cited in
+three places; and a mechanism claim borrowed from a subagent's first report and
+written into the ledger unverified - in the same session that recorded three
+other instances of that class.
+
+**Moments.**
+- A reviewer retracted its own challenge: its grep returned zero because both
+  target sites hard-wrap between a figure and its noun. The rule against that was
+  already always-checked, and another agent had built the counter-instrument
+  hours earlier in the same session.
+- The NUL byte. An echoed grep pattern expanded to a literal NUL, and the
+  harness's grep wrapper skips binary files, so the report went silently
+  invisible to every later search - a real match rendered byte-identical to an
+  honest no-match. Measured directly: 1 match at exit 0 as text, nothing at exit
+  1 with one NUL, `/usr/bin/grep` still finding it.
+- The number 18 was already stale in the commit that shipped it: the same diff
+  added the nineteenth entry four lines below the sentence asserting 18.
+
+**Deltas.** The plan was approved as documentation work and executed with one
+behaviour change in it, on an owner ruling and an ADR authored between approval
+and execution. The plan itself needed one amendment mid-execution - normal per
+the process doctrine, but the first on this project that landed AFTER a defect
+had already shipped in a commit.
+
+**Open threads.** The one-key guard decision, parked for the owner with its
+measurement. The retained `raw:` vocabulary, deliberately without a vehicle. A
+false-coverage test name routed to Plan 13. The line-citation class under `docs/`
+- 12 design/spec documents governed by nothing. Two documents where an
+unverifiable platform claim now lives only in the user-facing one.
