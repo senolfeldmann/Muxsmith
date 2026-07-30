@@ -20,4 +20,4 @@ mkvmerge reports flags such as `flag_hearing_impaired` only when they are set. `
 
 ## The `raw:` bypass
 
-Prefixing a property name with `raw:` (for example `raw:dolby_complexity_index`) matches a property this build's schema does not know yet: no existence, type, or domain check, no language normalization, no absent-means-false shortcut - plain byte-for-byte value equality against the property named verbatim. Diagnostics flag every bypass. Use it only for properties a newer mkvmerge reports; a typo in a `raw:` name silently never matches.
+Prefixing a property name with `raw:` (for example `raw:dolby_complexity_index`) matches a property this build's schema does not know yet: no existence, type, or domain check, no language normalization, no absent-means-false shortcut, and no type conversion - a value matches only a reported value of the same kind, so `6` does not match a reported `6.0` here even though it does under typed equality above. Diagnostics flag every bypass. Use it only for properties a newer mkvmerge reports; a typo in a `raw:` name silently never matches.

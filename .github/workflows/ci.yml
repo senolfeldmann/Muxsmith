@@ -87,8 +87,10 @@ jobs:
       - run: cargo test --workspace
       # Plan 5.5 Task 12 (#18b): rustdoc correctness as the ninth gate part.
       # #![deny(missing_docs)] already gates presence; it says nothing about
-      # correctness, so a broken intra-doc link (queue.rs:73, linking a
-      # private item) rotted silently since Plan 4 until this task. All
+      # correctness, so a broken intra-doc link (in `QueueOpts::jobs`'s doc
+      # comment in crates/muxsmith-core/src/executor/queue.rs, which then
+      # linked the private `worker_count` helper) rotted silently since
+      # Plan 4 until this task. All
       # legs, matching the cross-target lint rule (cfg-gated items can
       # differ per platform).
       # --document-private-items (Plan 9 close): private items are not

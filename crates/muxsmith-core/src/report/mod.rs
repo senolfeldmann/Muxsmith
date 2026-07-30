@@ -84,7 +84,7 @@ diag_codes! {
     UnknownProperty => "unknown-property",
     /// A match condition uses a `raw:`-prefixed property name: an explicit opt-in that bypasses the capability existence/type/domain checks and is matched untyped (config-time info, spec 9.2). The visible escape valve for forward compatibility; the bare name (prefix stripped) is in the `property` param.
     RawProperty => "raw-property",
-    /// A `raw:` prefix was applied to a property that IS in the capability model and has special matching semantics (`language` normalization, `codec_kind` aliasing); the prefix degrades it to byte-literal untyped equality, bypassing those semantics (config-time warning, spec 9.2).
+    /// A `raw:` prefix was applied to a property that IS in the capability model and has special matching semantics (`language` normalization, `codec_kind` aliasing); the prefix degrades it to plain value equality against the property named verbatim (no normalization, no type conversion), bypassing those semantics (config-time warning, spec 9.2).
     RawOnKnownProperty => "raw-on-known-property",
     /// A `raw:`-prefixed match key with an empty bare property name (config-time; 4.4, 9.2): always a typo, never expressible intent - `get("")` can match nothing, so the rule would silently never match. Error severity, own code (ruled 2026-07-28): `UnknownProperty`'s message reads as nonsense with an empty name.
     EmptyRawProperty => "empty-raw-property",
