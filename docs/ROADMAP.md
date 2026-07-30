@@ -953,10 +953,20 @@ action:
   constant. (Plan-9 Task-6 review INFO-2, 2026-07-29.)
 
 
-- **A dependency PR or a Tauri release moves the gtk-rs generation past 0.18 in
-  `Cargo.lock`** -> re-run `cargo deny check advisories`, drop the
-  `RUSTSEC-2024-0429` ignore if the advisory no longer applies, **and while the
-  ignore is being revisited, confirm `unsound` is still set in `deny.toml`.**
+- **`cargo deny check` fails naming `RUSTSEC-2024-0429` with "no crate matched
+  advisory criteria"** -> delete that ignore entry (its id line and the comment
+  block above it) from `deny.toml`, and confirm `unsound = "all"` is still set
+  while you are in the file. **This trigger fires BY ITSELF and needs nobody to
+  watch for it** - which is the whole point of the owner's decision of
+  2026-07-30 to add `unused-ignored-advisory = "deny"`. The gate part runs before
+  every push and as its own CI job on every push and PR, so the first person to
+  push anything after the advisory stops applying is told, by file and line, with
+  the reason printed beside it. Measured 2026-07-30 with a scratch config: an
+  ignored advisory that matches no crate in the tree exits 1 and prints the line.
+  **Its predecessor formulation was "a dependency PR or a Tauri release moves the
+  gtk-rs generation past 0.18 in `Cargo.lock`", which is the same event described
+  as something a human notices** - kept here only to record that the mechanical
+  form replaced it.
   Written at the Plan-11 close for the one residue Task B1 leaves: nothing
   permanently guards that key against being dropped again, and the failure is
   quiet by construction - drop it and the class simply stops being evaluated. The
