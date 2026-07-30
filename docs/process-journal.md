@@ -3413,3 +3413,107 @@ and three items amend one spec paragraph); the controller agreed.
   stopped on the missing New action and resumes only on a build carrying Plan 12.
 - Deferred to the plan closes: moving each plan's per-finding narration out of the
   plan document into the SDD scratch and this journal.
+
+## 2026-07-30 | Plans 11 and 12 amended and execution-ready | session 29 continued (Peter, Opus 5 1M)
+
+**Scope.** The same session past its own close entry, commits `e044d44..8ebe0c6`.
+The owner approved both plans, then issued four further rulings, two of which
+changed work already contracted. Both plans were amended and are now
+reviewer-approved and execution-ready. Still no plan executed.
+
+**Decisions and their why.**
+- **`raw:` must compare without type conversion.** The owner's reasoning was the
+  tool's own: `raw:` is a fallback for properties the model does not know, so no
+  assistance may happen there. The controller had recommended the opposite and was
+  overruled - and the argument it retracted is worth recording, because it was
+  wrong for an instructive reason: it claimed a user cannot know an unknown
+  property's number type, which does not survive `mkvmerge -J` and the dry-run
+  being the tool's first handle.
+- **The controller offered a larger variant and he rejected it**: comparing
+  retained source text, which would make `6.0` differ from `6.00` and take no type
+  decision at all. Rejected on cost - it reaches into the identify layer, since
+  `serde_json` discards the number token - and because it would need its own rule
+  about whether a JSON string's quotes are part of the literal, relocating the type
+  question rather than removing it.
+- **Both the code and the wording were defective, in different ways**, which took
+  two exchanges to state correctly. Both sides are parsed before comparison, so
+  dropping the cross arms stops `6` matching `6.0` and leaves `6.0` equal to
+  `6.00`. "Byte-exact" was therefore never true of numeric comparison and will not
+  become true, so the wording repair stayed in the task alongside the comparator.
+- **The close-path re-read (option B).** Presented to the owner as contradicting a
+  settled decision; reading that decision rather than relaying it showed the
+  rejection concerned the case where both facts hold at read time, while this is
+  the case where the state changed between read and confirm. So it extends the
+  decision instead. The design's own sharpening: the second prompt fires on a
+  STRENGTHENING - the re-read naming a fact the answered dialog did not state - so
+  every landing state already has a message and no fifth one is invented.
+- **The plan does not duplicate the design's replacement strings**, ruled by the
+  reviewer on asymmetric failure: nothing compares the applied text against the
+  design, so a drifted duplicate stays green while the wrong sentence ships to the
+  spec, the README and two help topics, whereas a paraphrase from a pointer fails
+  loudly as text matching no fence.
+
+**What the process caught.** Three defects that would have reached code, plus a
+class that ran through everything.
+- The save path marked the LIVE history position rather than the profile the save
+  captured, across two awaits with a live editing surface - so the editor would be
+  marked clean against an older file and every discard guard would disarm. Data
+  loss where the ADR promises annoyance. Cause: a mkvtoolnix precedent borrowed
+  without the condition that licensed it, being fully synchronous.
+- Before that, the same field never cleared on save at all, so the guards would
+  have stayed armed forever. One round fixed it into the opposite defect.
+- A parity safeguard was green under both its own prescribed red states, because
+  the mechanism it asserted through carries a fallback that ate the mutation.
+- **The recurring class: a document asserting a retired fact after the fact was
+  retired.** The design's override list grew 21 -> 27 -> 28 under three
+  re-derivations, each time from a member found by hand and then written into the
+  expression rather than patched into the list. After the fold-in, one member
+  survived - a sentence whose front and middle were void-marked and whose closing
+  clause still said "and it is why Task A3 owes no new test". Sweeping the class
+  rather than the line found four more, the strongest being a present-tense
+  "byte-exact for strings and numeric for numbers" in the block the task
+  designates as required reading.
+- A prescribed check silently depended on a file's git status: `git grep` skips
+  untracked files, so it measured 6 while the design was untracked and 16 once
+  committed, ten of them inside the design. It survived three of the plan's own fix
+  rounds because the tree in front of the author was the wrong tree.
+
+**Process mechanics.** Still zero implementers. Plan 12: one one-pair amendment
+plus two fix rounds, all four roles resumed. Plan 11: a four-role amendment - a
+fresh design author and a fresh design reviewer over four rounds, then the resumed
+plan author and resumed plan reviewer over two. Every dispatch Opus 5 at xhigh.
+Six further house-knowledge entries mined at verdict arrival; ledger 548 -> 560
+across the session. Controller context ended near 790k of 1M, below the 850k
+no-new-dispatch threshold that was checked rather than guessed.
+
+**Friction and failure.**
+- **One figure was corrected three times, each version reasoned from a partial
+  probe rather than measured**: first the diagnostic support overstated, then its
+  absence, then a non-zero exit offered as evidence when a successful match exits
+  with the same value. Each was caught by the next reader, never by the writer.
+- Four brief addenda existed only as subagent messages before being written to
+  disk. A controller instruction is subject to the same write-at-creation rule as a
+  reviewer verdict, and the doctrine states it only for the verdict.
+- A plan author attributed a requirement to the controller that came from the
+  reviewer's verdict; the correction mattered because it changed who was being
+  diverged from, and the reviewer then withdrew that half of its own prescription.
+- The controller relayed an unverified figure into an owner-facing record twice
+  before it was measured.
+
+**Moments.**
+- The ordinal rule was ledgered, applied as a sweep in the next round, and caught
+  the author writing a fresh instance of it inside the repair for another instance.
+- `ledger-lint` fired on the controller's own occurrence before its count was
+  bumped - the anti-fabrication invariant working against its writer.
+- The final reviewer found its own diff filter dropping every changed markdown
+  bullet, reported it against itself in the verdict that approved the plan, and
+  noted it was the class the review had spent five rounds finding in the artifact.
+
+**Open threads.** Both plans are execution-ready; Plan 12 first, because it is the
+only thing that unblocks the stopped owner QA pass. Two owner-scheduled pre-1.0
+items are unstarted with their own vehicles: deriving a profile from a selected
+container, and validating every documented example against the binary. One question
+is escalated to the owner with a recommendation: a config-time guard for a `raw:`
+comparison that can never match, since the runtime diagnostics were measured not to
+carry the signal. Each plan close owes the deferred move of its per-finding
+narration out of the plan document.
