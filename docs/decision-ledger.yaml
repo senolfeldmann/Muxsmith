@@ -5305,9 +5305,10 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
     - {date: "2026-07-30", kind: violated-corrected, ref: "plan-12 plan review F2 (.superpowers/sdd/plan-12/plan-review-round-1.md): the shell-locale parity safeguard was itself the repair for a controller-demanded check that would have been green before and after the fix, and it repeated the class one level in. Its assertion ran through the shell's own lookup, which carries a per-message [requested, en] chain, so both prescribed red states - pointing the de row at the en catalog, deleting a de key - resolved to English, non-empty and not the key, and passed. The check could not distinguish a shell that serves German from a shell that falls back to English for everything, which is the state the ADR exists to end. Third instance of the wider absence-check family in one session; the other two had different mechanisms, so this entry is deliberately narrow"}
+    - {date: "2026-07-30", kind: reinforced, ref: "plan-12 round-2 fix, applied PROSPECTIVELY rather than as a repair. The structural resolution was to split the mechanism itself - a fallback-free `lookup_in` beneath the chain-composing `ftl_message`, with the doc comment saying the check is why the seam exists - and each of three prescribed red states now names the part that must fail AND the parts that must not, so a mutation cannot be satisfied by the wrong assertion. The handle then went into the plan's global constraints and its sweep found TWO further sites no finding had named: a set of producers whose discrimination rested on de-only literals defeating the frontend bundle chain (true in the design, unstated in the check), and two rows asserting `the applied locale` self-referentially instead of pinning the concrete expected tag"}
 - id: a-restated-count-carries-its-expression-or-points-at-the-computing-site
   kind: pattern
   tier: 1
