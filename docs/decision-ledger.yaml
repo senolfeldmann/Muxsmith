@@ -5522,3 +5522,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 Task B1 fix round (task-b1-report.md section 10): the implementer echoed a grep pattern carrying a `\\x00` into its report file; zsh expanded it to a literal NUL, which made every later grep over that report return nothing. Caught, repaired byte-wise, report re-verified as clean text. Two corrections worth keeping: the implementer's own first write-up blamed GNU grep's binary classification and it re-read the wrapper's function definition to find the real cause (`-I`), and the CONTROLLER then wrote that first, wrong mechanism into this entry before verifying it - fixed here after firing the probe directly (clean file 1 match exit 0; one NUL inserted, no output exit 1; /usr/bin/grep on the same file still 1 match). A borrowed mechanism claim, persisted unverified, in the same session that recorded three other instances of that class"}
+- id: an-edit-instruction-names-a-postcondition-not-a-position
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "An edit instruction that names a POSITION - insert between these two anchors, append after this line - silently assumes the state the file was in when the instruction was written, and it is applied later, to a file some other step may already have changed. An instruction that names a POSTCONDITION - after this edit the file holds exactly one `unsound = ` line - is checkable against ANY state and fails loudly on the wrong one. Trigger, readable: you are writing an edit instruction for someone else to apply, and it contains a preposition of place. Handle: keep the anchors, because they are how the editor finds the site, and add the postcondition beside them, because that is what tells the editor it got the right site. Where the file already contains an earlier version of the text being written - a fix round applying a corrected fence over the fence it replaces - the operation itself changes from insert to replace, and only the postcondition catches an instruction that did not notice."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11, Amendment 5 delta review finding 1 and the B1 fix-round delta: the plan's Step 4(a) said to insert a fenced comment between two named anchors, correct against a pristine deny.toml. By the time a fix round applied the CORRECTED fence, the file held the old one - its own `unsound = \"all\"` line included - between exactly those anchors. Two reviewers fired the literal reading independently: two `unsound` keys, cargo-deny dies at parse time with `duplicate key: unsound`, exit 1, no advisory evaluated at all. The instruction was restated as a replacement of the eight lines between the anchors, with the postcondition `exactly one ^unsound = line` added; the fix implementer then fired the insert reading itself before applying the replace. The word insert also turned out to sit at four sites rather than the one the finding named, found by a vocabulary sweep"}
+- id: grep-output-order-is-not-stable-compare-the-set
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A recursive grep's emitted ORDER is not stable in this environment, so any evidence practice that compares two runs as ordered text - a hash of the output, a diff against a previous paste, an eyeball of the first lines - reports a difference that is not one. Measured 2026-07-30: nine invocations of one `grep -rn` over an unchanged tree produced SEVEN distinct md5 sums, while piping the same output through `sort` produced one, nine times out of nine. Trigger, readable: you are about to hash, diff or byte-compare command output that lists matches across files. Handle: compare the SET - sort before hashing, or compare as lines-as-a-set - and say in the evidence line which you did. Nothing about the CONTENT is unstable; only the order is, which is what makes the false difference so convincing."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: reinforced, ref: "plan-11 Task A4 report-correction round: measured while re-running the two greps whose pastes its review had refuted - nine invocations on the unchanged tree, seven distinct md5 sums unsorted, one sorted (62f6101f..., 9/9). Recorded because it constrains how this project's pasted-output evidence rule can be verified at all: a reviewer re-running a documented grep and diffing the two texts will see spurious differences, and the honest comparison is over the set of lines"}
