@@ -970,16 +970,21 @@ action:
   Written at the Plan-11 close for the one residue Task B1 leaves: nothing
   permanently guards that key against being dropped again, and the failure is
   quiet by construction - drop it and the class simply stops being evaluated. The
-  guard question therefore rides an event somebody already watches instead of a
-  new watch nobody performs. **Two measurements attached, because they change the
-  shape of the eventual decision** (whole-branch verdict, plan-11): a permanent
-  guard would NOT be new gate infrastructure, since `unused-ignored-advisory = "deny"`
-  is one key in the same table and turns the dropped-key regression into a hard
-  gate failure; and the loss is not fully silent at defaults, since cargo-deny
-  emits `warning[advisory-not-detected]` naming the exact ignore line. **The
-  reviewer nonetheless recommends AGAINST setting that key blind**, because it
-  also reddens the gate when an ignored advisory legitimately disappears upstream.
-  **PARKED as a one-key owner decision with the measurement attached.**
+  guard question therefore rides an event that announces itself.
+  **DECIDED AND BUILT 2026-07-30 (owner), superseding the parked state this
+  paragraph used to describe.** The paragraph previously carried two measurements
+  and the reviewer's advice not to set the key "blind", and ended "PARKED as a
+  one-key owner decision". That is history now and is stated so rather than
+  deleted, because the wrong half of it is what a reader meeting the red gate
+  would act on. The owner ruled: we want security-relevant findings in transitive
+  dependencies too, not only in our direct ones, and the configuration expressing
+  that must not be able to lapse unnoticed. `unused-ignored-advisory = "deny"`
+  shipped in `937ae42`. **The reviewer's caveat did not survive contact:** the
+  behaviour it warned about - the gate reddening when an ignored advisory
+  legitimately disappears upstream - is not a side effect, it is the entire
+  purpose. The correct reaction to that failure is to delete the obsolete ignore
+  entry, never to revert the key, and `deny.toml`'s own comment says so at the
+  site.
 
 - **Whichever package next owns the D48 guards, or the controller's next
   normative-count sweep, whichever comes first** -> re-measure the count "17
@@ -2830,11 +2835,15 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   non-exposure rather than an upgrade); then take the gtk-rs 0.20 generation when
   Tauri's tree does, verifying that the ignore entry can be dropped rather than
   merely re-dated.
-  **Trigger, observable rather than remembered:** a dependency PR or a Tauri
-  release moves the gtk-rs generation past 0.18 in `Cargo.lock` -> re-run
-  `cargo deny check advisories`, drop the ignore entry if the advisory is gone,
-  and close this item. Renovate's monthly PRs are the mechanism that will surface
-  it; its first ones are expected 2026-08-01 to 08-03.
+  **Trigger, mechanical since 2026-07-30 and no longer a thing anyone watches
+  for:** `cargo deny check` itself fails, naming `RUSTSEC-2024-0429` with
+  `no crate matched advisory criteria` at its exact line, the moment the advisory
+  stops applying - because `unused-ignored-advisory = "deny"` is set (`937ae42`).
+  Then drop the ignore entry and close this item. Renovate's monthly PRs are the
+  most likely cause; its first ones are expected 2026-08-01 to 08-03. **The
+  earlier formulation - "a dependency PR or a Tauri release moves the gtk-rs
+  generation past 0.18 in `Cargo.lock`" - described the same event as something a
+  human notices, and is kept here only as the record of what it replaced.**
 
   **INTERIM HALF DISCHARGED 2026-07-30 by Plan 11's Task B1; this entry does NOT
   close.** What landed is the ruled interim disposition: `unsound = "all"` in
