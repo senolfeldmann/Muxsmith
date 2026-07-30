@@ -664,7 +664,7 @@ entries:
   source: human
   nature: operational
   domain: ci
-  statement: "The local pre-push gate includes a cross-target clippy run for the CI-matrix OS the dev machine is not: `cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`, documented as gate part 6 in BUILDING.md with `rustup target add x86_64-pc-windows-msvc` as a one-time documented prerequisite (deliberately NOT a rust-toolchain.toml `targets` key - the gate is run by whoever pushes, while the key would make every contributor's first build fetch a Windows std they never need). Clippy is check-only, so no Windows linker or MSVC toolchain is involved; measured 1.3s warm. It closes the window in which a cfg-gated import or a platform-only lint is red only on the OS nobody runs locally. An in-tree comment naming the same rule is not a gate and was superseded by this part."
+  statement: "The local pre-push gate includes a cross-target clippy run for the CI-matrix OS the dev machine is not: `cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`, documented in BUILDING.md's Rust gate block as the cross-target clippy run with `rustup target add x86_64-pc-windows-msvc` as a one-time documented prerequisite (this clause said `gate part 6` until 2026-07-30, when plan-11 Task A1 removed BUILDING.md's positional gate ordinals - the file now names its commands rather than numbering them, so an ordinal here would point at nothing) (deliberately NOT a rust-toolchain.toml `targets` key - the gate is run by whoever pushes, while the key would make every contributor's first build fetch a Windows std they never need). Clippy is check-only, so no Windows linker or MSVC toolchain is involved; measured 1.3s warm. It closes the window in which a cfg-gated import or a platform-only lint is red only on the OS nobody runs locally. An in-tree comment naming the same rule is not a gate and was superseded by this part."
   steelman: null
   blocked_on: null
   status: settled
@@ -683,8 +683,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 2
-  count: 2
+  count: 3
   occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 whole-branch verdict finding 1: BOTH merge commits of this plan (82bd016, 73d3de2) carry no trailer at all, written by the CONTROLLER, while every task commit in the same plan carries it correctly and plan-8's merges all carried it. The gap is in what counts as an agent-authored commit: the rule was read as binding the tasks, and a merge is a commit an agent authored. NOT repaired by rewriting - the two SHAs are already cited in the tracker, the journal and this ledger, and re-SHAing them to add a trailer would falsify five citations to fix a provenance line. Recorded here and in the journal instead, which is the same disposition the house gives a dated record it will not falsify"}
     - {date: "2026-07-14", kind: deferred, ref: "plan-5.7 whole-branch verdict I1 opened the question as proc-subagent-commit-trailer-set: Co-Authored-By on every plan-5.7 stream commit, Claude-Session inconsistent between controller and subagent commits, blocked on a convention call"}
     - {date: "2026-07-28", kind: decided, ref: "owner ruling at the plan-8.5 close blocked-pool sweep, which surfaced the entry because two commit-policy-adjacent rules had landed the same session (dispatch-restates-the-standing-commit-grant, concurrent-writers-need-pathspec-scoped-commits). Decided on measured state: 680 of 686 commits carry Co-Authored-By, 131 carry Claude-Session and none of the last twelve, and eight distinct trailer values exist including three models spelled two ways"}
 - id: tests-ship-with-the-feature-never-after

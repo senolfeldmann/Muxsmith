@@ -952,6 +952,65 @@ action:
   `resolve(import.meta.dirname, ".generated/` in a file that owns neither
   constant. (Plan-9 Task-6 review INFO-2, 2026-07-29.)
 
+
+- **A dependency PR or a Tauri release moves the gtk-rs generation past 0.18 in
+  `Cargo.lock`** -> re-run `cargo deny check advisories`, drop the
+  `RUSTSEC-2024-0429` ignore if the advisory no longer applies, **and while the
+  ignore is being revisited, confirm `unsound` is still set in `deny.toml`.**
+  Written at the Plan-11 close for the one residue Task B1 leaves: nothing
+  permanently guards that key against being dropped again, and the failure is
+  quiet by construction - drop it and the class simply stops being evaluated. The
+  guard question therefore rides an event somebody already watches instead of a
+  new watch nobody performs. **Two measurements attached, because they change the
+  shape of the eventual decision** (whole-branch verdict, plan-11): a permanent
+  guard would NOT be new gate infrastructure, since `unused-ignored-advisory = "deny"`
+  is one key in the same table and turns the dropped-key regression into a hard
+  gate failure; and the loss is not fully silent at defaults, since cargo-deny
+  emits `warning[advisory-not-detected]` naming the exact ignore line. **The
+  reviewer nonetheless recommends AGAINST setting that key blind**, because it
+  also reddens the gate when an ignored advisory legitimately disappears upstream.
+  **PARKED as a one-key owner decision with the measurement attached.**
+
+- **Whichever package next owns the D48 guards, or the controller's next
+  normative-count sweep, whichever comes first** -> re-measure the count "17
+  defaulted fields", which is asserted in
+  `crates/muxsmith-core/tests/fixtures/all-non-default.yaml`'s comment and in
+  `crates/muxsmith-core/tests/profile_save.rs`'s two guard doc comments. Plan 11's
+  Task A2 repaired that fixture comment's line citation and deliberately did NOT
+  touch the count beside it - a different fact with its own consumers, and moving
+  it inside a citation repair would have put two jobs under one review. Written at
+  the Plan-11 close per that plan's deferral table.
+
+- **Whichever package next amends `README.md`'s "Using the CLI" section** ->
+  re-scope or cut its sentence that interrupting ANY subcommand yields `130` "the
+  shell's own convention for a signalled process". Plan 11's Task A4 deliberately
+  kept that clause OUT of the v1 spec, because it is a POSIX-shell fact whose
+  Windows half cannot be measured on this machine and the spec is the
+  authoritative document for a three-OS product. The consequence, surfaced by that
+  task and confirmed at its review: the unverifiable claim now lives only in the
+  user-facing document. Not a contradiction - the spec's bullet is scoped to what
+  Muxsmith's own process returns, and the README carries the distinction itself -
+  but the wrong document is carrying it.
+
+- **Whichever package next edits `crates/muxsmith-cli/src/cli.rs`** -> narrow its
+  `Cli` doc comment, "every command shares the exit-code contract 0 clean / 1
+  warnings / 2 errors / 130 cancelled (spec 8.1, D16)". Plan 11's Task A4 made the
+  citation LAND - spec 8.1 now carries 130 - while measuring the sentence
+  over-broad about who can PRODUCE it: only `run` installs a SIGINT handler, and
+  the two literal 130 sites are both in `commands/run.rs`. **The vehicle is an
+  event nobody is currently scheduled to cause**, flagged as such at the
+  whole-branch review, which is why it is written here as a trigger rather than
+  left in a plan's deferral table. The rewording needs a decision about how to
+  describe the signal-death case that the owner has not seen.
+
+- **The next sweep that reuses ADR D111's M4 instrument** -> rebuild its pathspec
+  first. Two of its six members, `'crates/**/tests'` and `'crates/**/fixtures'`,
+  match nothing under git's wildcard-pathspec rules, measured at the Plan-11 Task
+  A3 review; D111's own stated fire used `grep -r` and therefore never touched the
+  dead members. The conclusion the instrument supported was re-derived tree-wide
+  and survives - this is an evidence defect, not an artifact defect - but the
+  expression must not be copied forward as written.
+
 ## Pre-1.0 release gates
 
 Must be resolved before the first tagged release.
@@ -1406,6 +1465,23 @@ Must be resolved before the first tagged release.
     security updates bypass the schedule by the owner's ruling - but it is not
     live and its config lands in Plan 10's Task 3, so this vehicle exists to own
     the window rather than to duplicate what Renovate will later do.
+  **DISCHARGED 2026-07-30 by Plan 11's Task B1, in three parts with three
+  different outcomes, stated apart because they are not the same kind of
+  closure.** (a) `postcss` is FIXED: the lockfile resolves it at 8.5.25, past the
+  patched 8.5.18, moved through `pnpm update` rather than a manifest override, and
+  exactly two packages moved - postcss and its own dependency `nanoid`, with
+  `package.json` byte-identical. (b) The `cargo deny` disagreement is REPAIRED as
+  a configuration defect, not as a tool bug: `unsound` now runs at scope `all`,
+  and the two mechanisms never actually disagreed - cargo-deny's default scope for
+  that class reaches only crates a workspace member depends on directly, and glib
+  sits deeper. The scope was proven live in three directions rather than by one
+  green run. (c) `glib` is INVESTIGATED and NOT fixed, which was the ruled
+  outcome: eleven direct parents on normal edges, all gtk-rs 0.18-generation
+  bindings under Tauri's Linux backend, so moving it is an upgrade project in
+  someone else's tree. **The advisory is IGNORED, with its reason and its drop
+  condition recorded in `deny.toml`; the GitHub alert stays OPEN and was not
+  dismissed - dismissing an alert is an owner action.**
+
 - **CONFIG DONE 2026-07-29 (session 28), Plan 10 Task 3, commit `630d418`.**
   `renovate.jsonc` is on `master`, expressing the ruled cadence and shape,
   validated clean by the vendor's own validator in both plain and `--strict`
@@ -1922,6 +1998,24 @@ ten is recomputed.
   names `//`, `///`, `//!` and `/* */` - not `#` or `<!-- -->`. Whether a CI
   workflow comment is in scope is his call, not the controller's.
 
+  **CLOSED 2026-07-30 by Plan 11's Task A2, and this entry was wrong in two ways
+  that are recorded rather than overwritten.** Its count: the derivation returns
+  TWO surviving members, not one - the `ci.yml` citation this entry names, plus a
+  bare `:1517-1535` span in `crates/muxsmith-core/tests/fixtures/all-non-default.yaml`
+  that no filename-plus-line expression can see. Its open question: the "OPEN
+  OWNER QUESTION" paragraph below asks whether the ruling reaches CI and
+  configuration comments, and the owner answered that in session 28 - the widened
+  clause is recorded in Tier-2 `comments-locate-by-symbol-never-by-line-number`.
+  **The closure claim carries its surface: the class is closed over every TRACKED
+  file outside `docs/`**, which is where the ruling binds; process artefacts under
+  `docs/` legitimately keep citing a line at a named commit. The A2 reviewer
+  additionally probed three citation forms the plan's expressions cannot see
+  (`#L<n>`, prose `at line`, `L<n>-L<m>`) and the extension-excluded file types,
+  all zero. **Measured residue under `docs/`, surfaced not closed: 566 journal
+  artefact files, 16 plan documents, and 12 design/spec documents - the last group
+  is governed by `code-comment-line-citations-drift`'s two-class rule and by
+  nothing else. Owner question, not this package's work.**
+
 - **"byte-exact" overstates what `raw:` does for NUMERIC scalars** (Plan-10
   whole-branch review finding 4, 2026-07-29; verified by the controller at the
   source the same turn). Spec 4.4 / 9.2 and `matcher.rs`'s own comment at the
@@ -2066,6 +2160,23 @@ ten is recomputed.
   misreading was live for one exchange and is what this paragraph exists to
   prevent.
 
+  **CLOSED 2026-07-30 by Plan 11's Task A3 - and this entry's recorded
+  disposition was INVERTED by the owner before it closed.** The entry assumed the
+  behaviour stays and only the wording is repaired. He ruled the opposite: no type
+  casting happens under `raw:`, so the CODE was the defect. ADR **D111** settles
+  the semantics; a new private same-kind comparator carries the four same-kind
+  arms, the `raw:` call site re-points to it, and **`scalar_eq` keeps its two
+  int/float cross arms**, which are correct and documented for the typed `exact`
+  path. The site set this entry called "three places" is **twelve repaired across
+  six files and seven retained across six**, in two natural languages, with the
+  discriminator that "untyped" describing the PATH stays and describing the
+  EQUALITY moves. Three tests ship, one of them a pure safeguard: the whole-branch
+  reviewer measured that stripping the cross arms fails exactly one test across
+  every core and CLI suite, so that test is the sole net. **The retained
+  vocabulary is an open owner question** (whether the house wants one `raw:`
+  comparison vocabulary across scoped and unscoped statements), deliberately
+  without a vehicle, because picking one would pick the answer.
+
 - **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
   Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the
   binary; verified by the controller the same turn). The spec line reads
@@ -2077,6 +2188,24 @@ ten is recomputed.
   (no task edits the spec). **Vehicle: whichever package next amends the v1
   spec** - a spec amendment sweeps the spec for self-contradictions anyway, and
   this is one.
+
+  **CLOSED 2026-07-30 by Plan 11's Task A4, in WIDENED form against this entry's
+  own framing, and its vehicle line is reconciled here rather than ticked.** The
+  entry names `validate`'s flags; the measurement found **four of the block's five
+  synopsis lines stale** (`--locale` missing from all four flag-bearing
+  subcommands, `--on-collision` from `dry-run` and `run`, `--json` from
+  `validate`; only `muxsmith schema` was correct) **plus the block's exit-code
+  bullet**, which omitted 130 while `crates/muxsmith-cli/src/cli.rs` cited "spec
+  8.1" for exactly that number. The bullet now carries it with its measured
+  scope - only `run` returns 130, because only `run` installs a handler. The
+  stated vehicle was "whichever package next amends the v1 spec", and Task A4 is
+  that package. **The closure is qualified and does not travel further: what is
+  closed is section 8.1's CLI surface and its exit-code contract, not "the spec
+  matches the binary" generally - nothing guards against the drift recurring, and
+  that question is a second member of the Reach-claim checker candidate below.**
+  **Half a repair by design:** `cli.rs`'s citation now lands, while its "every
+  command shares the exit-code contract" remains over-broad about who can PRODUCE
+  130; that half has its own line below.
 
 - **DONE at the plan-9 close 2026-07-29** (`9dc3a4d` + `c8dfc6d`): all four sites corrected in count and in kind, the recount independently reproduced twice (13 snapshots, 5/3/4/1/0), and the two commits behind the `cli_validate` delta named. **D64's snapshot claim went stale in COUNT and in KIND when Plan 9 Task 4
   landed** (surfaced by that task, sharpened by its review, 2026-07-28; every
@@ -2277,6 +2406,76 @@ ROADMAP triggers rather than left implicit:** a fourth marked gate block would b
 invisible to the check, and a command wrapped with a trailing `|` or `&&` is not
 modelled.
 
+  **CLOSED 2026-07-30 by Plan 11's Task A1, and the vehicle condition is
+  reconciled rather than ticked.** All three positional ordinals and the
+  86-character line are gone in one edit: `BUILDING.md` now names the gate
+  commands - `cargo fmt`, `cargo clippy`, `cargo test`, `cargo doc` - instead of
+  numbering them, and the paragraph that carried the long line was rewritten with
+  its longest line at 77. **The reconciliation:** the vehicle recorded above is
+  "whichever package next edits `BUILDING.md`'s GATE BLOCKS", and Task A1 edited
+  that file's PROSE and touched no gate block, so the work landed without its
+  literal condition ever being met. Recorded because a condition that never fired
+  while its work completed is exactly the kind of entry a later sweep reads as
+  still open. **This entry's own enumeration of the three sites is now history and
+  is not updated to today's file.** One consumer was falsified by the same edit
+  and repaired in the same pass: Tier-2 `gate-includes-cross-target-lint-for-the-unrun-os`
+  said "documented as gate part 6 in BUILDING.md". A second live consumer, which
+  this entry did not know about, is disposed of at the mise rider in the Triggers
+  section: its fenced replacement text cited the same ordinal, it fired at Task A2
+  and was deliberately re-deferred rather than applied.
+
+## Plan 11 close: records that are not tracker items (2026-07-30)
+
+Measured facts and non-defects from Plan 11's execution that a later sweep would
+otherwise re-litigate or "repair". None of them is open work.
+
+- **`.github/workflows/ci.yml`'s "rustdoc correctness as the ninth gate part" is
+  a measured NON-DEFECT and is not renumbered.** It is a dated provenance
+  statement about what Plan 5.5 Task 12 added, corroborated by that retired plan's
+  own task heading. The MEASURED-block principle applies: a dated record is not
+  falsified to today's count. Task A1 surfaced it and left it, correctly.
+
+- **The tracker's own ordinal expression `part [0-9]|parts [0-9]` cannot match a
+  SPELLED ordinal**, which is how the `ci.yml` site above sat outside every
+  enumeration of the class. Recorded as an instrument gap rather than fixed: the
+  expression is quoted in several dated records where changing it would falsify
+  what was run.
+
+- **`raw:codec_kind` can never match a track**, since `codec_kind` is absent from
+  mkvmerge's identification schema v20 while `RawOnKnownProperty` still warns
+  about it as though it could. Found while measuring Task A3's trigger set. It is
+  a product-behaviour question - whether a diagnostic should say more about a
+  property that is never reported at all - and belongs to the owner, not to a
+  wording repair. The config-time never-match guard he has already ruled to build
+  is its natural home.
+
+- **Tier-2 `a-document-never-cites-a-line-number-inside-itself` carries a
+  sentence that is stale as a standalone read**: it says
+  `comments-locate-by-symbol-never-by-line-number` "stays scoped to SOURCE
+  comments", which the owner's session-28 widening superseded. The two rulings
+  agree in substance; the sentence misleads a reader who opens only that entry.
+
+- **ADR D111 cites one ROADMAP line by a number that has since drifted** (its R'
+  soundness control). D111 anticipated exactly this and cites by WORDING as well,
+  and the wording is byte-identical, so the control still discriminates - measured
+  at the Task A3 review. Recorded with D111's trigger T6 rather than repaired,
+  because the citation is dated evidence.
+
+- **Plan 11's own Task A4 Step-2 prose mis-describes its own fence.** It says the
+  continuation indent "aligns under `<profile>`"; measured, `<profile>` starts at
+  column 18 and the continuation sits at 28, under the option list. The fence
+  governs and shipped byte-for-byte, so the artifact is right. Not amended: the
+  plan is executed, and rewriting an executed task's descriptive prose falsifies
+  the dispatch record. It matters only to a reader who would re-derive the block
+  from the sentence instead of from the fence.
+
+- **Both of Plan 11's MERGE COMMITS carry no agent trailer**, against Tier-2
+  `agent-commit-trailer-set`, while every task commit in the same plan carries it
+  correctly. The controller wrote both. Not repaired by rewriting: the two SHAs
+  are already cited in the tracker, the ledger and the journal, and re-SHAing them
+  to add a provenance line would falsify five citations. Ledger occurrence
+  written instead.
+
 ## Plan 13: the three remaining pre-1.0 items as ONE plan, with an open scope (owner-ruled 2026-07-30)
 
 **Ruled 2026-07-30, and it reverses the controller's recommendation of three
@@ -2383,6 +2582,15 @@ halves - the guard's own diagnostic text, and a user-facing explanation of what
 touch. The package that builds the guard owns making that explanation good, not
 merely accurate.
 
+**STRENGTHENED, independently, by Plan 11's Task A3 (2026-07-30).** The two
+binary probes whose result flipped when `raw:` stopped cross-comparing are
+exactly the cases this guard would catch at config time: a `raw:` numeric literal
+of the other kind than the property mkvmerge reports now silently matches
+nothing. The measurement also sharpens the case for the guard's severity
+question - an optional rule that cannot match yields no error severity at all,
+so the runtime surface carries even less signal than the entry above records.
+
+
 ## Every documented example is validated against the real binary (owner-approved 2026-07-30)
 
 **Approved in principle by the owner 2026-07-30** ("every example should be
@@ -2425,6 +2633,19 @@ and `scripts/ledger-lint.py` verifies those statements. That is the invariant
 working as designed, not a conflict - but note the registered trigger about a
 FOURTH marked gate block, which this must not silently create.
 
+**A measured constraint on the design question, from Plan 11's Task A3
+(2026-07-30) and confirmed at its review.** The discriminator that separates a
+standalone profile from a fragment **must be a YAML parse, not a line-shaped
+grep**. A `pattern:`-at-column-0 test reports the README's passthrough example as
+a second defective profile, because that example's `input:` is an inline flow
+mapping - a FALSE POSITIVE on correct content, which is precisely the failure
+mode this section already names as the reason the checker is not trivial. The
+corpus derivation Task A3 actually performed is sound (6 fenced yaml blocks, 3
+standalone profiles, 1 defective, delta zero against the ruling's named site,
+three blind-spot probes reproducing); it is the naive form of the discriminator
+that fails.
+
+
 ## Reach-claim checker (candidate, not a commitment; from the session-28 reach sweep)
 
 A one-shot instrument exists and worked: a script parsing every Linux artifact
@@ -2440,6 +2661,20 @@ still being argued in the same round that produced it (whether a row may describ
 form instead of reach). Reconsider if a third table appears - the README's
 `placeholder(1.0)` mandates one at the tag - or if a reach claim goes stale
 again. The instrument itself is in the salvaged rider artifacts.
+
+**A SECOND MEMBER of this class, added at the Plan-11 close (2026-07-30).**
+Nothing keeps the v1 spec's section 8.1 synopsis matching `muxsmith --help`.
+Plan 11's Task A4 repaired the drift - four of five synopsis lines were stale -
+and deliberately built no permanent checker, on this section's own recorded
+ground: the one instrument of that shape this project built was NOT promoted
+into `scripts/ledger-lint.py` because it parses PROSE, which
+`proc-check-green-state-reachable` names as how such a check becomes
+permanently red on correct content. The A4 reviewer ran that premise and
+confirmed this section supports it in its own words. **Recorded here so the
+no-checker deferral routes somewhere that knows the question exists**, rather
+than resting in a retired plan: this class now has two members, and if it ever
+earns an instrument, both are its subjects.
+
 
 ## Ledger hygiene
 
@@ -2590,6 +2825,14 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   `cargo deny check advisories`, drop the ignore entry if the advisory is gone,
   and close this item. Renovate's monthly PRs are the mechanism that will surface
   it; its first ones are expected 2026-08-01 to 08-03.
+
+  **INTERIM HALF DISCHARGED 2026-07-30 by Plan 11's Task B1; this entry does NOT
+  close.** What landed is the ruled interim disposition: `unsound = "all"` in
+  `deny.toml` so the class is evaluated at all, and `RUSTSEC-2024-0429` ignored
+  with its reason, its arrival path and its drop condition written beside it.
+  What did not land is the fix - `glib` is still at 0.18.5 and the GitHub alert is
+  still open. The recorded trigger below stays UNFIRED, and the deferred half is
+  what this entry keeps.
 
 - **Requirements-catalog derivation (product-baseline-desktop): 1.x, owner
   ruling 2026-07-29** (session-27 kickoff; it stood at "at 1.0" from
