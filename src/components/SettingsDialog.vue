@@ -3,6 +3,7 @@ import { reactive, ref, useTemplateRef } from "vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { defaultAppSettings, getSettings, setSettings } from "../ipc";
 import type { AppSettings, IpcError } from "../ipc";
+import { effectiveLocale } from "../i18n";
 import { applyLocale } from "../i18n/fluent";
 
 // D27 settings dialog: native <dialog>, opened imperatively via
@@ -16,10 +17,18 @@ const busy = ref(false);
 const errorCode = ref<string | null>(null);
 const errorParams = ref<Record<string, string | number>>({});
 
+// D106: a <select> cannot bind `null`, so the empty string is the "no
+// override, follow the system language" sentinel. It is the house pattern
+// the sibling nullable field in this same form already uses -- mkvmergePath
+// loads as `baseline.mkvmerge_path ?? ""` and saves `""` back as `null` --
+// and no BCP-47 tag can be empty, so it can never collide with a real
+// locale value.
+const SYSTEM_LOCALE = "";
+
 const form = reactive({
   mkvmergePath: "",
   defaultJobs: 1,
-  locale: "en",
+  locale: SYSTEM_LOCALE,
 });
 
 let baseline: AppSettings = defaultAppSettings();
@@ -36,7 +45,7 @@ async function open() {
   }
   form.mkvmergePath = baseline.mkvmerge_path ?? "";
   form.defaultJobs = baseline.default_jobs;
-  form.locale = baseline.locale ?? "en";
+  form.locale = baseline.locale ?? SYSTEM_LOCALE;
   dialogEl.value?.showModal();
 }
 
@@ -59,17 +68,19 @@ async function save() {
       ...baseline,
       mkvmerge_path: form.mkvmergePath.trim() === "" ? null : form.mkvmergePath.trim(),
       default_jobs: Math.max(1, Math.trunc(form.defaultJobs) || 1),
-      locale: form.locale,
+      locale: form.locale === SYSTEM_LOCALE ? null : form.locale,
     };
     await setSettings(next);
     // Live locale switch (D56): swap the catalog in place when the locale
     // actually changed, before `baseline` is reassigned below. Views are
-    // v-show-mounted, so no state is lost. The `!== null` narrows
-    // AppSettings.locale (string | null) to the string applyLocale takes;
-    // next.locale is always set here (from form.locale), so the guard only
-    // satisfies the type -- vue-tsc is the sole gate that catches it.
-    if (next.locale !== baseline.locale && next.locale !== null) {
-      applyLocale(next.locale);
+    // v-show-mounted, so no state is lost. The comparison stays on the raw
+    // nullable saved values, so both directions across the sentinel fire
+    // (`null` -> "en", "de" -> `null`) while a save that leaves the language
+    // alone does not; `effectiveLocale` then turns a stored `null` into the
+    // system language, which is the same seam `resolveLocale` in
+    // `src/main.ts` resolves through at startup (D106).
+    if (next.locale !== baseline.locale) {
+      applyLocale(effectiveLocale(next.locale));
     }
     baseline = next;
     dialogEl.value?.close();
@@ -145,6 +156,9 @@ defineExpose({ open, isOpen: () => dialogEl.value?.open ?? false });
           v-model="form.locale"
           aria-describedby="settings-locale-hint"
         >
+          <option :value="SYSTEM_LOCALE">
+            {{ $t("settings-locale-option-system") }}
+          </option>
           <option value="en">
             {{ $t("settings-locale-option-en") }}
           </option>

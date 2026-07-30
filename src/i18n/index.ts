@@ -29,6 +29,24 @@ function catalogsForLocale(locale: string): string[] {
 }
 
 /**
+ * The one place the "absent means the system language" rule lives (spec
+ * 8.2: following the system IS the absence of a stored override; spec 8.4:
+ * "system locale with manual override in app settings"). A `null` setting
+ * resolves to the language the browser reports for the platform; any other
+ * value is the user's own override and is returned unchanged.
+ *
+ * Both readers of the stored setting call this rather than restating it:
+ * `resolveLocale` in `src/main.ts` at startup, and `save`'s live switch in
+ * `src/components/SettingsDialog.vue` (D106). That is deliberate -- the
+ * defect D106 repairs was exactly this one nullable field being read with
+ * two different fallbacks in two files that nothing reconciled, which
+ * stayed invisible for two plans.
+ */
+export function effectiveLocale(saved: string | null): string {
+  return saved ?? navigator.language;
+}
+
+/**
  * BCP-47 primary language subtag (everything before the first "-"),
  * lowercased. A saved setting or `navigator.language` is often
  * region-qualified ("de-DE", "de-AT", "en-US"), but catalogs live under a
