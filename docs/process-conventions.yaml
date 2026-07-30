@@ -505,8 +505,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 1
-  count: 2
+  count: 3
   occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 Task B1 review (task-b1-verdict.md finding 3): the shape fired on a DEFERRAL ROW rather than on a verification step, and the refuted premise had already survived a plan review, two delta reviews and an implementer. The row grounded itself on 'a lint asserting a deny.toml key would be new gate infrastructure'; the reviewer measured that `unused-ignored-advisory = \"deny\"` is one key in the same table and turns the dropped-key regression into a hard gate failure, and that the loss is not silent at defaults anyway (cargo-deny emits warning[advisory-not-detected] naming the ignore line). A deferral whose ground is 'that would require X' is a claim about X and is not exempt from this check because it is a deferral"}
     - {date: "2026-07-15", kind: decided, ref: "Şenol ruling (session 15). Evidence from the plan-6 design round: the shape produced three false claims - an unenumerated set (which was hiding a real 20-files defect), an unguarded second copy, and a flat 'D48 cannot derive' that ninety seconds of compiling refuted. The third appeared in the same document that had just conceded the pattern in writing. doctrine §7 brief-wiring amended"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 amendment-5 review LOW-1 and LOW-2 (.superpowers/sdd/plan-9/amendment-5-verdict.md): the same shape twice in one report, both times a COST claim excusing a verification. `the doctrine text is not in this repo` was refuted by one grep of docs/process-conventions.yaml, where the four contested criteria are enumerated inside proc-latitude-clause-boundary's own statement; `re-running it would mean mutating the co-writer's uncommitted spec` was refuted by reading the pinned playwright-core bundle, a read-only path at zero risk. Both self-limitations were written before the cheap path was tried, and the reviewer ran both"}
 - id: proc-proposed-safeguard-stays
@@ -609,8 +610,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 3
+  count: 4
   occurrences:
+    - {date: "2026-07-30", kind: reinforced, ref: "plan-11 Task B1 (task-b1-report.md, stale-count sweep): the implementer's own change moved the deny.toml ignore list 18 -> 19 and it went looking for the sites still asserting 18. It named the blind spot before trusting the result - both live ROADMAP assertions straddle a hard wrap, so a line-based grep sees neither - built a newline-flattened pass, fired it against a known-present control, and surfaced both sites. The controller reproduced the finding the same way. Recorded as the discipline held rather than as a defect"}
     - {date: "2026-07-23", kind: decided, ref: "plan-7.5 delta review HARVEST (docs/process-journal/artifacts/plan-7.5-sdd/design-review-round-1.md round-2 section, reviewer self-lesson): the D54 closure sentence false-negatived under a line-based grep because the prose wraps; found only when the reviewer switched to a whitespace-tolerant pattern"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 PLAN delta review HARVEST (docs/process-journal/artifacts/plan-7.5-sdd/plan-review-round-1.md round-2 section): a fixed-line-range fence extraction produced a phantom one-line delta (a swept-in closing fence) during the transcription re-diff; the anchor-based re-run confirmed byte-exactness; reviewer routes it here as the same tooling family"}
     - {date: "2026-07-27", kind: reinforced, ref: "plan-7.5 T1 review HARVEST (task-1-verdict.md): the transcription-diff method - syntactic-range extraction + diff -wB + injected-attribute fire-check - independently implemented twice with identical verdicts; third strict-fit event, promoted at count 3"}

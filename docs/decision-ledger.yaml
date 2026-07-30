@@ -5433,8 +5433,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 2
+  count: 3
   occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 Task A2 (task-a2-report.md concern 2, controller-reproduced): the plan's Step 5 and Read-first list, and the controller's own task brief, both locate the tracker entry as docs/ROADMAP.md's 'Docs accuracy' FIRST entry. Measured at execution: it is the second bullet - a README-example entry was filed at the top of that section on 2026-07-30, while the plan was being written. The implementer resolved the target by content and reported the drift. Fourth instance of the shape in one session, and the sharpest for this entry's own argument: the drift happened INSIDE the task whose whole subject is that a reference must not be resolvable by counting"}
     - {date: "2026-07-30", kind: violated-corrected, ref: "plan-12 amendment delta review A3 (.superpowers/sdd/plan-12/amendment-delta-review.md): a step cited D109's 'third rejected alternative' where the file measures it as the fourth, and the amendment made the drift worse than cosmetic - a reader following the ordinal now lands on precisely the alternative the new decision is in tension with. Third instance of the shape in one session across two plans, the other two being the owner-ruled comment line citations and BUILDING.md's positional gate ordinals; the reviewer found this one while looking for the surviving-ordinal class the controller had asked about, in a sentence that predated the amendment"}
     - {date: "2026-07-30", kind: reinforced, ref: "the same plan's fix round, applied as a sweep the moment the rule existed, and it caught the rule's own author mid-repair. 14 hits over an ordinal-plus-noun expression fired per shape rather than once (four shapes each fired individually, plus a negative control), 12 classified benign by the discriminator above, 2 genuine - one pre-existing fired control that indexed three unlabelled bullets, and one the author had written IN THAT ROUND, closing its A2 repair with 'stating the third case' while indexing a three-bullet list three lines above. The class reproduces inside the text written to fix the class"}
 - id: a-check-written-against-an-uncommitted-document-measures-a-different-corpus-than-it-will
@@ -5465,3 +5466,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: violated-corrected, ref: "Plan 11's final confirmation pass (.superpowers/sdd/plan-11/plan-confirmation.md): the reviewer's own first diff filter reported 5 changed lines against a true 14, missing all four changed markdown bullet lines - the repairs the pass existed to confirm. It caught the discrepancy only because `--numstat` disagreed, and reported it against itself in the same verdict that approved the plan. Same class the review had spent five rounds finding in the artifact, now in the instrument grading it"}
+- id: a-config-comment-explaining-a-tools-behaviour-is-a-claim-about-that-tool
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: ci
+  statement: "A comment that explains WHY a tool behaves as it does is a normative claim about that tool's semantics and decays exactly like a count, but no instrument in this project points at it - the checks all aim at numbers, and a wrong SENTENCE about a default, a scope or a precedence rule survives every one of them. Trigger, readable: the comment you are writing contains 'because', 'so', 'which means', or names a tool's default. Handle: verify the explanation at the tool's own source with the discipline proc-07-verify-against-source already applies to observed behaviour, and prefer the narrowest true statement - an explanation that overstates its scope is false even when the behaviour it justifies is right."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 Task B1 (task-b1-verdict.md finding 1): the plan-fenced deny.toml comment explains the advisory silence with 'cargo-deny's unsound scope defaults to workspace, which excludes every external crate'. Scope::Workspace keys on DIRECT DEPENDENTS, so an external crate a workspace member depends on directly is in scope; the reviewer proved it with a throwaway crate depending on glib directly, which fires under unsound = \"workspace\". The neighbouring wrong COUNT in the same fence was caught by the implementer; this wrong SENTENCE reached the commit and was caught only at review, which is the asymmetry the statement records"}
+- id: the-local-gate-and-ci-can-run-different-versions-of-the-same-tool
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: ci
+  statement: "A gate command names a tool, not a version, so `cargo deny check` can mean one version locally and another in CI - here 0.19.9 against the action image's pinned 0.19.8 - and the skew is stated nowhere. It is load-bearing precisely for the changes that introduce a NEW configuration key or rely on a new default, where the local run proves nothing about the remote one; and because this project pushes once at a plan close behind a fully green local gate, the first failure of that class appears after every local signal was green. Trigger, readable: your change adds or relies on a configuration key, a flag or a default in a tool the gate invokes by name. Handle: establish both versions, diff the relevant part of the tool's own source between them, and record the skew where the gate is documented rather than in the task that happened to find it."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: reinforced, ref: "plan-11 Task B1 review (task-b1-verdict.md minor 5): the task adds `unsound = \"all\"` to deny.toml. The reviewer established that CI's action pins cargo-deny 0.19.8 via its Dockerfile while the local gate runs 0.19.9, then checked src/advisories/cfg.rs byte-identical between the two versions, so the key behaves the same on both sides and nothing breaks. Recorded because the premise was unchecked in the plan, not because it failed"}
+- id: a-new-config-key-owes-a-fire-of-the-state-a-later-edit-would-produce
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: ci
+  statement: "Where a change ADDS a configuration key, the fire set covers the state a future edit would produce by dropping it again, not only the states the change itself moves between. Runs that prove the new state works and the old state failed both describe the transition the author is making; the regression a later hand introduces is a third state nobody constructed, and it is the one whose failure mode is quiet. Trigger, readable: your diff adds a key to a config file. Handle: build the dropped-key state as its own run and record what the tool does in it - which also answers, with evidence rather than assumption, whether the loss would be silent at all."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: reinforced, ref: "plan-11 Task B1 review (task-b1-verdict.md, HARVEST 5 and finding 3): the plan prescribed three runs - shipped green, scope live, and the control proving the scope rather than the ignore does the work - and all three describe the change itself. The reviewer's own fourth state, the key dropped with the ignore entry kept, is what refuted the plan's deferral premise: it showed both that `unused-ignored-advisory` would catch the regression with one key in the same table, and that cargo-deny already emits warning[advisory-not-detected] naming the exact ignore line, so the loss is not silent at defaults"}
