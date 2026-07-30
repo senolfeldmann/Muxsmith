@@ -2724,6 +2724,24 @@ at docs/process-journal/artifacts/plan-5-sdd/progress.md) and design memos.
   re-derives it: `# legs, matching the cross-target clippy gate part
   (BUILDING.md, Rust gate part 6; cfg-gated items can differ per platform).`
   (Plan-8 whole-branch delta F1, 2026-07-27.)
+  **FIRED 2026-07-30 at Plan 11 Task A2, which touches `ci.yml`, and
+  deliberately RE-DEFERRED rather than consumed - its prescribed replacement
+  text was falsified hours earlier by Task A1 of the same plan.** A1 removed
+  `BUILDING.md`'s three positional gate ordinals, so applying this rider as
+  written would write `Rust gate part 6` back into `ci.yml` and re-create, in
+  another file, exactly the construction the plan had just deleted - invisibly
+  to every check Task A2 runs, since none of them reads `ci.yml` for ordinals.
+  Found by Task A1's reviewer, which noticed that the rider's trigger ("the edit
+  is the trigger") and Task A2's authorized write region are the same lines.
+  **Task A2 does NOT consume this rider**, and its dispatch says so verbatim.
+  **The fenced text is not repaired here on purpose:** a replacement string
+  destined for a source comment is product content, which the controller does
+  not author. **New observable: the next change that edits `ci.yml`'s Plan-5.5
+  comment block for its own reasons** - then the pointer repair is re-derived
+  from `BUILDING.md`'s then-current wording (today the paragraph opens "The
+  cross-target clippy run type-checks the workspace for Windows", which is
+  greppable) and lands in the same diff. The rider's original defect - a pointer
+  into a section title that no longer exists - is unfixed and still real.
 - NDJSON `--json-events` stream; `--fail-fast=now` (deferred pre-Plan-5).
 - Joblog atomic writes (settings half was hardened in the Plan-5 fix
   wave). The AppState.active poison-recovery half of this line was

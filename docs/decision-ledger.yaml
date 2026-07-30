@@ -4920,8 +4920,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "plan-11 Task B1 (task-b1-report.md, controller-reproduced on master): the PLAN fenced a deny.toml comment asserting that cargo-deny's unmaintained class 'reported its 18'. Measured on the pre-state: note[advisory-ignored] 18, note[unmaintained] 16, note[vulnerability] 2 - 18 is the ignore-ENTRY count, attributed by the sentence to a class that reported 16. The implementer applied the fence verbatim as required and raised the contradiction rather than correcting at the keyboard, which is the only reason it surfaced before the merge; the false sentence had already reached a commit. Same shape as the 2026-07-29 occurrence with the fencing party one level up: there a controller fenced a verdict quotation, here a plan fenced its own measurement, and in both cases transcription was perfect and content false"}
     - {date: "2026-07-29", kind: violated-corrected, ref: "plan-9 close pass F1: the controller fenced a replacement comment quoted from the Task-5 delta verdict. That comment says the profile-load-failure document carries neither key; the same verdict's own measurement block, some forty lines above the fenced text, prints files present: True for that document. The implementer applied it verbatim as fenced and reported the contradiction, which is the correct behaviour and the only reason it surfaced; the reviewer reproduced the measurement and ruled a narrowing edit owed on the controller's licence, since the controller erected the fence. Cost one fix round"}
 - id: a-review-brief-separates-a-claimed-measurement-from-a-prescribed-one
   kind: pattern
