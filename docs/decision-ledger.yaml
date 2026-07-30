@@ -5450,3 +5450,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: violated-corrected, ref: "D111 design fix round, both halves found by the author's own mandated post-edit re-run rather than by a review. Plan 11's check R returns 6 on the tracked tree and 16 lines across 6 files under --untracked, ten of them inside the design document that had not been committed yet - so the plan's check breaks at execution time and its pathspec, not only its counts, had to be replaced. And the author's own reconciliation expression returned 1 in a single-invocation form against 2 in the two-invocation form, the silently dropped line being one of the two sites the design repairs; it caught that only because it had an expected figure to compare against"}
+- id: a-hand-rolled-diff-filter-keyed-on-the-second-character-drops-list-lines
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: process
+  statement: "The common shortcut for stripping diff headers - keep lines matching `^[+-][^+-]`, i.e. a sign not followed by another sign - silently drops every changed line whose own first character is a sign. A removed markdown bullet reads `-- **text`, a removed diff-like code line reads `--foo`, so exactly the list and option lines a prose or config review cares about vanish, and the filtered count looks plausible. Trigger, readable: you are writing a regex to separate changed lines from `---`/`+++` headers. Handle: filter on the three-character prefixes `---` and `+++` rather than on a two-character shape, and cross-check any hand-rolled filter's line count against `git diff --numstat`, which is computed rather than pattern-matched. This is the enumeration-in-the-instrument defect in its cheapest form: the pattern's exclusion class overlaps its inclusion class."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: violated-corrected, ref: "Plan 11's final confirmation pass (.superpowers/sdd/plan-11/plan-confirmation.md): the reviewer's own first diff filter reported 5 changed lines against a true 14, missing all four changed markdown bullet lines - the repairs the pass existed to confirm. It caught the discrepancy only because `--numstat` disagreed, and reported it against itself in the same verdict that approved the plan. Same class the review had spent five rounds finding in the artifact, now in the instrument grading it"}
