@@ -308,26 +308,38 @@ function blankProfile(): Profile {
 // it only refuses to run while one of those round trips is in flight, the
 // same guard `pickAndOpen` uses.
 //
-// The statement ORDER inside this body is NOT load-bearing, and an earlier
-// version of this comment claimed it was. Measured: swapping
-// `sessionActive` and `model`, and moving the `diagnostics` clear after the
-// model assignment, each leave the whole suite green. The reason is that
-// `watch(model)` above runs at Vue's default `flush: "pre"` -- the callback
-// is QUEUED, not run at the assignment -- so by the time it reads
-// `sessionActive` this entire synchronous body has finished and every write
-// is visible to it whichever order they were made in. The same fact covers
-// `diagnostics`: no render happens between two synchronous ref writes, so a
-// previous profile's findings cannot paint against the new model from any
-// position. The order below is kept for readability (clear, then establish,
-// then assign) and nothing depends on it.
+// While the body stays fully synchronous, the statement order inside it
+// does not matter. `watch(model)` above runs at Vue's default
+// `flush: "pre"` -- the callback is QUEUED, not run at the assignment -- so
+// by the time it reads `sessionActive` this entire body has finished and
+// every write is visible to it whichever order they were made in. The same
+// fact covers `diagnostics`: no render happens between two synchronous ref
+// writes, so a previous profile's findings cannot paint against the new
+// model from any position. Measured: swapping `sessionActive` and `model`,
+// and moving the `diagnostics` clear after the model assignment, each leave
+// the whole suite green.
 //
-// What IS load-bearing is that the gate and the model are established in the
-// SAME synchronous block. Measured: inserting an `await` between
-// `model.value = ...` and `sessionActive.value = true` fails three cases --
-// the queued watcher runs at that microtask boundary, reads a still-false
-// gate and returns early, so the seed is never validated. That is the
-// constraint this function's synchronicity buys, and the one to preserve
-// when this funnel later gains a guard in front of it.
+// What IS load-bearing is the RELATIVE ORDER of those two, and it becomes
+// load-bearing exactly when the synchronicity above stops holding:
+// `sessionActive` is established BEFORE `model`. Measured, all three
+// configurations -- gate first with an `await` between gate and model: 79
+// passed. Gate first with the `await` after both: 79 passed. Model first
+// with an `await` between them: 3 failed (the first three cases of the New
+// describe in `e2e/smoke.spec.ts`). Setting the gate first makes this
+// function await-proof: at the moment `model` is written the gate is
+// already true, so the callback that write queues cannot observe anything
+// else, wherever it later flushes. The reverse order breaks as soon as an
+// `await` lands between the two -- the watcher runs at that microtask
+// boundary, reads a still-false gate, returns early, and the seed is never
+// validated.
+//
+// Which is the case this funnel is walking into: the discard guard (D109)
+// makes it `async` and puts an `await` in front of the seed. Keep the gate
+// above the model assignment there. This comment has been wrong about this
+// function twice, in opposite directions -- first that every statement's
+// order was load-bearing, then that none of it was and that the constraint
+// was gate and model sharing one synchronous block -- so do not reconstruct
+// either claim from the code's shape.
 //
 // The seeded rule is selected (index 0) so the detail panel opens on the one
 // field the warning is about, mirroring Add's own behaviour (D67, D107
