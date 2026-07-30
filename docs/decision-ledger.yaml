@@ -5551,3 +5551,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: reinforced, ref: "plan-11 Task A4 report-correction round: measured while re-running the two greps whose pastes its review had refuted - nine invocations on the unchanged tree, seven distinct md5 sums unsorted, one sorted (62f6101f..., 9/9). Recorded because it constrains how this project's pasted-output evidence rule can be verified at all: a reviewer re-running a documented grep and diffing the two texts will see spurious differences, and the honest comparison is over the set of lines"}
+- id: a-cited-exemplar-is-not-the-house-form-the-corpus-is
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A brief or review that cites ONE file as 'the house form' has made a claim whose surface is the CORPUS of comparable artifacts, not the cited file - and a single exemplar can carry an accidental property that reads as the form. Trigger is readable: you are writing 'follow the house form, see <file>', or grading an artifact against one. Handle: count the property across the corpus before treating the exemplar as normative; it is one command. Distinct from proc-sweep-surface-completeness, which governs a SEARCH surface - here the incomplete surface is the evidence base of a normative citation."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: decided, ref: "plan-12 task-1 verdict Q3 + H1 (.superpowers/sdd/plan-12/task-1-verdict.md): the review brief named docs/superpowers/specs/2026-07-14-plan-5.7-decisions.md as the ADR house form; that file carries ONE decision and writes an explicit 'Triggers created: none.', which reads as 'the form always writes the slot'. Measured across the D-sectioned decision files, 46 decision sections carry 8 Triggers-created slots, so omitting the slot where no trigger exists is the dominant house behaviour by a wide margin and the exemplar could not distinguish the two readings"}
+- id: a-second-implementation-of-an-existing-rule-is-the-standing-rejection-ground
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "Where an alternative would put a rule that ALREADY EXISTS into a second place - a duplicated resolution, an independent re-resolution in another language against another source, a check that re-implements the mechanism it is testing - the rejection ground is that duplication itself, and the answer is a seam the existing rule is read through. Recorded at count 1 rather than 3 because the three instances are one authoring pass surfaced by one review; whether it earns Tier 2 depends on recurrence outside a single package."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: decided, ref: "plan-12 task-1 verdict H4 (.superpowers/sdd/plan-12/task-1-verdict.md): D106's 'duplicate the resolution rule in the dialog rather than extracting a seam', D110's 'let the shell resolve its own locale' and D110's 'write the parity check in check-i18n.mjs instead of Rust' are all rejected on one ground - it would be a second or third implementation of a rule that already exists"}
