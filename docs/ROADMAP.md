@@ -963,6 +963,18 @@ action:
   push anything after the advisory stops applying is told, by file and line, with
   the reason printed beside it. Measured 2026-07-30 with a scratch config: an
   ignored advisory that matches no crate in the tree exits 1 and prints the line.
+  **The guard reaches further than its first report claimed:** an ignored id that
+  exists in no advisory database at all - a typo, a withdrawn advisory - is caught
+  too, measured at exit 1 with `error[advisory-not-detected]` beside
+  `warning[unknown-advisory]`, against a no-key control at exit 0. The Plan-11.5
+  implementer predicted the opposite from reading the source without running it,
+  and its reviewer refuted the prediction by running it.
+  **The residual this guard cannot cover, recorded here because a retired plan's
+  deferral table is history and not a backlog:** deleting `unused-ignored-advisory`
+  itself, or deleting `unsound` together with the ignore entry, leaves the gate
+  green. No key inside a config file can guard its own presence. What catches that
+  is review on the diff, which is where it belongs - and it is named here so
+  nobody later reads the ignore list as fully self-policing.
   **Its predecessor formulation was "a dependency PR or a Tauri release moves the
   gtk-rs generation past 0.18 in `Cargo.lock`", which is the same event described
   as something a human notices** - kept here only to record that the mechanical
