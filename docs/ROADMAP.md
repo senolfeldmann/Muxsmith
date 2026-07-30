@@ -1245,6 +1245,32 @@ Must be resolved before the first tagged release.
     tree and covered per path, not by one test for the flag. An unenumerated
     mutation set in that position is the latitude-by-omission shape one level
     below the guard.
+    **THE CLOSE-PATH RESIDUAL IS RULED, owner 2026-07-30: option B, re-read the
+    decision after the confirm and prompt again when it changed.** The residual
+    was that `close_decision` reads its facts once, the callback dialog leaves the
+    webview live and speaks only about jobs, and confirming quits without
+    re-reading - so unsaved changes made during that dialog are lost with nothing
+    having warned.
+    **CONTROLLER CORRECTION, because the option was put to him with an overstated
+    cost.** It was presented as contradicting D109 decision 5. Reading that
+    decision rather than relaying it: decision 5 builds a FOUR-variant
+    `CloseDecision` that already reads both facts (run slot occupied x editor
+    dirty) and gives the coinciding case its own combined message, and its
+    rejection of "two prompts in sequence" is about THAT case - assembling one
+    situation out of two dialogs. The residual is a different situation: the state
+    CHANGED between the read and the confirm. So B does not overrule decision 5,
+    it extends its own principle of one prompt per state to a state the machine
+    reads only once. Cost is therefore an extra evaluation at confirm time plus a
+    conditional dialog on an exceptional path, not a redesign - and the four-variant
+    table stands unchanged.
+    Vehicle: Plan 12, as a text replacement in the paragraph that currently
+    presents both options and picks neither, per the reviewer's confirmation that
+    nothing else in the package depends on the outcome.
+    **BOTH PLANS ARE OWNER-APPROVED 2026-07-30**, after independent review approved
+    each (Plan 11 over four rounds, 23 findings raised and addressed, 0 disputed;
+    Plan 12 over four rounds, 0 disputed, two author divergences upheld).
+    Execution order is Plan 12 FIRST regardless of numbering, because it is the
+    only thing that unblocks the stopped owner QA pass.
     **EDITOR UNDO/REDO PULLED INTO PRE-1.0, owner ruling 2026-07-30, and the
     package is then CLOSED.** He declined the offer to pull the unblocking half
     (blank profile plus the locale option) forward for a faster build, and added
@@ -1896,16 +1922,54 @@ ten is recomputed.
   whichever package next amends the v1 spec** - same vehicle as the 8.1
   synopsis item below; both are spec-wording repairs and the README follows
   whatever the spec settles.
-  **OPEN OWNER QUESTION, put to him 2026-07-30 and UNANSWERED, recorded here
-  because it was living only in a plan brief, which is scratch rather than a
-  tracker.** The disposition above assumes the BEHAVIOUR is intended and only the
-  wording is wrong, which is how the finding was written and how Plan 11 repairs
-  it. The question he has not answered is whether `raw:` should in fact compare
-  byte-exactly, in which case the coercion is a behaviour defect with its own
-  vehicle and the wording repair was aimed at the wrong side. Nothing blocks on
-  it: Plan 11's repair makes the documents true about today's behaviour either
-  way, and a later behaviour change would amend them again. Reconsider when the
-  spec is next amended, or when he answers.
+  **RULED 2026-07-30: `raw:` MUST compare byte-exactly. The documents were right
+  and the CODE is the defect, so this entry inverts** - it is no longer a
+  wording repair. The owner: type casting must simply not happen under `raw:`.
+  He also ruled that **Plan 11 must be adjusted rather than shipping the
+  accurate-for-today wording**, overruling the controller's recommendation to let
+  it ship and amend the same sentences later.
+  **THE DISTINCTION THAT DECIDES THE FIX'S SIZE, and whose absence caused the
+  owner real confusion when the finding was first presented - the controller
+  showed both rules without separating the paths they govern.** There are TWO
+  comparison paths and the README states a different promise for each, both
+  correct:
+  - `exact` on a KNOWN property compares in that property's own domain, and
+    "numbers numerically (`6` equals `6.0`)" is the documented, intended
+    behaviour there. **This does not change.**
+  - `raw:` is the declared untyped path, where every convenience switches off.
+    **Only this one is wrong today.**
+  **Measured cause, and it makes the fix surgical rather than deep:**
+  `scalar_eq`'s own doc comment reads "with int/float cross-comparison (spec 4.3,
+  `exact`)" - the cross arms exist FOR the typed path, where they belong. The
+  defect is that the `raw:` arm calls the same function and inherits a coercion
+  that is correct one path over. Three call sites exist in `matcher.rs`; the fix
+  gives the `raw:` arm its own comparator without cross arms and leaves the typed
+  path untouched. Anyone reading this later: do NOT strip the cross arms from
+  `scalar_eq` itself, that would break documented behaviour of the whole matcher.
+  **A wording question the vehicle must settle rather than inherit:** "byte-exact"
+  is itself imprecise, and that imprecision is part of what went wrong. Dropping
+  the cross arms means an Int matches only an Int and a Float only a Float; true
+  byte equality over the textual form would additionally make `6.0` not match
+  `6.00`. The design decides which is meant and says so.
+  **Why the owner's reasoning wins over the controller's earlier recommendation,
+  recorded because the recommendation was reversed twice:** the controller first
+  argued for keeping the coercion on the ground that a user cannot know an unknown
+  property's number type. That argument does not survive `mkvmerge -J` and the
+  dry-run being the tool's first handle - the type is visible. And under
+  byte-exactness a non-match makes the rule match zero tracks, which the
+  suggestion engine reports with a proposed narrowing, so the failure is visible
+  and repairable where the coercion succeeds silently and possibly wrongly. Also
+  measured: the `raw:` escape hatch has ZERO members today (mkvmerge's pinned
+  schema v20 declares 59 track properties and Muxsmith's model knows all 59), so
+  no profile can depend on the coercion through the sanctioned route, and the
+  change is at its cheapest now and gets monotonically more expensive as the
+  schema grows.
+  **Vehicle: an amendment to Plan 11, and it is the four-role case** - it re-cuts
+  task A3 from a documentation task into a behaviour change with its own tests,
+  which the doctrine's amendment sizing puts beyond a one-pair amendment. The nine
+  retained wording sites stay retained (they concern `language` and `codec_kind`,
+  which are genuinely byte-literal); the six repair sites are no longer repairs,
+  because the sentences they carry become true again.
 
 - **The v1 spec's section 8.1 synopsis omits `validate`'s flags** (surfaced by
   Plan 10's Task 4, 2026-07-29, while re-deriving the CLI surface from the

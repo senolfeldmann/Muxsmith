@@ -1,4 +1,4 @@
-<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
+<!-- Provenance: snapshot of HANDOFF.md at the session-29 close (2026-07-30), superseding the earlier same-day snapshot after four owner rulings landed post-approval. Taken per SI-5 because HANDOFF.md is git-ignored and superseded in place. -->
 
 # Handoff
 
@@ -152,34 +152,55 @@ Re-derive rather than trusting these lines: `git log --oneline -1`,
   plan close, not to a session close - the reviewer verdict files and the
   consolidated addenda record are there.
 
-## What is on Şenol, and nothing proceeds without the first item
+## Owner decisions: ALL RULED at the session close, nothing waits on him
 
-1. **Approve or reject Plan 11** and **Plan 12**. Execution cannot start
-   otherwise; a plan is a contract and his approval is its gate.
-2. **Plan 12's approval carries a decision, not just a yes**: the package raises
-   the editor catalog budget from 46 to 54 keys, and that budget is an owner-ruled
-   hard boundary. The plan itemizes every new key in two tables specifically so he
-   can strike one at approval rather than face a total.
-3. **One design decision is open and routed to him** (ROADMAP, the round-3 QA
-   entry): on app close with a batch running AND unsaved editor changes, the close
-   decision is read once, the callback dialog leaves the webview live and mentions
-   only jobs, and confirming quits without re-reading - so unsaved changes go with
-   nothing having warned. Closing it costs either a widened abort message that may
-   warn about changes that do not exist, or a second prompt, which D109 decision 5
-   rejected; leaving it documented contradicts the save-state ruling he made this
-   session. The plan states it as a residual and picks neither side. The reviewer
-   confirmed nothing else in the package depends on the outcome, so his ruling is a
-   text replacement in one paragraph.
+**Both plans are APPROVED.** Four further rulings landed after the approvals and
+two of them change work that was already contracted. Full context for each is in
+the ROADMAP; this is the index.
+
+1. **The close-path residual: option B**, re-read the decision after the confirm
+   and prompt again when it changed. It does NOT overrule D109 decision 5, whose
+   four-variant table and rejection of sequential prompts concern the case where
+   both facts hold at READ time; this is the case where the state changed between
+   read and confirm, so B extends decision 5's own one-prompt-per-state principle.
+   Cost: one extra evaluation plus a conditional dialog on an exceptional path.
+   Vehicle: Plan 12, a text replacement in the paragraph that currently presents
+   both options and picks neither.
+2. **`raw:` must compare byte-exactly**: the documents were right and the CODE is
+   the defect, so that entry inverts from a wording repair into a behaviour fix.
+   **He also ruled that Plan 11 must be ADJUSTED rather than shipping the
+   accurate-for-today wording**, overruling the controller's recommendation.
+   Vehicle: a Plan-11 amendment, and it is the FOUR-ROLE case because it re-cuts
+   task A3 from a documentation task into a behaviour change with tests.
+   **Read the ROADMAP entry before touching this**: the fix is surgical and must
+   not strip the int/float cross arms from `scalar_eq` itself, because those are
+   correct and documented for the typed `exact` path. Only the `raw:` arm, which
+   shares the function, is wrong.
+3. **Transcript-archive dating: option A**, and it is now the written rule. Bundle
+   names use the UTC start date; every document date - footers, the generated
+   index - uses local time, because the index generator derives last-edit from
+   filesystem mtime in local time. The mnemonic: names date the session, footers
+   date the file. This is agent-side project material, not repo material.
+4. **The editor catalog budget rises 46 to 54** with his approval of Plan 12; the
+   plan itemizes every new key in two tables so a strike stays possible later.
 
 ## Next steps (priority order)
 
-1. **Wait for the two approvals.** Do not begin execution, do not create
-   worktrees, do not dispatch implementers before them.
-2. **Execute Plan 12 first when approved**, regardless of numbering: it is the
-   only thing that unblocks the owner QA gate, and Plan 11's items block nothing.
-   Its own document fixes the task order and the single-worktree decision.
-3. **Then Plan 11.** Two streams in separate worktrees, merged sequentially with a
-   full gate run per merged state, per its document.
+1. **Plan 12 first, and it needs a one-paragraph amendment before task 1.** Both
+   plans are approved, but Plan 12 carries ruling 1 above: the close-path residual
+   paragraph presently offers two options and picks neither, and the owner picked
+   B. That is a one-pair amendment (no task added, removed or re-cut) authored by
+   the plan's own author with the original reviewer judging the delta. Then
+   execute. Plan 12 goes first regardless of numbering because it is the only
+   thing that unblocks the stopped owner QA pass.
+2. **Plan 11 needs a FOUR-ROLE amendment before execution**, per ruling 2 above,
+   because its task A3 changes from a documentation task into a behaviour change
+   with tests. Do not start Plan 11's execution before that amendment is authored
+   and reviewed. The rest of the plan - the dependency task, the `BUILDING.md`
+   ordinals, the surviving line citations, the spec synopsis, the README example -
+   is unaffected and stays as approved.
+3. **Then Plan 11's execution.** Two streams in separate worktrees, merged
+   sequentially with a full gate run per merged state, per its document.
 4. **A draft build for his QA pass** once Plan 12 lands: `workflow_dispatch` on
    release.yml with the draft flag, never a tag, never published.
 5. **At each plan close**, beyond the standard gate: execute the recorded close
