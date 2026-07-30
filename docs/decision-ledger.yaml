@@ -5407,3 +5407,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-30", kind: decided, ref: "plan-11 delta review round 3 (.superpowers/sdd/plan-11/plan-delta-review-round-3.md), the reviewer's own stopping argument at the approval: severity fell 2 blocking, then 3 Important, then 2 Important plus 1 Minor, then 1 Minor, while the plan's meta-text share rose 10 to 12 to 17 to 21 percent. It approved the plan, ruled the one remaining Minor non-gating, and wrote 'do not run the clause again on this artifact' - the clause having been introduced two rounds earlier and having found, that round, a class no re-run could see. Four rounds, 23 findings raised, 23 addressed, 0 disputed"}
+- id: factoring-a-decision-out-for-testability-moves-the-untested-seam-to-the-call-site
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: process
+  statement: "Extracting a decision into a pure function so it can be tested exhaustively is the right move, and it silently relocates the gap rather than closing it: an exhaustive table over the function proves what the function DECIDES and never that the caller CALLS it, or calls it at the right point. The table's completeness reads as coverage of the behaviour, which is why the relocated seam is easy to miss. Trigger, readable: you are writing an exhaustive case table over a function you factored out of a handler, a callback or a runtime-bound path. Handle: give the wiring its own producer, and where the wiring needs a runtime the test harness does not have, mark that row NOT MACHINE-VERIFIABLE with its reason and name what checks it instead - a reviewer read, a manual step - rather than letting the table stand in for it. The count of non-machine-verifiable rows is then honest, which is what makes a claim of zero meaningful elsewhere."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-30", kind: decided, ref: "plan-12 one-pair amendment for the close-path re-read ruling: the author factored the rule into a pure `reconfirm_decision(answered, current)` and tested it exhaustively over twelve cells, three dialog-producing answered variants against four current ones, each cell explicitly Some or None. Applying the would-this-pass-if-broken question to its own producers then surfaced a third row nobody had asked for - the matrix cannot see whether the dialog callback calls the function, and the callback needs the Tauri runtime, which is the same reason the neighbouring `close_decision` had been factored out. Marked no-by-nature with a reviewer check as its producer, and the plan's self-review now states one non-machine-verifiable row that is not an owner action instead of claiming zero"}
