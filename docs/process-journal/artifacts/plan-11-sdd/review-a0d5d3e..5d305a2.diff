@@ -1,0 +1,61 @@
+# Review package: Plan 11 Task A2
+
+## Commits
+5d305a2 comments: locate code by symbol in the CI workflow and the D48 fixture, closing the class outside docs/
+
+## Stat
+ .github/workflows/ci.yml                                 | 6 ++++--
+ crates/muxsmith-core/tests/fixtures/all-non-default.yaml | 4 ++--
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+## Diff (-U10)
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 278bc54..faa84a5 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -80,22 +80,24 @@ jobs:
+           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+       # One version source for node+pnpm: mise.toml (root, committed).
+       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+       - name: Install frontend dependencies
+         run: pnpm install --frozen-lockfile
+       - run: cargo fmt --all --check
+       - run: cargo clippy --workspace --all-targets -- -D warnings
+       - run: cargo test --workspace
+       # Plan 5.5 Task 12 (#18b): rustdoc correctness as the ninth gate part.
+       # #![deny(missing_docs)] already gates presence; it says nothing about
+-      # correctness, so a broken intra-doc link (queue.rs:73, linking a
+-      # private item) rotted silently since Plan 4 until this task. All
++      # correctness, so a broken intra-doc link (in `QueueOpts::jobs`'s doc
++      # comment in crates/muxsmith-core/src/executor/queue.rs, which then
++      # linked the private `worker_count` helper) rotted silently since
++      # Plan 4 until this task. All
+       # legs, matching the cross-target lint rule (cfg-gated items can
+       # differ per platform).
+       # --document-private-items (Plan 9 close): private items are not
+       # rendered without it, so their doc comments' links go unchecked and a
+       # link only ambiguous once a private module is documented resolves
+       # quietly. Kept identical to BUILDING.md's gate block - a single-site
+       # flag would leave CI carrying exactly the blind spot it removes.
+       - name: cargo doc (rustdoc warnings as errors)
+         run: cargo doc --workspace --no-deps --document-private-items
+         env:
+diff --git a/crates/muxsmith-core/tests/fixtures/all-non-default.yaml b/crates/muxsmith-core/tests/fixtures/all-non-default.yaml
+index 7872f6c..42a9a18 100644
+--- a/crates/muxsmith-core/tests/fixtures/all-non-default.yaml
++++ b/crates/muxsmith-core/tests/fixtures/all-non-default.yaml
+@@ -1,12 +1,12 @@
+-# D48 guard 1 fixture: every one of the 17 defaulted fields (design
+-# :1517-1535) set to a value that is NOT its default. A predicate that
++# D48 guard 1 fixture: every one of the 17 defaulted fields (design D48)
++# set to a value that is NOT its default. A predicate that
+ # skips a non-default value silently destroys it on save; this fixture
+ # exercises all 17 at once so no row can hide behind another.
+ profile_version: 1
+ 
+ input:
+   pattern: 'S(?<season>\d{2})E(?<episode>\d{2})'
+   extensions: [mkv]
+   recursive: false                     # default true
+ 
+ output:

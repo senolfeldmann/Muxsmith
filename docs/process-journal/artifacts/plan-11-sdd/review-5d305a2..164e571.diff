@@ -1,0 +1,495 @@
+# Review package: Plan 11 Task A3
+
+## Commits
+164e571 matcher: raw: compares without type conversion (D111), and the typed exact path keeps its cross arms
+
+## Stat
+ README.md                                          |   3 +-
+ crates/muxsmith-core/src/matcher.rs                | 150 ++++++++++++++++++---
+ crates/muxsmith-core/src/report/mod.rs             |   2 +-
+ .../specs/2026-07-08-muxsmith-v1-design.md         |   8 +-
+ help/de/editor-match-expr-exact.md                 |   2 +-
+ help/en/editor-match-expr-exact.md                 |   2 +-
+ 6 files changed, 142 insertions(+), 25 deletions(-)
+
+## Diff (-U10)
+diff --git a/README.md b/README.md
+index 626b1e6..8629182 100644
+--- a/README.md
++++ b/README.md
+@@ -21,20 +21,21 @@ Muxsmith flips the workflow: you write down **once** what a correct file looks l
+ **What Muxsmith deliberately does not do: guess.** No language-from-filename, no auto-title, no "this is probably what you meant". Interactive tools can afford pre-filled guesses because you review every field before hitting go. An unattended batch tool cannot - a wrong guess applied 400 times is 400 broken files. The profile is the spec; if the profile does not say it, it does not happen.
+ 
+ ## 🧠 How it works
+ 
+ Three steps: write a profile, dry-run it, run it.
+ 
+ ```yaml
+ profile_version: 1
+ 
+ input:
++  pattern: '.*'              # every candidate file; the whole basename is the identifier
+   extensions: [mkv]
+   recursive: true
+ 
+ output:
+   filename: keep
+   on_collision: error        # never clobber anything by accident
+ 
+ tracks:
+   unmatched: drop            # nothing you didn't ask for survives
+   rules:
+@@ -50,21 +51,21 @@ tracks:
+       changes: { track_name: German forced, default_track: true }
+ ```
+ 
+ Matching is **typed, not stringly**. `exact` compares each known property in its own domain: booleans as booleans, numbers numerically (`6` equals `6.0`), languages as languages - `de` matches a file tagged `ger`, and `pt-BR` does **not** match `pt-PT`. For the properties that genuinely are strings - track names, codec IDs - `substring` (case-insensitive containment) and `regex` do the messy-reality work, and `any`/`not` combine expressions into whatever your library's chaos requires. Point `substring` or `regex` at a known property that is not string-typed and you get a config-time error, not a silent never-match; `codec_kind` rejects both conditions even though it is string-typed, because a pattern over a curated alias is ill-defined - pattern-match `codec_id` instead. Rule order is output track order.
+ 
+ Three places where `exact` does more than compare, and one where it deliberately does less. Worth knowing by name, because everything else is a plain value comparison:
+ 
+ - **`language` normalizes, and reads both fields.** ISO 639 spellings and BCP-47 tags are reduced to canonical form before comparison, and the value is matched against both `language` and `language_ietf` as mkvmerge reports them. One `language: de` therefore covers a file that tags `ger`, one that tags `de`, and one that only fills the IETF field.
+ - **Boolean flags are false when absent.** mkvmerge emits the vanity flags (`flag_commentary`, `flag_original`, `flag_hearing_impaired`, `flag_visual_impaired`) only when they are set, and Matroska defines them false otherwise - so `exact: { flag_commentary: false }` matches a track that never mentioned the flag. No `not:` gymnastics required.
+ - **`type` and `codec_kind` have curated closed domains.** A value outside them - `type: subtitle` where the domain says `subtitles`, a codec alias that does not exist - is a config-time error, not a rule that quietly never matches. The typo surfaces at validate time instead of after 400 files came out wrong.
+-- **`raw:` is the deliberate opt-out.** Prefix a property name with `raw:` to match a field your mkvmerge reports but this build's schema does not know yet, and every convenience above switches off: byte-exact value equality against that one field, named verbatim. No language normalization, no codec aliasing, no false-when-absent, and no type check on `substring`/`regex` either - you asked for untyped, you get untyped.
++- **`raw:` is the deliberate opt-out.** Prefix a property name with `raw:` to match a field your mkvmerge reports but this build's schema does not know yet, and every convenience above switches off: plain value equality against that one field, named verbatim, and no type conversion either: `6` matches a reported `6`, never a reported `6.0`. No language normalization, no codec aliasing, no false-when-absent, and no type check on `substring`/`regex` either - you asked for untyped, you get untyped.
+ 
+ Then:
+ 
+ ```console
+ $ muxsmith dry-run profile.yaml --source /media/series --output /media/clean
+ ```
+ 
+ <!-- placeholder(1.0): real dry-run output snippet, regenerated from an actual run -->
+ 
+ The dry-run is the heart of the tool. It identifies every file, resolves every rule, and tells you exactly what would happen - including **suggestions**: when a rule matches two tracks or none, Muxsmith proposes the narrowing that fixes it, as a YAML fragment you can paste straight into the profile. A suggestion is only offered if it survives the *next* dry-run too - no whack-a-mole.
+diff --git a/crates/muxsmith-core/src/matcher.rs b/crates/muxsmith-core/src/matcher.rs
+index e9965a8..486dd74 100644
+--- a/crates/muxsmith-core/src/matcher.rs
++++ b/crates/muxsmith-core/src/matcher.rs
+@@ -86,28 +86,34 @@ pub fn matches<M: Matchable>(expr: &MatchExpr, item: &M, lang: &LanguageIndex) -
+     if let Some(not) = &expr.not
+         && not.iter().any(|e| matches(e, item, lang))
+     {
+         return false;
+     }
+     true
+ }
+ 
+ fn exact_matches<M: Matchable>(prop: &str, want: &Scalar, item: &M, lang: &LanguageIndex) -> bool {
+     if let Some(bare) = prop.strip_prefix("raw:") {
+-        // `raw:` opt-in (D32, spec 9.2): untyped byte-literal value equality
+-        // against the property named verbatim. It bypasses the `language`
++        // `raw:` opt-in (D32, spec 9.2; semantics D111): matched untyped -
++        // the capability model is not consulted - and with NO type conversion
++        // in the comparison itself: value equality against the property named
++        // verbatim, holding only where the profile value and the reported
++        // value carry the same kind, so an `Int` scalar does not match a
++        // reported `Float` (case B-7, ruled 2026-07-30). The typed `exact`
++        // path keeps that coercion in `scalar_eq`; this arm calls
++        // `scalar_eq_same_type`. It also bypasses the `language`
+         // normalization and `codec_kind` alias arms below, and it takes no
+-        // false-when-absent Boolean shortcut - the bare name's type is unknown
+-        // to the capability model (`matchable_type` is `None`), so an absent
+-        // raw: property simply does not match (B-6).
++        // false-when-absent Boolean shortcut - the bare name's type is
++        // unknown to the capability model (`matchable_type` is `None`), so an
++        // absent raw: property simply does not match (B-6).
+         return match item.get(bare) {
+-            Some(have) => scalar_eq(want, &have),
++            Some(have) => scalar_eq_same_type(want, &have),
+             None => false,
+         };
+     }
+     match prop {
+         // language matches against both `language` and `language_ietf`,
+         // normalized so `de` and `ger` are equal (spec 4.4).
+         "language" => {
+             let Scalar::Str(want) = want else {
+                 return false;
+             };
+@@ -189,35 +195,55 @@ fn strip_raw(prop: &str) -> &str {
+ /// The string form of a matchable item's property, for substring/regex/
+ /// language. Only `PropValue::Str` yields a value; numeric/boolean
+ /// properties are not strings.
+ fn item_str<M: Matchable>(prop: &str, item: &M) -> Option<String> {
+     match item.get(prop) {
+         Some(PropValue::Str(s)) => Some(s),
+         _ => None,
+     }
+ }
+ 
+-/// Value equality between a profile `Scalar` and a track `PropValue`, with
+-/// int/float cross-comparison (spec 4.3, `exact`). Strings compare
+-/// case-sensitively (language is special-cased before reaching here).
+-fn scalar_eq(want: &Scalar, have: &PropValue) -> bool {
++/// Value equality WITHOUT any type conversion, for the `raw:` opt-in path
++/// (spec 4.4, 9.2): a profile `Scalar` equals a reported `PropValue` only when
++/// both carry the same kind. Deliberately NO int/float cross arms - `raw:` is
++/// the declared untyped path, where Muxsmith takes no type decision on the
++/// user's behalf, so `raw:x: 6` does not match a reported `6.0`. Strings
++/// compare byte-wise, `language` is not normalized here (the `raw:` arm runs
++/// before that special case). The typed `exact` path uses [`scalar_eq`],
++/// which is exactly this function plus the two numeric cross arms; a new
++/// `Scalar`/`PropValue` kind is added here, not there.
++fn scalar_eq_same_type(want: &Scalar, have: &PropValue) -> bool {
+     match (want, have) {
+         (Scalar::Str(a), PropValue::Str(b)) => a == b,
+         (Scalar::Bool(a), PropValue::Bool(b)) => a == b,
+         (Scalar::Int(a), PropValue::Int(b)) => a == b,
+-        (Scalar::Int(a), PropValue::Float(b)) => (*a as f64) == *b,
+         (Scalar::Float(a), PropValue::Float(b)) => a == b,
+-        (Scalar::Float(a), PropValue::Int(b)) => *a == (*b as f64),
+         _ => false,
+     }
+ }
+ 
++/// Value equality for the TYPED `exact` path (spec 4.3): the same-type
++/// equality of [`scalar_eq_same_type`] plus int/float cross-comparison, so a
++/// profile `6` matches a reported `6.0` on a known property - documented
++/// behaviour (README, spec 4.3) that mkvmerge's own float-typed properties
++/// need, since it reports an integral `max_luminance` as `400.0`. Strings
++/// compare case-sensitively (`language` is special-cased before reaching
++/// here). The `raw:` path deliberately does NOT call this function.
++fn scalar_eq(want: &Scalar, have: &PropValue) -> bool {
++    scalar_eq_same_type(want, have)
++        || match (want, have) {
++            (Scalar::Int(a), PropValue::Float(b)) => (*a as f64) == *b,
++            (Scalar::Float(a), PropValue::Int(b)) => *a == (*b as f64),
++            _ => false,
++        }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use crate::capability::runtime::LanguageIndex;
+     use crate::identify::{PropValue, Track};
+     use std::collections::BTreeMap;
+ 
+     fn lang() -> LanguageIndex {
+         LanguageIndex::from_rows(&[
+             ["English", "eng", "eng", "en"],
+@@ -397,24 +423,53 @@ mod tests {
+             &t,
+             &lang()
+         ));
+         assert!(!matches(
+             &expr("exact: { flag_hearing_impaired: false }"),
+             &t,
+             &lang()
+         ));
+     }
+ 
++    // SAFEGUARD: the TYPED `exact` path KEEPS its int/float cross-comparison.
++    // `scalar_eq`'s two cross arms are correct there (spec 4.3, README: "6
++    // equals 6.0") and mkvmerge's five float-typed properties need them, since
++    // it reports an integral `max_luminance` as `400.0`. If this test fails,
++    // someone stripped the cross arms from `scalar_eq` instead of leaving the
++    // no-coercion rule to `scalar_eq_same_type` and the `raw:` path.
++    #[test]
++    fn typed_exact_still_cross_compares_int_and_float() {
++        let reported_float = track("video", &[("max_luminance", PropValue::Float(400.0))]);
++        assert!(matches(
++            &expr("exact: { max_luminance: 400 }"),
++            &reported_float,
++            &lang()
++        ));
++        let reported_int = track("video", &[("max_luminance", PropValue::Int(400))]);
++        assert!(matches(
++            &expr("exact: { max_luminance: 400.0 }"),
++            &reported_int,
++            &lang()
++        ));
++        // Negative control: the cross arms compare values; they do not make
++        // any number match any number.
++        assert!(!matches(
++            &expr("exact: { max_luminance: 401 }"),
++            &reported_float,
++            &lang()
++        ));
++    }
++
+     // D32 / Task 16: `raw:` opt-in matcher cases B-5..B-8 (untyped comparison).
+ 
+     // B-5: a raw: unknown property present on the track compares untyped by
+-    // value; scalar_eq(Int, Int) holds.
++    // value; scalar_eq_same_type(Int, Int) holds.
+     #[test]
+     fn b5_raw_unknown_present_matches_untyped() {
+         let t = track("audio", &[("dolby_complexity_index", PropValue::Int(3))]);
+         assert!(matches(
+             &expr("exact: { raw:dolby_complexity_index: 3 }"),
+             &t,
+             &lang()
+         ));
+         assert!(!matches(
+             &expr("exact: { raw:dolby_complexity_index: 4 }"),
+@@ -434,25 +489,51 @@ mod tests {
+             &t,
+             &lang()
+         ));
+         assert!(!matches(
+             &expr("exact: { raw:new_flag: false }"),
+             &t,
+             &lang()
+         ));
+     }
+ 
+-    // B-7: int/float cross-comparison works through the raw: path.
++    // B-7 (semantics CHANGED 2026-07-30 by owner ruling, ADR D111: no type
++    // casting under `raw:`): int/float cross-comparison does NOT happen on the
++    // `raw:` path. Both directions are reachable from a real mkvmerge file - it
++    // reports an integral `max_luminance` as `400.0` and `audio_channels` as
++    // `1` - so both are pinned here, each with its same-kind counterpart so the
++    // test cannot pass by matching nothing.
+     #[test]
+-    fn b7_raw_int_float_cross_compare() {
+-        let t = track("audio", &[("new_gain", PropValue::Float(6.0))]);
+-        assert!(matches(&expr("exact: { raw:new_gain: 6 }"), &t, &lang()));
++    fn b7_raw_does_not_cross_compare_int_and_float() {
++        let reported_float = track("audio", &[("new_gain", PropValue::Float(6.0))]);
++        assert!(!matches(
++            &expr("exact: { raw:new_gain: 6 }"),
++            &reported_float,
++            &lang()
++        ));
++        assert!(matches(
++            &expr("exact: { raw:new_gain: 6.0 }"),
++            &reported_float,
++            &lang()
++        ));
++
++        let reported_int = track("audio", &[("new_gain", PropValue::Int(6))]);
++        assert!(!matches(
++            &expr("exact: { raw:new_gain: 6.0 }"),
++            &reported_int,
++            &lang()
++        ));
++        assert!(matches(
++            &expr("exact: { raw:new_gain: 6 }"),
++            &reported_int,
++            &lang()
++        ));
+     }
+ 
+     // B-8: raw:language opts out of language normalization and dual-field
+     // (language / language_ietf) lookup: it byte-literally compares against the
+     // `language` property alone. Here `language` is "ger", so `raw:language: de`
+     // does NOT match (documents the B-4 footgun), whereas normal `language: de`
+     // matches via normalization.
+     #[test]
+     fn b8_raw_language_is_byte_literal_no_normalization() {
+         let t = track(
+@@ -462,20 +543,55 @@ mod tests {
+                 ("language_ietf", PropValue::Str("de".into())),
+             ],
+         );
+         assert!(!matches(&expr("exact: { raw:language: de }"), &t, &lang()));
+         // Byte-literal against the `language` field itself still works.
+         assert!(matches(&expr("exact: { raw:language: ger }"), &t, &lang()));
+         // Contrast: normal language matching normalizes de == ger.
+         assert!(matches(&expr("exact: { language: de }"), &t, &lang()));
+     }
+ 
++    // The `raw:` comparator's full type matrix: a profile value equals a
++    // reported value only within one kind - no int/float coercion, no stringly
++    // comparison, no bool/number equivalence. The four values are chosen so
++    // that every diagonal pair is equal and every off-diagonal pair could only
++    // match through a conversion, so this matrix IS the same-type rule.
++    #[test]
++    fn raw_compares_only_within_one_kind() {
++        let wants = [
++            Scalar::Bool(true),
++            Scalar::Int(6),
++            Scalar::Float(6.0),
++            Scalar::Str("6".into()),
++        ];
++        let haves = [
++            PropValue::Bool(true),
++            PropValue::Int(6),
++            PropValue::Float(6.0),
++            PropValue::Str("6".into()),
++        ];
++        for (i, want) in wants.iter().enumerate() {
++            for (j, have) in haves.iter().enumerate() {
++                let t = track("audio", &[("probe", have.clone())]);
++                let e = MatchExpr {
++                    exact: Some(BTreeMap::from([("raw:probe".to_string(), want.clone())])),
++                    ..MatchExpr::default()
++                };
++                assert_eq!(
++                    matches(&e, &t, &lang()),
++                    i == j,
++                    "raw:probe {want:?} against reported {have:?}"
++                );
++            }
++        }
++    }
++
+     #[test]
+     fn absent_non_boolean_property_still_does_not_match() {
+         let t = track("subtitles", &[]);
+         assert!(!matches(&expr("exact: { track_name: X }"), &t, &lang()));
+     }
+ 
+     #[test]
+     fn matches_is_generic_over_matchable() {
+         fn check<M: Matchable>(m: &M) -> bool {
+             matches(&expr("exact: { type: audio }"), m, &lang())
+diff --git a/crates/muxsmith-core/src/report/mod.rs b/crates/muxsmith-core/src/report/mod.rs
+index 36bd96e..1adedc8 100644
+--- a/crates/muxsmith-core/src/report/mod.rs
++++ b/crates/muxsmith-core/src/report/mod.rs
+@@ -77,21 +77,21 @@ diag_codes! {
+     /// A rule's match expression imposes no condition at all, so it would match every track of its source (warning).
+     EmptyMatchExpression => "empty-match-expression",
+     /// An `extensions` list (input or locator) is empty, so no file could ever qualify as a candidate.
+     EmptyExtensions => "empty-extensions",
+     /// A regex failed to compile (`input.pattern` or a `regex` condition); `detail` carries the compiler message.
+     InvalidRegex => "invalid-regex",
+     /// A match condition references a property absent from the capability model's matchable set (config-time error, spec 5.2).
+     UnknownProperty => "unknown-property",
+     /// A match condition uses a `raw:`-prefixed property name: an explicit opt-in that bypasses the capability existence/type/domain checks and is matched untyped (config-time info, spec 9.2). The visible escape valve for forward compatibility; the bare name (prefix stripped) is in the `property` param.
+     RawProperty => "raw-property",
+-    /// A `raw:` prefix was applied to a property that IS in the capability model and has special matching semantics (`language` normalization, `codec_kind` aliasing); the prefix degrades it to byte-literal untyped equality, bypassing those semantics (config-time warning, spec 9.2).
++    /// A `raw:` prefix was applied to a property that IS in the capability model and has special matching semantics (`language` normalization, `codec_kind` aliasing); the prefix degrades it to plain value equality against the property named verbatim (no normalization, no type conversion), bypassing those semantics (config-time warning, spec 9.2).
+     RawOnKnownProperty => "raw-on-known-property",
+     /// A `raw:`-prefixed match key with an empty bare property name (config-time; 4.4, 9.2): always a typo, never expressible intent - `get("")` can match nothing, so the rule would silently never match. Error severity, own code (ruled 2026-07-28): `UnknownProperty`'s message reads as nonsense with an empty name.
+     EmptyRawProperty => "empty-raw-property",
+     /// `codec_kind` was used under a `substring`/`regex` condition; it is a curated alias and matchable only under `exact` (spec 4.4). Pattern-match `codec_id` instead. `condition` param names the misused condition.
+     CodecKindExactOnly => "codec-kind-exact-only",
+     /// An `exact` condition value lies outside a closed value domain: `type`/`codec_kind` are checked at config time, `language` at plan time (spec 4.4). `property`/`value` params carry the offender; closed-domain emitters also pass `allowed` (a hint sample), language emissions do not -- the catalog's language arm renders registry wording (D39).
+     InvalidPropertyValue => "invalid-property-value",
+     /// An `any` or `not` list is present but has zero sub-expressions (spec 4.3); such a list is either always-false (`any`) or always-true (`not`) and is almost certainly a mistake.
+     EmptyMatchList => "empty-match-list",
+     /// A `substring` or `regex` condition targets a non-string property; both are defined for string properties only (spec 4.3).
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index e424edb..a0c8146 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -136,21 +136,21 @@ expr := {
+ }
+ ```
+ 
+ - Multiple entries inside one condition map are AND.
+ - `any` / `not` recurse; arbitrary depth is legal, typical profiles stay flat.
+ - A present-but-empty `any` or `not` list is a config-time error (`EmptyMatchList`): an empty OR/NOR group is always a mistake (an unfinished edit or a generator artifact), never a meaningful "no constraint"; omit the key instead.
+ - `substring` and `regex` on a non-string property are config-time type errors, unless the property is `raw:`-prefixed (4.4), which opts out of the type check and matches untyped.
+ - Case sensitivity: `exact` compares strings case-sensitively (language values are normalized per 4.4); `substring` is case-insensitive; `regex` is taken as written (use `(?i)` for case-insensitive matching).
+ - Semantics carrier of the whole product; specified exhaustively by the property model (4.4) plus this evaluation rule, and covered by property-based tests.
+ 
+-`exact` is typed value-equality, not raw string equality: each property is compared in its own domain. Numbers compare numerically (`6` == `6.0`); languages compare as languages, with ISO 639 spellings and BCP-47 tags reduced to canonical form (`de` == `ger`, `pt-Latn-BR` == `pt-BR`) while meaningful distinctions are preserved (`pt-BR` != `pt-PT`, `zh-Hans` != `zh-Hant`). Use `regex` for byte-literal matching.
++`exact` is typed value-equality, not raw string equality: each property is compared in its own domain. Numbers compare numerically (`6` == `6.0`); languages compare as languages, with ISO 639 spellings and BCP-47 tags reduced to canonical form (`de` == `ger`, `pt-Latn-BR` == `pt-BR`) while meaningful distinctions are preserved (`pt-BR` != `pt-PT`, `zh-Hans` != `zh-Hant`). Use `regex` for byte-literal matching. A `raw:`-prefixed key is outside all of this: it has no domain, and it compares without type conversion (4.4).
+ 
+ ### 4.4 Property model
+ 
+ Two disjoint property sets, both owned by the `capability` module (section 9):
+ 
+ **Matchable properties** are generated at build time from the mkvmerge identification output schema: `type`, `codec_id`, `language`, `language_ietf`, `track_name`, `default_track`, `forced_track`, `enabled_track`, `flag_hearing_impaired`, `flag_visual_impaired`, `flag_commentary`, `flag_original`, `audio_channels`, `audio_sampling_frequency`, `pixel_dimensions`, and the rest of the schema's track properties. Names in profiles are exactly the identification schema names.
+ 
+ **Settable properties** (`changes`) are a curated table mapped to mkvmerge options:
+ 
+ | Profile name | mkvmerge option |
+@@ -166,21 +166,21 @@ Two disjoint property sets, both owned by the `capability` module (section 9):
+ | `enabled_track` | `--track-enabled-flag` |
+ | `sub_charset` | `--sub-charset` |
+ 
+ Conveniences:
+ 
+ - `language` (matching): accepts ISO 639-2 (`ger`) and BCP-47 (`de`); matched semantically against both `language` and `language_ietf` as reported by mkvmerge. Valid values come from `mkvmerge --list-languages` at runtime.
+ - `codec_kind` (matching): friendly alias mapped to `codec_id` sets, e.g. `srt` -> `S_TEXT/UTF8`, `ass`, `pgs`, `vobsub`, plus common audio/video kinds. Curated in `capability`. Usable only under `exact`; `substring`/`regex` on `codec_kind` is a config-time error (`CodecKindExactOnly`), since a pattern over the curated alias token is ill-defined; pattern-match `codec_id` instead.
+ - `sub_charset`: validated leniently (iconv names are open-ended); passed through to mkvmerge.
+ - **Closed-domain values.** For properties whose value set is closed, an `exact` value outside the domain is `InvalidPropertyValue` (not a silent never-match): `type` and `codec_kind` at config time (against the pinned schema enum and the alias table respectively), `language` at plan time (against `mkvmerge --list-languages`). Open-ended values (`sub_charset`, free-text `track_name`) are exempt.
+ - **Boolean flags, absent = false.** For `exact` matching, a boolean-typed matchable property that a track's `-J` output omits compares equal to `false`. mkvmerge emits the vanity flags (`flag_hearing_impaired`, `flag_visual_impaired`, `flag_commentary`, `flag_original`) only when set, and Matroska defines them false-when-absent; so `exact: { flag_hearing_impaired: false }` matches a track that never set the flag, mirroring mkvmerge's own semantics rather than requiring the `not: [ exact: { flag: true } ]` idiom.
+-- **`raw:` opt-in (forward compatibility, D32).** A match property not in the pinned model is rejected at config time (`UnknownProperty`), which protects against typos: a mistyped name that would silently never-match is the worst failure mode for a declarative batch tool. To match a property the local mkvmerge reports but this build's schema does not yet carry (a newer identification schema), prefix the name with `raw:` inside `exact`/`substring`/`regex`, e.g. `exact: { raw:dolby_complexity_index: 3 }`. A `raw:` property bypasses the existence/type/domain checks and is matched untyped (byte-literal value equality against the property named verbatim, no `language` normalization or `codec_kind` aliasing, no false-when-absent Boolean shortcut). Config time flags the bypass (`RawProperty`, info; `RawOnKnownProperty`, warning, on `language`/`codec_kind`), and plan time raises `UnknownPropertySkew` per consumed `raw:` property (9.2). A `raw:` key with an empty bare name (a bare `raw:`) is a config-time error (`EmptyRawProperty`): it names no property and the rule could never match, which is always a typo. The prefix is a matching opt-in only; it is not accepted in `changes`, where an unknown key stays `UnknownSettableProperty`. YAML parses the prefix as part of the key (a colon not followed by a space stays inside the plain scalar), so no quoting is needed.
++- **`raw:` opt-in (forward compatibility, D32).** A match property not in the pinned model is rejected at config time (`UnknownProperty`), which protects against typos: a mistyped name that would silently never-match is the worst failure mode for a declarative batch tool. To match a property the local mkvmerge reports but this build's schema does not yet carry (a newer identification schema), prefix the name with `raw:` inside `exact`/`substring`/`regex`, e.g. `exact: { raw:dolby_complexity_index: 3 }`. A `raw:` property bypasses the existence/type/domain checks and is matched untyped (value equality against the property named verbatim with no type conversion: a string matches only a reported string - byte-for-byte, no `language` normalization, no `codec_kind` aliasing - an integer only an integer, a float only a float, a boolean only a boolean, so `exact: { raw:x: 6 }` does not match a reported `6.0` the way `exact` on a known property does; and no false-when-absent Boolean shortcut). Config time flags the bypass (`RawProperty`, info; `RawOnKnownProperty`, warning, on `language`/`codec_kind`), and plan time raises `UnknownPropertySkew` per consumed `raw:` property (9.2). A `raw:` key with an empty bare name (a bare `raw:`) is a config-time error (`EmptyRawProperty`): it names no property and the rule could never match, which is always a typo. The prefix is a matching opt-in only; it is not accepted in `changes`, where an unknown key stays `UnknownSettableProperty`. YAML parses the prefix as part of the key (a colon not followed by a space stays inside the plain scalar), so no quoting is needed.
+ 
+ ### 4.5 Track rules
+ 
+ `tracks` is a `{ unmatched, rules }` block, not a bare rule list: `unmatched` (`keep | drop`, default `drop`) is the policy for PRIMARY-file tracks no rule matches; `rules` carries the ordered list below. `rules` may be empty when `unmatched: keep`: that is a legal pure-passthrough remux (change only title / attachments / chapters, or normalize the container) and validate announces it with the info-severity `PassthroughProfile` notice (D38). Empty rules under `drop` remain a `NoTrackRules` error.
+ 
+ ```
+ rule := {
+   source?:   primary (default) | { external: locator }
+   match:     expr                 # required
+   optional?: bool (default false) # exactly the zero-candidate case; two candidates remain an error
+@@ -270,21 +270,21 @@ Core emits no user-facing prose: `code` plus structured `params` select and fill
+ | `EmptyRenderedName` | error | rendered output stem is empty or is `.`/`..` |
+ | `SourceOverwrite` | error (hard) | output path equals any input path |
+ | `NonUtf8Path` | error | an argv-bound path (rendered output, external chapters file, attachment `add` file, primary or donor source) is not valid UTF-8, so command generation (6) could render it into the mkvmerge argv only with lossy U+FFFD substitution; checked at plan finalize over exactly the paths `command` renders, once per offending file; `path` (lossy rendering) and `role` (`output`/`chapters`/`attachment`/`primary`/`donor`) params carry the offender; the file's plan is dropped, so no job is ever built from a lossily-converted path (D37) |
+ | `DuplicateIdentifier` | warning | two primaries yield the same identifier match (e.g. 720p and 1080p copies): both are muxed, both attract the same external files, templates may collide |
+ | `DonorIsPrimary` | warning | an external donor file is itself a primary (it will be muxed as its own output and donate tracks) |
+ | `IgnoredFile` | info | extension matches but `input.pattern` does not |
+ | `MultipleIdentifierMatches` | info | `input.pattern` matches more than once in a basename; first match used |
+ | `UnknownExtension` | warning | a `profile.input.extensions` entry, or a locator's `extensions` entry (track rule, `chapters`, `attachments.rules[i].add`), is not among the local mkvmerge's `--list-types` output; still used for matching, so a typo silently excludes candidates; skipped (not raised) when the capability query is unavailable; `extension`/`known` params carry the offender and the accepted set (4.2, 4.6) |
+ | `UnknownProperty` | error | a match condition references a property not in the capability model (config-time; unknown `changes` keys are `UnknownSettableProperty`); a `raw:`-prefixed name opts out (4.4, 9.2) |
+ | `RawProperty` | info | a match condition uses a `raw:`-prefixed property: an explicit opt-in that bypasses the capability checks and matches untyped; `property` carries the bare name (config-time; 4.4, 9.2) |
+-| `RawOnKnownProperty` | warning | `raw:` applied to a model property with special matching semantics (`language`, `codec_kind`), degrading it to byte-literal untyped equality (config-time; 4.4, 9.2) |
++| `RawOnKnownProperty` | warning | `raw:` applied to a model property with special matching semantics (`language`, `codec_kind`), degrading it to plain value equality against the property named verbatim, with no normalization and no type conversion (config-time; 4.4, 9.2) |
+ | `EmptyRawProperty` | error | a `raw:`-prefixed match key with an empty bare property name, in an `exact`, `substring` or `regex` map (config-time; 4.4, 9.2): always a typo, never expressible intent - the rule could never match any track |
+ | `CodecKindExactOnly` | error | `codec_kind` used under `substring`/`regex` (config-time; it is `exact`-only, 4.4) |
+ | `InvalidPropertyValue` | error | `exact` value outside a closed domain (`type`/`codec_kind` config-time, `language` plan-time; 4.4) |
+ | `EmptyMatchList` | error | a present-but-empty `any` or `not` list (config-time; 4.3) |
+ | `EmptyMatchExpression` | warning | a rule's `match` expression has no conditions at all (no exact/substring/regex/any/not): it would match every track of its source (config-time; suppressed when the emptiness is a present-but-empty top-level `any`/`not` list, which already raises its own `EmptyMatchList` for the same node) |
+ | `UnknownPropertySkew` | warning | a `raw:`-opted property was consumed at plan time and matched untyped; `property`/`found_version`/`pinned` params report the property and the runtime-vs-pinned schema versions, one code covering both a genuinely newer schema and a same-version untyped match (9.2) |
+ | `SchemaDrift` | info | at least one source file's `identification_format_version` exceeds the build-time pinned schema version; `found_version`/`pinned` params carry both versions; emitted once per batch when planning concludes (9.2) |
+ | `SuggestionsCapped` | info | the suggestion engine accepted more than 3 candidates for one conflicted rule; `dropped` carries how many were capped (5.3, D6) |
+ | `SuggestionPartition` | info | no single refinement resolves a conflicted rule batch-wide, so the no-single-fix partition is reported: affected files grouped by the per-file refinement that resolves each; `kind=group` carries a group's `fix`/`files`, `kind=overflow` the `dropped` count when more than 5 groups were capped (5.3, D6 step 6) |
+ | `WorkerPanicked` | n/a (job-error condition, not a rendered diagnostic) | a queue worker thread panicked while running a job (a bug in this crate, never an mkvmerge failure); the job is reported `Failed`. Not a batch `Diagnostic`: the stable `worker-panicked: job N` token stays in `JobOutcome.errors` (and its `--json` job encoding) for scripts, and the downcast panic payload travels as the typed `JobOutcome.panic` field, rendered through this same catalog entry (with the payload as `$detail`) on the CLI human output and the GUI job row at presentation time (6); the persisted job log (6) carries both |
+@@ -411,21 +411,21 @@ Localization readiness is structural, not deferred polish:
+ - **No hardcoded user-facing strings** in any layer: not in the frontend, not in the CLI, not in core. Core emits diagnostic codes and params only (5.2); labels, tooltips, messages and hints live in Fluent catalogs; long-form help lives in per-locale markdown. Accepted v1 exceptions: clap's library-generated `--help`/usage text, third-party error text passed through as a `detail` param (regex, serde, I/O), the worker-panic payload surfaced as the `worker-panicked` message's `$detail` param (developer-diagnostic content, untranslatable by nature; 5.2), the fixed English framing in `IdentifyError`'s `Display` (e.g. "mkvmerge failed: ...") surfaced via a `detail` param, which wraps that same third-party mkvmerge/serde/I-O error text, and the JSON Schema's `description` fields (Rust doc comments, D47). The schema documents a file format, the same category as this spec and the README, both English-only by design; it is not application UI and not a diagnostic, so Fluent's localization mandate does not reach it.
+ - One catalog source of truth under `locales/`, consumed by fluent-rs (CLI rendering, embedded at build time) and @fluent/bundle in the frontend. Diagnostic message templates exist exactly once, shared by both surfaces.
+ - Locale selection: system locale with manual override in app settings (takes effect live, without restart; D56) and `--locale` on the CLI; falls back to English per message.
+ - v1 ships English and German content on both surfaces - GUI catalogs and
+   help topics, and the CLI's embedded catalogs (`cli-multilang-rendering`,
+   D63); further locales are content work (non-goal 11).
+ 
+ ## 9. Capability model and version skew
+ 
+ 1. **Build time**: matchable property names and types are extracted from the pinned upstream identification output schema into generated Rust code, including the closed value domains of enum-typed properties (e.g. `type`) for config-time `InvalidPropertyValue` checks. The schema file itself is not redistributed; only facts derived from it ship. Upgrading the pinned schema version is a normal PR.
+-2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`. A property name unknown to the pinned model is a config-time `UnknownProperty` error (typo protection) unless the profile opts in with a `raw:` prefix (D32). A `raw:`-prefixed property bypasses the capability existence/type/domain checks and is matched untyped: byte-literal value equality against the property named verbatim, with no `language` normalization, no `codec_kind` alias expansion, and no false-when-absent Boolean shortcut. The opt-in is announced at config time by `RawProperty` (info), or by `RawOnKnownProperty` (warning) when the bare name is a model property with special matching semantics (`language`, `codec_kind`) that `raw:` degrades to byte-literal equality. An empty bare name is not an opt-in at all and is rejected at config time (`EmptyRawProperty`, error). At plan time each `raw:` property consumed while resolving a rule raises an `UnknownPropertySkew` warning carrying `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so the untyped match is visible whether the runtime schema is genuinely newer than pinned or the same. Additionally, planning emits a `SchemaDrift` info notice once per batch if any source file's `identification_format_version` exceeds the pinned version, alerting the user that their mkvmerge may support properties not yet in Muxsmith's model and enabling opt-in via the `raw:` prefix. Forward compatibility without lying about type safety: the untyped path is opt-in and declared, never inferred from a version bump. Upgrading the pinned schema (item 1) remains the typed path for a property that should become first-class.
++2. **Runtime**: the local mkvmerge is queried for version, supported file types and languages. `mkvmerge -J` output carries `identification_format_version`. A property name unknown to the pinned model is a config-time `UnknownProperty` error (typo protection) unless the profile opts in with a `raw:` prefix (D32). A `raw:`-prefixed property bypasses the capability existence/type/domain checks and is matched untyped: value equality against the property named verbatim with no type conversion, so the profile value matches only a reported value of the same kind (a string only a string, compared byte-for-byte; an integer only an integer; a float only a float; a boolean only a boolean) and `raw:x: 6` does not match a reported `6.0`; with no `language` normalization, no `codec_kind` alias expansion, and no false-when-absent Boolean shortcut. The opt-in is announced at config time by `RawProperty` (info), or by `RawOnKnownProperty` (warning) when the bare name is a model property with special matching semantics (`language`, `codec_kind`) that `raw:` degrades to byte-literal equality. An empty bare name is not an opt-in at all and is rejected at config time (`EmptyRawProperty`, error). At plan time each `raw:` property consumed while resolving a rule raises an `UnknownPropertySkew` warning carrying `property`, `found_version` (the file's `identification_format_version`) and `pinned` (this build's schema), so the untyped match is visible whether the runtime schema is genuinely newer than pinned or the same. Additionally, planning emits a `SchemaDrift` info notice once per batch if any source file's `identification_format_version` exceeds the pinned version, alerting the user that their mkvmerge may support properties not yet in Muxsmith's model and enabling opt-in via the `raw:` prefix. Forward compatibility without lying about type safety: the untyped path is opt-in and declared, never inferred from a version bump. Upgrading the pinned schema (item 1) remains the typed path for a property that should become first-class.
+ 
+ ## 10. Testing
+ 
+ - `matcher` + planning semantics: unit tests plus property-based tests (proptest); this is the correctness core.
+ - `command`: golden tests, fixture identification JSON -> expected argv.
+ - Integration: real mkvmerge in CI generates tiny fixture MKVs (from srt/wav seeds via mkvmerge itself); end-to-end dry-run and run against them.
+ - CLI rendering: snapshot tests (insta).
+ - GUI: thin Playwright smoke; logic lives in core, so UI tests stay shallow.
+ - i18n and help completeness: CI fails on catalog keys referenced but missing in the English catalog, on diagnostic codes without message templates, and on help-ids without a help topic file. The `@intlify/vue-i18n/no-raw-text` eslint rule (D27) keeps hardcoded
+   strings out of Vue templates - template text nodes plus the configured
+diff --git a/help/de/editor-match-expr-exact.md b/help/de/editor-match-expr-exact.md
+index 91d44c4..c8dcac1 100644
+--- a/help/de/editor-match-expr-exact.md
++++ b/help/de/editor-match-expr-exact.md
+@@ -13,11 +13,11 @@ Der `exact`-Teil eines Match-Ausdrucks vergleicht Spureigenschaften auf Gleichhe
+ ## Kuratierte Domänen
+ 
+ Eigenschaften mit geschlossenem Wertebereich werden geprüft, statt still nie zu matchen: ein `type`- oder `codec_kind`-Wert außerhalb seiner Domäne ist ein Konfigurationsfehler, eine unbekannte `language` ein Planungsfehler, geprüft gegen deine mkvmerge-Installation. `codec_kind` ist ein sprechender Alias (`srt`, `ass`, `pgs`, ...) für Mengen von `codec_id`-Werten und nur unter `exact` erlaubt - brauchst du `substring` oder `regex`, matche stattdessen `codec_id`.
+ 
+ ## Boolesche Flags: fehlend heißt false
+ 
+ mkvmerge meldet Flags wie `flag_hearing_impaired` nur, wenn sie gesetzt sind. `exact` spiegelt das: eine boolesche Eigenschaft, die in der Identifikation einer Spur fehlt, gilt als `false`; `exact: { flag_hearing_impaired: false }` matcht also auch Spuren, die das Flag nie gesetzt haben.
+ 
+ ## Der `raw:`-Bypass
+ 
+-Ein Eigenschaftsname mit dem Präfix `raw:` (etwa `raw:dolby_complexity_index`) matcht eine Eigenschaft, die das Schema dieses Builds noch nicht kennt: keine Existenz-, Typ- oder Domänenprüfung, keine Sprachnormalisierung, kein Fehlend-heißt-false - nur byte-genaue Wertgleichheit gegen die wörtlich benannte Eigenschaft. Die Diagnosen markieren jeden Bypass. Nutze ihn nur für Eigenschaften, die ein neueres mkvmerge meldet; ein Tippfehler in einem `raw:`-Namen matcht still nie.
++Ein Eigenschaftsname mit dem Präfix `raw:` (etwa `raw:dolby_complexity_index`) matcht eine Eigenschaft, die das Schema dieses Builds noch nicht kennt: keine Existenz-, Typ- oder Domänenprüfung, keine Sprachnormalisierung, kein Fehlend-heißt-false und keine Typumwandlung - ein Wert matcht nur einen gemeldeten Wert derselben Art; `6` matcht hier also kein gemeldetes `6.0`, anders als bei der typisierten Gleichheit oben. Die Diagnosen markieren jeden Bypass. Nutze ihn nur für Eigenschaften, die ein neueres mkvmerge meldet; ein Tippfehler in einem `raw:`-Namen matcht still nie.
+diff --git a/help/en/editor-match-expr-exact.md b/help/en/editor-match-expr-exact.md
+index d592238..11b28f5 100644
+--- a/help/en/editor-match-expr-exact.md
++++ b/help/en/editor-match-expr-exact.md
+@@ -13,11 +13,11 @@ The `exact` part of a match expression compares track properties for equality. I
+ ## Curated domains
+ 
+ Properties with a closed value set are validated instead of silently never matching: a `type` or `codec_kind` value outside its domain is a config-time error, an unknown `language` a plan-time error checked against your mkvmerge installation. `codec_kind` is a friendly alias (`srt`, `ass`, `pgs`, ...) mapped to sets of `codec_id` values, and is usable only under `exact` - pattern-match `codec_id` instead when you need `substring` or `regex`.
+ 
+ ## Booleans: absent means false
+ 
+ mkvmerge reports flags such as `flag_hearing_impaired` only when they are set. `exact` mirrors that: a boolean property missing from a track's identification compares equal to `false`, so `exact: { flag_hearing_impaired: false }` matches tracks that never set the flag.
+ 
+ ## The `raw:` bypass
+ 
+-Prefixing a property name with `raw:` (for example `raw:dolby_complexity_index`) matches a property this build's schema does not know yet: no existence, type, or domain check, no language normalization, no absent-means-false shortcut - plain byte-for-byte value equality against the property named verbatim. Diagnostics flag every bypass. Use it only for properties a newer mkvmerge reports; a typo in a `raw:` name silently never matches.
++Prefixing a property name with `raw:` (for example `raw:dolby_complexity_index`) matches a property this build's schema does not know yet: no existence, type, or domain check, no language normalization, no absent-means-false shortcut, and no type conversion - a value matches only a reported value of the same kind, so `6` does not match a reported `6.0` here even though it does under typed equality above. Diagnostics flag every bypass. Use it only for properties a newer mkvmerge reports; a typo in a `raw:` name silently never matches.

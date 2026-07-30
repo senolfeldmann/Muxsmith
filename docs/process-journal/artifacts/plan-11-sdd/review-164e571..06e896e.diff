@@ -1,0 +1,51 @@
+# Review package: Plan 11 Task A4
+
+06e896e spec: 8.1 states the shipped CLI flag surface and the 130 cancellation code
+
+ docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+index a0c8146..6049a7c 100644
+--- a/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
++++ b/docs/superpowers/specs/2026-07-08-muxsmith-v1-design.md
+@@ -351,29 +351,34 @@ Rules that keep it DRY:
+ 
+ - The frontend performs **zero** semantic validation; every profile edit round-trips through a core `validate` Tauri command (local IPC, fast). Frontend-side logic is limited to UX affordances (e.g. disabling Save while errors exist).
+ - CLI and GUI render the same diagnostic and report structures; neither owns logic.
+ - The profile JSON Schema, the capability property lists, and all validation live in exactly one place each.
+ 
+ ## 8. Surfaces
+ 
+ ### 8.1 CLI
+ 
+ ```
+-muxsmith validate <profile>
+-muxsmith dry-run  <profile> [--source DIR] [--output DIR] [--json]
+-muxsmith run      <profile> [--source DIR] [--output DIR] [--jobs N] [--fail-fast] [--json]
+-muxsmith identify <file> [--json]
++muxsmith validate <profile> [--json] [--locale LOCALE]
++muxsmith dry-run  <profile> [--source DIR] [--output DIR]
++                            [--on-collision POLICY] [--json] [--locale LOCALE]
++muxsmith run      <profile> [--source DIR] [--output DIR]
++                            [--on-collision POLICY] [--jobs N] [--fail-fast]
++                            [--json] [--locale LOCALE]
++muxsmith identify <file> [--json] [--locale LOCALE]
+ muxsmith schema                      # print the profile JSON Schema
+ ```
+ 
+ - Flags override profile-stored run inputs.
+-- Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors.
++- Exit codes mirror mkvmerge: 0 success, 1 warnings, 2 errors, plus 130 for a
++  cancelled batch (D16). Only `run` returns 130; no other subcommand installs
++  a SIGINT handler.
+ - `--json` emits the structured report for scripting; default output is human-readable rendering of the same data, including suggestion YAML fragments.
+ - `muxsmith schema` is a supported user feature, not only a debug aid (D47): the README's "Using the CLI" section documents redirecting its output to a file and binding it in editor settings (`yaml.schemas` in VS Code, the equivalent `lspconfig` block for Neovim/Helix) for autocompletion and inline validation while hand-authoring a profile.
+ 
+ ### 8.2 GUI
+ 
+ Three views, modeled on mkvtoolnix-gui:
+ 
+ 1. **Profile editor**: track-rule grid (order, source, match summary, changes, optional; drag to reorder; Add appends an empty rule - incomplete until filled, announced by a validation warning - selects it and opens its detail editor; Remove deletes the selected rule without confirmation, legal down to zero rules (per 4.5: `unmatched: keep` = passthrough, `drop` = NoTrackRules)), detail editor per rule, panels for attachments/chapters/tags/title, open/save YAML, recent profiles. Saving writes canonical YAML rendered fresh from the in-memory model, not a patch of the file on disk: comments, key order and formatting are not preserved (D41), and a field left at its serde default is omitted rather than written back explicitly (D48). Inline validation markers from core diagnostics.
+ 2. **Batch view**: source/output pickers (persisted per profile), file list with per-file resolution table (rule -> resolved track), diagnostics panel with one-click apply-suggestion, dry-run trigger.
+ 3. **Job queue**: per-job progress (from `#GUI#progress`), overall batch progress, live log, warning surfacing, cancel per job or batch.

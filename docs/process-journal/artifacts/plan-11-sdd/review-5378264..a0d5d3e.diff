@@ -1,0 +1,71 @@
+# Review package: Plan 11 Task A1
+
+## Commits
+a0d5d3e docs: BUILDING.md names the gate commands instead of numbering them, and its CI paragraph fits 80 columns
+
+## Stat
+ BUILDING.md | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+## Diff (-U10)
+diff --git a/BUILDING.md b/BUILDING.md
+index 911fdba..efb4b2f 100644
+--- a/BUILDING.md
++++ b/BUILDING.md
+@@ -92,21 +92,21 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D war
+ `#![deny(missing_docs)]` gates presence of rustdoc comments; the `cargo doc`
+ run above is what gates their *correctness* (broken intra-doc links and
+ other rustdoc warnings), which presence-only enforcement cannot catch.
+ `--document-private-items` widens that check to the private half of each
+ crate: without it rustdoc neither renders private items' doc comments nor
+ carries them into link resolution, so a broken link inside a private item -
+ and an ambiguity that exists only once a private module joins the documented
+ namespace (`src-tauri/src/lib.rs`'s `run` module beside its `run` function,
+ which the flag caught the moment it was added) - stays invisible.
+ 
+-The cross-target clippy run (part 6) type-checks the workspace for Windows
++The cross-target clippy run type-checks the workspace for Windows
+ without linking, so it runs on any OS. It catches what a host-only clippy
+ cannot see - cfg-gated imports and Windows-only lints - the class that went
+ CI-red twice in Plan 5 and sat unobserved for five runs in Plan 8 (an
+ in-tree comment is not a gate; owner ruling S22). CI needs no equivalent
+ step: its Windows leg runs clippy natively.
+ 
+ ### Frontend checks
+ 
+ <!-- gate-block: frontend; checked by scripts/ledger-lint.py -->
+ ```bash
+@@ -124,26 +124,27 @@ python3 scripts/ledger-lint.py   # house-knowledge YAML invariants + BUILDING.md
+ ```
+ 
+ A gate part like the Rust and frontend ones above, binding before every push
+ (house rule `ledger-lint-runs-before-every-push`). Despite the name it is the
+ house's docs-invariant checker: besides the four house-knowledge YAML files it
+ verifies that the canonical gate-total sentence above agrees with the commands
+ the three marked gate blocks enumerate, so changing a gate block without the
+ sentence, or the sentence without the blocks, turns this part red. Needs
+ PyYAML; CI runs it from a throwaway venv as its own job.
+ 
+-CI (`.github/workflows/ci.yml`) runs Rust-gate parts 1-4 natively on all
+-three OS legs (its Windows leg covers natively what part 6 cross-checks
+-from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`, and
+-`pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`
+-and `scripts/ledger-lint.py` (house-knowledge and gate-count invariants, Plan-8 rider)
+-run as independent jobs.
++CI (`.github/workflows/ci.yml`) runs the Rust block's `cargo fmt`,
++`cargo clippy`, `cargo test` and `cargo doc` commands natively on all three
++OS legs (its Windows leg covers natively what the cross-target clippy run
++cross-checks from Linux) plus `pnpm lint`, `pnpm build`, `pnpm check:i18n`,
++and `pnpm test:e2e` on every master push, `v*` tag and PR; `cargo deny check`
++and `scripts/ledger-lint.py` (house-knowledge and gate-count invariants,
++Plan-8 rider) run as independent jobs.
+ 
+ ### Reproducing a release bundle locally
+ 
+ Release bundles add the CLI as a bundled sidecar via a build-flavor
+ overlay (`src-tauri/tauri.bundle.conf.json`); plain `pnpm exec tauri
+ build` deliberately omits it so dev/test builds need no staging step.
+ 
+ On macOS, `src-tauri/tauri.macos.conf.json` additionally merges in
+ automatically (Tauri platform config) and clears `bundle.licenseFile`:
+ the dmg ships without a pre-mount license dialog (Plan 8.5 ruling 2),
