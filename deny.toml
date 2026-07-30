@@ -4,6 +4,17 @@
 
 [advisories]
 yanked = "deny"
+# cargo-deny scopes only the two informational classes, and their defaults
+# differ: `unmaintained` defaults to `all`, `unsound` to `workspace`. A
+# `workspace` scope reaches only crates a workspace member depends on
+# directly, and glib sits deeper, so its unsound advisory produced no error,
+# no warning and not even an ignored note, while the unmaintained advisories
+# beside it all reported. (A real vulnerability has no scope key at all and
+# always fires.) `all` rather than `transitive`: it keeps one scope posture
+# for both scoped classes, and `transitive` would exempt first-party
+# unsoundness, which is the case we would most want to hear about. Both
+# values behave identically on today's tree.
+unsound = "all"
 # All entries below are transitive, from Tauri 2's Linux windowing stack
 # (Task 4 scaffold) - not dependencies we chose directly. Re-run
 # `cargo deny check` periodically; drop an ID once its crate is gone from
@@ -42,6 +53,15 @@ ignore = [
     # one actually reachable at runtime.
     "RUSTSEC-2026-0194", # quick-xml quadratic duplicate-attribute check
     "RUSTSEC-2026-0195", # quick-xml unbounded namespace allocation
+    # glib: unsoundness in the Iterator/DoubleEndedIterator impls for
+    # VariantStrIter (RustSec informational = "unsound"; its GHSA alias is the
+    # GitHub advisory, so both feeds see one advisory). Vulnerable
+    # >= 0.15.0 < 0.20.0, patched at 0.20.0; reached transitively through the
+    # gtk-rs 0.18 generation under Tauri's GTK stack, whose whole family would
+    # have to move together - an upgrade project in someone else's tree rather
+    # than a bump. Ignored as the ruled interim disposition; addressing it
+    # properly is a v1.x item (ROADMAP).
+    "RUSTSEC-2024-0429", # glib VariantStrIter unsoundness
 ]
 
 [licenses]
