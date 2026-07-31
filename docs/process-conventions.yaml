@@ -655,8 +655,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: 3
-  count: 9
+  count: 10
   occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-7 delta review (.superpowers/sdd/plan-12/task-7-delta-verdict.md): a fix round claimed it had checked its whole German addition term by term against the corpus and reported one collision. Its search SURFACE was the paragraph the original finding sat in; a whole second paragraph of the same addition was never looked at, and the reviewer - deriving the term list from the DIFF rather than from the fix report own list - found a second real collision there. The pattern was fine, the surface was anchored on the finding location instead of on the change extent"}
     - {date: "2026-07-27", kind: reinforced, ref: "wix-fix report channel (a) (wix-fix-report.md): the ruled fallback assumed the non-ASCII sink set was publisher+copyright; the empirical set was publisher+LICENSE-inlined-into-the-msi, copyright never reaches WiX - wrong in both directions, so the fallback branch was dead on arrival; the A/B run enumerated the real surface before any remediation shipped"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix verdict HARVEST H3 (wording-fix-verdict.md): a tree-wide old-string zero can never pass without NAMED exclusions (frozen SDD records, the mandating plan doc) plus a fire-check of each zero against BASE - deliberate provenance exclusions are part of the explicitly named surface, not a hole in it"}
     - {date: "2026-07-27", kind: reinforced, ref: "wording-fix report secondary note (wording-fix-report.md): grep -rIl reported the stale dist/ bundle clean because -I classified minified JS as binary - a flag silently excluding files from the sweep surface is the same false-empty class; grep -a is the surface-preserving form for build-output sweeps"}
