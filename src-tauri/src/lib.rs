@@ -111,9 +111,14 @@ pub struct AppState {
     /// -- the frontend is this field's only writer, the shell never
     /// derives it itself. `run::close_decision` (private to that module, so
     /// not an intra-doc link here) reads it alongside the run slot to pick
-    /// the close dialog. A failed sync leaves it stale: the
-    /// close-with-unsaved-changes warning can be missed, never shown where
-    /// nothing is at risk.
+    /// the close dialog. A plain, retry-less boolean, unlike
+    /// `dialog_locale` below: a failed sync just leaves it at whatever
+    /// value it last held, and that can go either direction -- a missed
+    /// true-transition can leave the close-with-unsaved-changes warning
+    /// unshown over real changes, while a missed false-transition after a
+    /// save leaves it stuck true and shows that same warning where nothing
+    /// is at risk. Nothing here makes either direction structurally
+    /// impossible.
     editor_dirty: AtomicBool,
     /// D110 decision 2: mirrors the locale the frontend applied
     /// (`currentLocale`), written only by [`set_shell_locale`] -- the
