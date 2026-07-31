@@ -624,6 +624,40 @@ deliberately omits relative to the shared one and why that is safe, so the day a
 new mounted read reaches it, the failure (one test throwing "unmocked command"
 while its three siblings stay green) reads as expected rather than as a puzzle.
 
+## Plan 12: the owner QA round-3 findings, the unsaved-profile guards, editor undo/redo - EXECUTED AND CLOSED 2026-07-31
+
+**Executed 2026-07-30/31** over sessions 31 and 32: seven serial tasks on `master`
+with no worktrees (the plan's own ruling, owner-approved), **two four-eyes plan
+amendments** with three fix rounds between them, seven task reviews with nine task fix
+rounds, and a whole-branch review whose fix wave closed eight blocking findings. Plan
+`docs/superpowers/plans/2026-07-30-plan-12-qa-round-3-findings.md`, decisions
+`docs/superpowers/specs/2026-07-30-plan-12-decisions.md` (D106-D112). Salvage in
+`docs/process-journal/artifacts/plan-12-sdd/`. The round-3 entry below is history.
+
+**What it unblocks:** the owner's manual QA pass stopped because the GUI could open a
+profile but never create one. It now creates, undoes, redoes, warns before replacing
+unsaved changes, and asks once - in the interface's own language - when a close would
+lose both a running job and unsaved edits.
+
+**Owner decision taken during execution (2026-07-31, option A of three costed):** after
+a profile fails to parse, the editor keeps the selected-path line and hides the empty
+state and the recents list. The deciding measurement was that the rendered parse error
+carries a detail and NOT the file path, so the path line is the only place the failing
+file is named. Recorded as D112, which also defines the pre-session gate condition once
+rather than leaving two gates to inherit a term whose meaning another task changes.
+
+**Two acceptance-map rows in the retired plan are FALSE and are deliberately left so,
+recorded here because the plan becomes history and this is where a reader will look.**
+W4-m claims unit coverage for the close-dialog callback, a surface that needs the Tauri
+runtime - the row directly below it says exactly that about the same mechanism; its
+observable rides the v1.x GUI-test-harness item. W3-h names a mount-harness helper that
+appears nowhere in the file its row points at; its observable is materially covered by
+the rendered assertions in the same case. Neither is a coverage gap, both were measured,
+and correcting plan prose would have meant a four-eyes round for two descriptive lines
+in a document being retired. The general rule the plan produced from them is in the
+house ledger: an acceptance row is protected by the STEP LIST that names its producer,
+not by whether that producer is described as existing or as work.
+
 ## Triggers
 
 Observable events with registered consequences - CONSULT AT EVERY
@@ -1037,6 +1071,27 @@ action:
   dead members. The conclusion the instrument supported was re-derived tree-wide
   and survives - this is an evidence defect, not an artifact defect - but the
   expression must not be copied forward as written.
+
+- **A SECOND caller of `ConfirmDialog` is added anywhere in the frontend** -> give
+  `ask()` a reentrancy guard. Today it has none: a second entry while the first is
+  pending silently steals the confirmation from the first caller. Measured unreachable
+  by any real user input at the Plan-12 close, verified down to browser hit-testing -
+  the native modal blocks real clicks and only a script-level call bypasses it - so the
+  gap is real at the function's own state-machine level and unreachable in the product.
+  **The trigger is written into the artifact rather than into anyone's memory**: that
+  component's own doc comment states it exists so a second caller can reuse it, which
+  is the event. Building the guard during Plan 12 would have been product behaviour the
+  plan did not prescribe. (Plan-12 Task-5 review, 2026-07-31.)
+
+- **A test needs to save settings and then reopen them without a page reload** ->
+  build a stateful settings store into the e2e mock harness. Today the mock resolves a
+  queued value immediately and repeats its last entry, so a scenario cannot observe its
+  own write; the Plan-12 Task-2 fork was resolved by splitting the case in two rather
+  than by making the mock stateful, which was rejected as new test infrastructure.
+  **Not to be confused with the gated, deterministically released IPC response the
+  Plan-12 whole-branch fix wave DID build** for the save-in-flight producer: that is a
+  different mechanism and it does not satisfy this entry. (Plan-12 Task 2, 2026-07-30;
+  distinction measured at the Plan-12 close.)
 
 ## Pre-1.0 release gates
 
@@ -1960,6 +2015,25 @@ ten is recomputed.
 
 ## Docs accuracy
 
+- **Two editor widget comments carry a catalog figure that is stale, and they are two
+  different defects** (measured at the Plan-12 close, 2026-07-31, after the amendment
+  author raised one and the controller widened the search to four sites carrying a
+  "43" figure). The other two sites, both in `src/editor/registries.ts`, count REGISTRY
+  FIELD SPECS rather than catalog keys and **both hold**: 42 label keys plus exactly one
+  fixed field across 13 registries. The two that do not:
+  - `src/editor/widgets/SelectWidget.vue` says the editor catalog "stays at its 43
+    label keys". Stale on either reading - the catalog is 54 ids today and the registry
+    label keys are 42. A plain correction; its basis was real when written (43 = 42
+    labels + 1 save-surface note, plan 6).
+  - `src/editor/widgets/StringListWidget.vue` says no generic add/remove chrome exists
+    in that catalog. **Not a stale number but a dead premise**: `editor-action-add` and
+    `editor-action-remove` have existed since the plan-7 D59 revision, so the design
+    choice that comment justifies rests on something that is no longer true. It takes
+    a vehicle of its own rather than a reworded sentence, because what needs deciding
+    is whether the widget's shape still follows from anything.
+  Both sit outside every Files list and every fence of Plan 12, which is why that plan
+  did not touch them.
+
 - **THE README'S FIRST EXAMPLE PROFILE DOES NOT LOAD** (surfaced by the Plan-12
   author 2026-07-30 while measuring seed candidates against the validator;
   mechanism confirmed by the controller at the source the same turn). The
@@ -2536,6 +2610,22 @@ the implementer's to propose and the review's to grade, since both repairs make
 the name true.** Routed to Plan 13 rather than to a vehicle of its own because it
 is a two-line change in a file Plan 13 may well touch anyway, and because a
 standalone plan for one test name is more machinery than the defect is worth.
+
+**A fifth member, routed here from Plan 12's amendment-1 review (2026-07-31), on the
+same ground as the fourth: the plan's floor is not its content.**
+`src/views/EditorView.vue`'s `watch(model)` returns early on the no-model branch
+without incrementing `validationGeneration`, so a validation response still in flight
+from the previously opened profile resolves with its generation still current and
+overwrites `diagnostics.value`. The parse diagnostic a failed open just wrote is gone,
+and the user is left in the failed-open state with nothing explaining it - which is
+precisely the state the owner's option-A ruling shapes. `openPath`'s `opening` flag does
+not cover the window, because the watcher's await outlives that function's `finally`.
+Two-line class of fix (increment before the early return, or increment
+unconditionally); the choice and its test are the implementer's to propose and the
+review's to grade. **Reproduced at the source by the controller rather than taken from
+the report, and confirmed genuinely PRE-EXISTING by the whole-branch reviewer**: at
+Plan 12's base commit the same early return already preceded the increment and the same
+branch was taken after a failed load, so this branch did not widen it.
 
 **PLAN 13's SCOPE IS DELIBERATELY OPEN UNTIL HIS QA ROUND IS DONE.** His words: it
 can still grow, so it may contain more than these three. That is a hard sequencing
