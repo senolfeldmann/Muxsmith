@@ -3876,3 +3876,121 @@ about both mechanisms and wrong about both consequences.
   under-determined once a further section sits between; their dispatches carry an
   explicit placement.
 - 13 unpushed commits; the single push is a plan-close action.
+
+## 2026-07-31 | Plan 12 complete (tasks 4-7, two amendments, whole-branch close) | session 32 (Peter, Opus 5 1M)
+
+**Scope.** Plan 12 tasks 4 to 7, two four-eyes plan amendments, the whole-branch
+review and its fix wave, and the plan close. Commit range `411122f..HEAD`. Session 31
+had closed after tasks 1 to 3. The governing human was asleep for most of it: he
+ruled the one parked decision at the session's opening message, said the
+human-in-the-loop was out, and returned near the end.
+
+**Decisions and their why.**
+- The parked owner decision (what the editor shows after a profile fails to parse) was
+  ruled option A: keep the path line, hide the empty state and the recents list. The
+  deciding measurement was that the rendered parse error carries a detail and NOT the
+  file path, so the path line is the only place the failing file is named.
+- That ruling was routed as a plan AMENDMENT rather than a controller constraint,
+  because the gate condition it needs is plan content and the controller does not
+  author plan content. Two amendments ran in the end, one pair each, both fresh rather
+  than resumed (both original roles were in an earlier session and cannot be resumed
+  across the boundary - recorded as a deviation, not a shortcut).
+- Amendment 2 existed because of a controller error: a fix-round ruling added a test
+  case to Task 4 after amendment 1 had enumerated the set of cases Task 5 would have to
+  repair, and the controller did not revisit the enumeration that counted it. The
+  amendment repaired the CRITERION rather than the count, so the next addition does not
+  regenerate the defect; the reviewer applied the new criterion cold and landed on the
+  same three members.
+- The missing reentrancy guard in the confirm component was deferred with a trigger
+  rather than built: adding it is product behaviour the plan does not prescribe. Its
+  event is written into the artifact itself - the component's doc comment says it
+  exists so a second caller can reuse it.
+- Two acceptance-map rows are left FALSE in the retired plan, deliberately. Correcting
+  them means editing plan content for two descriptive lines in a document being
+  retired; the knowledge went to the ROADMAP, this entry and a house rule instead.
+
+**What the process caught.** Separated by origin.
+- PLAN defects (5): a fenced `doSave` body that does not type-check (Task 3, found at
+  code contact); a prescribed test case that is always-red against a correct
+  implementation; a two-vs-three-case collision between two of the plan's own steps
+  (Task 5, returned as NEEDS_CONTEXT with a costed memo); and two acceptance rows
+  naming producers that do not exist - one of them for a surface the row directly below
+  it explains cannot be unit-tested at all.
+- COVERAGE defects, all found by review, none by the gate (5): the save-marking line
+  could be deleted outright with the build and all 93 e2e cases staying green; the
+  failed-open case asserted through a button whose `:disabled` is a disjunction, so the
+  no-model term satisfied it and a mutation leaving the history uncleared still passed;
+  no case exercised the create funnel's own history reset; the keyboard test covered
+  two of six documented key spellings; the close-decision-to-effect MAPPING had no
+  producer, so a dirty editor with no run could be asked about aborting jobs and lose
+  the profile unmentioned.
+- CONTROLLER defects (3): the stale enumeration above; a ledger rule written at 03:00
+  and refuted by measurement at 11:00 (see Moments); and a claim that the fix wave had
+  built previously-deferred test infrastructure, which the reviewer corrected - the
+  deferred item was a different mechanism and stays on the tracker.
+- IMPLEMENTER defects: a false citation in shipped source (a comment claiming a sibling
+  component documents Esc semantics; it does not), a failure-cost comment claiming a
+  benign direction a symmetric retry-less flag cannot have, three German/English
+  terminology defects invisible on the English side, and two miscounts.
+- Noise: none of the 14 whole-branch findings was a false positive.
+
+**Process mechanics.** 7 tasks, 2 amendments, 1 whole-branch review, 1 fix wave.
+Dispatches: 7 task implementers and 7 task reviewers on Sonnet 5; 2 amendment authors
+and 2 amendment reviewers on Opus 5 (the doctrine puts design/plan four-eyes rounds on
+the strongest model; the plan's own tier table is scoped to its seven tasks); the
+whole-branch reviewer on Opus 5; the fix-wave implementer on Sonnet 5. Controller loop
+on Opus 5 1M. 12 task-level fix rounds plus 3 amendment fix rounds; every delta
+re-review went to the RESUMED original reviewer. 55 commits, of which 13 touch product
+files. Tests: 507 Rust workspace, 88 in the GUI crate, 103 Playwright e2e (from 72 at
+session start). House knowledge 566 -> 586 entries, all from findings in these two
+sessions.
+
+**Friction and failure.**
+- The harness security monitor flagged an authorized subagent commit as a policy
+  violation. Known false alarm (the owner's standing grant is invisible to it), handled
+  per SI-4: content and scope verified on disk, alarm named, nothing reverted.
+- A resumed agent reads the file path it was given, so releasing Task 5 after the
+  amendment meant REGENERATING its brief rather than telling it the copy was stale.
+  Caught one message too late and corrected immediately.
+- Two agents reported a broken instrument of their own rather than the result it
+  produced: a fix agent whose `&&` chain silently skipped a check after a zero-match
+  grep, and the whole-branch reviewer whose typography detector held its glyph set as
+  literal characters, one of which had normalised to a plain space. The second had
+  reported a clean tree in its FIRST verdict without the detector ever having been
+  shown able to fire.
+
+**Moments.**
+- The controller wrote a ledger rule at 03:00 claiming acceptance rows naming an
+  EXISTING producer are the dangerous kind because rows naming a producer the plan will
+  BUILD are self-correcting. At 11:00 the whole-branch review walked all 73 rows, found
+  four false, and measured that they split evenly across that supposed asymmetry. The
+  entry was rewritten to the reviewer's rule - a row is protected by the STEP LIST that
+  names its producer, not by its tense - with the refutation as a dated occurrence.
+- The whole-branch reviewer built its own suggested remedy for one finding, ran an
+  existing guard's prescribed red state under it, and ruled against itself: its shape
+  would have silently disabled that guard by removing eight of ten keys from a
+  source-literal scan another test derives its key set from.
+- Three consecutive rounds returned the same terminology defect one class wider. The
+  doctrine's convergence rule says that means the defect is the unwritten rule; the
+  fourth dispatch asked for the missing clause instead of more sites, and got one: a
+  new term owes a search for the WORD (collision) and a search for the CONCEPT
+  (synonym), and the second is the one that survives review.
+
+**Deltas.** The plan's model-tier table said the top tier serves exactly one role.
+Two amendments and a whole-branch review later, it served four - the table was scoped
+to the plan's seven tasks and amendments were not in it. The plan also assumed no
+mid-run amendment; it took two, both caused by information that did not exist at
+authoring time.
+
+**Open threads.**
+- Owner QA pass round 4 is the next gate; it resumes on a build carrying the whole
+  package, which now exists.
+- Plan 13 gained a fifth member (a validation response can overwrite a parse
+  diagnostic, reproduced at the source and confirmed pre-existing).
+- Two new triggers registered: a second caller of the confirm component, and a test
+  needing save-then-reopen without a reload.
+- Two docs-accuracy items on editor widget comments, one of them a dead design premise
+  rather than a stale figure.
+- Six worktrees from plans 7.5 and 8 are still undeleted; all six branches are
+  ancestors of master, verified this session.
+- Framework-side follow-ups are tracked agent-side.
