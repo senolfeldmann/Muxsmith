@@ -5595,3 +5595,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-3 delta verdict D-1 (.superpowers/sdd/plan-12/task-3-delta-verdict.md): a fix round replaced a measured-false ordering claim with a synchronicity claim built on ONE mutation that varied both the order and an inserted await. The reviewer ran the counterfactuals: shipped order plus an await between the two, and after both, each leave the suite green, so the synchronicity constraint does not exist and the relative ORDER - which the same paragraph called inconsequential - is what is load-bearing. The trap was live: Task 5 makes that function async, and 'nothing depends on the order' licenses precisely the one failing configuration"}
+- id: an-interactive-alias-makes-a-restore-a-no-op-and-its-fire-test-pass
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: operational
+  domain: process
+  statement: "On this machine the interactive shell aliases `cp` and `rm` to their `-i` forms, so a scripted restore or deletion inside a verification routine PROMPTS, does nothing, and returns success. The damage is not the missing operation: it is that the fire test built to prove the verification works then reports a clean pass against a file nothing ever touched, which is the one result that cannot be distinguished from a real one. Trigger is readable: your script mutates or restores a file in order to prove a check discriminates. Handle: `command cp` / `command rm` (same shape as `command grep` for the gitignore-honouring wrapper), and assert the post-state by content rather than by the command's exit code."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "session-31 close, the /tmp archival run: the first fire-test round reported a clean pass because the restore never happened and the deletion test never fired - both were the aliased interactive forms. Caught when the archiving agent checked the post-state rather than the exit codes, and re-run with `command cp` / `command rm`, after which all four deliberate breakages fired as designed"}
