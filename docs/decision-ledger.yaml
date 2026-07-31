@@ -5782,3 +5782,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12, both instances in one plan (.superpowers/sdd/plan-12/task-6-verdict.md finding 1 and task-7-verdict.md first Important): one row claimed unit coverage for a surface whose neighbouring row explains why it cannot be unit-tested at all, and one claimed an existing e2e assertion on a catalog string that appears in zero test files. Both named their producers in the existing-coverage form; both survived plan authoring, a four-eyes plan review, three amendments and every task review until a task reviewer went looking for the test itself"}
+- id: a-new-term-is-checked-against-the-corpus-in-both-directions
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: i18n
+  statement: "Introducing a word into user-facing prose or a catalog owes TWO checks, and asking only the first is what makes this defect recur one class at a time. COLLISION: does the corpus already use this word for a DIFFERENT concept, so a reader meets one term meaning two things. SYNONYM: does the corpus already have its OWN word for THIS concept, so the same thing is now named two ways. The second is the one that survives review, because nothing is contradictory and each sentence reads fine alone. Trigger is readable: you are writing a noun or a verb into prose or a value that names a product concept. Handle: search the corpus for the WORD (collision) and for the CONCEPT (synonym), and where the corpus already names the concept, use its word. This binds every shipped locale independently, and a language whose vocabulary distinguishes two concepts English merges will show defects the English side structurally cannot."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-7, three rounds of the same shape one class at a time (.superpowers/sdd/plan-12/task-7-verdict.md, task-7-delta-verdict.md and the fix-round-2 report): first a collision the review caught, then a second collision in a paragraph the fix round own sweep never reached, then two synonym instances the widened sweep surfaced - a German verb and its English mirror, both naming an affordance the shipped catalog already names with another word. The controller stopped routing members at that point and wrote this clause instead, per the convergence rule; the two synonym instances went to the whole-branch fix wave as concrete work"}
