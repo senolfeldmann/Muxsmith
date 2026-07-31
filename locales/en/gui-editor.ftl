@@ -151,3 +151,9 @@ editor-track-rule-order = Order
 editor-action-new = New profile
 editor-empty = No profile open. Create one with New profile, or choose an existing profile file.
 editor-unsaved = New profile, not saved yet.
+
+## Discard confirmation (D109)
+
+editor-discard-title = Unsaved changes
+editor-discard-message = The profile in the editor has unsaved changes. Continuing replaces it and the changes are lost.
+editor-discard-confirm = Discard changes

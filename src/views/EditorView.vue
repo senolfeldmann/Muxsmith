@@ -64,9 +64,13 @@
 // No new `gui-editor.ftl`/`gui-common.ftl` keys: D45's design-doc catalog
 // table enumerates every Fluent key the whole plan adds, and Task 13
 // carries none (the brief's own Files list carries no `.ftl`). Later
-// packages did add to it: `gui-editor.ftl` carries 49 ids today, three of
-// them this view's own New affordance (`editor-action-new`,
-// `editor-empty`, `editor-unsaved`, D107). The Open button, the
+// packages did add to it: `gui-editor.ftl` carries 54 ids today, eight
+// of them this view's own affordances: profile creation
+// (`editor-action-new`, `editor-empty`, `editor-unsaved`, D107),
+// undo/redo (`editor-action-undo`, `editor-action-redo`, D108) and
+// the discard confirmation (`editor-discard-title`,
+// `editor-discard-message`, `editor-discard-confirm`,
+// D109). The Open button, the
 // currently-open-path line, and the file-dialog filter name reuse
 // `batch-profile-pick`/`batch-profile-current`/`batch-profile-filter-name`
 // (BatchView's own "choose + show a profile path" affordance -- their
@@ -97,7 +101,7 @@
 // legend reuses `editor-tracks-rules` ("Rules"), already the grid
 // heading/caption. Selection is cleared on reorder (`onDrop`) so a
 // post-reorder edit can never land on a rule the user did not re-select.
-import { computed, onMounted, provide, ref, watch } from "vue";
+import { computed, onMounted, provide, ref, useTemplateRef, watch } from "vue";
 import { useFluent } from "fluent-vue";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { Profile, TrackRule } from "../bindings/profile";
@@ -107,6 +111,7 @@ import { profileFields, tracksFields } from "../editor/registries";
 import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
 import SectionWidget from "../editor/widgets/SectionWidget.vue";
 import type { EditableFieldOf } from "../editor/widgets/shared";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { editorDiagnosticsByPath, worstSeverity } from "../editor/diagAnchor";
 import { diagnosticFluentParams } from "../diagnosticFluentParams";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
@@ -207,10 +212,9 @@ const nothingOpenedOrCreated = computed(
 // entry would invert it exactly, reporting clean over content the file
 // does not hold.
 //
-// Produced here, consumed by Tasks 5-6's discard guards (D109) -- this
-// task's own Interfaces section names it as the boundary, and nothing in
-// this file reads it yet.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- see above
+// Consumed below by this task's two discard guards (`pickAndOpen`,
+// `createBlank`, D109 decisions 1-2) and, not yet built, by Task 6's
+// close-app guard.
 const dirty = computed(
   () => savedSnapshot.value !== null && history.value[position.value] !== savedSnapshot.value,
 );
@@ -247,6 +251,10 @@ const opening = ref(false);
 const saving = ref(false);
 const ipcErrorCode = ref<string | null>(null);
 const ipcErrorParams = ref<Record<string, string | number>>({});
+
+// D109 decision 6: the one `ConfirmDialog` this view mounts, asked by both
+// discard guards below (`pickAndOpen`, `createBlank`).
+const confirmDialog = useTemplateRef("confirmDialog");
 
 // Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
 // (`src/recentProfiles.ts`), fed on every open below and rendered in the
@@ -400,6 +408,13 @@ async function pickAndOpen(): Promise<void> {
   if (opening.value || saving.value) {
     return;
   }
+  // D109 decision 1: confirm, then the file dialog, then replace. Declining
+  // returns without touching anything; a cancelled file dialog after a
+  // confirmed discard leaves the model untouched too, because nothing is
+  // discarded until `openPath` below actually succeeds.
+  if (dirty.value && !(await confirmDialog.value?.ask())) {
+    return;
+  }
   const picked = await openDialog({
     multiple: false,
     directory: false,
@@ -435,9 +450,12 @@ function blankProfile(): Profile {
 }
 
 // The creation funnel (D107), sibling of `openPath`: it touches no file,
-// so it is synchronous and holds no `opening`/`saving` flag of its own --
-// it only refuses to run while one of those round trips is in flight, the
-// same guard `pickAndOpen` uses.
+// so it holds no `opening`/`saving` flag of its own -- it only refuses to
+// run while one of those round trips is in flight, the same guard
+// `pickAndOpen` uses. D109 makes it `async` (the discard guard's own
+// `await`, below), but that await is gated on `dirty` and short-circuits
+// entirely while the editor is clean, so the common case runs synchronously
+// to completion exactly as before.
 //
 // While the body stays fully synchronous, the statement order inside it
 // does not matter. `watch(model)` above runs at Vue's default
@@ -470,19 +488,27 @@ function blankProfile(): Profile {
 // and appends a second entry, so a freshly created profile would start one
 // step deep and dirty.
 //
-// Which is the case this funnel is walking into: the discard guard (D109)
-// makes it `async` and puts an `await` in front of the seed. Keep the gate
-// above the model assignment there. This comment has been wrong about this
-// function twice, in opposite directions -- first that every statement's
-// order was load-bearing, then that none of it was and that the constraint
-// was gate and model sharing one synchronous block -- so do not reconstruct
-// either claim from the code's shape.
+// Which is the case this funnel walks into: the discard guard (D109) makes
+// it `async` and puts an `await` in front of the seed. The gate stays
+// above the model assignment there, as required. This comment has been
+// wrong about this function twice, in opposite directions -- first that
+// every statement's order was load-bearing, then that none of it was and
+// that the constraint was gate and model sharing one synchronous block --
+// so do not reconstruct either claim from the code's shape.
 //
 // The seeded rule is selected (index 0) so the detail panel opens on the one
 // field the warning is about, mirroring Add's own behaviour (D67, D107
 // decision 9).
-function createBlank(): void {
+async function createBlank(): Promise<void> {
   if (opening.value || saving.value) {
+    return;
+  }
+  // D109 decision 2: the same guard `pickAndOpen` uses, ahead of the seed
+  // this time rather than a file dialog -- New discards exactly as much as
+  // Open. This is also the `await` the comment above warns about: the gate
+  // (`resetHistory`) must stay ahead of the model assignment below it,
+  // which it already is.
+  if (dirty.value && !(await confirmDialog.value?.ask())) {
     return;
   }
   ipcErrorCode.value = null;
@@ -857,6 +883,15 @@ function onEditorKeydown(event: KeyboardEvent): void {
     @focusout="coalesce = false"
     @keydown="onEditorKeydown"
   >
+    <!-- D109 decision 6: the one confirm surface both discard guards ask
+         (`pickAndOpen`, `createBlank`). -->
+    <ConfirmDialog
+      ref="confirmDialog"
+      :title="$t('editor-discard-title')"
+      :message="$t('editor-discard-message')"
+      :confirm-label="$t('editor-discard-confirm')"
+      :cancel-label="$t('settings-cancel')"
+    />
     <button
       type="button"
       data-testid="editor-new"

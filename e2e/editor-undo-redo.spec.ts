@@ -393,7 +393,13 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     await pattern.fill("edited-a");
     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
 
+    // Task 5 (D109) repair: the editor is dirty (the fill above), so this
+    // second Open is now fronted by the discard guard's confirm -- confirmed
+    // here so the assertions below still test the RESET this case is named
+    // for, not the guard itself.
     await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-confirm").click();
     await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
     await expect(editor.getByTestId("editor-undo")).toBeDisabled();
     await expect(editor.getByTestId("editor-redo")).toBeDisabled();
@@ -420,7 +426,13 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     await pattern.fill("edited");
     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
 
+    // Task 5 (D109) repair, amendment 2: New activates the same guarded
+    // control as Open (`createBlank`, Step 2), and the editor is dirty (the
+    // fill above) -- confirmed here so the assertions below still test the
+    // RESET this case is named for, not the guard itself.
     await editor.getByTestId("editor-new").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-confirm").click();
     await expect(editor.getByTestId("editor-undo")).toBeDisabled();
     await expect(editor.getByTestId("editor-redo")).toBeDisabled();
   });
@@ -472,7 +484,14 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     // mistaken for this one passing.
     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
 
+    // Task 5 (D109) repair: the editor is dirty (the fill above), so this
+    // second Open -- the one that goes on to fail -- is now fronted by the
+    // discard guard's confirm -- confirmed here so the assertions below
+    // still test the FAILED-OPEN state this case is named for, not the
+    // guard itself.
     await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-confirm").click();
 
     // In this order, per the brief: the diagnostic still renders (the
     // panel explains a failed open), then Undo/Redo read disabled (via the

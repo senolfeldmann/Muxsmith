@@ -865,8 +865,9 @@ test.describe("german locale", () => {
 // `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
 // NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
 // the AttachmentRule fields they are the registry labels for. Catalog
-// budget is 51 (42 labels + 1 save-surface note + 4 generic action keys +
-// 1 rule-grid ordinal + 3 profile-creation keys).
+// budget is 54 (42 labels + 1 save-surface note + 4 generic action keys +
+// 1 rule-grid ordinal + 3 profile-creation keys + 3 discard-confirmation
+// keys, D109).
 test.describe("editor widgets: mount-harness rendering", () => {
   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
     await mountComponent(page, {
@@ -1386,7 +1387,7 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
     expect(saveArgs.profile.input.pattern).toBe(".*");
   });
 
-  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if)", async ({
+  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if); Case 6 (D109 decision 3): the same round trip with unsaved changes warns not at all", async ({
     page,
   }) => {
     await installTauriMocks(page, {
@@ -1407,9 +1408,14 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
       editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
     ).toBeVisible();
 
+    // Edited before the switch, so the editor carries unsaved changes
+    // (Undo enabled) across the round trip below -- exactly the state
+    // D109 decision 3's guard family would fire over on Open or New, and
+    // switching tabs must not, because `v-show` never unmounts the view.
     const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
     await patternField.fill("kept-through-switch");
     await expect(patternField).toHaveValue("kept-through-switch");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
 
     await page.getByTestId("nav-jobs").click();
     await expect(page.getByTestId("view-jobs")).toBeVisible();
@@ -1417,12 +1423,16 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
 
     await page.getByTestId("nav-editor").click();
     await expect(editor).toBeVisible();
-    // Still mounted, not recreated: the field value and the open path
-    // survived the round trip through Jobs.
+    // Still mounted, not recreated: the field value, the open path and the
+    // undo history all survived the round trip through Jobs, and no
+    // confirm ever appeared -- switching tabs warns not at all (Case 6,
+    // D109 decision 3, R22's own producer).
     await expect(patternField).toHaveValue("kept-through-switch");
     await expect(
       editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
     ).toBeVisible();
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
   });
 });
 
@@ -1978,5 +1988,288 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () 
     // pin index 0 from both ends.
     await expect(panel).toHaveAttribute("aria-labelledby", "editor-rule-row-0");
     await expect(editor.getByTestId("editor-rule-select")).toHaveAttribute("aria-current", "true");
+  });
+});
+
+// Task 5 (D109, ROADMAP round-3 finding 2's second owner ruling, spec 8.2):
+// the discard guards -- Open and New warn before replacing an editor
+// holding unsaved changes, gated on the derived save state (Task 4's
+// `dirty`), never on a clean editor. Case 6 (switching tabs warns not at
+// all) lives above, as an extension of the pre-existing view-switch case
+// rather than a duplicate of it (D109 decision 3). `ConfirmDialog` is
+// mounted once by `EditorView` and asked through its own rendered,
+// axe-scannable DOM (`confirm-dialog`/`-confirm`/`-cancel`), never through
+// the dialog plugin's own `confirm` (D109 decision 6) -- so every assertion
+// below is against real DOM and real recorded IPC calls, not a UI echo.
+test.describe("editor view: discard guards (Task 5, D109)", () => {
+  const PATH_A = "/profiles/discard-guard-a.yaml";
+  const PATH_B = "/profiles/discard-guard-b.yaml";
+
+  const profileA: Profile = {
+    profile_version: 1,
+    input: { pattern: ".*", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+  const profileB: Profile = {
+    profile_version: 1,
+    input: { pattern: "^B$", extensions: ["mkv"] },
+    tracks: { rules: [] },
+  };
+
+  const cleanReport: ReportDocument = {
+    config_diagnostics: [],
+    batch_diagnostics: [],
+    files: [],
+    suggestions: [],
+    mkvmerge_found: true,
+  };
+
+  function loadedDoc(profile: Profile): LoadProfileDocument {
+    return { ...cleanReport, profile };
+  }
+
+  function settingsWith(recentProfiles: string[]): AppSettings {
+    return {
+      mkvmerge_path: null,
+      default_jobs: 1,
+      locale: "en",
+      recent_profiles: recentProfiles,
+      dir_memory: {},
+    };
+  }
+
+  async function gotoEditor(page: Page) {
+    await page.goto("/");
+    await page.getByTestId("nav-editor").click();
+    const editor = page.getByTestId("view-editor");
+    await expect(editor).toBeVisible();
+    return editor;
+  }
+
+  test("Case 1: Open over unsaved changes, confirmed -- the file dialog waits for the confirm, then the second profile replaces the editor", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
+        load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
+      .toBe(1);
+
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("edited-before-open");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await expect(editor.getByText(en("editor-discard-message"))).toBeVisible();
+    await assertNoSeriousA11yViolations(page);
+
+    // ABSENCE CHECK G1: the same counter this case's fire below reads --
+    // the second Open has not reached the file dialog yet, only the
+    // confirm is up.
+    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
+
+    await editor.getByTestId("confirm-dialog-confirm").click();
+
+    // G1's fire, the SAME counter: confirming reaches the file dialog, and
+    // the second profile replaces the editor.
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
+      .toBe(2);
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+  });
+
+  test("Case 2: Open over unsaved changes, cancelled -- the file dialog never opens and the edit survives", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PATH_A)],
+        load_profile: [resolveWith(loadedDoc(profileA))],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("edited-before-cancel");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-cancel").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+
+    // Still just the one dialog call from the first, successful open.
+    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
+    await expect(pattern).toHaveValue("edited-before-cancel");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+  });
+
+  test("Case 3(i): Open with no unsaved changes reaches the file dialog directly, no confirm", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
+        load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+
+    // ABSENCE CHECK G2: nothing was edited, so the editor is clean.
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+
+    await editor.getByTestId("editor-open").click();
+    // G2's fire: the second Open reaches the file dialog immediately, with
+    // no confirm ever appearing.
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
+      .toBe(2);
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+  });
+
+  // Case 3(ii), W3-q2's producer: the ONLY case anywhere in this plan that
+  // proves saving actually marks the profile that was written
+  // (`savedSnapshot.value = JSON.stringify(profile)` in `doSave`, D108
+  // decision 3). The two Open clicks below are each other's control -- the
+  // first proves the guard fires in exactly this scenario (an opened,
+  // edited, not-yet-saved profile), the second proves the save cleared the
+  // state. Without the mark, `savedSnapshot` stays frozen at the load
+  // baseline, `dirty` never returns to false after a save, and this second
+  // click would show a confirm too -- every other assertion in this
+  // package passes with that mark deleted, which is exactly why this leg,
+  // not any other, is this property's only producer.
+  test("Case 3(ii): after a successful save the guard clears -- the two Open clicks in this test are each other's control", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
+        load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
+        validate_profile_model: [resolveWith(cleanReport)],
+        save_profile: [resolveWith(null)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("edited-before-save");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+
+    // FIRST click: the guard fires over the unsaved edit -- proof the
+    // mechanism can trigger in this exact scenario, before the save half
+    // is even reached. Cancelled, so the editor stays untouched and the
+    // save below writes the same edit this click was warning about.
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-cancel").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
+    await expect(pattern).toHaveValue("edited-before-save");
+
+    await editor.getByTestId("editor-save").click();
+    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
+
+    // SECOND click: the save marked `savedSnapshot` at the written profile,
+    // so the editor reads clean again -- the guard must NOT fire, and Open
+    // reaches the file dialog directly.
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+    await expect
+      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
+      .toBe(2);
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
+  });
+
+  test("Case 4: New over unsaved changes -- confirmed replaces the edited profile, cancelled does not", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PATH_A)],
+        load_profile: [resolveWith(loadedDoc(profileA))],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("edited-before-new");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+
+    // Confirmed: the seed replaces the edited profile.
+    await editor.getByTestId("editor-new").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-confirm").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+    await expect(pattern).toHaveValue(".*");
+    await expect(editor.getByTestId("editor-unsaved")).toBeVisible();
+
+    // Cancelled: editing the fresh seed, then New again and cancelling
+    // leaves it untouched -- the seed is NOT re-applied over itself.
+    await pattern.fill("edited-seed");
+    await editor.getByTestId("editor-new").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await editor.getByTestId("confirm-dialog-cancel").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+    await expect(pattern).toHaveValue("edited-seed");
+  });
+
+  test("Case 5: the recents affordance is unreachable while a profile is held (D112's !model term)", async ({
+    page,
+  }) => {
+    await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        get_settings: [resolveWith(settingsWith([PATH_A]))],
+        "plugin:dialog|open": [resolveWith(PATH_A)],
+        load_profile: [resolveWith(loadedDoc(profileA))],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+
+    // The fire, in the pre-session state before anything is opened or
+    // created: the seeded recent renders the section.
+    await expect(editor.getByTestId("editor-recents")).toHaveCount(1);
+
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+
+    // The zero: with a profile held, the section is gone -- D112's `!model`
+    // term alone carries this unreachability (D109 decision 1's own
+    // pointer).
+    await expect(editor.getByTestId("editor-recents")).toHaveCount(0);
   });
 });

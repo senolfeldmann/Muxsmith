@@ -155,3 +155,9 @@ editor-track-rule-order = Reihenfolge
 editor-action-new = Neues Profil
 editor-empty = Kein Profil geöffnet. Erstelle eines mit Neues Profil oder wähle eine vorhandene Profildatei aus.
 editor-unsaved = Neues Profil, noch nicht gespeichert.
+
+## Verwerfen-Bestätigung (D109)
+
+editor-discard-title = Nicht gespeicherte Änderungen
+editor-discard-message = Das Profil im Editor hat nicht gespeicherte Änderungen. Wenn du fortfährst, wird es ersetzt und die Änderungen sind verloren.
+editor-discard-confirm = Änderungen verwerfen
