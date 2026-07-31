@@ -20,7 +20,7 @@ Jede Änderung prüft das ganze Profil im Hintergrund neu; der Meldungsbereich b
 
 ## Speicherverhalten
 
-Bis zum Speichern wird nichts auf die Festplatte geschrieben. Hat das Profil noch keinen Pfad, öffnet der erste Speichervorgang einen Dialog, der nach dem Zielort fragt; jeder weitere Speichervorgang für dieses Profil schreibt danach direkt dorthin, ohne erneuten Dialog.
+Bis zum Speichern wird nichts auf die Festplatte geschrieben. Hat das Profil noch keinen Pfad, öffnet der erste Speichervorgang einen Dialog, der nach dem Speicherort fragt; jeder weitere Speichervorgang für dieses Profil schreibt danach direkt dorthin, ohne erneuten Dialog.
 
 Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung der Datei auf der Festplatte bleiben nicht erhalten, und Felder auf ihrem Standardwert werden weggelassen statt zurückgeschrieben. Das Format folgt der Dateiendung; ein YAML-Profil bleibt YAML. Ist dir ein von Hand kommentiertes Profil wichtig, lege vorher eine Kopie an oder stelle es unter Versionskontrolle.
 
