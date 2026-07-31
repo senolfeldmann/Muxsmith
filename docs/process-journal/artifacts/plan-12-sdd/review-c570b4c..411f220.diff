@@ -1,0 +1,57 @@
+# Review package: c570b4c..411f220
+
+## Commits
+411f220 help: fix-round-1 -- correct terminology and the New button's exact label
+
+## Files changed
+ help/de/view-editor.md | 2 +-
+ help/en/view-editor.md | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/help/de/view-editor.md b/help/de/view-editor.md
+index b527c86..52934d0 100644
+--- a/help/de/view-editor.md
++++ b/help/de/view-editor.md
+@@ -1,17 +1,17 @@
+ # Editor-Ansicht
+ 
+ Der Editor bearbeitet ein Profil als strukturiertes Modell, nicht als YAML-Text. Lege ein neues Profil an, öffne eine Profildatei oder eines der zuletzt verwendeten Profile; jedes Feld erscheint als Formularelement, die Spurregeln als Tabelle.
+ 
+ ## Ein Profil erstellen
+ 
+-Neues Profil legt ein Profil mit einer Kandidaten-Dateiendung und einer leeren Regel an; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
++Neues Profil legt ein Profil mit einer Kandidaten-Erweiterung und einer leeren Regel an; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
+ 
+ Der Editor hält jeweils ein Profil. Ersetzt du es, sei es durch Anlegen eines neuen oder durch Öffnen eines vorhandenen, warnt der Editor zuerst, solange das aktuelle Profil nicht gespeicherte Änderungen hat; lehnst du das ab, bleibt es unverändert. Ein Wechsel zu einer anderen Ansicht und zurück rührt es nie an. Auch beim Beenden der Anwendung wird bei nicht gespeicherten Änderungen gewarnt.
+ 
+ Jede Änderung lässt sich rückgängig machen. Rückgängig und Wiederholen stehen in der Aktionsleiste; dieselben Aktionen reagieren auch auf Tastenkürzel: Strg+Z (Cmd+Z unter macOS) für Rückgängig, Strg+Umschalt+Z oder Strg+Y (Cmd+Umschalt+Z oder Cmd+Y unter macOS) für Wiederholen.
+ 
+ ## Das Modell bearbeiten
+ 
+ Bearbeitet wird das aus der Datei geparste Modell im Speicher, nie der Dateitext selbst. Die Regel-Tabelle fasst jede Spurregel zusammen (Quelle, Match, Optional, Änderungen); die Reihenfolge der Regeln ist zugleich die Reihenfolge der Ausgabespuren, und per Ziehen einer Zeile ordnest du die Regeln um. Wählst du eine Zeile aus, öffnet sich unter der Tabelle ein Detailbereich mit allen Feldern dieser Regel. Die übrigen Abschnitte (Metadaten, Eingabe, Ausgabe, Anhänge, Kapitel, Tags, Titel) erscheinen als normale Formularabschnitte.
+ 
+ ## Prüfung bei jeder Änderung
+diff --git a/help/en/view-editor.md b/help/en/view-editor.md
+index 5f5800c..4811fe8 100644
+--- a/help/en/view-editor.md
++++ b/help/en/view-editor.md
+@@ -1,17 +1,17 @@
+ # Editor view
+ 
+ The Editor edits a profile as a structured model, not as YAML text. Start a new profile, open a profile file, or reopen one from the recent profiles; every field renders as a form control and the track rules as a grid.
+ 
+ ## Creating a profile
+ 
+-New starts a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
++The New profile button starts a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
+ 
+ The editor holds one profile at a time. Replacing it, whether by creating another or by opening one, warns first while the current profile has unsaved changes; declining leaves it untouched. Switching to another view and back never touches it. Quitting the app with unsaved changes warns as well.
+ 
+ Every edit can be undone. Undo and Redo sit in the action row, and the same actions also respond to keyboard shortcuts: Ctrl+Z (Cmd+Z on macOS) for Undo, and Ctrl+Shift+Z or Ctrl+Y (Cmd+Shift+Z or Cmd+Y on macOS) for Redo.
+ 
+ ## Editing the model
+ 
+ What you edit is the in-memory model parsed from the file, never the file's text. The rule grid summarizes each track rule (source, match, optional, changes); rule order is output track order, and dragging a row reorders the rules. Selecting a row opens a detail panel below the grid with the full fields of that rule. The remaining sections (metadata, input, output, attachments, chapters, tags, title) render as regular form sections.
+ 
+ ## Validate on edit

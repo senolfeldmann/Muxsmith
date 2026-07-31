@@ -1,0 +1,133 @@
+# Review package: 78e968f..7b403e8
+
+## Commits
+7b403e8 help+batch: the editor creates profiles, guards unsaved ones and undoes edits
+
+## Files changed
+ help/de/view-editor.md   | 12 +++++++++++-
+ help/en/view-editor.md   | 12 +++++++++++-
+ locales/de/gui-batch.ftl |  2 +-
+ locales/en/gui-batch.ftl |  2 +-
+ 4 files changed, 24 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/help/de/view-editor.md b/help/de/view-editor.md
+index f52471d..b527c86 100644
+--- a/help/de/view-editor.md
++++ b/help/de/view-editor.md
+@@ -1,17 +1,27 @@
+ # Editor-Ansicht
+ 
+-Der Editor bearbeitet ein Profil als strukturiertes Modell, nicht als YAML-Text. Öffne eine Profildatei oder eines der zuletzt verwendeten Profile; jedes Feld erscheint als Formularelement, die Spurregeln als Tabelle.
++Der Editor bearbeitet ein Profil als strukturiertes Modell, nicht als YAML-Text. Lege ein neues Profil an, öffne eine Profildatei oder eines der zuletzt verwendeten Profile; jedes Feld erscheint als Formularelement, die Spurregeln als Tabelle.
++
++## Ein Profil erstellen
++
++Neues Profil legt ein Profil mit einer Kandidaten-Dateiendung und einer leeren Regel an; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
++
++Der Editor hält jeweils ein Profil. Ersetzt du es, sei es durch Anlegen eines neuen oder durch Öffnen eines vorhandenen, warnt der Editor zuerst, solange das aktuelle Profil nicht gespeicherte Änderungen hat; lehnst du das ab, bleibt es unverändert. Ein Wechsel zu einer anderen Ansicht und zurück rührt es nie an. Auch beim Beenden der Anwendung wird bei nicht gespeicherten Änderungen gewarnt.
++
++Jede Änderung lässt sich rückgängig machen. Rückgängig und Wiederholen stehen in der Aktionsleiste; dieselben Aktionen reagieren auch auf Tastenkürzel: Strg+Z (Cmd+Z unter macOS) für Rückgängig, Strg+Umschalt+Z oder Strg+Y (Cmd+Umschalt+Z oder Cmd+Y unter macOS) für Wiederholen.
+ 
+ ## Das Modell bearbeiten
+ 
+ Bearbeitet wird das aus der Datei geparste Modell im Speicher, nie der Dateitext selbst. Die Regel-Tabelle fasst jede Spurregel zusammen (Quelle, Match, Optional, Änderungen); die Reihenfolge der Regeln ist zugleich die Reihenfolge der Ausgabespuren, und per Ziehen einer Zeile ordnest du die Regeln um. Wählst du eine Zeile aus, öffnet sich unter der Tabelle ein Detailbereich mit allen Feldern dieser Regel. Die übrigen Abschnitte (Metadaten, Eingabe, Ausgabe, Anhänge, Kapitel, Tags, Titel) erscheinen als normale Formularabschnitte.
+ 
+ ## Prüfung bei jeder Änderung
+ 
+ Jede Änderung prüft das ganze Profil im Hintergrund neu; der Meldungsbereich beschreibt daher immer den aktuellen Stand des Modells. Speichern ist gesperrt, solange eine Meldung mit Schweregrad Fehler besteht; das ist die einzige Sperre, die der Editor durchsetzt. Warnungen und Hinweise blockieren das Speichern nie.
+ 
+ ## Speicherverhalten
+ 
++Bis zum Speichern wird nichts auf die Festplatte geschrieben. Hat das Profil noch keinen Pfad, öffnet der erste Speichervorgang einen Dialog, der nach dem Zielort fragt; jeder weitere Speichervorgang für dieses Profil schreibt danach direkt dorthin, ohne erneuten Dialog.
++
+ Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung der Datei auf der Festplatte bleiben nicht erhalten, und Felder auf ihrem Standardwert werden weggelassen statt zurückgeschrieben. Das Format folgt der Dateiendung; ein YAML-Profil bleibt YAML. Ist dir ein von Hand kommentiertes Profil wichtig, lege vorher eine Kopie an oder stelle es unter Versionskontrolle.
+ 
+ Die Schaltfläche Anwenden auf einer Vorschlagskarte in der Stapel-Ansicht speichert auf dieselbe Weise: ein kanonisches Neuschreiben, dieselben Regeln (siehe das Thema Vorschlagskarte).
+diff --git a/help/en/view-editor.md b/help/en/view-editor.md
+index 4847c2c..5f5800c 100644
+--- a/help/en/view-editor.md
++++ b/help/en/view-editor.md
+@@ -1,17 +1,27 @@
+ # Editor view
+ 
+-The Editor edits a profile as a structured model, not as YAML text. Open a profile file, or reopen one from the recent profiles; every field renders as a form control and the track rules as a grid.
++The Editor edits a profile as a structured model, not as YAML text. Start a new profile, open a profile file, or reopen one from the recent profiles; every field renders as a form control and the track rules as a grid.
++
++## Creating a profile
++
++New starts a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
++
++The editor holds one profile at a time. Replacing it, whether by creating another or by opening one, warns first while the current profile has unsaved changes; declining leaves it untouched. Switching to another view and back never touches it. Quitting the app with unsaved changes warns as well.
++
++Every edit can be undone. Undo and Redo sit in the action row, and the same actions also respond to keyboard shortcuts: Ctrl+Z (Cmd+Z on macOS) for Undo, and Ctrl+Shift+Z or Ctrl+Y (Cmd+Shift+Z or Cmd+Y on macOS) for Redo.
+ 
+ ## Editing the model
+ 
+ What you edit is the in-memory model parsed from the file, never the file's text. The rule grid summarizes each track rule (source, match, optional, changes); rule order is output track order, and dragging a row reorders the rules. Selecting a row opens a detail panel below the grid with the full fields of that rule. The remaining sections (metadata, input, output, attachments, chapters, tags, title) render as regular form sections.
+ 
+ ## Validate on edit
+ 
+ Every edit re-validates the whole profile in the background, so the diagnostics panel always describes the current state of the model. Saving is disabled while any error-severity diagnostic exists; that is the one gate the editor enforces. Warnings and info notices never block saving.
+ 
+ ## Save semantics
+ 
++Nothing is written to disk until you save. On a profile with no path yet, the first save opens a dialog asking where to put the file; every later save on that profile writes there directly, with no dialog.
++
+ Saving rewrites the file from the model: comments, key order and formatting of the file on disk are not preserved, and fields left at their default are omitted rather than written back. The output format follows the file's extension, so a YAML profile stays YAML. If a hand-commented profile matters to you, keep a copy or put it under version control before saving over it.
+ 
+ The Apply button on a suggestion card in the Batch view saves the same way: one canonical rewrite, same rules (see the Suggestion card topic).
+diff --git a/locales/de/gui-batch.ftl b/locales/de/gui-batch.ftl
+index 3bda284..b8e78cb 100644
+--- a/locales/de/gui-batch.ftl
++++ b/locales/de/gui-batch.ftl
+@@ -3,21 +3,21 @@
+ ## scripts/check-i18n.mjs); placeables and selector structure mirror it by
+ ## convention (reviewed manually, not machine-checked). Batch -> Stapel,
+ ## Regel, Vorschlag, Probelauf (dry run); GUI imperative in infinitive form.
+ 
+ batch-view-heading = Stapel
+ 
+ batch-profile-heading = Profil
+ batch-profile-pick = Profil auswählen...
+     .tooltip = Eine Muxsmith-Profil-YAML-Datei zum Prüfen und Starten auswählen.
+ batch-profile-filter-name = Muxsmith-Profile
+-batch-profile-none = Noch kein Profil ausgewählt. Wähle unten eines aus, um es zu prüfen und einen Stapel zu starten.
++batch-profile-none = Noch kein Profil ausgewählt. Wähle unten eines aus, um es zu prüfen und einen Stapel zu starten, oder erstelle eines in der Editor-Ansicht.
+ batch-profile-current = Ausgewähltes Profil: { $path }
+ 
+ batch-recents-heading = Zuletzt verwendete Profile
+ batch-recents-empty = Noch keine zuletzt verwendeten Profile.
+ batch-recents-select =
+     .tooltip = Dieses Profil erneut öffnen.
+ 
+ batch-dirs-heading = Verzeichnisse
+ batch-source-label = Quellverzeichnis
+     .hint = Verzeichnis, das nach Eingabedateien durchsucht wird. Leer lassen, um das im Profil hinterlegte Quellverzeichnis zu verwenden.
+diff --git a/locales/en/gui-batch.ftl b/locales/en/gui-batch.ftl
+index d9eace4..52d9649 100644
+--- a/locales/en/gui-batch.ftl
++++ b/locales/en/gui-batch.ftl
+@@ -7,21 +7,21 @@
+ ## `.tooltip` (fix: that one says "Choose the file with a file picker", wrong
+ ## noun for a directory picker; it stays reserved for genuine file pickers,
+ ## e.g. FirstRun's/SettingsDialog's mkvmerge-path browse button).
+ 
+ batch-view-heading = Batch
+ 
+ batch-profile-heading = Profile
+ batch-profile-pick = Choose profile...
+     .tooltip = Pick a Muxsmith profile YAML file to validate and run.
+ batch-profile-filter-name = Muxsmith profiles
+-batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch.
++batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch, or create one in the Editor view.
+ batch-profile-current = Selected profile: { $path }
+ 
+ batch-recents-heading = Recent profiles
+ batch-recents-empty = No recent profiles yet.
+ batch-recents-select =
+     .tooltip = Open this profile again.
+ 
+ batch-dirs-heading = Directories
+ batch-source-label = Source directory
+     .hint = Directory scanned for input files. Leave empty to use the profile's own source directory.

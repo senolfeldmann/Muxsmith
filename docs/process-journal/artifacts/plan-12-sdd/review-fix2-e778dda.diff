@@ -1,0 +1,44 @@
+# Review package: e778dda^..e778dda
+
+## Commits
+e778dda e2e: the split's reason is an always-red case, not a vacuous green one
+
+## Files changed
+ e2e/locale-switch.spec.ts | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/e2e/locale-switch.spec.ts b/e2e/locale-switch.spec.ts
+index ec64eb1..c39268c 100644
+--- a/e2e/locale-switch.spec.ts
++++ b/e2e/locale-switch.spec.ts
+@@ -156,22 +156,27 @@ const SYSTEM_SETTINGS: AppSettings = {
+   recent_profiles: [],
+   dir_memory: {},
+ };
+ 
+ /** The state the "leaving the system language" case below persists: an
+  *  explicit English override on a machine whose system language is German.
+  *  It is the starting scenario of the opposite direction rather than a
+  *  continuation of one page, because this mock is stateless -- `set_settings`
+  *  does not feed `get_settings`, and `open()` re-reads the baseline, so a
+  *  second save inside one page would compare `null` against `null`, the
+- *  live-switch guard would stay false, and the case would pass while
+- *  measuring nothing on the live path (controller ruling 1, Plan 12 Task 2). */
++ *  live-switch guard would stay false, and the merged case would go RED
++ *  against a correct implementation: its `set_settings` assertion still
++ *  passes (`null` is persisted), while both rendering assertions fail --
++ *  the German heading never comes back and `<html lang>` stays `en`. So the
++ *  split is here because that direction cannot be made green inside one page
++ *  without a reload or a second fixture state, NOT because a merged form
++ *  would be a false green (controller ruling 1, Plan 12 Task 2). */
+ const EN_OVERRIDE_SETTINGS: AppSettings = { ...SYSTEM_SETTINGS, locale: "en" };
+ 
+ test.describe("system-locale default (D106)", () => {
+   test.use({ locale: "de-DE" });
+ 
+   /** Installs one stored-settings state under the describe's German system
+    *  language. Returns the Node-side call log, so a save assertion reads the
+    *  real `set_settings` invocation rather than a UI echo. */
+   function installStored(page: Page, settings: AppSettings) {
+     return installTauriMocks(page, {

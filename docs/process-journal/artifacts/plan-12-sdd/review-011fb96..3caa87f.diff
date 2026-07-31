@@ -1,0 +1,46 @@
+# Review package: 011fb96..3caa87f
+
+## Commits
+3caa87f run: correct editor_dirty's failure-cost comment -- a retry-less boolean fails in either direction, not only toward a missed warning
+
+## Files changed
+ src-tauri/src/lib.rs | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/src-tauri/src/lib.rs b/src-tauri/src/lib.rs
+index 71a45a3..07ae03e 100644
+--- a/src-tauri/src/lib.rs
++++ b/src-tauri/src/lib.rs
+@@ -104,23 +104,28 @@ pub struct AppState {
+     /// by whichever completion path finishes last -- the runner's
+     /// teardown, a soft outcome's synchronous finish, or the dialog
+     /// callback itself when the run already tore down while the dialog
+     /// was open.
+     quit_after_finished: AtomicBool,
+     /// D109 decision 4: mirrors the editor's derived `dirty` state
+     /// (`src/views/EditorView.vue`), written only by [`set_editor_dirty`]
+     /// -- the frontend is this field's only writer, the shell never
+     /// derives it itself. `run::close_decision` (private to that module, so
+     /// not an intra-doc link here) reads it alongside the run slot to pick
+-    /// the close dialog. A failed sync leaves it stale: the
+-    /// close-with-unsaved-changes warning can be missed, never shown where
+-    /// nothing is at risk.
++    /// the close dialog. A plain, retry-less boolean, unlike
++    /// `dialog_locale` below: a failed sync just leaves it at whatever
++    /// value it last held, and that can go either direction -- a missed
++    /// true-transition can leave the close-with-unsaved-changes warning
++    /// unshown over real changes, while a missed false-transition after a
++    /// save leaves it stuck true and shows that same warning where nothing
++    /// is at risk. Nothing here makes either direction structurally
++    /// impossible.
+     editor_dirty: AtomicBool,
+     /// D110 decision 2: mirrors the locale the frontend applied
+     /// (`currentLocale`), written only by [`set_shell_locale`] -- the
+     /// shell does not resolve a locale of its own, `effectiveLocale`
+     /// stays the product's single resolution rule. `run::ftl_message`
+     /// (private to that module, so not an intra-doc link here) reads it to
+     /// pick the catalog row a close dialog renders from. A failed sync
+     /// leaves the previous value: a dialog renders in a stale language,
+     /// never a missing dialog.
+     dialog_locale: Mutex<String>,

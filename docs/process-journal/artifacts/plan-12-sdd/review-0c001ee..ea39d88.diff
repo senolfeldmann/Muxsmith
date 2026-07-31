@@ -1,0 +1,521 @@
+# Review package: 0c001ee..ea39d88
+
+## Commits
+ea39d88 settings: a third system-language option, so the effective locale and the shown value agree and the override stays removable
+
+## Files changed
+ e2e/locale-switch.spec.ts         | 192 +++++++++++++++++++++++++++++++++++++-
+ locales/de/gui-settings.ftl       |   3 +-
+ locales/en/gui-settings.ftl       |   3 +-
+ src/components/SettingsDialog.vue |  32 +++++--
+ src/i18n/index.ts                 |  18 ++++
+ src/main.ts                       |  17 ++--
+ 6 files changed, 247 insertions(+), 18 deletions(-)
+
+## Diff
+diff --git a/e2e/locale-switch.spec.ts b/e2e/locale-switch.spec.ts
+index f3e30ae..ec64eb1 100644
+--- a/e2e/locale-switch.spec.ts
++++ b/e2e/locale-switch.spec.ts
+@@ -6,36 +6,66 @@
+  * (`mocks.ts`), exactly like `smoke.spec.ts`.
+  *
+  * The expected German text is derived from the real `locales/de` catalog
+  * through `@fluent/bundle` (a local de-bundle helper mirroring
+  * `i18n-en.ts`'s `buildEnBundle`), never a hardcoded string, so the
+  * assertion is byte-identical to what the app itself renders. The
+  * interaction strings (button/label names to click) come from the en
+  * catalog via `i18n-en.ts`'s `en()`, the same test-discipline convention
+  * `smoke.spec.ts` follows.
+  *
++ * Plan 12 W1 (D106) adds a second subject to this file: the SYSTEM-language
++ * default, i.e. the state where nothing has ever been saved on the machine
++ * (`locale: null`) and the interface must follow the operating system while
++ * the control shows exactly that, and saving must not silently mint an
++ * override. Those cases need a non-English system language, which the
++ * suite does not otherwise have: `playwright.config.ts` pins `en-US` and
++ * plan-5 D29 pins the test locale to English deliberately, so role names
++ * match the en catalog. A describe-level `test.use({ locale: "de-DE" })`
++ * is the additive route -- it applies to the cases inside that describe
++ * only, leaves every sibling case (this file's own D56 case included) on
++ * the config's `en-US`, and needs no edit to `playwright.config.ts` or to
++ * `mocks.ts`'s default scenario. Every German string those cases assert is
++ * one whose de value DIFFERS from its en value, because `buildBundles`
++ * negotiates `[requested, en]` per message: an id whose two values are
++ * identical would assert green even if the interface had fallen back to
++ * English entirely.
++ *
++ * Inside that describe the en()-only line above does not apply to
++ * INTERACTION LOCATORS, and the reason is that its premise is gone: a
++ * locator for "Save" cannot find a button labelled "Speichern". What the
++ * convention encodes is "resolve through the catalog, never hardcode a
++ * literal", and that is preserved -- an interaction locator there resolves
++ * through the catalog of the locale actually RENDERING at that point in the
++ * case, `de(...)` while the interface is German and `en(...)` once it has
++ * switched (controller ruling 1, Plan 12 Task 2). The rule for ASSERTIONS is
++ * untouched and still binds exactly as stated above; an interaction locator
++ * is not one of a case's assertions and is never counted as evidence that a
++ * given bundle is live.
++ *
+  * "Not reloaded" is proven by a `document.body` dataset marker set before
+  * the switch: a live bundle swap never touches `document.body`, but a full
+  * `page.reload()` recreates the document and wipes it. The marker sits
+  * outside `#app` deliberately -- Vue's in-place re-render only rewrites the
+  * component tree under the mount point, so a marker on `body` is the clean
+  * survives-a-swap / dies-on-reload witness the design's "views keep state"
+  * clause needs.
+  */
+ import { readFileSync, readdirSync } from "node:fs";
+ import { join, resolve } from "node:path";
+ import { expect, test } from "@playwright/test";
++import type { Page } from "@playwright/test";
+ import { FluentBundle, FluentResource } from "@fluent/bundle";
+ import type { FluentVariable } from "@fluent/bundle";
+ import { installTauriMocks, resolveWith } from "./mocks";
+ import { en } from "./i18n-en";
+-import type { MkvmergeInfo } from "../src/ipc";
++import type { AppSettings, MkvmergeInfo } from "../src/ipc";
+ 
+ const LOCALES_DE = resolve(import.meta.dirname, "../locales/de");
+ 
+ /** Mirrors `i18n-en.ts`'s `buildEnBundle` for the de catalog: one
+  *  `FluentBundle` over `locales/de/{gui-*,diagnostics}.ftl`, the exact set
+  *  `src/i18n/index.ts` loads at runtime. Throws on an `addResource`
+  *  collision -- the only thing that parser reports (see `i18n-en.ts`). */
+ function buildDeBundle(): FluentBundle {
+   const bundle = new FluentBundle("de");
+   const files = readdirSync(LOCALES_DE)
+@@ -107,10 +137,170 @@ test.describe("live locale switch (D56)", () => {
+       batch.getByRole("heading", { name: en("batch-view-heading"), exact: true }),
+     ).toHaveCount(0);
+ 
+     // (b) No reload happened: the pre-switch body marker is still there.
+     expect(await page.evaluate(() => document.body.dataset.localeSwitchAlive)).toBe("yes");
+ 
+     // (c) The document language followed the switch.
+     expect(await page.evaluate(() => document.documentElement.lang)).toBe("de");
+   });
+ });
++
++/** Nothing ever saved on this machine: the stored override is absent, which
++ *  is what "follow the system language" IS (spec 8.2). Supplied per
++ *  scenario rather than by changing `mocks.ts`'s default `locale: "en"`,
++ *  which every other scenario in the suite inherits (D106 decision 6). */
++const SYSTEM_SETTINGS: AppSettings = {
++  mkvmerge_path: null,
++  default_jobs: 1,
++  locale: null,
++  recent_profiles: [],
++  dir_memory: {},
++};
++
++/** The state the "leaving the system language" case below persists: an
++ *  explicit English override on a machine whose system language is German.
++ *  It is the starting scenario of the opposite direction rather than a
++ *  continuation of one page, because this mock is stateless -- `set_settings`
++ *  does not feed `get_settings`, and `open()` re-reads the baseline, so a
++ *  second save inside one page would compare `null` against `null`, the
++ *  live-switch guard would stay false, and the case would pass while
++ *  measuring nothing on the live path (controller ruling 1, Plan 12 Task 2). */
++const EN_OVERRIDE_SETTINGS: AppSettings = { ...SYSTEM_SETTINGS, locale: "en" };
++
++test.describe("system-locale default (D106)", () => {
++  test.use({ locale: "de-DE" });
++
++  /** Installs one stored-settings state under the describe's German system
++   *  language. Returns the Node-side call log, so a save assertion reads the
++   *  real `set_settings` invocation rather than a UI echo. */
++  function installStored(page: Page, settings: AppSettings) {
++    return installTauriMocks(page, {
++      commands: {
++        get_settings: [resolveWith(settings)],
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++      },
++    });
++  }
++
++  const saved = (recorded: { cmd: string; args: unknown }[]) =>
++    recorded
++      .filter((r) => r.cmd === "set_settings")
++      .map((r) => (r.args as { settings: AppSettings }).settings);
++
++  test("first run: the interface follows the system language and the control says so", async ({
++    page,
++  }) => {
++    await installStored(page, SYSTEM_SETTINGS);
++
++    await page.goto("/");
++
++    // (a) batch-view-heading is "Batch" (en) vs "Stapel" (de) -- a value the
++    // en fallback cannot produce, so this fails if the de bundle is not the
++    // one actually rendering.
++    const batch = page.getByTestId("view-batch");
++    await expect(batch.getByRole("heading", { name: de("batch-view-heading"), exact: true })).toBeVisible();
++    expect(await page.evaluate(() => document.documentElement.lang)).toBe("de");
++
++    // (b) The control agrees with what the user sees: the sentinel is
++    // selected, and its label is the de one.
++    await page.getByTestId("open-settings").click();
++    const dialog = page.getByTestId("settings-dialog");
++    await expect(dialog).toBeVisible();
++    const localeSelect = dialog.locator("select#settings-locale");
++    await expect(localeSelect).toHaveValue("");
++    await expect(localeSelect.locator("option:checked")).toHaveText(
++      de("settings-locale-option-system"),
++    );
++  });
++
++  test("saving without touching the language writes no override", async ({ page }) => {
++    const recorded = await installStored(page, SYSTEM_SETTINGS);
++
++    await page.goto("/");
++
++    await page.getByTestId("open-settings").click();
++    const dialog = page.getByTestId("settings-dialog");
++    await expect(dialog).toBeVisible();
++    await dialog.locator("input#settings-default-jobs").fill("3");
++    // The interface is German here, so the Save control resolves through the
++    // de catalog (see this file's header).
++    await dialog.getByRole("button", { name: de("settings-save"), exact: true }).click();
++    await expect(dialog).toBeHidden();
++
++    // The defect's core: the first Save used to mint an override the user
++    // never requested, permanently removing system-following from the UI.
++    const writes = saved(recorded);
++    expect(writes).toHaveLength(1);
++    expect(writes[0].locale).toBeNull();
++    // Control: the save really carried the edit, so the `locale` assertion
++    // above is not green merely because nothing was saved at all.
++    expect(writes[0].default_jobs).toBe(3);
++  });
++
++  // The two directions across the sentinel run as two cases, one scenario
++  // each, both on the LIVE path with no reload anywhere -- see
++  // EN_OVERRIDE_SETTINGS for why one page cannot carry both.
++
++  test("leaving the system language: picking English stores the override and switches live", async ({
++    page,
++  }) => {
++    const recorded = await installStored(page, SYSTEM_SETTINGS);
++
++    await page.goto("/");
++
++    const batch = page.getByTestId("view-batch");
++    const dialog = page.getByTestId("settings-dialog");
++
++    await page.getByTestId("open-settings").click();
++    await expect(dialog).toBeVisible();
++    await dialog.locator("select#settings-locale").selectOption("en");
++    // Still German at the moment of the click: the switch happens on save.
++    await dialog.getByRole("button", { name: de("settings-save"), exact: true }).click();
++    await expect(dialog).toBeHidden();
++
++    expect(saved(recorded)).toHaveLength(1);
++    expect(saved(recorded)[0].locale).toBe("en");
++    await expect(batch.getByRole("heading", { name: en("batch-view-heading"), exact: true })).toBeVisible();
++    await expect(
++      batch.getByRole("heading", { name: de("batch-view-heading"), exact: true }),
++    ).toHaveCount(0);
++    expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
++  });
++
++  test("returning to the system language: removing the override stores null and switches live", async ({
++    page,
++  }) => {
++    const recorded = await installStored(page, EN_OVERRIDE_SETTINGS);
++
++    await page.goto("/");
++
++    const batch = page.getByTestId("view-batch");
++    const dialog = page.getByTestId("settings-dialog");
++
++    // Red-state control for the German assertions below: the stored override
++    // really is in force first, so "the German heading is back" cannot be
++    // green on a page that was German all along.
++    await expect(batch.getByRole("heading", { name: en("batch-view-heading"), exact: true })).toBeVisible();
++    await expect(
++      batch.getByRole("heading", { name: de("batch-view-heading"), exact: true }),
++    ).toHaveCount(0);
++    expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
++
++    await page.getByTestId("open-settings").click();
++    await expect(dialog).toBeVisible();
++    const localeSelect = dialog.locator("select#settings-locale");
++    await expect(localeSelect).toHaveValue("en");
++    await localeSelect.selectOption("");
++    // English at the moment of the click, so the Save control resolves
++    // through the en catalog here.
++    await dialog.getByRole("button", { name: en("settings-save"), exact: true }).click();
++    await expect(dialog).toBeHidden();
++
++    // The override is removable -- the two-option control made this state
++    // unreachable forever once anything had been saved.
++    expect(saved(recorded)).toHaveLength(1);
++    expect(saved(recorded)[0].locale).toBeNull();
++    await expect(batch.getByRole("heading", { name: de("batch-view-heading"), exact: true })).toBeVisible();
++    expect(await page.evaluate(() => document.documentElement.lang)).toBe("de");
++  });
++});
+diff --git a/locales/de/gui-settings.ftl b/locales/de/gui-settings.ftl
+index 4837489..deb3ecc 100644
+--- a/locales/de/gui-settings.ftl
++++ b/locales/de/gui-settings.ftl
+@@ -1,16 +1,17 @@
+ ### German (de) translation of locales/en/gui-settings.ftl. The en catalog is
+ ### the source of truth; keys mirror it (parity-enforced by
+ ### scripts/check-i18n.mjs).
+ settings-title = Einstellungen
+ settings-mkvmerge-path-label = Abweichender mkvmerge-Pfad
+     .hint = Leer lassen, um das automatisch erkannte mkvmerge zu verwenden (aus dem PATH oder dem Standard-Installationsort deines Betriebssystems).
+ settings-default-jobs-label = Standardmäßige parallele Jobs
+     .hint = Wie viele mkvmerge-Prozesse während eines Laufs gleichzeitig ausgeführt werden. 1 führt die Jobs nacheinander aus.
+ settings-locale-label = Sprache
+-    .hint = In welcher Sprache Muxsmith seine Oberfläche anzeigt.
++    .hint = In welcher Sprache Muxsmith seine Oberfläche anzeigt. Systemsprache folgt der Sprache deines Betriebssystems und fällt auf Englisch zurück, wo eine Übersetzung fehlt.
++settings-locale-option-system = Systemsprache
+ settings-locale-option-en = English
+ settings-locale-option-de = Deutsch
+ settings-save = Speichern
+     .tooltip = Diese Einstellungen speichern.
+ settings-cancel = Abbrechen
+     .tooltip = Änderungen verwerfen und schließen.
+diff --git a/locales/en/gui-settings.ftl b/locales/en/gui-settings.ftl
+index 6ab9500..4580ac9 100644
+--- a/locales/en/gui-settings.ftl
++++ b/locales/en/gui-settings.ftl
+@@ -1,15 +1,16 @@
+ ### T9: SettingsDialog.vue (D27 app settings: mkvmerge path override, default
+ ### parallel jobs, UI locale).
+ settings-title = Settings
+ settings-mkvmerge-path-label = mkvmerge path override
+     .hint = Leave empty to use the automatically detected mkvmerge (PATH or the standard install location for your operating system).
+ settings-default-jobs-label = Default parallel jobs
+     .hint = How many mkvmerge processes to run at the same time during a run. 1 runs jobs one after another.
+ settings-locale-label = Language
+-    .hint = Which language the Muxsmith interface uses.
++    .hint = Which language the Muxsmith interface uses. System language follows your operating system and falls back to English where a translation is missing.
++settings-locale-option-system = System language
+ settings-locale-option-en = English
+ settings-locale-option-de = Deutsch
+ settings-save = Save
+     .tooltip = Save these settings.
+ settings-cancel = Cancel
+     .tooltip = Discard changes and close.
+diff --git a/src/components/SettingsDialog.vue b/src/components/SettingsDialog.vue
+index 3ca41b1..0b32fa7 100644
+--- a/src/components/SettingsDialog.vue
++++ b/src/components/SettingsDialog.vue
+@@ -1,49 +1,58 @@
+ <script setup lang="ts">
+ import { reactive, ref, useTemplateRef } from "vue";
+ import { open as openDialog } from "@tauri-apps/plugin-dialog";
+ import { defaultAppSettings, getSettings, setSettings } from "../ipc";
+ import type { AppSettings, IpcError } from "../ipc";
++import { effectiveLocale } from "../i18n";
+ import { applyLocale } from "../i18n/fluent";
+ 
+ // D27 settings dialog: native <dialog>, opened imperatively via
+ // `defineExpose`'s `open()` (App.vue holds a template ref and calls it
+ // from the shell's own Settings button). Deliberately not `method="dialog"`
+ // on the <form>: saving needs an async IPC round trip to complete (and the
+ // dialog to stay open on failure), which a plain `method="dialog"` submit
+ // cannot express -- it closes synchronously regardless of outcome.
+ const dialogEl = useTemplateRef("dialogEl");
+ const busy = ref(false);
+ const errorCode = ref<string | null>(null);
+ const errorParams = ref<Record<string, string | number>>({});
+ 
++// D106: a <select> cannot bind `null`, so the empty string is the "no
++// override, follow the system language" sentinel. It is the house pattern
++// the sibling nullable field in this same form already uses -- mkvmergePath
++// loads as `baseline.mkvmerge_path ?? ""` and saves `""` back as `null` --
++// and no BCP-47 tag can be empty, so it can never collide with a real
++// locale value.
++const SYSTEM_LOCALE = "";
++
+ const form = reactive({
+   mkvmergePath: "",
+   defaultJobs: 1,
+-  locale: "en",
++  locale: SYSTEM_LOCALE,
+ });
+ 
+ let baseline: AppSettings = defaultAppSettings();
+ 
+ async function open() {
+   errorCode.value = null;
+   try {
+     baseline = await getSettings();
+   } catch (e) {
+     const err = e as IpcError;
+     errorCode.value = err.code;
+     errorParams.value = err.params;
+     baseline = defaultAppSettings();
+   }
+   form.mkvmergePath = baseline.mkvmerge_path ?? "";
+   form.defaultJobs = baseline.default_jobs;
+-  form.locale = baseline.locale ?? "en";
++  form.locale = baseline.locale ?? SYSTEM_LOCALE;
+   dialogEl.value?.showModal();
+ }
+ 
+ function close() {
+   dialogEl.value?.close();
+ }
+ 
+ async function browse() {
+   const picked = await openDialog({ multiple: false, directory: false });
+   if (typeof picked === "string") {
+@@ -52,31 +61,33 @@ async function browse() {
+ }
+ 
+ async function save() {
+   busy.value = true;
+   errorCode.value = null;
+   try {
+     const next: AppSettings = {
+       ...baseline,
+       mkvmerge_path: form.mkvmergePath.trim() === "" ? null : form.mkvmergePath.trim(),
+       default_jobs: Math.max(1, Math.trunc(form.defaultJobs) || 1),
+-      locale: form.locale,
++      locale: form.locale === SYSTEM_LOCALE ? null : form.locale,
+     };
+     await setSettings(next);
+     // Live locale switch (D56): swap the catalog in place when the locale
+     // actually changed, before `baseline` is reassigned below. Views are
+-    // v-show-mounted, so no state is lost. The `!== null` narrows
+-    // AppSettings.locale (string | null) to the string applyLocale takes;
+-    // next.locale is always set here (from form.locale), so the guard only
+-    // satisfies the type -- vue-tsc is the sole gate that catches it.
+-    if (next.locale !== baseline.locale && next.locale !== null) {
+-      applyLocale(next.locale);
++    // v-show-mounted, so no state is lost. The comparison stays on the raw
++    // nullable saved values, so both directions across the sentinel fire
++    // (`null` -> "en", "de" -> `null`) while a save that leaves the language
++    // alone does not; `effectiveLocale` then turns a stored `null` into the
++    // system language, which is the same seam `resolveLocale` in
++    // `src/main.ts` resolves through at startup (D106).
++    if (next.locale !== baseline.locale) {
++      applyLocale(effectiveLocale(next.locale));
+     }
+     baseline = next;
+     dialogEl.value?.close();
+   } catch (e) {
+     const err = e as IpcError;
+     errorCode.value = err.code;
+     errorParams.value = err.params;
+   } finally {
+     busy.value = false;
+   }
+@@ -138,20 +149,23 @@ defineExpose({ open, isOpen: () => dialogEl.value?.open ?? false });
+         </p>
+       </div>
+ 
+       <div>
+         <label for="settings-locale">{{ $t("settings-locale-label") }}</label>
+         <select
+           id="settings-locale"
+           v-model="form.locale"
+           aria-describedby="settings-locale-hint"
+         >
++          <option :value="SYSTEM_LOCALE">
++            {{ $t("settings-locale-option-system") }}
++          </option>
+           <option value="en">
+             {{ $t("settings-locale-option-en") }}
+           </option>
+           <option value="de">
+             {{ $t("settings-locale-option-de") }}
+           </option>
+         </select>
+         <p id="settings-locale-hint">
+           {{ $ta("settings-locale-label").hint }}
+         </p>
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 711f63f..5e1a083 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -21,20 +21,38 @@ const catalogSources = import.meta.glob(
+ 
+ const LOCALE_DIR = /\/locales\/([^/]+)\//;
+ 
+ function catalogsForLocale(locale: string): string[] {
+   return Object.keys(catalogSources)
+     .filter((path) => LOCALE_DIR.exec(path)?.[1] === locale)
+     .sort()
+     .map((path) => catalogSources[path]);
+ }
+ 
++/**
++ * The one place the "absent means the system language" rule lives (spec
++ * 8.2: following the system IS the absence of a stored override; spec 8.4:
++ * "system locale with manual override in app settings"). A `null` setting
++ * resolves to the language the browser reports for the platform; any other
++ * value is the user's own override and is returned unchanged.
++ *
++ * Both readers of the stored setting call this rather than restating it:
++ * `resolveLocale` in `src/main.ts` at startup, and `save`'s live switch in
++ * `src/components/SettingsDialog.vue` (D106). That is deliberate -- the
++ * defect D106 repairs was exactly this one nullable field being read with
++ * two different fallbacks in two files that nothing reconciled, which
++ * stayed invisible for two plans.
++ */
++export function effectiveLocale(saved: string | null): string {
++  return saved ?? navigator.language;
++}
++
+ /**
+  * BCP-47 primary language subtag (everything before the first "-"),
+  * lowercased. A saved setting or `navigator.language` is often
+  * region-qualified ("de-DE", "de-AT", "en-US"), but catalogs live under a
+  * primary-subtag directory ("locales/de", "locales/en"); matching the full
+  * tag verbatim against the directory name would skip the catalog and fall
+  * through to English (docs-tree S15 / Plan 5 task-9 review, latent until a
+  * second locale landed with Task 21). German regional variants share one
+  * CLDR plural-rule set, so collapsing the region is lossless for the
+  * locale negotiation this loader does.
+diff --git a/src/main.ts b/src/main.ts
+index 36d14c8..8991bac 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,29 +1,34 @@
+ import { createApp } from "vue";
+ import App from "./App.vue";
++import { effectiveLocale } from "./i18n";
+ import { applyLocale, fluent } from "./i18n/fluent";
+ import { getSettings } from "./ipc";
+ 
+ /**
+  * Resolves the locale before the app ever mounts (spec 8.4: "system locale
+  * with manual override in app settings ... falls back to English per
+  * message"), so the very first paint already uses the right catalog chain
+- * instead of flashing English and re-rendering. `get_settings` failing
+- * (e.g. no resolvable platform config dir) is not a startup blocker --
+- * `buildBundles` already falls back to "en" for any locale it cannot
+- * resolve, exactly as it would for an unset setting.
++ * instead of flashing English and re-rendering. The "absent means the
++ * system language" rule itself is not restated here: `effectiveLocale`
++ * owns it, and the settings dialog's live switch calls the same seam
++ * (D106). `get_settings` failing (e.g. no resolvable platform config dir)
++ * is not a startup blocker -- an unreadable settings file carries no
++ * override either, so the catch resolves exactly as an unset setting does,
++ * and `buildBundles` still falls back to "en" for any locale it cannot
++ * resolve.
+  */
+ async function resolveLocale(): Promise<string> {
+   try {
+-    return (await getSettings()).locale ?? navigator.language;
++    return effectiveLocale((await getSettings()).locale);
+   } catch {
+-    return navigator.language;
++    return effectiveLocale(null);
+   }
+ }
+ 
+ async function bootstrap() {
+   const locale = await resolveLocale();
+   applyLocale(locale);
+   createApp(App).use(fluent).mount("#app");
+ }
+ 
+ void bootstrap();

@@ -1,0 +1,758 @@
+# Review package: 10c819c..2cc0650
+
+## Commits
+2cc0650 editor: New creates a blank profile, and the path stops gating validation and Save
+
+## Files changed
+ e2e/smoke.spec.ts         | 306 +++++++++++++++++++++++++++++++++++++++++++++-
+ locales/de/gui-editor.ftl |   6 +
+ locales/en/gui-editor.ftl |   6 +
+ src/views/EditorView.vue  | 148 +++++++++++++++++++---
+ 4 files changed, 451 insertions(+), 15 deletions(-)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index cfbc98a..00a2a3c 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -858,21 +858,22 @@ test.describe("german locale", () => {
+ // "the fixture drifted from the real registry shape". Accessible names come
+ // from `en(id)` over the real labelKey exactly as the rest of this file
+ // does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
+ // values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
+ // D45's own rule that widget option tokens render as profile-format
+ // tokens, not via new Fluent keys. `list`/`propertyMap`'s generic
+ // add/remove-row buttons use the two dedicated `editor-action-add`/
+ // `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
+ // NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
+ // the AttachmentRule fields they are the registry labels for. Catalog
+-// budget is 45 (42 labels + 1 save-surface note + 2 generic action keys).
++// budget is 49 (42 labels + 1 save-surface note + 2 generic action keys +
++// 1 rule-grid ordinal + 3 profile-creation keys).
+ test.describe("editor widgets: mount-harness rendering", () => {
+   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
+     await mountComponent(page, {
+       component: "FieldWidgetDispatcher",
+       props: { spec: inputFields.recursive, modelValue: true },
+     });
+     const field = page.getByRole("checkbox", name("editor-input-recursive"));
+     await expect(field).toBeChecked();
+     await field.uncheck();
+     await expect.poll(() => readModel(page)).toBe(false);
+@@ -1614,10 +1615,313 @@ test.describe("editor view: recent profiles (Task 13c, spec 8.2 / recents routin
+       editor.getByText(en("batch-profile-current", { path: OPENED_PATH })),
+     ).toBeVisible();
+ 
+     const writes = recorded.filter((r) => r.cmd === "set_settings");
+     expect(writes).toHaveLength(1);
+     const written = (writes[0].args as { settings: AppSettings }).settings;
+     expect(written.recent_profiles[0]).toBe(OPENED_PATH);
+     expect(written.recent_profiles).toContain(RECENT_PATH);
+   });
+ });
++
++// Plan 12 W2 (D107, ROADMAP round-3 finding 2, spec 8.2): the editor gains
++// a New action that seeds a blank profile in memory and touches no file,
++// and `currentPath` stops standing in for "a profile is in the editor" --
++// it keeps only its path duties (the save target and the open-path line),
++// while `sessionActive` carries the funnel fact and `model` carries the
++// has-content fact. The seed is MEASURED rather than chosen: through the
++// CLI (`muxsmith validate --json`) and through `validate::config_
++// diagnostics` on the deserialized model, `{ pattern: ".*", extensions:
++// ["mkv"], rules: [{ match: {} }] }` produces exactly one diagnostic,
++// `empty-match-expression` at WARNING severity on `tracks[0].match` -- so
++// the profile is incomplete-and-announced (spec 8.2's Add idiom, one level
++// up) and Save is alive, whereas a schema-minimum seed carries
++// `empty-extensions` at ERROR severity and would ship a dead Save button.
++// Served-app tests (nav to the editor), matching Tasks 13/13c's precedent
++// rather than the mount harness, because the whole point is the IPC the
++// bare mount deliberately never fires.
++test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", () => {
++  // The path the save dialog returns. Distinct from every other path
++  // literal in this file (`echo-mock-distinct-fixture-values`), so an
++  // identity assertion on it cannot pass on a value some other fixture
++  // also carries.
++  const PICKED_PATH = "/profiles/created-by-new.yaml";
++  // Case 6's already-open profile: a second distinct literal, so "Save
++  // wrote the OPENED path and never opened a dialog" cannot be satisfied
++  // by the dialog's own scripted return value.
++  const OPENED_PATH = "/profiles/already-pathed.yaml";
++
++  const seedWarning: Diagnostic = {
++    code: "empty-match-expression",
++    severity: "warning",
++    config_path: "tracks[0].match",
++    params: {},
++    rendered: "empty-match-expression",
++  };
++
++  const warnReport: ReportDocument = {
++    config_diagnostics: [seedWarning],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  const cleanReport: ReportDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  // Case 6's opened profile: a real, pathed profile, deliberately NOT the
++  // seed, so "the save wrote what was in the editor" is checkable.
++  const openedProfile: Profile = {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++  };
++
++  const openedDoc: LoadProfileDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++    profile: openedProfile,
++  };
++
++  // The static half of the open-path line, taken FROM the catalog at
++  // runtime (rendered with an empty path, Fluent's isolate marks stripped)
++  // rather than typed from memory, so the "no open-path line" assertions
++  // below cannot pass because the term drifted from what the catalog
++  // actually says. Its fired control is case 4, where the same locator
++  // resolves once the profile acquires a path.
++  const PROFILE_LINE_PREFIX = visibleText(en("batch-profile-current", { path: "" })).trim();
++
++  // Absence check E1's expression, shared by the zero-state assertion and
++  // its fire so the two cannot drift apart.
++  const DIAGNOSTICS_SECTION = 'section[aria-labelledby="editor-diagnostics-heading"]';
++
++  async function gotoEditor(page: Page) {
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await expect(editor).toBeVisible();
++    return editor;
++  }
++
++  test("New seeds the editor with the blank profile and validates it with no path in existence", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-new").click();
++
++    // The seed reached the model and the grid renders it.
++    await expect(editor.getByTestId("editor-rule-row")).toHaveCount(1);
++    await expect(editor.getByRole("textbox", name("editor-input-pattern"))).toHaveValue(".*");
++
++    // Pathless, and the view says so: the unsaved line instead of the
++    // open-path line.
++    await expect(editor.getByTestId("editor-unsaved")).toBeVisible();
++    await expect(editor.getByText(PROFILE_LINE_PREFIX)).toHaveCount(0);
++
++    // The pre-session empty state is gone now that the editor holds
++    // something.
++    await expect(editor.getByTestId("editor-empty")).toHaveCount(0);
++
++    // The wire half of the decoupling, and real invocation evidence rather
++    // than a UI echo: validate-on-edit fired for a profile that has no
++    // path at all, carrying the seed itself. Under the old `currentPath`
++    // gate this call could not exist.
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "validate_profile_model").length)
++      .toBeGreaterThan(0);
++    const validateCalls = recorded.filter((r) => r.cmd === "validate_profile_model");
++    const validated = (validateCalls[0].args as { profile: Profile }).profile;
++    expect(validated.input.extensions).toEqual(["mkv"]);
++    expect(validated.tracks.rules).toHaveLength(1);
++  });
++
++  test("the seeded rule is warned, not blocked: the diagnostic renders and Save stays enabled", async ({
++    page,
++  }) => {
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        validate_profile_model: [resolveWith(warnReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-new").click();
++
++    await expect(
++      editor.getByText(
++        en("batch-diagnostic-line", {
++          severity: en("severity-warning"),
++          message: en("empty-match-expression"),
++        }),
++      ),
++    ).toBeVisible();
++    // The whole point of the measurement: a warning announces the hole,
++    // an error would have disabled the button the user needs next.
++    await expect(editor.getByTestId("editor-save")).toBeEnabled();
++  });
++
++  test("the pre-session state names both entry paths, and the diagnostics section does not render over nothing", async ({
++    page,
++  }) => {
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        validate_profile_model: [resolveWith(warnReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await expect(editor.getByTestId("editor-empty")).toBeVisible();
++
++    // ABSENCE CHECK E1: before this task the editor rendered a
++    // "Diagnostics" heading over an empty panel in this exact state --
++    // literally nothing, with no explanatory text (round-3 finding 2's own
++    // contributing observation). The section is now gated on content.
++    await expect(editor.locator(DIAGNOSTICS_SECTION)).toHaveCount(0);
++    await assertNoSeriousA11yViolations(page);
++
++    // E1's FIRE, in this same test and with the same locator: the seed's
++    // warning makes the section resolve, so the zero above is a measured
++    // absence rather than a selector that matches nothing anywhere.
++    await editor.getByTestId("editor-new").click();
++    await expect(editor.locator(DIAGNOSTICS_SECTION)).toHaveCount(1);
++    await expect(editor.getByTestId("editor-empty")).toHaveCount(0);
++    await assertNoSeriousA11yViolations(page);
++  });
++
++  test("Save on a pathless profile opens the save dialog, writes the picked path, and remembers it", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        validate_profile_model: [resolveWith(cleanReport)],
++        "plugin:dialog|save": [resolveWith(PICKED_PATH)],
++        save_profile: [resolveWith(null)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-new").click();
++    const saveButton = editor.getByTestId("editor-save");
++    await expect(saveButton).toBeEnabled();
++    await saveButton.click();
++
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|save").length)
++      .toBe(1);
++
++    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
++    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
++    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
++    expect(saveArgs.path).toBe(PICKED_PATH);
++    expect(saveArgs.profile.tracks.rules).toHaveLength(1);
++
++    // The picked path became the profile's path from then on: the
++    // open-path line replaces the unsaved one. This is also the fired
++    // control for `PROFILE_LINE_PREFIX`, which cases 1 and 5 assert to
++    // zero.
++    await expect(
++      editor.getByText(en("batch-profile-current", { path: PICKED_PATH })),
++    ).toBeVisible();
++    expect(await editor.getByText(PROFILE_LINE_PREFIX).count()).toBeGreaterThan(0);
++    await expect(editor.getByTestId("editor-unsaved")).toHaveCount(0);
++
++    // A profile that just acquired a path is exactly what the recents
++    // memory is for.
++    await expect.poll(() => recorded.filter((r) => r.cmd === "set_settings").length).toBe(1);
++    const writes = recorded.filter((r) => r.cmd === "set_settings");
++    const written = (writes[0].args as { settings: AppSettings }).settings;
++    expect(written.recent_profiles[0]).toBe(PICKED_PATH);
++  });
++
++  test("a cancelled save dialog writes nothing", async ({ page }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        validate_profile_model: [resolveWith(cleanReport)],
++        "plugin:dialog|save": [resolveWith(null)],
++        save_profile: [resolveWith(null)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-new").click();
++    const saveButton = editor.getByTestId("editor-save");
++    await expect(saveButton).toBeEnabled();
++    await saveButton.click();
++
++    // The flow RAN and reached the dialog -- this is E2's fire (together
++    // with case 4's non-zero counter for the same command), so the zero
++    // below cannot be "the save was never attempted".
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|save").length)
++      .toBe(1);
++    // End state: still pathless. A successful write would have set the
++    // path and swapped these two lines.
++    await expect(editor.getByTestId("editor-unsaved")).toBeVisible();
++    await expect(editor.getByText(PROFILE_LINE_PREFIX)).toHaveCount(0);
++
++    // ABSENCE CHECK E2: a cancelled dialog writes no file.
++    expect(recorded.filter((r) => r.cmd === "save_profile")).toHaveLength(0);
++  });
++
++  test("an already-pathed save is unchanged: no dialog, and the opened path is what gets written", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(OPENED_PATH)],
++        load_profile: [resolveWith(openedDoc)],
++        validate_profile_model: [resolveWith(cleanReport)],
++        // Scripted deliberately: if the dialog branch ever opened here it
++        // would return a DIFFERENT path, so the assertions below fail
++        // loudly instead of silently agreeing.
++        "plugin:dialog|save": [resolveWith(PICKED_PATH)],
++        save_profile: [resolveWith(null)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByRole("button", name("batch-profile-pick")).click();
++    await expect(
++      editor.getByText(en("batch-profile-current", { path: OPENED_PATH })),
++    ).toBeVisible();
++
++    const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
++    await patternField.fill("^S[0-9]+E[0-9]+");
++    const saveButton = editor.getByTestId("editor-save");
++    await expect(saveButton).toBeEnabled();
++    await saveButton.click();
++
++    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
++    const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
++    const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
++    expect(saveArgs.path).toBe(OPENED_PATH);
++    expect(saveArgs.profile.input.pattern).toBe("^S[0-9]+E[0-9]+");
++
++    // The regression guard for the new branch: an already-pathed save
++    // never reaches the dialog...
++    expect(recorded.filter((r) => r.cmd === "plugin:dialog|save")).toHaveLength(0);
++    // ...and never re-feeds the recents memory. The one `set_settings` on
++    // record is the OPEN's, which existed before this task.
++    expect(recorded.filter((r) => r.cmd === "set_settings")).toHaveLength(1);
++  });
++});
+diff --git a/locales/de/gui-editor.ftl b/locales/de/gui-editor.ftl
+index d9a61cb..aa8d16f 100644
+--- a/locales/de/gui-editor.ftl
++++ b/locales/de/gui-editor.ftl
+@@ -140,10 +140,16 @@ editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kom
+ ## Generic list/map actions
+ 
+ editor-action-add = Hinzufügen
+ editor-action-remove = Entfernen
+ 
+ ## Rule grid ordinal (D59)
+ 
+ # Presentation-only 1-based index column; not a registry label, so no
+ # .tooltip. The digit itself is locale-neutral data rendered in the cell.
+ editor-track-rule-order = Reihenfolge
++
++## Profilerstellung und der Zustand vor dem Öffnen
++
++editor-action-new = Neues Profil
++editor-empty = Kein Profil geöffnet. Erstelle eines mit Neues Profil oder wähle eine vorhandene Profildatei aus.
++editor-unsaved = Neues Profil, noch nicht gespeichert.
+diff --git a/locales/en/gui-editor.ftl b/locales/en/gui-editor.ftl
+index e6c4685..6e1a5cc 100644
+--- a/locales/en/gui-editor.ftl
++++ b/locales/en/gui-editor.ftl
+@@ -136,10 +136,16 @@ editor-save-note = Saving rewrites the file from the model: comments, key order
+ ## Generic list/map actions
+ 
+ editor-action-add = Add
+ editor-action-remove = Remove
+ 
+ ## Rule grid ordinal (D59)
+ 
+ # Presentation-only 1-based index column; not a registry label, so no
+ # .tooltip. The digit itself is locale-neutral data rendered in the cell.
+ editor-track-rule-order = Order
++
++## Profile creation and the pre-session state
++
++editor-action-new = New profile
++editor-empty = No profile open. Create one with New profile, or choose an existing profile file.
++editor-unsaved = New profile, not saved yet.
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index b2395b1..d1c3f5e 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -46,32 +46,36 @@
+ // skips one: filtered out, never dispatched, nothing rendered for it.
+ //
+ // Task 13 (D45, D41, D42): open/save wiring, the save-surface standing
+ // note, and validate-on-edit. `EditorView` owns its own open/save/
+ // validate state (`currentPath`, `diagnostics`, the ipc-error pair)
+ // rather than App.vue, matching the brief's own "wire ... into
+ // EditorView.vue" step: App.vue's only change is the nav entry and mount
+ // block, no v-model, no shared editor state there. This keeps
+ // `EditorView` mountable from an injected `modelValue` alone -- the Tasks
+ // 10-12 mount-harness specs feed one directly, install no IPC mock, and
+-// never click Open, so the validate-on-edit watcher below is gated on
+-// `currentPath` (only Open's own IPC round trip ever sets it): a bare-
+-// mounted `EditorView` edits its model plenty (drag-reorder, widget
++// never click Open or New, so the validate-on-edit watcher below is gated
++// on `sessionActive`, which only this view's own two funnels set
++// (`openPath` on a completed load, `createBlank` on a fresh seed -- D107):
++// a bare-mounted `EditorView` edits its model plenty (drag-reorder, widget
+ // input) but never triggers `validate_profile_model`, keeping those specs
+ // green with no injected mock (mount-harness amendment's own review-
+ // check).
+ //
+ // No new `gui-editor.ftl`/`gui-common.ftl` keys: D45's design-doc catalog
+ // table enumerates every Fluent key the whole plan adds, and Task 13
+-// carries none (`gui-editor.ftl` stays 45, the brief's own Files list
+-// carries no `.ftl`). The Open button, the currently-open-path line, and
+-// the file-dialog filter name reuse `batch-profile-pick`/`batch-profile-
++// carries none (the brief's own Files list carries no `.ftl`). Later
++// packages did add to it: `gui-editor.ftl` carries 49 ids today, three of
++// them this view's own New affordance (`editor-action-new`,
++// `editor-empty`, `editor-unsaved`, D107). The Open button, the
++// currently-open-path line, and the file-dialog filter name reuse
++// `batch-profile-pick`/`batch-profile-
+ // current`/`batch-profile-filter-name` (BatchView's own "choose + show a
+ // profile path" affordance -- their content is generic, not batch-
+ // specific, and cross-view key reuse already has two precedents:
+ // `browse-button`'s own documented reuse across BatchView/FirstRun/
+ // SettingsDialog, and `JobsView.vue`'s `<h2>` reusing `nav-jobs`
+ // internally rather than a bespoke `jobs-view-heading`). Save reuses
+ // `settings-save` ("Save", `SettingsDialog.vue`) the same way. The
+ // diagnostics heading reuses `batch-diagnostics-heading` ("Diagnostics").
+ // `editor-save-note` is Task 9's own key, exactly as the brief names it.
+ // Diagnostics render through the already-shared `DiagnosticsPanel.vue`
+@@ -88,21 +92,21 @@
+ // synthesizes a `{ kind: "section", of: "trackRule" }` spec, mounts
+ // `SectionWidget`, and writes the selected rule back immutably
+ // (`setRuleValue`). No new component, no new registry, no new catalog key:
+ // the panel is labelled via `aria-labelledby` pointing at the selected
+ // grid row's own id (`editor-rule-row-${index}`), and `SectionWidget`'s
+ // legend reuses `editor-tracks-rules` ("Rules"), already the grid
+ // heading/caption. Selection is cleared on reorder (`onDrop`) so a
+ // post-reorder edit can never land on a rule the user did not re-select.
+ import { computed, onMounted, provide, ref, watch } from "vue";
+ import { useFluent } from "fluent-vue";
+-import { open as openDialog } from "@tauri-apps/plugin-dialog";
++import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+ import type { Profile, TrackRule } from "../bindings/profile";
+ import { SOURCE_KEYWORDS } from "../bindings/keywords";
+ import type { EditableField } from "../editor/fieldSpec";
+ import { profileFields, tracksFields } from "../editor/registries";
+ import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
+ import SectionWidget from "../editor/widgets/SectionWidget.vue";
+ import type { EditableFieldOf } from "../editor/widgets/shared";
+ import { editorDiagnosticsByPath, worstSeverity } from "../editor/diagAnchor";
+ import { diagnosticFluentParams } from "../diagnosticFluentParams";
+ import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
+@@ -110,20 +114,31 @@ import { getSettings, loadProfile, saveProfile, validateProfileModel } from "../
+ import type { Diagnostic, IpcError } from "../ipc";
+ import { rememberRecentProfile } from "../recentProfiles";
+ 
+ const model = defineModel<Profile>();
+ 
+ const fluent = useFluent();
+ 
+ // --- Task 13: open/save/validate state ----------------------------------
+ 
+ const currentPath = ref<string | null>(null);
++
++// D107: a profile entered the editor through one of its own funnels,
++// `openPath` or `createBlank`. It exists rather than the gates below
++// reusing `currentPath` because a CREATED profile has no path at all --
++// gating validation on `currentPath` would leave a new profile
++// unvalidated until its first save. It is also not `model`: the bare
++// mount-harness case (a spec injects `modelValue` and installs no IPC
++// mock) must keep firing no IPC, which is a safeguard bought deliberately
++// in plan 6 and preserved here rather than dropped.
++const sessionActive = ref(false);
++
+ const diagnostics = ref<Diagnostic[]>([]);
+ const opening = ref(false);
+ const saving = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+ const ipcErrorParams = ref<Record<string, string | number>>({});
+ 
+ // Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
+ // (`src/recentProfiles.ts`), fed on every open below and rendered in the
+ // pre-Open empty state (template). The read is tolerant, mirroring
+ // BatchView's own onMounted tolerance (T9/T10): a failed fetch just leaves
+@@ -175,38 +190,39 @@ const rulesCaptionSeverity = computed(() => worstSeverity(rulesCaptionDiags.valu
+ function ruleRowDiags(index: number): Diagnostic[] {
+   return pathDiags(`tracks[${index}]`);
+ }
+ function ruleRowSeverity(index: number) {
+   return worstSeverity(ruleRowDiags(index));
+ }
+ 
+ // The one sanctioned frontend affordance (spec 7, D41 binding point):
+ // Save is disabled while any error-severity diagnostic exists.
+ const saveDisabled = computed(
+-  () => !model.value || !currentPath.value || hasErrors.value || saving.value || opening.value,
++  () => !model.value || hasErrors.value || saving.value || opening.value,
+ );
+ 
+ let validationGeneration = 0;
+ 
+ // Spec 7 ("every profile edit"): revalidates through `validate_profile_model`
+-// whenever the held model changes. Gated on `currentPath` -- see the doc
++// whenever the held model changes. Gated on `sessionActive`, which both of
++// this view's funnels set (`openPath` and `createBlank`) -- see the doc
+ // comment above for why a bare mount-harness `EditorView` never reaches
+ // this. Every top-level `model.value =` assignment throughout the widget
+ // tree is a fresh object (`SectionWidget.vue`'s own `{ ...model.value,
+ // [key]: value }`, mirrored at every level up to this component's own
+ // `setFieldValue`/`setTracksUnmatched`/`onDrop` below), so a shallow watch
+ // (no `deep: true`) reliably fires on every leaf edit. `validationGeneration`
+ // discards a stale response: `validate_profile_model` runs on a Tauri
+ // blocking-task thread pool (D42's own doc on why it is `async` at all),
+ // so rapid edits can resolve out of order.
+ watch(model, async (value) => {
+-  if (!currentPath.value || !value) {
++  if (!sessionActive.value || !value) {
+     return;
+   }
+   const generation = ++validationGeneration;
+   try {
+     const result = await validateProfileModel(value);
+     if (generation === validationGeneration) {
+       diagnostics.value = result.config_diagnostics;
+     }
+   } catch (e) {
+     // Background, per-edit validation; a genuine failure here is an
+@@ -222,20 +238,21 @@ watch(model, async (value) => {
+ // recents-click through `selectProfile` (T10).
+ async function openPath(path: string): Promise<void> {
+   if (opening.value || saving.value) {
+     return;
+   }
+   opening.value = true;
+   ipcErrorCode.value = null;
+   try {
+     const doc = await loadProfile(path);
+     currentPath.value = path;
++    sessionActive.value = true;
+     diagnostics.value = doc.config_diagnostics;
+     model.value = doc.profile ?? undefined;
+     // Background bookkeeping only (mirrors BatchView's identical
+     // tolerance): `rememberRecentProfile` swallows and returns `null` on
+     // failure, so a recents-write failure never reaches this `catch` and
+     // never surfaces as an open error.
+     const persisted = await rememberRecentProfile(path);
+     if (persisted) {
+       recents.value = persisted.recent_profiles;
+     }
+@@ -256,28 +273,108 @@ async function pickAndOpen(): Promise<void> {
+     multiple: false,
+     directory: false,
+     filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
+   });
+   if (typeof picked !== "string") {
+     return;
+   }
+   await openPath(picked);
+ }
+ 
++// D107 decision 1, spec 8.2: the seed New puts in the editor. A FUNCTION
++// rather than a shared constant, so every New gets a fresh object no
++// earlier session's edits can reach -- the same immutable-rebuild
++// discipline every other write in this view follows.
++//
++// `input.extensions` carries a value because the validator forces one, not
++// for convenience: an empty list is `empty-extensions` at ERROR severity
++// (measured), and an error disables Save, so a bare schema-minimum seed
++// would greet the user with a dead Save button. What the seed does produce
++// is exactly one diagnostic, `empty-match-expression` at WARNING severity
++// on `tracks[0].match` -- incomplete-until-filled and announced, the same
++// idiom spec 8.2 already blesses for Add's empty rule, one level up.
++// `pattern: ".*"` over `""`: both are diagnostic-free, and `.*` makes the
++// identifier the whole basename rather than the empty string for every
++// file, so the seed is immediately usable in a dry run.
++function blankProfile(): Profile {
++  return {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: { rules: [{ match: {} }] },
++  };
++}
++
++// The creation funnel (D107), sibling of `openPath`: it touches no file,
++// so it is synchronous and holds no `opening`/`saving` flag of its own --
++// it only refuses to run while one of those round trips is in flight, the
++// same guard `pickAndOpen` uses.
++//
++// The statement ORDER is load-bearing. `diagnostics` is cleared before the
++// model is replaced, so a previous profile's findings can never render
++// against the new one; `sessionActive` is set BEFORE `model`, so the
++// `watch(model)` above -- which fires on that very assignment -- validates
++// the seed instead of returning early on a still-false gate; and the
++// seeded rule is selected (index 0) so the detail panel opens on the one
++// field the warning is about, mirroring Add's own behaviour (D67).
++function createBlank(): void {
++  if (opening.value || saving.value) {
++    return;
++  }
++  ipcErrorCode.value = null;
++  currentPath.value = null;
++  diagnostics.value = [];
++  sessionActive.value = true;
++  model.value = blankProfile();
++  selectedIndex.value = 0;
++}
++
+ async function doSave(): Promise<void> {
+-  if (saveDisabled.value || !model.value || !currentPath.value) {
++  if (saveDisabled.value || !model.value) {
+     return;
+   }
++  // Captured before the dialog gap: the native save dialog can stay open
++  // indefinitely, and the model may change underneath it -- what gets
++  // written must be the profile that was in the editor when Save was
++  // clicked (same rule as the job-log export in `RunHistory`).
++  const profile = model.value;
++  let path = currentPath.value;
++  const needsPath = path === null;
+   saving.value = true;
+   ipcErrorCode.value = null;
+   try {
+-    await saveProfile(currentPath.value, model.value);
++    // Tested directly rather than through `needsPath`, and the two are
++    // deliberately NOT unified: `path` is reassigned just below, so the
++    // alias narrows nothing and only a direct null test makes `path` a
++    // `string` at `saveProfile`; the second `needsPath` further down must
++    // keep asking the ORIGINAL question, since by then `path === null` is
++    // false and the recents write is gated on the path being NEWLY
++    // established (D107 decision 5).
++    if (path === null) {
++      const picked = await saveDialog({
++        defaultPath: "profile.yaml",
++        filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
++      });
++      if (typeof picked !== "string") {
++        return;
++      }
++      path = picked;
++    }
++    await saveProfile(path, profile);
++    currentPath.value = path;
++    if (needsPath) {
++      // A profile that just acquired a path is exactly what the recents
++      // memory is for; an already-pathed save leaves it alone, as before.
++      const persisted = await rememberRecentProfile(path);
++      if (persisted) {
++        recents.value = persisted.recent_profiles;
++      }
++    }
+   } catch (e) {
+     const err = e as IpcError;
+     ipcErrorCode.value = err.code;
+     ipcErrorParams.value = err.params;
+   } finally {
+     saving.value = false;
+   }
+ }
+ 
+ // --- Tasks 11-12: section composition + the rule grid -------------------
+@@ -474,35 +571,55 @@ function removeSelectedRule() {
+   };
+   selectedIndex.value = null;
+ }
+ </script>
+ 
+ <template>
+   <section
+     data-testid="view-editor"
+     data-help-id="view-editor"
+   >
++    <button
++      type="button"
++      data-testid="editor-new"
++      :disabled="opening || saving"
++      @click="createBlank"
++    >
++      {{ $t("editor-action-new") }}
++    </button>
+     <button
+       type="button"
+       data-testid="editor-open"
+       :disabled="opening || saving"
+       :aria-busy="opening"
+       @click="pickAndOpen"
+     >
+       {{ $t("batch-profile-pick") }}
+     </button>
+     <p v-if="currentPath">
+       {{ $t("batch-profile-current", { path: currentPath }) }}
+     </p>
++    <p
++      v-else-if="sessionActive"
++      data-testid="editor-unsaved"
++    >
++      {{ $t("editor-unsaved") }}
++    </p>
++    <p
++      v-if="!model"
++      data-testid="editor-empty"
++    >
++      {{ $t("editor-empty") }}
++    </p>
+ 
+     <section
+-      v-if="!currentPath && recents.length"
++      v-if="!model && recents.length"
+       aria-labelledby="editor-recents-heading"
+       data-testid="editor-recents"
+     >
+       <h4 id="editor-recents-heading">
+         {{ $t("batch-recents-heading") }}
+       </h4>
+       <ul>
+         <li
+           v-for="path in recents"
+           :key="path"
+@@ -519,21 +636,24 @@ function removeSelectedRule() {
+       </ul>
+     </section>
+ 
+     <p
+       v-if="ipcErrorCode"
+       role="alert"
+     >
+       {{ $t(ipcErrorCode, ipcErrorParams) }}
+     </p>
+ 
+-    <section aria-labelledby="editor-diagnostics-heading">
++    <section
++      v-if="diagnostics.length"
++      aria-labelledby="editor-diagnostics-heading"
++    >
+       <h3 id="editor-diagnostics-heading">
+         {{ $t("batch-diagnostics-heading") }}
+       </h3>
+       <DiagnosticsPanel :diagnostics="diagnostics" />
+     </section>
+ 
+     <template v-if="model">
+       <FieldWidgetDispatcher
+         v-for="[key, spec] in topLevelFields"
+         :key="key"

@@ -1,0 +1,818 @@
+# Review package: 5cabf32..HEAD
+
+## Commits
+d2b622a e2e: cover the batch empty-state string, the settings locale hint, every undo/redo key spelling, and a save-in-flight edit
+9c860d3 lint: extend the D112 render-gate rule to v-show, not only v-if/v-else-if
+cbe3895 help: correct the create-affordance terminology at all five sites, not two
+b8b4250 ledger: mark the plan75 design doc's saveDisabled/watch(model) paragraph superseded by D107
+4bfca22 ledger: correct the ADR's call-site-literal claim against the three non-literal sites already in test
+991ea7c run: extract the CloseDecision-to-dialog and -to-action mappings so both are unit-tested
+
+## Files changed
+ ...26-07-22-plan75-track-rule-add-remove-design.md |   7 +
+ .../specs/2026-07-30-plan-12-decisions.md          |   2 +-
+ e2e/editor-undo-redo.spec.ts                       | 106 ++++++++++++-
+ e2e/global.d.ts                                    |   5 +
+ e2e/mocks.ts                                       |  44 +++++-
+ e2e/smoke.spec.ts                                  |  23 +++
+ eslint.config.js                                   |  13 +-
+ help/de/view-editor.md                             |   6 +-
+ help/en/view-editor.md                             |   4 +-
+ src-tauri/src/run.rs                               | 172 +++++++++++++++++----
+ 10 files changed, 341 insertions(+), 41 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md b/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md
+index 7f339c6..875c293 100644
+--- a/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md
++++ b/docs/superpowers/specs/2026-07-22-plan75-track-rule-add-remove-design.md
+@@ -93,20 +93,27 @@ Selection state is `selectedIndex` (`ref<number | null>`); `onDrop`
+ clears it ("A reorder invalidates any prior selection index mapping to a
+ rule identity, not a position" - the in-file rationale D66/D67 reuse).
+ The detail panel (`data-testid="editor-rule-detail"`) renders
+ `v-if="selectedRule"`: a `SectionWidget` over the `trackRule` registry at
+ root path `` `tracks[${selectedIndex}]` `` with `suppress-self-anchor`,
+ writing back immutably via `setRuleValue`. Open/save/validate state:
+ `saveDisabled` gates on `hasErrors` (**error severity only**), plus
+ `!model`/`!currentPath`/`saving`/`opening`; the shallow `watch(model)`
+ revalidates every model swap through `validateProfileModel` (gated on
+ `currentPath`, so the bare mount harness never fires IPC).
++**Both halves of this description are superseded by D107 decisions 3(a)
++and 3(b)** (`docs/superpowers/specs/2026-07-30-plan-12-decisions.md`):
++`saveDisabled` no longer reads `!currentPath.value` (it is
++`!model.value || hasErrors.value || saving.value || opening.value`,
++`EditorView.vue:330-332`), and the `watch(model)` revalidation gate moved
++from `currentPath` to `sessionActive` (`EditorView.vue:349`). The
++paragraph stands as the record of the mechanism as this task shipped it.
+ 
+ **The ListWidget add/remove precedent**
+ (`src/editor/widgets/ListWidget.vue`). `addItem()` appends `{}`
+ immutably; `removeItem(index)` splices; the remove button renders per
+ item, the add button after the items, both inside the widget's
+ `<fieldset>`, both rendering the generic keys, neither carrying a
+ tooltip. `PropertyMapWidget.vue` rows follow the same shape.
+ 
+ **The empty skeleton's emission, run, not assumed.** Fixtures were run
+ through the repo's own debug CLI (`target/debug/muxsmith validate
+diff --git a/docs/superpowers/specs/2026-07-30-plan-12-decisions.md b/docs/superpowers/specs/2026-07-30-plan-12-decisions.md
+index f4df970..43dd56a 100644
+--- a/docs/superpowers/specs/2026-07-30-plan-12-decisions.md
++++ b/docs/superpowers/specs/2026-07-30-plan-12-decisions.md
+@@ -131,21 +131,21 @@
+ 2. **The shell does NOT resolve the locale; it is told the one the frontend applied, and that is the authoritative resolution.** `AppState` gains `dialog_locale: Mutex<String>`, defaulted to `"en"`; a new command `set_shell_locale` writes it; `App.vue` pushes `currentLocale` through it with `watch(..., { immediate: true })`, so the value lands at mount and again on every live switch.
+ 3. **The two resolutions therefore cannot disagree, and that is the point of decision 2 rather than a happy accident.**
+ 4. **The shell's strings come under a parity check, derived rather than hand-listed, and its assertions are made BELOW the fallback.** The lookup is split so it can be tested at all: a row-level `lookup_in(catalog, key) -> Option<&str>` carrying the line-parse rules, and `ftl_message(key, locale)` composing `[requested, en]` over it. Three parts, each naming the red state it defeats:
+    - **(a) directory versus table.** Read `locales/` at test time; every locale directory must have a row in the shell's table. Defeats the missing-row mutation, a locale that ships in `locales/` and `help/` but is silently unserved by the shell.
+    - **(b) every key present in every row, asserted on `lookup_in` alone.** Derive the shell-consumed key set from `run.rs`'s own source - `include_str!` of the module plus a regex over `ftl_message("...")` call sites - then for every table row assert `lookup_in(row_catalog, key)` is `Some` and non-empty, never through `ftl_message`. Defeats the deleted-de-key mutation, which the chained form resolves to English.
+    - **(c) one pinned German value.** `ftl_message("close-abort-title", "de")` must equal `Laufende Jobs abbrechen`, mirroring the existing test's pinned en wording. Defeats the de-row-aimed-at-the-en-catalog mutation, which (b) alone cannot see because the en catalog does contain every key. This part is also the producing check for D110's user-visible half, that a German user reads German, which no other check in this package covers.
+ 5. **`RUST_ONLY_IDS` in `scripts/check-i18n.mjs` gains this package's six shell ids.** One named region, not a licence to edit the script otherwise.
+ 
+ **Rationale:** the hand-written table in decision 1 is the shape `crates/muxsmith-cli/src/i18n.rs` already uses, for the recorded reason that `include_str!` is compile-time and has no glob form; the chain is D63's fallback chain in the shell's line-lookup idiom rather than a `FluentBundle`, because the reason the line lookup exists - the shell consumes only simple one-line messages and a Fluent stack in the shell would duplicate the frontend's loader - is unchanged by adding a second locale. Decision 2 refuses an independent shell resolution because D106's whole finding was one nullable field read with two fallbacks in two places that nothing reconciled, and a shell-side resolution would be a third implementation of "absent means the system locale" - in another language, against another system-locale source. `effectiveLocale` stays the single resolution rule in the product and the shell consumes its result. Decision 3 states what that buys: had the shell resolved independently, the frontend's fallback (`navigator.language`, what the webview reports) and Rust's (`sys_locale::get_locale()`, what the OS reports) would differ on a machine whose webview UI language and OS locale are set apart - precisely the no-stored-override case that produced the original finding, and a shell dialog in one language over a UI in another is the defect one level down from the one being fixed. The residual window is named rather than hidden: a dialog that fires before the frontend has ever pushed renders en. It is not reachable in practice, though not impossible in principle, since the window is shown by the shell rather than by the webview's bootstrap; and a failed push leaves the previous value, the same tolerance class as the save-state sync and in the same direction, a stale language rather than a missing dialog. Decision 4's seam exists because of the check: an assertion made through the composed chain cannot fail, since the en fallback supplies a non-empty non-key value for every mutation upstream of it. The general handle, stated because this plan got it wrong once: where the mechanism under test contains a fallback - a locale chain, a default branch, a retry, an `unwrap_or` - a red state mutated upstream of the fallback never reaches the assertion. The red state must defeat the fallback, not merely disturb its input: assert the single step without the chain, and pin one concrete value on the far side rather than a non-empty non-key result, because a fallback's output is also non-empty and also not the key. The trigger is readable in the artifact - does the path between mutation and assertion cross a fallback clause? Decision 5 is required because `RUST_ONLY_IDS` is an enumeration of shell-consumed keys that this change falsifies; leaving it stale would report the new ids as unused frontend ids.
+ 
+-**What the parity check leaves uncovered, stated rather than implied.** Part (c) pins a pre-existing key and therefore proves the shell reads the de catalog at all - the mechanism D110 needs - and it does not detect a new German value accidentally copied from its English source. No check in this repo does that for any catalog; the frontend gate compares ids, not value distinctness, so the depth is house-consistent rather than a gap this package opens. Two residuals are left open by name: **a non-literal `ftl_message` argument would be invisible to (b)'s regex** - the same limitation the frontend's literal scan documents for `$t(dynamicKey)`; every current call site is a literal, measured - and **the CLI's own `LOCALES` table has the identical unserved-locale gap**, which this package SURFACES rather than fixes, because the CLI is not a surface it touches.
++**What the parity check leaves uncovered, stated rather than implied.** Part (c) pins a pre-existing key and therefore proves the shell reads the de catalog at all - the mechanism D110 needs - and it does not detect a new German value accidentally copied from its English source. No check in this repo does that for any catalog; the frontend gate compares ids, not value distinctness, so the depth is house-consistent rather than a gap this package opens. Two residuals are left open by name: **a non-literal `ftl_message` argument would be invisible to (b)'s regex** - the same limitation the frontend's literal scan documents for `$t(dynamicKey)`; this is not merely a theoretical residual (whole-branch review, plan 12, finding M-4): `command grep -nE 'ftl_message\([a-z_]' src-tauri/src/run.rs` finds three non-literal call sites today, one pre-existing (the enumeration loop in `close_abort_strings_resolve_from_the_ftl_catalog`) and two this package itself added deliberately (the two probes in `ftl_message_falls_back_to_the_key_and_never_prefix_matches`), all three inside `#[cfg(test)]` and each a documented, nil-consequence residual rather than a production call site - and **the CLI's own `LOCALES` table has the identical unserved-locale gap**, which this package SURFACES rather than fixes, because the CLI is not a surface it touches.
+ 
+ **Rejected alternatives:**
+ 
+ - **Let the shell resolve independently** (stored setting, then `sys_locale::get_locale()`, then en - a literal transcription of D63's own cascade). Steelman, at strength: it is the closest possible conformance to the house pattern the ruling itself points at; it needs no command, no state field and no frontend wiring, so the shell keeps working even if the frontend never speaks; and `sys-locale` is already in the workspace's tree, so the dependency is free in practice. Rejected because it creates a third implementation of the rule whose duplication is the finding under repair in W1, and because its two fallbacks can disagree exactly where the user has no stored override - the case the QA finding came from.
+ - **Keep `ftl_message` en-only and pass the whole rendered string down from the frontend**, so the shell would receive title, message and labels rather than a locale. Steelman: the frontend already has the catalog, the Fluent stack and the locale, so the shell would need no table, no lookup change and no parity check at all - the strings would be localized by construction. Rejected because it inverts the shell's prose-free posture: dialog text would arrive as data from the webview, so the shell could no longer show a dialog when the frontend is wedged, and the catalog would stop being the single source the shell reads. It also trades one small table for a wider IPC surface carrying user-visible prose.
+ - **A check written in `check-i18n.mjs` instead of Rust.** Steelman: it keeps every i18n check in one place, which is the recorded position that killed a separate `check-help.mjs` (D62). Rejected because the thing under test is the shell's own lookup, and a JS check would have to re-implement that lookup to test it - a second copy of the mechanism, which is the defect class this package exists to remove.
+ 
+ **Triggers created:**
+ 
+ - The parity check's part (a) is self-firing: a new locale directory under `locales/` without a matching row in the shell's table turns the Rust test red, so the next locale announces its own shell gap rather than shipping silently unserved.
+diff --git a/e2e/editor-undo-redo.spec.ts b/e2e/editor-undo-redo.spec.ts
+index 2bc9b1a..4fe748d 100644
+--- a/e2e/editor-undo-redo.spec.ts
++++ b/e2e/editor-undo-redo.spec.ts
+@@ -19,21 +19,21 @@
+  *   |------------------------|----------------------------------------------|
+  *   | `setFieldValue`        | a top-level field (the pattern text field)    |
+  *   | `setTracksUnmatched`   | `tracks.unmatched`'s own select                |
+  *   | `setRuleValue`         | the selected rule's detail panel               |
+  *   | `onDrop`                | a drag-reorder of two rows                     |
+  *   | `addRule`               | the Add button                                 |
+  *   | `removeSelectedRule`    | the Remove button, after a selection           |
+  */
+ import { expect, test } from "@playwright/test";
+ import type { Locator, Page } from "@playwright/test";
+-import { installTauriMocks, resolveWith } from "./mocks";
++import { gatedWith, installTauriMocks, releaseGate, resolveWith } from "./mocks";
+ import type { MockResult, RecordedInvoke } from "./mocks";
+ import { en, name } from "./i18n-en";
+ import type { AppSettings, Diagnostic, LoadProfileDocument, MkvmergeInfo, ReportDocument } from "../src/ipc";
+ import type { Profile } from "../src/bindings/profile";
+ 
+ const MKVMERGE_INFO: MkvmergeInfo = { path: "/usr/bin/mkvmerge", version: "90.0.0" };
+ 
+ /** The clean, diagnostic-free `validate_profile_model` response every case
+  *  below shares: undo/redo cares about history and rendering, not
+  *  diagnostics, and the mocked queue's own "last entry repeats" behaviour
+@@ -359,20 +359,68 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
+     await pattern.fill("edited");
+ 
+     await editor.getByTestId("editor-save").click();
+     await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
+ 
+     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+     await editor.getByTestId("editor-undo").click();
+     await expect(pattern).toHaveValue(".*");
+   });
+ 
++  // I-3 (whole-branch review, plan 12): `doSave` captures `profile`
++  // before the two awaits between click and completion (the save dialog
++  // on the needs-path branch, the write itself) and marks THAT captured
++  // value saved (`EditorView.vue:582`, D108 decision 3's own doc). The
++  // dangerous inversion -- marking whatever the LIVE history entry holds
++  // once the write finally resolves -- reports clean over content the
++  // file was never given, which is why this case must land an edit
++  // strictly INSIDE the save window rather than only before or after it
++  // (the case above, "save marks rather than clears", edits before Save
++  // and so cannot tell the two apart: both configurations agree whenever
++  // nothing changes during the write).
++  test("I-3: an edit made while Save is in flight is not marked saved -- the dirty guard still fires on the next Open", async ({
++    page,
++  }) => {
++    const { editor, recorded } = await openProfile(
++      page,
++      "/profiles/save-window-edit.yaml",
++      emptyRulesProfile,
++      { save_profile: [gatedWith(null, "save-window-edit")] },
++    );
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++
++    await editor.getByTestId("editor-save").click();
++    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
++
++    // `save_profile` is now pending on the gate: the call already carries
++    // its argument (the pre-edit profile, pattern ".*"), and only its
++    // RESOLUTION waits. Editing the live model here is the state the
++    // comment at `EditorView.vue:210-213` names and no existing case
++    // reaches.
++    await pattern.fill("edited-during-save");
++    await releaseGate(page, "save-window-edit");
++    await expect(pattern).toHaveValue("edited-during-save");
++
++    const saveCall = recorded.find((r) => r.cmd === "save_profile");
++    expect((saveCall?.args as { profile: Profile }).profile.input.pattern).toBe(".*");
++
++    // The direction this test exists to pin: the profile actually WRITTEN
++    // had pattern ".*"; the editor now holds "edited-during-save", which
++    // was never written anywhere. Open must therefore still treat the
++    // editor as dirty and ask before discarding it -- the same guard and
++    // the same assertions the discard-guard suite already uses
++    // (`smoke.spec.ts`'s "editor view: discard guards", Case 1).
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await expect(editor.getByText(en("editor-discard-message"))).toBeVisible();
++  });
++
+   test("open resets: opening a second profile clears both Undo and Redo", async ({ page }) => {
+     const PATH_A = "/profiles/open-resets-a.yaml";
+     const PATH_B = "/profiles/open-resets-b.yaml";
+     const profileB: Profile = {
+       profile_version: 1,
+       input: { pattern: "^B$", extensions: ["mkv"] },
+       tracks: { rules: [] },
+     };
+ 
+     await installTauriMocks(page, {
+@@ -576,20 +624,76 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
+     await pattern.press("Control+z");
+     await expect(rows).toHaveCount(2);
+ 
+     // The positive control, in the SAME test: the identical combination,
+     // focus moved to a plain button (not a text-entry control), DOES undo.
+     const selectButton = editor.getByTestId("editor-rule-select").first();
+     await selectButton.click();
+     await selectButton.press("Control+z");
+     await expect(rows).toHaveCount(1);
+   });
++
++  // I-2 (whole-branch review, plan 12): `help/{en,de}/view-editor.md`
++  // (both added by this branch) promise "Ctrl+Z (Cmd+Z on macOS) for
++  // Undo, and Ctrl+Shift+Z or Ctrl+Y (Cmd+Shift+Z or Cmd+Y on macOS) for
++  // Redo", but only bare `Control+z` was ever pressed anywhere in this
++  // suite (U1, above, and only inside its text-entry-exemption case).
++  // `onEditorKeydown` (`EditorView.vue`) accepts `ctrlKey || metaKey` for
++  // both directions and treats `z`+shift or a bare `y` as redo -- six
++  // combinations in total, all driven here against the same rule-count
++  // observable U1 and the depth-cap case above already use.
++  test("I-2: every documented modifier key and redo spelling drives undo/redo (Control+z, Meta+z, Control+y, Meta+y, Control+Shift+z, Meta+Shift+z)", async ({
++    page,
++  }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const { editor } = await openProfile(page, "/profiles/keyboard-combinations.yaml", profile);
++
++    const rows = editor.getByTestId("editor-rule-row");
++    const add = editor.getByTestId("editor-rule-add");
++    await add.click();
++    await add.click();
++    await add.click();
++    await expect(rows).toHaveCount(4);
++
++    // A plain button, not a text-entry control (U1's own distinction);
++    // `.press()` focuses whichever row's button it currently resolves to
++    // before sending the key, and the listener sits on the whole section,
++    // so which row is irrelevant as long as one still exists.
++    const anyButton = editor.getByTestId("editor-rule-select").first();
++
++    // Undo, both modifier keys.
++    await anyButton.press("Control+z");
++    await expect(rows).toHaveCount(3);
++    await anyButton.press("Meta+z");
++    await expect(rows).toHaveCount(2);
++
++    // Redo, both bare-`y` spellings.
++    await anyButton.press("Control+y");
++    await expect(rows).toHaveCount(3);
++    await anyButton.press("Meta+y");
++    await expect(rows).toHaveCount(4);
++
++    // Back down two, then redo via both `Shift+z` spellings.
++    await anyButton.press("Control+z");
++    await expect(rows).toHaveCount(3);
++    await anyButton.press("Control+z");
++    await expect(rows).toHaveCount(2);
++
++    await anyButton.press("Control+Shift+z");
++    await expect(rows).toHaveCount(3);
++    await anyButton.press("Meta+Shift+z");
++    await expect(rows).toHaveCount(4);
++  });
+ });
+ 
+ // D112 (owner ruling 2026-07-31): the pre-session gate `nothingOpenedOrCreated`
+ // hides `editor-empty`/`editor-recents` before anything has been opened or
+ // created, and keeps them hidden -- not re-shown -- once a load has failed
+ // to parse, because the path line and the parse error already explain that
+ // state on screen.
+ test.describe("editor undo/redo: D112, a failed load hides both pre-session surfaces", () => {
+   function settingsWith(recentProfiles: string[]): AppSettings {
+     return {
+diff --git a/e2e/global.d.ts b/e2e/global.d.ts
+index 038320b..0045b62 100644
+--- a/e2e/global.d.ts
++++ b/e2e/global.d.ts
+@@ -28,20 +28,25 @@ declare global {
+     };
+     /** `@tauri-apps/plugin-os`'s `platform()` reads this global directly
+      * (verified: node_modules/@tauri-apps/plugin-os/dist-js/index.js has
+      * no `invoke` call at all for `platform()`) -- neither `mockIPC` nor
+      * `mockWindows` ever sets it, so `mocks.ts`'s `installMockIPC` does. */
+     __TAURI_OS_PLUGIN_INTERNALS__?: Record<string, unknown>;
+     /** Bound via `page.exposeFunction` in `mocks.ts`: every mocked
+      * `invoke()` call is forwarded here so tests can assert on real
+      * invocation evidence instead of a UI echo. */
+     __muxsmithRecordInvoke__?: (cmd: string, args: unknown) => void;
++    /** Set by `installMockIPC` (`mocks.ts`): resolves the pending
++     * `gatedWith(value, gate)` response registered under this name, so a
++     * test can widen an async window (e.g. a save in flight) and then
++     * release it deterministically instead of racing a real timer. */
++    __muxsmithReleaseGate__?: (gate: string) => void;
+     /** Set by `mount-entry.ts` (bundled by `vite.mount.config.ts`, wave-3
+      * amendment): mounts one editor component in isolation onto `#mount`,
+      * round-tripping its `modelValue`/`update:modelValue` v-model. See
+      * `mount.ts` for the Playwright-side driver. */
+     __muxsmithMount__: (spec: { component: string; props?: Record<string, unknown>; locale?: string }) => void;
+     /** Set by `mount-entry.ts` (D104): merges `partial` into the props the
+      * mounted component is rendered with, so a spec can deliver a second
+      * value of a prop after mount (`__muxsmithMount__` passes `spec.props`
+      * once). Reset with the props on every `__muxsmithMount__` call. */
+     __muxsmithSetProps__: (partial: Record<string, unknown>) => void;
+diff --git a/e2e/mocks.ts b/e2e/mocks.ts
+index 1ef9d96..ada2e9e 100644
+--- a/e2e/mocks.ts
++++ b/e2e/mocks.ts
+@@ -18,30 +18,45 @@
+  * nothing about event delivery is reimplemented, only scripted responses
+  * for plain commands are.
+  */
+ import { resolve } from "node:path";
+ import type { Page } from "@playwright/test";
+ 
+ const HARNESS_PATH = resolve(import.meta.dirname, ".generated/tauri-mock-harness.js");
+ 
+ export type MockResult =
+   | { kind: "resolve"; value: unknown }
+-  | { kind: "reject"; error: { code: string; params?: Record<string, string | number> } };
++  | { kind: "reject"; error: { code: string; params?: Record<string, string | number> } }
++  | { kind: "gated"; value: unknown; gate: string };
+ 
+ export function resolveWith(value: unknown): MockResult {
+   return { kind: "resolve", value };
+ }
+ 
+ export function rejectWith(code: string, params: Record<string, string | number> = {}): MockResult {
+   return { kind: "reject", error: { code, params } };
+ }
+ 
++/** A response that does not resolve until the test calls `releaseGate`
++ *  with the same `gate` name (below). Widens the window between a
++ *  command's call and its resolution wide enough to interleave a real,
++ *  driven Playwright action (e.g. an edit made while a save is in
++ *  flight) -- the same-tick microtask gap an immediately-resolving mock
++ *  leaves is too narrow for any driven UI action to land inside, and this
++ *  repo's test suite otherwise has no timing-based wait (`waitForTimeout`)
++ *  to fall back on, deliberately: a fixed real-world sleep is exactly the
++ *  kind of flaky, hardware-speed-dependent mechanism this gate replaces
++ *  with a deterministic one. */
++export function gatedWith(value: unknown, gate: string): MockResult {
++  return { kind: "gated", value, gate };
++}
++
+ export interface MockScenario {
+   /** `window.__TAURI_OS_PLUGIN_INTERNALS__.platform` (D28's per-OS install
+    * guidance): `@tauri-apps/plugin-os`'s `platform()` reads this global
+    * directly rather than going through `invoke` (see `global.d.ts`), so
+    * `installMockIPC` sets it explicitly instead of the mock IPC handler
+    * below ever seeing a `plugin:os|platform` command. */
+   platform?: string;
+   /** Per-command response queue, consumed in call order; once exhausted,
+    * the last entry repeats for any further call (covers an incidental
+    * extra call -- e.g. `RunHistory.vue`'s own `list_runs` refresh after a
+@@ -90,27 +105,44 @@ export function installMockIPC(scenario: MockScenario): void {
+     const q = queues.get(cmd);
+     if (!q || q.length === 0) {
+       return undefined;
+     }
+     return q.length > 1 ? q.shift() : q[0];
+   }
+ 
+   window.__muxsmithE2E__.mockWindows("main");
+   window.__TAURI_OS_PLUGIN_INTERNALS__ = { platform: scenario.platform ?? "linux" };
+ 
++  // Resolvers for any `gatedWith` response this scenario queued, keyed by
++  // gate name; `releaseGate` (Node side, below) triggers one via
++  // `window.__muxsmithReleaseGate__`.
++  const gateResolvers = new Map<string, () => void>();
++  window.__muxsmithReleaseGate__ = (gate: string) => {
++    gateResolvers.get(gate)?.();
++    gateResolvers.delete(gate);
++  };
++
+   window.__muxsmithE2E__.mockIPC(
+     (cmd, args) => {
+       window.__muxsmithRecordInvoke__?.(cmd, args ?? null);
+ 
+       const result = nextResult(cmd);
+       if (result) {
+-        return result.kind === "reject" ? Promise.reject(result.error) : result.value;
++        if (result.kind === "reject") {
++          return Promise.reject(result.error);
++        }
++        if (result.kind === "gated") {
++          return new Promise((resolve) => {
++            gateResolvers.set(result.gate, () => resolve(result.value));
++          });
++        }
++        return result.value;
+       }
+       // Incidental background commands every scenario touches regardless
+       // of what it is actually testing: both views mount eagerly at
+       // startup (T10's `v-show` contract, App.vue), so `RunHistory.vue`'s
+       // own `onMounted(refresh)` always fires `list_runs`, and
+       // `main.ts`'s locale bootstrap plus every view's own settings reads
+       // always fire `get_settings`.
+       if (cmd === "list_runs") {
+         return [];
+       }
+@@ -160,10 +192,18 @@ export async function installTauriMocks(
+  * the real bundled `emit()` (`window.__muxsmithE2E__.emit`), which goes
+  * through the same mocked `invoke("plugin:event|emit", ...)` the app's own
+  * `listen()` registrations are recorded against.
+  */
+ export async function emitEvent(page: Page, channel: string, payload: unknown): Promise<void> {
+   await page.evaluate(
+     ({ channel, payload }) => window.__muxsmithE2E__.emit(channel, payload),
+     { channel, payload },
+   );
+ }
++
++/** Resolves a `gatedWith(value, gate)` response queued for this `gate`,
++ *  letting the awaited `invoke()` call it stands in for finally settle.
++ *  Call it after driving whatever real UI action needed to happen while
++ *  that call was still in flight. */
++export async function releaseGate(page: Page, gate: string): Promise<void> {
++  await page.evaluate((g) => window.__muxsmithReleaseGate__?.(g), gate);
++}
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 874aed4..c536d26 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -195,24 +195,33 @@ test.describe("batch view: dry run", () => {
+         dry_run: [resolveWith(dryRunReport)],
+         "plugin:clipboard-manager|write_text": [resolveWith(null)],
+       },
+     });
+ 
+     await page.goto("/");
+ 
+     const batch = page.getByTestId("view-batch");
+     await expect(batch.getByRole("heading", name("batch-view-heading"))).toBeVisible();
+ 
++    // I-1 (whole-branch review, plan 12): `batch-profile-none` is the
++    // empty-state paragraph `BatchView.vue` renders before any profile is
++    // picked (`v-if="!selectedProfile"`) -- reworded by this plan and
++    // otherwise asserted nowhere. It is visible here and gone once a
++    // profile is chosen, the same paired presence/absence shape
++    // `batch-profile-current` below already gets.
++    await expect(batch.getByText(en("batch-profile-none"))).toBeVisible();
++
+     await batch.getByRole("button", name("batch-profile-pick")).click();
+     await expect(
+       batch.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+     ).toBeVisible();
++    await expect(batch.getByText(en("batch-profile-none"))).toBeHidden();
+ 
+     await batch.getByRole("button", name("batch-dry-run")).click();
+ 
+     const table = batch.getByRole(
+       "table",
+       name("batch-file-caption", {
+         source: SOURCE_FILE,
+         identifier: SOURCE_IDENTIFIER,
+         output: OUTPUT_FILE,
+       }),
+@@ -824,20 +833,34 @@ test.describe("german locale", () => {
+     // this scenario's `get_settings` falls through to `installMockIPC`'s
+     // own default (`locale: "en"`), so `effectiveLocale("en")` is `"en"`.
+     await expect.poll(() => recorded.filter((r) => r.cmd === "set_shell_locale").length).toBe(1);
+ 
+     await page.getByTestId("open-settings").click();
+     const dialog = page.getByTestId("settings-dialog");
+     await expect(dialog).toBeVisible();
+ 
+     const localeSelect = dialog.getByRole("combobox", name("settings-locale-label"));
+     await expect(localeSelect).toHaveValue("en");
++
++    // I-7 (whole-branch review, plan 12): the sentence this plan appended
++    // to `settings-locale-label.hint` ("System language follows your
++    // operating system and falls back to English where a translation is
++    // missing.") has no producer anywhere -- `en(id)` cannot read an
++    // attribute at all (`enAttr` is the separate helper for that, per its
++    // own doc comment in `i18n-en.ts`), and the one existing assertion on
++    // this control (`name("settings-locale-label")`, above) reads the
++    // LABEL, never the hint. `#settings-locale-hint` is the `<p>`
++    // `SettingsDialog.vue` renders the hint attribute into.
++    await expect(dialog.locator("#settings-locale-hint")).toHaveText(
++      enAttr("settings-locale-label", "hint"),
++    );
++
+     await localeSelect.selectOption("de");
+ 
+     await dialog.getByRole("button", name("settings-save")).click();
+     await expect(dialog).toBeHidden();
+ 
+     const settingsWrites = recorded.filter((r) => r.cmd === "set_settings");
+     expect(settingsWrites).toHaveLength(1);
+     expect((settingsWrites[0].args as { settings: AppSettings }).settings.locale).toBe("de");
+ 
+     // The live half is what makes the pair non-vacuous: a shell told once
+diff --git a/eslint.config.js b/eslint.config.js
+index 17076e2..aa46ee8 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -49,29 +49,34 @@ export default defineConfig(
+     files: ["**/*.vue"],
+     plugins: {
+       "@intlify/vue-i18n": vueI18n,
+     },
+     rules: {
+       // D112 (owner ruling 2026-07-31): the pre-session state is ONE named
+       // computed, `nothingOpenedOrCreated`, and a render gate that asks
+       // `!model` directly is the defect that decision exists to remove --
+       // that expression is also true after a load that failed to parse,
+       // where the editor must NOT offer its pre-session surfaces. Scoped by
+-      // directive name to `v-if`/`v-else-if`, so the `:disabled="!model ||
+-      // !canUndo"` bindings D108 decision 10 requires stay legal: those gate
+-      // an ACTION on whether there is content, not a RENDER on whether
++      // directive name to `v-if`/`v-else-if`/`v-show` (O-1, whole-branch
++      // review: `v-show` is the directive this codebase actually uses for
++      // view gating, `App.vue`, and was the one render-gate spelling this
++      // selector missed), so the `:disabled="!model || !canUndo"` bindings
++      // D108 decision 10 requires stay legal regardless: those match on the
++      // ATTRIBUTE NAME (`disabled`, not `if`/`else-if`/`show`), so widening
++      // the directive-name list here does not touch them -- they gate an
++      // ACTION on whether there is content, not a RENDER on whether
+       // anything was ever opened or created.
+       "vue/no-restricted-syntax": [
+         "error",
+         {
+           selector:
+-            "VAttribute[directive=true][key.name.name=/^(if|else-if)$/] UnaryExpression[operator='!'] > Identifier[name='model']",
++            "VAttribute[directive=true][key.name.name=/^(if|else-if|show)$/] UnaryExpression[operator='!'] > Identifier[name='model']",
+           message:
+             "A render gate must not read `!model` directly: the pre-session state is `nothingOpenedOrCreated` (D112).",
+         },
+       ],
+       // `attributes` defaults to none checked (the rule only scans text
+       // nodes out of the box); D29 requires accessible names/tooltips to
+       // come from Fluent too, so a STATIC (non-`:`-bound) title/aria-label/
+       // placeholder/alt is flagged like any other raw string. A `:title=`/
+       // `:aria-label=` binding (the correct form, used throughout this
+       // codebase) is a directive and outside this rule's reach regardless
+diff --git a/help/de/view-editor.md b/help/de/view-editor.md
+index 766dd3c..64780d0 100644
+--- a/help/de/view-editor.md
++++ b/help/de/view-editor.md
+@@ -1,19 +1,19 @@
+ # Editor-Ansicht
+ 
+-Der Editor bearbeitet ein Profil als strukturiertes Modell, nicht als YAML-Text. Lege ein neues Profil an, öffne eine Profildatei oder eines der zuletzt verwendeten Profile; jedes Feld erscheint als Formularelement, die Spurregeln als Tabelle.
++Der Editor bearbeitet ein Profil als strukturiertes Modell, nicht als YAML-Text. Erstelle ein neues Profil, öffne eine Profildatei oder eines der zuletzt verwendeten Profile; jedes Feld erscheint als Formularelement, die Spurregeln als Tabelle.
+ 
+ ## Ein Profil erstellen
+ 
+-Neues Profil legt ein Profil mit einer Kandidaten-Erweiterung und einer leeren Regel an; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
++Neues Profil erstellt ein Profil mit einer Kandidaten-Erweiterung und einer leeren Regel; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
+ 
+-Der Editor hält jeweils ein Profil. Ersetzt du es, sei es durch Anlegen eines neuen oder durch Öffnen eines vorhandenen, warnt der Editor zuerst, solange das aktuelle Profil nicht gespeicherte Änderungen hat; lehnst du das ab, bleibt es unverändert. Ein Wechsel zu einer anderen Ansicht und zurück rührt es nie an. Auch beim Beenden der Anwendung wird bei nicht gespeicherten Änderungen gewarnt.
++Der Editor hält jeweils ein Profil. Ersetzt du es, sei es durch Erstellen eines neuen oder durch Öffnen eines vorhandenen, warnt der Editor zuerst, solange das aktuelle Profil nicht gespeicherte Änderungen hat; lehnst du das ab, bleibt es unverändert. Ein Wechsel zu einer anderen Ansicht und zurück rührt es nie an. Auch beim Beenden der Anwendung wird bei nicht gespeicherten Änderungen gewarnt.
+ 
+ Jede Änderung lässt sich rückgängig machen. Rückgängig und Wiederholen stehen in der Aktionsleiste; dieselben Aktionen reagieren auch auf Tastenkürzel: Strg+Z (Cmd+Z unter macOS) für Rückgängig, Strg+Umschalt+Z oder Strg+Y (Cmd+Umschalt+Z oder Cmd+Y unter macOS) für Wiederholen.
+ 
+ ## Das Modell bearbeiten
+ 
+ Bearbeitet wird das aus der Datei geparste Modell im Speicher, nie der Dateitext selbst. Die Regel-Tabelle fasst jede Spurregel zusammen (Quelle, Match, Optional, Änderungen); die Reihenfolge der Regeln ist zugleich die Reihenfolge der Ausgabespuren, und per Ziehen einer Zeile ordnest du die Regeln um. Wählst du eine Zeile aus, öffnet sich unter der Tabelle ein Detailbereich mit allen Feldern dieser Regel. Die übrigen Abschnitte (Metadaten, Eingabe, Ausgabe, Anhänge, Kapitel, Tags, Titel) erscheinen als normale Formularabschnitte.
+ 
+ ## Prüfung bei jeder Änderung
+ 
+ Jede Änderung prüft das ganze Profil im Hintergrund neu; der Meldungsbereich beschreibt daher immer den aktuellen Stand des Modells. Speichern ist gesperrt, solange eine Meldung mit Schweregrad Fehler besteht; das ist die einzige Sperre, die der Editor durchsetzt. Warnungen und Hinweise blockieren das Speichern nie.
+diff --git a/help/en/view-editor.md b/help/en/view-editor.md
+index 4811fe8..58b1c45 100644
+--- a/help/en/view-editor.md
++++ b/help/en/view-editor.md
+@@ -1,17 +1,17 @@
+ # Editor view
+ 
+-The Editor edits a profile as a structured model, not as YAML text. Start a new profile, open a profile file, or reopen one from the recent profiles; every field renders as a form control and the track rules as a grid.
++The Editor edits a profile as a structured model, not as YAML text. Create a new profile, open a profile file, or reopen one from the recent profiles; every field renders as a form control and the track rules as a grid.
+ 
+ ## Creating a profile
+ 
+-The New profile button starts a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
++The New profile button creates a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
+ 
+ The editor holds one profile at a time. Replacing it, whether by creating another or by opening one, warns first while the current profile has unsaved changes; declining leaves it untouched. Switching to another view and back never touches it. Quitting the app with unsaved changes warns as well.
+ 
+ Every edit can be undone. Undo and Redo sit in the action row, and the same actions also respond to keyboard shortcuts: Ctrl+Z (Cmd+Z on macOS) for Undo, and Ctrl+Shift+Z or Ctrl+Y (Cmd+Shift+Z or Cmd+Y on macOS) for Redo.
+ 
+ ## Editing the model
+ 
+ What you edit is the in-memory model parsed from the file, never the file's text. The rule grid summarizes each track rule (source, match, optional, changes); rule order is output track order, and dragging a row reorders the rules. Selecting a row opens a detail panel below the grid with the full fields of that rule. The remaining sections (metadata, input, output, attachments, chapters, tags, title) render as regular form sections.
+ 
+ ## Validate on edit
+diff --git a/src-tauri/src/run.rs b/src-tauri/src/run.rs
+index 355d217..c3f607a 100644
+--- a/src-tauri/src/run.rs
++++ b/src-tauri/src/run.rs
+@@ -645,79 +645,135 @@ fn reconfirm_decision(answered: CloseDecision, current: CloseDecision) -> Option
+ }
+ 
+ /// Reads `AppState::dialog_locale` (D110 decision 2) into an owned
+ /// `String`, so the lock is released before a dialog callback runs. The
+ /// shell never resolves a locale itself; a failed frontend sync just
+ /// leaves the previous value here, never a missing dialog.
+ fn dialog_locale(state: &AppState) -> String {
+     state.dialog_locale.lock().unwrap().clone()
+ }
+ 
+-/// Builds and shows the confirmation dialog for one of the three
+-/// confirming [`CloseDecision`] variants (D109 decisions 5/6): `Close`
+-/// shows nothing -- callers only reach this for a decision that has a
+-/// dialog, and this arm exists for the match's exhaustiveness. Every
+-/// variant shares `close-abort-dismiss` as its cancel label (D109 decision
+-/// 5's own sentence), and every string is looked up through [`ftl_message`]
+-/// against `locale`, so the dialog renders in whatever language the shell
+-/// was last told (D110). `on_confirm` runs only when the user confirms;
+-/// declining costs nothing further.
+-fn show_close_dialog(
+-    app: &AppHandle,
++/// The dialog's (title, message, confirm) strings for one of the three
++/// confirming [`CloseDecision`] variants (D109 decisions 5/6's own
++/// wording), resolved through [`ftl_message`] against `locale`; `None` for
++/// `Close`, which shows no dialog. Factored out of `show_close_dialog` for
++/// the same reason [`close_decision`] was factored off
++/// `on_close_requested`: this mapping depends on nothing but the decision
++/// and the locale, so -- unlike the `AppHandle` that actually builds and
++/// shows the dialog -- it is unit-testable on its own
++/// (`close_dialog_strings_map_each_decision_to_its_own_wording`), which
++/// closes the gap the whole-branch review found: the four-state decision
++/// itself was covered per cell, but the variant-to-strings mapping one
++/// function away was reachable by no test (I-4). Every key stays a
++/// LITERAL argument to `ftl_message` here, in the exact shape
++/// `every_row_carries_every_key_the_shell_source_literally_looks_up`'s
++/// scan depends on -- moving the match into its own function does not
++/// remove these calls from the file; `RUN_RS_SOURCE` is the whole file's
++/// text regardless of which function nests a call, so the derivation
++/// that finds these keys and checks every locale row resolves them stays
++/// intact.
++fn close_dialog_strings(
+     decision: CloseDecision,
+     locale: &str,
+-    on_confirm: impl FnOnce(&AppHandle) + Send + 'static,
+-) {
+-    let (title, message, confirm) = match decision {
+-        CloseDecision::Close => return,
+-        CloseDecision::ConfirmAbort => (
++) -> Option<(&'static str, &'static str, &'static str)> {
++    match decision {
++        CloseDecision::Close => None,
++        CloseDecision::ConfirmAbort => Some((
+             ftl_message("close-abort-title", locale),
+             ftl_message("close-abort-message", locale),
+             ftl_message("close-abort-confirm", locale),
+-        ),
+-        CloseDecision::ConfirmDiscard => (
++        )),
++        CloseDecision::ConfirmDiscard => Some((
+             ftl_message("close-discard-title", locale),
+             ftl_message("close-discard-message", locale),
+             ftl_message("close-discard-confirm", locale),
+-        ),
+-        CloseDecision::ConfirmAbortAndDiscard => (
++        )),
++        CloseDecision::ConfirmAbortAndDiscard => Some((
+             ftl_message("close-abort-discard-title", locale),
+             ftl_message("close-abort-discard-message", locale),
+             ftl_message("close-abort-discard-confirm", locale),
+-        ),
++        )),
++    }
++}
++
++/// Builds and shows the confirmation dialog for one of the three
++/// confirming [`CloseDecision`] variants (D109 decisions 5/6): `Close`
++/// shows nothing -- callers only reach this for a decision that has a
++/// dialog, and [`close_dialog_strings`] returning `None` there is what
++/// this early-returns on. Every variant shares `close-abort-dismiss` as
++/// its cancel label (D109 decision 5's own sentence). `on_confirm` runs
++/// only when the user confirms; declining costs nothing further.
++fn show_close_dialog(
++    app: &AppHandle,
++    decision: CloseDecision,
++    locale: &str,
++    on_confirm: impl FnOnce(&AppHandle) + Send + 'static,
++) {
++    let Some((title, message, confirm)) = close_dialog_strings(decision, locale) else {
++        return;
+     };
+     let dismiss = ftl_message("close-abort-dismiss", locale).to_string();
+     let app = app.clone();
+     app.dialog()
+         .message(message)
+         .title(title)
+         .kind(MessageDialogKind::Warning)
+         .buttons(MessageDialogButtons::OkCancelCustom(
+             confirm.to_string(),
+             dismiss,
+         ))
+         .show(move |confirmed| {
+             if confirmed {
+                 on_confirm(&app);
+             }
+         });
+ }
+ 
+-/// The confirmed action for one close-decision variant (D109 decision 5's
+-/// table, right-hand column). `Close` never reaches here: it takes
+-/// `on_close_requested`'s early return and shows no dialog, so this arm
+-/// too exists only for the match's exhaustiveness.
+-fn confirm_close(decision: CloseDecision, app: &AppHandle) {
++/// The confirmed effect for one [`CloseDecision`] variant (D109 decision
++/// 5's table, right-hand column, as a closed set of three effects rather
++/// than the two literal statements [`confirm_close`] used to pick between
++/// inline). `Close` never reaches here: it takes `on_close_requested`'s
++/// early return and shows no dialog, so `None` too exists only for match
++/// exhaustiveness on the caller side.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++enum CloseAction {
++    /// Nothing further: `Close` shows no dialog to confirm.
++    None,
++    /// The run slot is idle (`ConfirmDiscard`): exit immediately, nothing
++    /// to tear down.
++    ExitDiscard,
++    /// A run is active (`ConfirmAbort`/`ConfirmAbortAndDiscard`): abort it
++    /// before the app exits.
++    AbortAndExit,
++}
++
++/// The decision-to-effect mapping, factored out of [`confirm_close`] for
++/// the same reason [`close_dialog_strings`] was: nothing here depends on
++/// `AppHandle` either, only on which of the three effects the decision
++/// picks, so it is unit-testable
++/// (`close_action_maps_each_decision_to_its_own_effect`) without one --
++/// the other half of I-4's gap, alongside the strings mapping above.
++fn close_action(decision: CloseDecision) -> CloseAction {
+     match decision {
+-        CloseDecision::Close => {}
+-        CloseDecision::ConfirmDiscard => app.exit(0),
++        CloseDecision::Close => CloseAction::None,
++        CloseDecision::ConfirmDiscard => CloseAction::ExitDiscard,
+         CloseDecision::ConfirmAbort | CloseDecision::ConfirmAbortAndDiscard => {
++            CloseAction::AbortAndExit
++        }
++    }
++}
++
++fn confirm_close(decision: CloseDecision, app: &AppHandle) {
++    match close_action(decision) {
++        CloseAction::None => {}
++        CloseAction::ExitDiscard => app.exit(0),
++        CloseAction::AbortAndExit => {
+             abort_and_quit(&app.state::<AppState>(), |code| app.exit(code));
+         }
+     }
+ }
+ 
+ /// Window-close handling (D31/D109/D110, supersedes D23's bare
+ /// cancel_all): [`close_decision`] picks one of four outcomes from the run
+ /// slot and the editor's mirrored save state. `Close` lets the window
+ /// close normally; the other three prevent the close and show
+ /// [`show_close_dialog`]'s matching confirmation (mkvtoolnix-gui parity
+@@ -1418,20 +1474,80 @@ mod tests {
+         let state = AppState::default();
+         let control = ctl(1);
+         *state.active.lock().unwrap() = Some(running(&control));
+         state.editor_dirty.store(true, Ordering::SeqCst);
+         assert_eq!(
+             close_decision(&state),
+             CloseDecision::ConfirmAbortAndDiscard
+         );
+     }
+ 
++    // -- I-4 (whole-branch review, plan 12): the two mappings one function
++    // past `close_decision` -----------------------------------------------
++    //
++    // `close_decision` picks the right variant and every cell above is
++    // pinned; nothing reached the mapping FROM that variant TO its dialog
++    // strings and its confirmed effect, both left inside the
++    // `AppHandle`-taking functions. `close_dialog_strings`/`close_action`
++    // extract exactly those two mappings, the same way `close_decision`
++    // was already factored off `on_close_requested`, and these two tests
++    // reproduce the review's own mutation: pointing `ConfirmDiscard` at
++    // the `close-abort-*` keys instead of `close-discard-*` reddens the
++    // first, and swapping `ExitDiscard`/`AbortAndExit` between the wrong
++    // rows reddens the second.
++
++    #[test]
++    fn close_dialog_strings_map_each_decision_to_its_own_wording() {
++        assert_eq!(close_dialog_strings(CloseDecision::Close, "en"), None);
++        assert_eq!(
++            close_dialog_strings(CloseDecision::ConfirmAbort, "en"),
++            Some((
++                "Abort running jobs",
++                "There is currently a job running. Do you really want to abort all currently running jobs and quit?",
++                "Abort jobs and quit",
++            ))
++        );
++        assert_eq!(
++            close_dialog_strings(CloseDecision::ConfirmDiscard, "en"),
++            Some((
++                "Unsaved changes",
++                "The profile in the editor has unsaved changes. Quit and lose them?",
++                "Discard changes and quit",
++            ))
++        );
++        assert_eq!(
++            close_dialog_strings(CloseDecision::ConfirmAbortAndDiscard, "en"),
++            Some((
++                "Running jobs and unsaved changes",
++                "A job is running and the profile in the editor has unsaved changes. Abort all running jobs, discard the changes and quit?",
++                "Abort jobs, discard changes and quit",
++            ))
++        );
++    }
++
++    #[test]
++    fn close_action_maps_each_decision_to_its_own_effect() {
++        assert_eq!(close_action(CloseDecision::Close), CloseAction::None);
++        assert_eq!(
++            close_action(CloseDecision::ConfirmDiscard),
++            CloseAction::ExitDiscard
++        );
++        assert_eq!(
++            close_action(CloseDecision::ConfirmAbort),
++            CloseAction::AbortAndExit
++        );
++        assert_eq!(
++            close_action(CloseDecision::ConfirmAbortAndDiscard),
++            CloseAction::AbortAndExit
++        );
++    }
++
+     // -- D109 decision 9: the re-read on the confirming branch -----------------
+     //
+     // Exhaustive over the three dialog-producing `answered` variants x all
+     // four `current` variants (Close never produces a dialog, so it is
+     // never `answered`): twelve cells. `Some` cells are the ones where a
+     // second prompt must appear; `None` cells are the silent-no-prompt
+     // ones a broken strengthening rule would let slip through, so both
+     // halves are named explicitly rather than inferred from the four
+     // `Some`s alone.
+     #[test]

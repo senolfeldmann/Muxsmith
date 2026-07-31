@@ -1,0 +1,903 @@
+# Review package: 9ee3b9e..0b00262
+
+## Commits
+0b00262 editor: confirm before unsaved changes are replaced, ahead of the file dialog
+
+## Files changed
+ e2e/editor-undo-redo.spec.ts     |  19 +++
+ e2e/smoke.spec.ts                | 303 ++++++++++++++++++++++++++++++++++++++-
+ locales/de/gui-editor.ftl        |   6 +
+ locales/en/gui-editor.ftl        |   6 +
+ src/components/ConfirmDialog.vue |  96 +++++++++++++
+ src/views/EditorView.vue         |  73 +++++++---
+ 6 files changed, 479 insertions(+), 24 deletions(-)
+
+## Diff
+diff --git a/e2e/editor-undo-redo.spec.ts b/e2e/editor-undo-redo.spec.ts
+index 56b6342..2bc9b1a 100644
+--- a/e2e/editor-undo-redo.spec.ts
++++ b/e2e/editor-undo-redo.spec.ts
+@@ -386,21 +386,27 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
+     await page.goto("/");
+     await page.getByTestId("nav-editor").click();
+     const editor = page.getByTestId("view-editor");
+ 
+     await editor.getByTestId("editor-open").click();
+     await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+     const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+     await pattern.fill("edited-a");
+     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+ 
++    // Task 5 (D109) repair: the editor is dirty (the fill above), so this
++    // second Open is now fronted by the discard guard's confirm -- confirmed
++    // here so the assertions below still test the RESET this case is named
++    // for, not the guard itself.
+     await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-confirm").click();
+     await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
+     await expect(editor.getByTestId("editor-undo")).toBeDisabled();
+     await expect(editor.getByTestId("editor-redo")).toBeDisabled();
+   });
+ 
+   // task-4-verdict.md Finding 3 (low-moderate): `createBlank` is the eighth
+   // whole-value-assignment site the re-derived sweep found (see
+   // task-4-report.md), correctly excluded from the six-function mutation
+   // table as a session-start funnel like `openPath` -- but nothing in this
+   // file exercised it together with PRE-BUILT undo/redo state, so a
+@@ -413,21 +419,27 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
+   // truthy `model.value` (a freshly seeded Profile), so `:disabled="!model
+   // || !canUndo"` never short-circuits on `!model` here -- checked, not
+   // assumed: `canUndo`/`canRedo`'s real values are what these asserts read.
+   test("createBlank resets: New after edited history clears both Undo and Redo", async ({ page }) => {
+     const { editor } = await openProfile(page, "/profiles/create-blank-resets.yaml", emptyRulesProfile);
+ 
+     const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+     await pattern.fill("edited");
+     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+ 
++    // Task 5 (D109) repair, amendment 2: New activates the same guarded
++    // control as Open (`createBlank`, Step 2), and the editor is dirty (the
++    // fill above) -- confirmed here so the assertions below still test the
++    // RESET this case is named for, not the guard itself.
+     await editor.getByTestId("editor-new").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-confirm").click();
+     await expect(editor.getByTestId("editor-undo")).toBeDisabled();
+     await expect(editor.getByTestId("editor-redo")).toBeDisabled();
+   });
+ 
+   // task-4-verdict.md Finding 2 (moderate): this case's name and its two
+   // `:disabled` asserts below used to read as proving D108 decision 9
+   // clears `history`/`position` on a failed load. They do not, and cannot:
+   // `:disabled="!model || !canUndo"` short-circuits on `!model` once the
+   // failed load clears `model.value`, so `canUndo`'s real value is never
+   // consulted here. Reproduced (scratch mutation, not just quoted from the
+@@ -465,21 +477,28 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
+ 
+     await editor.getByTestId("editor-open").click();
+     await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+     const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+     await pattern.fill("edited");
+     // The state before the failed open: Undo enabled, in the SAME test, so
+     // a run that passes because Undo is never enabled anywhere cannot be
+     // mistaken for this one passing.
+     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+ 
++    // Task 5 (D109) repair: the editor is dirty (the fill above), so this
++    // second Open -- the one that goes on to fail -- is now fronted by the
++    // discard guard's confirm -- confirmed here so the assertions below
++    // still test the FAILED-OPEN state this case is named for, not the
++    // guard itself.
+     await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-confirm").click();
+ 
+     // In this order, per the brief: the diagnostic still renders (the
+     // panel explains a failed open), then Undo/Redo read disabled (via the
+     // model gate -- see the header comment above for why this does not
+     // discriminate `canUndo`/`canRedo`'s real cleared value), then the
+     // editing surface is gone.
+     await expect(
+       editor.getByText(
+         en("batch-diagnostic-line", {
+           severity: en("severity-error"),
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index 7cb0069..b8afa54 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -858,22 +858,23 @@ test.describe("german locale", () => {
+ // "the fixture drifted from the real registry shape". Accessible names come
+ // from `en(id)` over the real labelKey exactly as the rest of this file
+ // does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
+ // values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
+ // D45's own rule that widget option tokens render as profile-format
+ // tokens, not via new Fluent keys. `list`/`propertyMap`'s generic
+ // add/remove-row buttons use the two dedicated `editor-action-add`/
+ // `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
+ // NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
+ // the AttachmentRule fields they are the registry labels for. Catalog
+-// budget is 51 (42 labels + 1 save-surface note + 4 generic action keys +
+-// 1 rule-grid ordinal + 3 profile-creation keys).
++// budget is 54 (42 labels + 1 save-surface note + 4 generic action keys +
++// 1 rule-grid ordinal + 3 profile-creation keys + 3 discard-confirmation
++// keys, D109).
+ test.describe("editor widgets: mount-harness rendering", () => {
+   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
+     await mountComponent(page, {
+       component: "FieldWidgetDispatcher",
+       props: { spec: inputFields.recursive, modelValue: true },
+     });
+     const field = page.getByRole("checkbox", name("editor-input-recursive"));
+     await expect(field).toBeChecked();
+     await field.uncheck();
+     await expect.poll(() => readModel(page)).toBe(false);
+@@ -1379,57 +1380,66 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
+     await expect(saveButton).toBeEnabled();
+ 
+     await saveButton.click();
+     const saveCalls = recorded.filter((r) => r.cmd === "save_profile");
+     expect(saveCalls).toHaveLength(1);
+     const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
+     expect(saveArgs.path).toBe(PROFILE_PATH);
+     expect(saveArgs.profile.input.pattern).toBe(".*");
+   });
+ 
+-  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if)", async ({
++  test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if); Case 6 (D109 decision 3): the same round trip with unsaved changes warns not at all", async ({
+     page,
+   }) => {
+     await installTauriMocks(page, {
+       commands: {
+         detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+         "plugin:dialog|open": [resolveWith(PROFILE_PATH)],
+         load_profile: [resolveWith(loadedDoc)],
+         validate_profile_model: [resolveWith(cleanDoc)],
+       },
+     });
+ 
+     await page.goto("/");
+ 
+     await page.getByTestId("nav-editor").click();
+     const editor = page.getByTestId("view-editor");
+     await editor.getByRole("button", name("batch-profile-pick")).click();
+     await expect(
+       editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+     ).toBeVisible();
+ 
++    // Edited before the switch, so the editor carries unsaved changes
++    // (Undo enabled) across the round trip below -- exactly the state
++    // D109 decision 3's guard family would fire over on Open or New, and
++    // switching tabs must not, because `v-show` never unmounts the view.
+     const patternField = editor.getByRole("textbox", name("editor-input-pattern"));
+     await patternField.fill("kept-through-switch");
+     await expect(patternField).toHaveValue("kept-through-switch");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+ 
+     await page.getByTestId("nav-jobs").click();
+     await expect(page.getByTestId("view-jobs")).toBeVisible();
+     await expect(editor).toBeHidden();
+ 
+     await page.getByTestId("nav-editor").click();
+     await expect(editor).toBeVisible();
+-    // Still mounted, not recreated: the field value and the open path
+-    // survived the round trip through Jobs.
++    // Still mounted, not recreated: the field value, the open path and the
++    // undo history all survived the round trip through Jobs, and no
++    // confirm ever appeared -- switching tabs warns not at all (Case 6,
++    // D109 decision 3, R22's own producer).
+     await expect(patternField).toHaveValue("kept-through-switch");
+     await expect(
+       editor.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
+     ).toBeVisible();
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+   });
+ });
+ 
+ // Task 13b (D45, spec 8.2, amended 2026-07-16, detail-editor routing): the
+ // per-rule detail panel beneath Task 11's read-only summary grid, closing
+ // the confirmed plan-coverage gap (`registry-slot-capability-delta`,
+ // `docs/decision-ledger.yaml`) between spec 8.2's "detail editor per rule"
+ // promise and the read-only grid Task 11 built for it. Selection is a
+ // native `<button data-testid="editor-rule-select">` with `:aria-current`
+ // (the `jobs-history-run` button in `RunHistory.vue` is the house
+@@ -1973,10 +1983,293 @@ test.describe("editor view: New creates a blank profile (plan 12 W2, D107)", ()
+     const panel = editor.getByTestId("editor-rule-detail");
+     await expect(panel).toBeVisible();
+     // ...and it is the SEEDED rule that is selected, not merely some rule:
+     // the panel labels itself by the selected row's own id, and the row's
+     // select button carries `aria-current`. With one rule in the seed these
+     // pin index 0 from both ends.
+     await expect(panel).toHaveAttribute("aria-labelledby", "editor-rule-row-0");
+     await expect(editor.getByTestId("editor-rule-select")).toHaveAttribute("aria-current", "true");
+   });
+ });
++
++// Task 5 (D109, ROADMAP round-3 finding 2's second owner ruling, spec 8.2):
++// the discard guards -- Open and New warn before replacing an editor
++// holding unsaved changes, gated on the derived save state (Task 4's
++// `dirty`), never on a clean editor. Case 6 (switching tabs warns not at
++// all) lives above, as an extension of the pre-existing view-switch case
++// rather than a duplicate of it (D109 decision 3). `ConfirmDialog` is
++// mounted once by `EditorView` and asked through its own rendered,
++// axe-scannable DOM (`confirm-dialog`/`-confirm`/`-cancel`), never through
++// the dialog plugin's own `confirm` (D109 decision 6) -- so every assertion
++// below is against real DOM and real recorded IPC calls, not a UI echo.
++test.describe("editor view: discard guards (Task 5, D109)", () => {
++  const PATH_A = "/profiles/discard-guard-a.yaml";
++  const PATH_B = "/profiles/discard-guard-b.yaml";
++
++  const profileA: Profile = {
++    profile_version: 1,
++    input: { pattern: ".*", extensions: ["mkv"] },
++    tracks: { rules: [] },
++  };
++  const profileB: Profile = {
++    profile_version: 1,
++    input: { pattern: "^B$", extensions: ["mkv"] },
++    tracks: { rules: [] },
++  };
++
++  const cleanReport: ReportDocument = {
++    config_diagnostics: [],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    mkvmerge_found: true,
++  };
++
++  function loadedDoc(profile: Profile): LoadProfileDocument {
++    return { ...cleanReport, profile };
++  }
++
++  function settingsWith(recentProfiles: string[]): AppSettings {
++    return {
++      mkvmerge_path: null,
++      default_jobs: 1,
++      locale: "en",
++      recent_profiles: recentProfiles,
++      dir_memory: {},
++    };
++  }
++
++  async function gotoEditor(page: Page) {
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await expect(editor).toBeVisible();
++    return editor;
++  }
++
++  test("Case 1: Open over unsaved changes, confirmed -- the file dialog waits for the confirm, then the second profile replaces the editor", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
++        load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
++      .toBe(1);
++
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited-before-open");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await expect(editor.getByText(en("editor-discard-message"))).toBeVisible();
++    await assertNoSeriousA11yViolations(page);
++
++    // ABSENCE CHECK G1: the same counter this case's fire below reads --
++    // the second Open has not reached the file dialog yet, only the
++    // confirm is up.
++    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
++
++    await editor.getByTestId("confirm-dialog-confirm").click();
++
++    // G1's fire, the SAME counter: confirming reaches the file dialog, and
++    // the second profile replaces the editor.
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
++      .toBe(2);
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++  });
++
++  test("Case 2: Open over unsaved changes, cancelled -- the file dialog never opens and the edit survives", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A)],
++        load_profile: [resolveWith(loadedDoc(profileA))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited-before-cancel");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-cancel").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++
++    // Still just the one dialog call from the first, successful open.
++    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
++    await expect(pattern).toHaveValue("edited-before-cancel");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++  });
++
++  test("Case 3(i): Open with no unsaved changes reaches the file dialog directly, no confirm", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
++        load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++
++    // ABSENCE CHECK G2: nothing was edited, so the editor is clean.
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++
++    await editor.getByTestId("editor-open").click();
++    // G2's fire: the second Open reaches the file dialog immediately, with
++    // no confirm ever appearing.
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
++      .toBe(2);
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++  });
++
++  // Case 3(ii), W3-q2's producer: the ONLY case anywhere in this plan that
++  // proves saving actually marks the profile that was written
++  // (`savedSnapshot.value = JSON.stringify(profile)` in `doSave`, D108
++  // decision 3). The two Open clicks below are each other's control -- the
++  // first proves the guard fires in exactly this scenario (an opened,
++  // edited, not-yet-saved profile), the second proves the save cleared the
++  // state. Without the mark, `savedSnapshot` stays frozen at the load
++  // baseline, `dirty` never returns to false after a save, and this second
++  // click would show a confirm too -- every other assertion in this
++  // package passes with that mark deleted, which is exactly why this leg,
++  // not any other, is this property's only producer.
++  test("Case 3(ii): after a successful save the guard clears -- the two Open clicks in this test are each other's control", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
++        load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
++        validate_profile_model: [resolveWith(cleanReport)],
++        save_profile: [resolveWith(null)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited-before-save");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    // FIRST click: the guard fires over the unsaved edit -- proof the
++    // mechanism can trigger in this exact scenario, before the save half
++    // is even reached. Cancelled, so the editor stays untouched and the
++    // save below writes the same edit this click was warning about.
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-cancel").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
++    await expect(pattern).toHaveValue("edited-before-save");
++
++    await editor.getByTestId("editor-save").click();
++    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
++
++    // SECOND click: the save marked `savedSnapshot` at the written profile,
++    // so the editor reads clean again -- the guard must NOT fire, and Open
++    // reaches the file dialog directly.
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++    await expect
++      .poll(() => recorded.filter((r) => r.cmd === "plugin:dialog|open").length)
++      .toBe(2);
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
++  });
++
++  test("Case 4: New over unsaved changes -- confirmed replaces the edited profile, cancelled does not", async ({
++    page,
++  }) => {
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A)],
++        load_profile: [resolveWith(loadedDoc(profileA))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited-before-new");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    // Confirmed: the seed replaces the edited profile.
++    await editor.getByTestId("editor-new").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-confirm").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++    await expect(pattern).toHaveValue(".*");
++    await expect(editor.getByTestId("editor-unsaved")).toBeVisible();
++
++    // Cancelled: editing the fresh seed, then New again and cancelling
++    // leaves it untouched -- the seed is NOT re-applied over itself.
++    await pattern.fill("edited-seed");
++    await editor.getByTestId("editor-new").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await editor.getByTestId("confirm-dialog-cancel").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++    await expect(pattern).toHaveValue("edited-seed");
++  });
++
++  test("Case 5: the recents affordance is unreachable while a profile is held (D112's !model term)", async ({
++    page,
++  }) => {
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        get_settings: [resolveWith(settingsWith([PATH_A]))],
++        "plugin:dialog|open": [resolveWith(PATH_A)],
++        load_profile: [resolveWith(loadedDoc(profileA))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++
++    // The fire, in the pre-session state before anything is opened or
++    // created: the seeded recent renders the section.
++    await expect(editor.getByTestId("editor-recents")).toHaveCount(1);
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++
++    // The zero: with a profile held, the section is gone -- D112's `!model`
++    // term alone carries this unreachability (D109 decision 1's own
++    // pointer).
++    await expect(editor.getByTestId("editor-recents")).toHaveCount(0);
++  });
++});
+diff --git a/locales/de/gui-editor.ftl b/locales/de/gui-editor.ftl
+index 02e2d6c..88257ca 100644
+--- a/locales/de/gui-editor.ftl
++++ b/locales/de/gui-editor.ftl
+@@ -148,10 +148,16 @@ editor-action-redo = Wiederholen
+ 
+ # Presentation-only 1-based index column; not a registry label, so no
+ # .tooltip. The digit itself is locale-neutral data rendered in the cell.
+ editor-track-rule-order = Reihenfolge
+ 
+ ## Profilerstellung und der Zustand vor dem Öffnen
+ 
+ editor-action-new = Neues Profil
+ editor-empty = Kein Profil geöffnet. Erstelle eines mit Neues Profil oder wähle eine vorhandene Profildatei aus.
+ editor-unsaved = Neues Profil, noch nicht gespeichert.
++
++## Verwerfen-Bestätigung (D109)
++
++editor-discard-title = Nicht gespeicherte Änderungen
++editor-discard-message = Das Profil im Editor hat nicht gespeicherte Änderungen. Wenn du fortfährst, wird es ersetzt und die Änderungen sind verloren.
++editor-discard-confirm = Änderungen verwerfen
+diff --git a/locales/en/gui-editor.ftl b/locales/en/gui-editor.ftl
+index 97d5330..fa0fe01 100644
+--- a/locales/en/gui-editor.ftl
++++ b/locales/en/gui-editor.ftl
+@@ -144,10 +144,16 @@ editor-action-redo = Redo
+ 
+ # Presentation-only 1-based index column; not a registry label, so no
+ # .tooltip. The digit itself is locale-neutral data rendered in the cell.
+ editor-track-rule-order = Order
+ 
+ ## Profile creation and the pre-session state
+ 
+ editor-action-new = New profile
+ editor-empty = No profile open. Create one with New profile, or choose an existing profile file.
+ editor-unsaved = New profile, not saved yet.
++
++## Discard confirmation (D109)
++
++editor-discard-title = Unsaved changes
++editor-discard-message = The profile in the editor has unsaved changes. Continuing replaces it and the changes are lost.
++editor-discard-confirm = Discard changes
+diff --git a/src/components/ConfirmDialog.vue b/src/components/ConfirmDialog.vue
+new file mode 100644
+index 0000000..ac41c15
+--- /dev/null
++++ b/src/components/ConfirmDialog.vue
+@@ -0,0 +1,96 @@
++<script setup lang="ts">
++import { useTemplateRef } from "vue";
++
++// D109 decision 6: the confirm surface for the two in-app discard guards
++// (`EditorView.vue`'s `pickAndOpen`/`createBlank`, and any second caller
++// this component was built for) -- a native `<dialog>` with `showModal()`,
++// the same house pattern `SettingsDialog.vue` uses, rather than the dialog
++// plugin's own `confirm` (which would need `dialog:allow-message` and is
++// only observable at the wire, never as rendered, axe-scannable DOM,
++// D109's own rationale). It is its own component, not an inline dialog
++// inside its first caller, so a second caller can reuse it -- the four
++// string props below are the minimum such a caller needs: the caller
++// resolves its own Fluent text and hands it over already translated, so
++// this component itself carries no catalog key and the no-raw-text rule
++// (D27) is satisfied by binding rather than by an exemption.
++defineProps<{
++  title: string;
++  message: string;
++  confirmLabel: string;
++  cancelLabel: string;
++}>();
++
++const dialogEl = useTemplateRef("dialogEl");
++
++// Set only while a call to `ask()` is outstanding; nulled the moment it is
++// settled, so a later event on an already-answered dialog (see `onClose`
++// below) is a no-op instead of a second resolution.
++let settleAsk: ((confirmed: boolean) => void) | null = null;
++
++/** Opens the dialog and resolves once the user answers. */
++function ask(): Promise<boolean> {
++  return new Promise((resolve) => {
++    settleAsk = resolve;
++    dialogEl.value?.showModal();
++  });
++}
++
++function onConfirm() {
++  settleAsk?.(true);
++  settleAsk = null;
++  dialogEl.value?.close();
++}
++
++function onCancel() {
++  // No explicit settle here: `.close()` fires the native `close` event
++  // below regardless of how the dialog closes, and that handler is the one
++  // place `false` is actually resolved -- see its own doc comment.
++  dialogEl.value?.close();
++}
++
++// The single path that resolves `false`, for every way the dialog can
++// close other than the confirm button: the cancel button's own `.close()`
++// call above, and Esc -- whose native default action (the `cancel` event,
++// left unhandled and therefore not prevented) closes the dialog the same
++// way and fires this same `close` event, exactly the Esc-consumed-by-the-
++// native-cancel semantics `SettingsDialog.vue` documents for its own
++// dialog. A no-op once `onConfirm` already settled `true` and nulled
++// `settleAsk`.
++function onClose() {
++  settleAsk?.(false);
++  settleAsk = null;
++}
++
++defineExpose({ ask });
++</script>
++
++<template>
++  <dialog
++    ref="dialogEl"
++    data-testid="confirm-dialog"
++    aria-labelledby="confirm-dialog-title"
++    aria-describedby="confirm-dialog-message"
++    @close="onClose"
++  >
++    <h2 id="confirm-dialog-title">
++      {{ title }}
++    </h2>
++    <p id="confirm-dialog-message">
++      {{ message }}
++    </p>
++    <button
++      type="button"
++      data-testid="confirm-dialog-confirm"
++      @click="onConfirm"
++    >
++      {{ confirmLabel }}
++    </button>
++    <button
++      type="button"
++      data-testid="confirm-dialog-cancel"
++      @click="onCancel"
++    >
++      {{ cancelLabel }}
++    </button>
++  </dialog>
++</template>
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index adba6a0..22e2718 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -57,23 +57,27 @@
+ // on `sessionActive`, which only this view's own two funnels set
+ // (`openPath` on a completed load, `createBlank` on a fresh seed -- D107):
+ // a bare-mounted `EditorView` edits its model plenty (drag-reorder, widget
+ // input) but never triggers `validate_profile_model`, keeping those specs
+ // green with no injected mock (mount-harness amendment's own review-
+ // check).
+ //
+ // No new `gui-editor.ftl`/`gui-common.ftl` keys: D45's design-doc catalog
+ // table enumerates every Fluent key the whole plan adds, and Task 13
+ // carries none (the brief's own Files list carries no `.ftl`). Later
+-// packages did add to it: `gui-editor.ftl` carries 49 ids today, three of
+-// them this view's own New affordance (`editor-action-new`,
+-// `editor-empty`, `editor-unsaved`, D107). The Open button, the
++// packages did add to it: `gui-editor.ftl` carries 54 ids today, eight
++// of them this view's own affordances: profile creation
++// (`editor-action-new`, `editor-empty`, `editor-unsaved`, D107),
++// undo/redo (`editor-action-undo`, `editor-action-redo`, D108) and
++// the discard confirmation (`editor-discard-title`,
++// `editor-discard-message`, `editor-discard-confirm`,
++// D109). The Open button, the
+ // currently-open-path line, and the file-dialog filter name reuse
+ // `batch-profile-pick`/`batch-profile-current`/`batch-profile-filter-name`
+ // (BatchView's own "choose + show a profile path" affordance -- their
+ // content is generic, not batch-specific, and cross-view key reuse already
+ // has two precedents:
+ // `browse-button`'s own documented reuse across BatchView/FirstRun/
+ // SettingsDialog, and `JobsView.vue`'s `<h2>` reusing `nav-jobs`
+ // internally rather than a bespoke `jobs-view-heading`). Save reuses
+ // `settings-save` ("Save", `SettingsDialog.vue`) the same way. The
+ // diagnostics heading reuses `batch-diagnostics-heading` ("Diagnostics").
+@@ -90,30 +94,31 @@
+ // beneath the grid. The panel is pure registry composition, byte-for-byte
+ // the machinery `ListWidget.vue` already uses for AttachmentRule items: it
+ // synthesizes a `{ kind: "section", of: "trackRule" }` spec, mounts
+ // `SectionWidget`, and writes the selected rule back immutably
+ // (`setRuleValue`). No new component, no new registry, no new catalog key:
+ // the panel is labelled via `aria-labelledby` pointing at the selected
+ // grid row's own id (`editor-rule-row-${index}`), and `SectionWidget`'s
+ // legend reuses `editor-tracks-rules` ("Rules"), already the grid
+ // heading/caption. Selection is cleared on reorder (`onDrop`) so a
+ // post-reorder edit can never land on a rule the user did not re-select.
+-import { computed, onMounted, provide, ref, watch } from "vue";
++import { computed, onMounted, provide, ref, useTemplateRef, watch } from "vue";
+ import { useFluent } from "fluent-vue";
+ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+ import type { Profile, TrackRule } from "../bindings/profile";
+ import { SOURCE_KEYWORDS } from "../bindings/keywords";
+ import type { EditableField } from "../editor/fieldSpec";
+ import { profileFields, tracksFields } from "../editor/registries";
+ import FieldWidgetDispatcher from "../editor/widgets/FieldWidgetDispatcher.vue";
+ import SectionWidget from "../editor/widgets/SectionWidget.vue";
+ import type { EditableFieldOf } from "../editor/widgets/shared";
++import ConfirmDialog from "../components/ConfirmDialog.vue";
+ import { editorDiagnosticsByPath, worstSeverity } from "../editor/diagAnchor";
+ import { diagnosticFluentParams } from "../diagnosticFluentParams";
+ import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
+ import { getSettings, loadProfile, saveProfile, validateProfileModel } from "../ipc";
+ import type { Diagnostic, IpcError } from "../ipc";
+ import { rememberRecentProfile } from "../recentProfiles";
+ 
+ const model = defineModel<Profile>();
+ 
+ const fluent = useFluent();
+@@ -200,24 +205,23 @@ const nothingOpenedOrCreated = computed(
+ // D108 decision 4: the save state is DERIVED and there is no second
+ // mechanism -- a value comparison, not an index comparison. Its failure
+ // direction is annoyance, never data loss: a spurious `dirty` warns where
+ // nothing was at risk, where a hand-set boolean a mutation path forgets
+ // would silently fail to warn where something was. That direction holds
+ // only because `savedSnapshot` marks the profile that was WRITTEN (Step
+ // 1c in `doSave`) rather than the live history entry -- marking the live
+ // entry would invert it exactly, reporting clean over content the file
+ // does not hold.
+ //
+-// Produced here, consumed by Tasks 5-6's discard guards (D109) -- this
+-// task's own Interfaces section names it as the boundary, and nothing in
+-// this file reads it yet.
+-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- see above
++// Consumed below by this task's two discard guards (`pickAndOpen`,
++// `createBlank`, D109 decisions 1-2) and, not yet built, by Task 6's
++// close-app guard.
+ const dirty = computed(
+   () => savedSnapshot.value !== null && history.value[position.value] !== savedSnapshot.value,
+ );
+ 
+ const canUndo = computed(() => position.value > 0);
+ const canRedo = computed(() => position.value < history.value.length - 1);
+ 
+ // D108 decisions 8-9, the reset sibling of the funnel below: given a
+ // profile, the history becomes a single clean entry holding it; given
+ // `undefined` -- the failed-load branch, where `doc.profile` is null and
+@@ -241,20 +245,24 @@ function resetHistory(profile: Profile | undefined): void {
+   savedSnapshot.value = serialized;
+   coalesce = false;
+ }
+ 
+ const diagnostics = ref<Diagnostic[]>([]);
+ const opening = ref(false);
+ const saving = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+ const ipcErrorParams = ref<Record<string, string | number>>({});
+ 
++// D109 decision 6: the one `ConfirmDialog` this view mounts, asked by both
++// discard guards below (`pickAndOpen`, `createBlank`).
++const confirmDialog = useTemplateRef("confirmDialog");
++
+ // Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
+ // (`src/recentProfiles.ts`), fed on every open below and rendered in the
+ // pre-Open empty state (template). The read is tolerant, mirroring
+ // BatchView's own onMounted tolerance (T9/T10): a failed fetch just leaves
+ // the list empty, the editor stays fully usable.
+ const recents = ref<string[]>([]);
+ 
+ onMounted(async () => {
+   try {
+     recents.value = (await getSettings()).recent_profiles;
+@@ -393,20 +401,27 @@ async function openPath(path: string): Promise<void> {
+     ipcErrorParams.value = err.params;
+   } finally {
+     opening.value = false;
+   }
+ }
+ 
+ async function pickAndOpen(): Promise<void> {
+   if (opening.value || saving.value) {
+     return;
+   }
++  // D109 decision 1: confirm, then the file dialog, then replace. Declining
++  // returns without touching anything; a cancelled file dialog after a
++  // confirmed discard leaves the model untouched too, because nothing is
++  // discarded until `openPath` below actually succeeds.
++  if (dirty.value && !(await confirmDialog.value?.ask())) {
++    return;
++  }
+   const picked = await openDialog({
+     multiple: false,
+     directory: false,
+     filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
+   });
+   if (typeof picked !== "string") {
+     return;
+   }
+   await openPath(picked);
+ }
+@@ -428,23 +443,26 @@ async function pickAndOpen(): Promise<void> {
+ // file, so the seed is immediately usable in a dry run.
+ function blankProfile(): Profile {
+   return {
+     profile_version: 1,
+     input: { pattern: ".*", extensions: ["mkv"] },
+     tracks: { rules: [{ match: {} }] },
+   };
+ }
+ 
+ // The creation funnel (D107), sibling of `openPath`: it touches no file,
+-// so it is synchronous and holds no `opening`/`saving` flag of its own --
+-// it only refuses to run while one of those round trips is in flight, the
+-// same guard `pickAndOpen` uses.
++// so it holds no `opening`/`saving` flag of its own -- it only refuses to
++// run while one of those round trips is in flight, the same guard
++// `pickAndOpen` uses. D109 makes it `async` (the discard guard's own
++// `await`, below), but that await is gated on `dirty` and short-circuits
++// entirely while the editor is clean, so the common case runs synchronously
++// to completion exactly as before.
+ //
+ // While the body stays fully synchronous, the statement order inside it
+ // does not matter. `watch(model)` above runs at Vue's default
+ // `flush: "pre"` -- the callback is QUEUED, not run at the assignment -- so
+ // by the time it reads `sessionActive` this entire body has finished and
+ // every write is visible to it whichever order they were made in. The same
+ // fact covers `diagnostics`: no render happens between two synchronous ref
+ // writes, so a previous profile's findings cannot paint against the new
+ // model from any position. Measured: swapping `resetHistory`'s call and
+ // `model`'s assignment, and moving the `diagnostics` clear after the model
+@@ -463,35 +481,43 @@ function blankProfile(): Profile {
+ // else, wherever it later flushes. The reverse order breaks as soon as an
+ // `await` lands between the two -- the watcher runs at that microtask
+ // boundary, reads a still-false gate, returns early, and the seed is never
+ // validated. `resetHistory` takes the place of the plain `sessionActive.
+ // value = true` assignment Task 3 put here; it must stay in that same
+ // position for the reasons above, plus one of its own -- `history[0]` must
+ // already equal the serialized model, or the push rule sees a difference
+ // and appends a second entry, so a freshly created profile would start one
+ // step deep and dirty.
+ //
+-// Which is the case this funnel is walking into: the discard guard (D109)
+-// makes it `async` and puts an `await` in front of the seed. Keep the gate
+-// above the model assignment there. This comment has been wrong about this
+-// function twice, in opposite directions -- first that every statement's
+-// order was load-bearing, then that none of it was and that the constraint
+-// was gate and model sharing one synchronous block -- so do not reconstruct
+-// either claim from the code's shape.
++// Which is the case this funnel walks into: the discard guard (D109) makes
++// it `async` and puts an `await` in front of the seed. The gate stays
++// above the model assignment there, as required. This comment has been
++// wrong about this function twice, in opposite directions -- first that
++// every statement's order was load-bearing, then that none of it was and
++// that the constraint was gate and model sharing one synchronous block --
++// so do not reconstruct either claim from the code's shape.
+ //
+ // The seeded rule is selected (index 0) so the detail panel opens on the one
+ // field the warning is about, mirroring Add's own behaviour (D67, D107
+ // decision 9).
+-function createBlank(): void {
++async function createBlank(): Promise<void> {
+   if (opening.value || saving.value) {
+     return;
+   }
++  // D109 decision 2: the same guard `pickAndOpen` uses, ahead of the seed
++  // this time rather than a file dialog -- New discards exactly as much as
++  // Open. This is also the `await` the comment above warns about: the gate
++  // (`resetHistory`) must stay ahead of the model assignment below it,
++  // which it already is.
++  if (dirty.value && !(await confirmDialog.value?.ask())) {
++    return;
++  }
+   ipcErrorCode.value = null;
+   currentPath.value = null;
+   diagnostics.value = [];
+   const profile = blankProfile();
+   resetHistory(profile);
+   model.value = profile;
+   selectedIndex.value = 0;
+ }
+ 
+ async function doSave(): Promise<void> {
+@@ -850,20 +876,29 @@ function onEditorKeydown(event: KeyboardEvent): void {
+        boundary because it bubbles to this ancestor, measured, where `blur`
+        does not; `@keydown` is the undo/redo keyboard channel -- see
+        `onEditorKeydown`'s own doc for the no-per-OS-branch reasoning and
+        the text-entry exemption. -->
+   <section
+     data-testid="view-editor"
+     data-help-id="view-editor"
+     @focusout="coalesce = false"
+     @keydown="onEditorKeydown"
+   >
++    <!-- D109 decision 6: the one confirm surface both discard guards ask
++         (`pickAndOpen`, `createBlank`). -->
++    <ConfirmDialog
++      ref="confirmDialog"
++      :title="$t('editor-discard-title')"
++      :message="$t('editor-discard-message')"
++      :confirm-label="$t('editor-discard-confirm')"
++      :cancel-label="$t('settings-cancel')"
++    />
+     <button
+       type="button"
+       data-testid="editor-new"
+       :disabled="opening || saving"
+       @click="createBlank"
+     >
+       {{ $t("editor-action-new") }}
+     </button>
+     <button
+       type="button"

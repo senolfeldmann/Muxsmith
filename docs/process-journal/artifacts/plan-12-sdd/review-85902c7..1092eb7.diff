@@ -1,0 +1,1305 @@
+# Review package: 85902c7..1092eb7
+
+## Commits
+1092eb7 editor: undo/redo over the one mutation funnel, and the unsaved state derived from its history
+
+## Files changed
+ e2e/editor-rule-add-remove.spec.ts |   2 +-
+ e2e/editor-undo-redo.spec.ts       | 590 +++++++++++++++++++++++++++++++++++++
+ e2e/smoke.spec.ts                  |   2 +-
+ eslint.config.js                   |  18 ++
+ locales/de/gui-editor.ftl          |   2 +
+ locales/en/gui-editor.ftl          |   2 +
+ src/views/EditorView.vue           | 290 +++++++++++++++++-
+ 7 files changed, 892 insertions(+), 14 deletions(-)
+
+## Diff
+diff --git a/e2e/editor-rule-add-remove.spec.ts b/e2e/editor-rule-add-remove.spec.ts
+index 330498e..ef6e402 100644
+--- a/e2e/editor-rule-add-remove.spec.ts
++++ b/e2e/editor-rule-add-remove.spec.ts
+@@ -1,18 +1,18 @@
+ /**
+  * Plan 7.5 (D65-D70, D72): the Add/Remove affordance on the bespoke track-rule
+  * grid. Two harnesses in one file, matching the two questions the design asks:
+  *
+  * - Cases 1-5 use the component mount harness (`mount.ts`, the Task 11/13b
+  *   sibling pattern): the model is injected as a prop and read back via
+  *   `readModel`, and `EditorView`'s `watch(model)` revalidation is gated on
+- *   `currentPath`, which a bare mount never sets -- so these cases exercise
++ *   `sessionActive`, which a bare mount never sets -- so these cases exercise
+  *   the grid, the selection and the two mutations with no IPC mock at all.
+  * - Cases 6-8 drive the real served app with `installTauriMocks` (the
+  *   `editor-markers.spec.ts` pattern): they pin the WIRE truth (what
+  *   `validate_profile_model` is actually invoked with) and where core's
+  *   verified diagnostics for the skeleton and the zero-rule state land in the
+  *   editor (marker anchor + severity class, the diagnostics panel, and the
+  *   Save gate's severity behaviour).
+  *
+  * Mock-queue mechanics (`mocks.ts`): entries are consumed per call and the
+  * last one repeats, so each mocked case queues two `validate_profile_model`
+diff --git a/e2e/editor-undo-redo.spec.ts b/e2e/editor-undo-redo.spec.ts
+new file mode 100644
+index 0000000..a8cbe08
+--- /dev/null
++++ b/e2e/editor-undo-redo.spec.ts
+@@ -0,0 +1,590 @@
++/**
++ * Task 4 (D108, D112, plan 12 W3): undo/redo over the editor's single
++ * mutation funnel (`watch(model)` in `EditorView.vue`), and the derived
++ * save state (`dirty`, consumed by Tasks 5-6, not asserted here). Served
++ * app (`page.goto("/")`), mocked IPC (`mocks.ts`) -- undo/redo only runs
++ * once `sessionActive` is true, which only `openPath`/`createBlank` set,
++ * so these cases open a profile first, matching Task 13's own precedent
++ * rather than the bare mount harness (see `e2e/editor-rule-add-remove.
++ * spec.ts`'s corrected header doc for why the mount harness never reaches
++ * this watcher at all).
++ *
++ * Step 5's mutation-path table (D108 decision 1's own authoring
++ * measurement, re-derived and pasted into `task-4-report.md`): the six
++ * functions the whole-value-assignment sweep returned, one row and one
++ * `test()` each, closed -- a seventh path found here is a finding, not an
++ * invented row.
++ *
++ *   | function              | reached through                              |
++ *   |------------------------|----------------------------------------------|
++ *   | `setFieldValue`        | a top-level field (the pattern text field)    |
++ *   | `setTracksUnmatched`   | `tracks.unmatched`'s own select                |
++ *   | `setRuleValue`         | the selected rule's detail panel               |
++ *   | `onDrop`                | a drag-reorder of two rows                     |
++ *   | `addRule`               | the Add button                                 |
++ *   | `removeSelectedRule`    | the Remove button, after a selection           |
++ */
++import { expect, test } from "@playwright/test";
++import type { Locator, Page } from "@playwright/test";
++import { installTauriMocks, resolveWith } from "./mocks";
++import type { MockResult, RecordedInvoke } from "./mocks";
++import { en, name } from "./i18n-en";
++import type { AppSettings, Diagnostic, LoadProfileDocument, MkvmergeInfo, ReportDocument } from "../src/ipc";
++import type { Profile } from "../src/bindings/profile";
++
++const MKVMERGE_INFO: MkvmergeInfo = { path: "/usr/bin/mkvmerge", version: "90.0.0" };
++
++/** The clean, diagnostic-free `validate_profile_model` response every case
++ *  below shares: undo/redo cares about history and rendering, not
++ *  diagnostics, and the mocked queue's own "last entry repeats" behaviour
++ *  (`mocks.ts`) means one entry covers the open's own revalidation and
++ *  every mutation/undo/redo-triggered one after it. */
++const cleanReport: ReportDocument = {
++  config_diagnostics: [],
++  batch_diagnostics: [],
++  files: [],
++  suggestions: [],
++  mkvmerge_found: true,
++};
++
++function loadedDoc(profile: Profile): LoadProfileDocument {
++  return { ...cleanReport, profile };
++}
++
++/** The `load_profile` response for a path that resolves but fails to
++ *  parse (D108 decision 9's own failed-load branch): `profile: null` plus
++ *  one `parse-error` diagnostic, the same fixture shape `e2e/smoke.spec.ts`
++ *  already uses for the D103 apply-flow case. */
++const parseErrorDiagnostic: Diagnostic = {
++  code: "parse-error",
++  severity: "error",
++  config_path: "",
++  params: { detail: "unknown field", at: "" },
++  rendered: "parse-error",
++};
++
++function failedLoadDoc(): LoadProfileDocument {
++  return {
++    config_diagnostics: [parseErrorDiagnostic],
++    batch_diagnostics: [],
++    files: [],
++    suggestions: [],
++    profile: null,
++  };
++}
++
++/** Opens `profile` at `path` through the real Open dialog on the served
++ *  app -- the shared setup every case below starts from. `extraCommands`
++ *  layers additional mocked commands (e.g. `save_profile`) onto the
++ *  standard four; passing a command this function already sets overrides
++ *  it (object spread order). */
++async function openProfile(
++  page: Page,
++  path: string,
++  profile: Profile,
++  extraCommands: Record<string, MockResult[]> = {},
++): Promise<{ editor: Locator; recorded: RecordedInvoke[] }> {
++  const recorded = await installTauriMocks(page, {
++    commands: {
++      detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++      "plugin:dialog|open": [resolveWith(path)],
++      load_profile: [resolveWith(loadedDoc(profile))],
++      validate_profile_model: [resolveWith(cleanReport)],
++      ...extraCommands,
++    },
++  });
++  await page.goto("/");
++  await page.getByTestId("nav-editor").click();
++  const editor = page.getByTestId("view-editor");
++  await editor.getByTestId("editor-open").click();
++  await expect(editor.getByText(en("batch-profile-current", { path }))).toBeVisible();
++  return { editor, recorded };
++}
++
++const emptyRulesProfile: Profile = {
++  profile_version: 1,
++  input: { pattern: ".*", extensions: ["mkv"] },
++  tracks: { rules: [] },
++};
++
++test.describe("editor undo/redo: mutation-path coverage (Task 4, D108 decision 1)", () => {
++  test("setFieldValue: a top-level field edit is one undo step", async ({ page }) => {
++    const { editor } = await openProfile(page, "/profiles/mutation-set-field-value.yaml", emptyRulesProfile);
++
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await expect(pattern).toHaveValue(".*");
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++
++    await pattern.fill("^changed$");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(pattern).toHaveValue(".*");
++
++    await editor.getByTestId("editor-redo").click();
++    await expect(pattern).toHaveValue("^changed$");
++  });
++
++  test("setTracksUnmatched: a tracks.unmatched change is one undo step", async ({ page }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { unmatched: "keep", rules: [] },
++    };
++    const { editor } = await openProfile(page, "/profiles/mutation-set-tracks-unmatched.yaml", profile);
++
++    // Scoped to the Tracks group: `editor-tracks-unmatched` and
++    // `editor-attachments-unmatched` share the same rendered text
++    // ("Unmatched"), the same ambiguity the Task 12 composition test
++    // already documents and scopes around.
++    const tracksGroup = editor.getByRole("group", name("editor-profile-tracks"));
++    const unmatched = tracksGroup.getByRole("combobox", name("editor-tracks-unmatched"));
++    await expect(unmatched).toHaveValue("keep");
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++
++    await unmatched.selectOption("drop");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(unmatched).toHaveValue("keep");
++
++    await editor.getByTestId("editor-redo").click();
++    await expect(unmatched).toHaveValue("drop");
++  });
++
++  test("setRuleValue: a per-rule detail edit is one undo step", async ({ page }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const { editor } = await openProfile(page, "/profiles/mutation-set-rule-value.yaml", profile);
++
++    // The grid's own disabled checkbox (`rule.optional === true`) is what
++    // stays assertable across an Undo: applying a history entry clears
++    // `selectedIndex` (D108 decision 10's sibling rule in `undo`/`redo`),
++    // which closes the detail panel.
++    const gridCheckbox = editor.getByTestId("editor-rule-row").first().getByRole("checkbox");
++    await expect(gridCheckbox).not.toBeChecked();
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++
++    await editor.getByTestId("editor-rule-select").first().click();
++    const panelCheckbox = editor
++      .getByTestId("editor-rule-detail")
++      .getByRole("checkbox", name("editor-track-rule-optional"));
++    await panelCheckbox.check();
++    await expect(gridCheckbox).toBeChecked();
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(gridCheckbox).not.toBeChecked();
++    await expect(editor.getByTestId("editor-rule-detail")).toHaveCount(0);
++
++    await editor.getByTestId("editor-redo").click();
++    await expect(gridCheckbox).toBeChecked();
++  });
++
++  test("onDrop: a drag-reorder is one undo step", async ({ page }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: {
++        rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
++      },
++    };
++    const { editor } = await openProfile(page, "/profiles/mutation-on-drop.yaml", profile);
++
++    const rows = editor.getByTestId("editor-rule-row");
++    await expect(rows.nth(0)).toContainText("video");
++    await expect(rows.nth(1)).toContainText("audio");
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++
++    // Same programmatic drag-and-drop as the Task 11 rule-grid spec: no
++    // `dataTransfer` read on either side, so a shared handle across the
++    // two events suffices.
++    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
++    await rows.nth(0).dispatchEvent("dragstart", { dataTransfer });
++    await rows.nth(1).dispatchEvent("drop", { dataTransfer });
++
++    await expect(rows.nth(0)).toContainText("audio");
++    await expect(rows.nth(1)).toContainText("video");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(rows.nth(0)).toContainText("video");
++    await expect(rows.nth(1)).toContainText("audio");
++
++    await editor.getByTestId("editor-redo").click();
++    await expect(rows.nth(0)).toContainText("audio");
++    await expect(rows.nth(1)).toContainText("video");
++  });
++
++  test("addRule: Add is one undo step", async ({ page }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const { editor } = await openProfile(page, "/profiles/mutation-add-rule.yaml", profile);
++
++    const rows = editor.getByTestId("editor-rule-row");
++    await expect(rows).toHaveCount(1);
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++
++    await editor.getByTestId("editor-rule-add").click();
++    await expect(rows).toHaveCount(2);
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(rows).toHaveCount(1);
++
++    await editor.getByTestId("editor-redo").click();
++    await expect(rows).toHaveCount(2);
++  });
++
++  test("removeSelectedRule: Remove is one undo step", async ({ page }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: {
++        rules: [{ match: { exact: { type: "video" } } }, { match: { exact: { type: "audio" } } }],
++      },
++    };
++    const { editor } = await openProfile(page, "/profiles/mutation-remove-selected-rule.yaml", profile);
++
++    const rows = editor.getByTestId("editor-rule-row");
++    await expect(rows).toHaveCount(2);
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++
++    await editor.getByTestId("editor-rule-select").first().click();
++    await editor.getByTestId("editor-rule-remove").click();
++    await expect(rows).toHaveCount(1);
++    await expect(rows.filter({ hasText: "video" })).toHaveCount(0);
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(rows).toHaveCount(2);
++    await expect(rows.nth(0)).toContainText("video");
++
++    await editor.getByTestId("editor-redo").click();
++    await expect(rows).toHaveCount(1);
++    await expect(rows.filter({ hasText: "video" })).toHaveCount(0);
++  });
++});
++
++test.describe("editor undo/redo: granularity, truncation, save/open, the depth cap (Task 4, D108)", () => {
++  test("granularity: one entry per editing burst -- a single burst, two bursts split by a focus change, and two discrete Add clicks", async ({
++    page,
++  }) => {
++    const { editor } = await openProfile(page, "/profiles/granularity.yaml", emptyRulesProfile);
++    const undoButton = editor.getByTestId("editor-undo");
++    const redoButton = editor.getByTestId("editor-redo");
++
++    // Half 1: several keystrokes in one continuous focus session are ONE
++    // burst. `pressSequentially` (not `fill`) dispatches a real per-
++    // character `input` event each keystroke -- `fill()` dispatches a
++    // single input event and its own change (measured), which would make
++    // this half pass even without the coalescing rule under test.
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("");
++    await pattern.pressSequentially("XYZ");
++    await expect(pattern).toHaveValue("XYZ");
++    await expect(undoButton).toBeEnabled();
++    await undoButton.click();
++    await expect(pattern).toHaveValue(".*");
++    await redoButton.click();
++    await expect(pattern).toHaveValue("XYZ");
++
++    // Half 2: two edits on two different fields, separated by an explicit
++    // focus change (clicking into a different control fires `@focusout`
++    // on the one that had focus), are TWO bursts -- two Undos are needed
++    // to reach back through both, one at a time.
++    const metaName = editor.getByRole("textbox", name("editor-meta-name"));
++    await metaName.fill("N1");
++    const metaDescription = editor.getByRole("textbox", name("editor-meta-description"));
++    await metaDescription.fill("D1");
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(metaDescription).toHaveValue("");
++    await expect(metaName).toHaveValue("N1");
++    await editor.getByTestId("editor-undo").click();
++    await expect(metaName).toHaveValue("");
++    // Half 1's own edit is untouched: only half 2's two edits were undone.
++    await expect(pattern).toHaveValue("XYZ");
++
++    await editor.getByTestId("editor-redo").click();
++    await editor.getByTestId("editor-redo").click();
++    await expect(metaName).toHaveValue("N1");
++    await expect(metaDescription).toHaveValue("D1");
++
++    // Half 3: two clicks of the SAME button, which never moves focus
++    // between them -- `addRule`'s own explicit `coalesce = false` (D108
++    // decision 2), not `@focusout`, is what keeps these two discrete.
++    const rows = editor.getByTestId("editor-rule-row");
++    const add = editor.getByTestId("editor-rule-add");
++    await add.click();
++    await add.click();
++    await expect(rows).toHaveCount(2);
++
++    await editor.getByTestId("editor-undo").click();
++    await expect(rows).toHaveCount(1);
++    await editor.getByTestId("editor-undo").click();
++    await expect(rows).toHaveCount(0);
++  });
++
++  test("truncation: undo once, then make a new edit; Redo is disabled again", async ({ page }) => {
++    const { editor } = await openProfile(page, "/profiles/truncation.yaml", emptyRulesProfile);
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++
++    await pattern.fill("first");
++    await editor.getByTestId("editor-undo").click();
++    await expect(pattern).toHaveValue(".*");
++    await expect(editor.getByTestId("editor-redo")).toBeEnabled();
++
++    await pattern.fill("second");
++    await expect(editor.getByTestId("editor-redo")).toBeDisabled();
++    await expect(pattern).toHaveValue("second");
++  });
++
++  test("save marks rather than clears: after a save, Undo is still enabled and one Undo restores the pre-edit state", async ({
++    page,
++  }) => {
++    const { editor, recorded } = await openProfile(
++      page,
++      "/profiles/save-marks.yaml",
++      emptyRulesProfile,
++      { save_profile: [resolveWith(null)] },
++    );
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited");
++
++    await editor.getByTestId("editor-save").click();
++    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
++
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++    await editor.getByTestId("editor-undo").click();
++    await expect(pattern).toHaveValue(".*");
++  });
++
++  test("open resets: opening a second profile clears both Undo and Redo", async ({ page }) => {
++    const PATH_A = "/profiles/open-resets-a.yaml";
++    const PATH_B = "/profiles/open-resets-b.yaml";
++    const profileB: Profile = {
++      profile_version: 1,
++      input: { pattern: "^B$", extensions: ["mkv"] },
++      tracks: { rules: [] },
++    };
++
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
++        load_profile: [resolveWith(loadedDoc(emptyRulesProfile)), resolveWith(loadedDoc(profileB))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited-a");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_B }))).toBeVisible();
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++    await expect(editor.getByTestId("editor-redo")).toBeDisabled();
++  });
++
++  test("a failed open clears rather than keeps (D108 decisions 9-10): with Undo enabled, opening a path that fails to parse disables both and removes the editing surface", async ({
++    page,
++  }) => {
++    const PATH_A = "/profiles/failed-open-a.yaml";
++    const FAILING_PATH = "/profiles/failed-open-b.yaml";
++
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(FAILING_PATH)],
++        load_profile: [resolveWith(loadedDoc(emptyRulesProfile)), resolveWith(failedLoadDoc())],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited");
++    // The state before the failed open: Undo enabled, in the SAME test, so
++    // a run that passes because Undo is never enabled anywhere cannot be
++    // mistaken for this one passing.
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-open").click();
++
++    // In this order, per the brief: the diagnostic still renders (the
++    // panel explains a failed open), then Undo/Redo are both disabled,
++    // then the editing surface is gone.
++    await expect(
++      editor.getByText(
++        en("batch-diagnostic-line", {
++          severity: en("severity-error"),
++          message: en("parse-error", { detail: "unknown field" }),
++        }),
++      ),
++    ).toBeVisible();
++    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
++    await expect(editor.getByTestId("editor-redo")).toBeDisabled();
++    await expect(editor.getByTestId("editor-save")).toHaveCount(0);
++  });
++
++  test("the depth cap: more than HISTORY_DEPTH discrete mutations, and Undo cannot reach the original state", async ({
++    page,
++  }) => {
++    test.setTimeout(90_000);
++    // Mirrors `EditorView.vue`'s own D108 decision 5 constant; the click
++    // count below is derived from it, not hardcoded a second time.
++    const HISTORY_DEPTH = 100;
++
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const { editor } = await openProfile(page, "/profiles/depth-cap.yaml", profile);
++
++    const rows = editor.getByTestId("editor-rule-row");
++    const add = editor.getByTestId("editor-rule-add");
++    await expect(rows).toHaveCount(1);
++
++    const totalClicks = HISTORY_DEPTH + 1;
++    for (let i = 0; i < totalClicks; i++) {
++      await add.click();
++    }
++    await expect(rows).toHaveCount(1 + totalClicks);
++
++    const undo = editor.getByTestId("editor-undo");
++    while (await undo.isEnabled()) {
++      await undo.click();
++    }
++
++    // Growing from the 1-entry baseline to the HISTORY_DEPTH cap costs
++    // `HISTORY_DEPTH - 1` drop-free pushes; every push past that point
++    // grows the history to `HISTORY_DEPTH + 1` and immediately drops the
++    // then-oldest entry back down to the cap, so it is not only the FIRST
++    // push past the cap that drops one -- every one of them does. With
++    // `totalClicks` pushes, `totalClicks - (HISTORY_DEPTH - 1)` of them
++    // are drop-triggering, and each dropped entry is one Add click's worth
++    // of rows the original baseline can no longer be reached through.
++    const droppedEntries = totalClicks - (HISTORY_DEPTH - 1);
++    await expect(rows).toHaveCount(1 + droppedEntries);
++  });
++
++  test("U1: the text-entry exemption -- Ctrl+Z in the pattern field does not undo, the identical combination on a button does", async ({
++    page,
++  }) => {
++    const profile: Profile = {
++      profile_version: 1,
++      input: { pattern: ".*", extensions: ["mkv"] },
++      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
++    };
++    const { editor } = await openProfile(page, "/profiles/text-entry-exemption.yaml", profile);
++
++    const rows = editor.getByTestId("editor-rule-row");
++    await editor.getByTestId("editor-rule-add").click();
++    await expect(rows).toHaveCount(2);
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    // The negative: focus in the pattern field (a text-entry INPUT) --
++    // Ctrl+Z there must leave the model untouched, the browser's own
++    // character-level undo being what should react instead.
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.click();
++    await pattern.press("Control+z");
++    await expect(rows).toHaveCount(2);
++
++    // The positive control, in the SAME test: the identical combination,
++    // focus moved to a plain button (not a text-entry control), DOES undo.
++    const selectButton = editor.getByTestId("editor-rule-select").first();
++    await selectButton.click();
++    await selectButton.press("Control+z");
++    await expect(rows).toHaveCount(1);
++  });
++});
++
++// D112 (owner ruling 2026-07-31): the pre-session gate `nothingOpenedOrCreated`
++// hides `editor-empty`/`editor-recents` before anything has been opened or
++// created, and keeps them hidden -- not re-shown -- once a load has failed
++// to parse, because the path line and the parse error already explain that
++// state on screen.
++test.describe("editor undo/redo: D112, a failed load hides both pre-session surfaces", () => {
++  function settingsWith(recentProfiles: string[]): AppSettings {
++    return {
++      mkvmerge_path: null,
++      default_jobs: 1,
++      locale: "en",
++      recent_profiles: recentProfiles,
++      dir_memory: {},
++    };
++  }
++
++  test("three legs in one flow: nothing opened yet, a successful open, then a failing open", async ({
++    page,
++  }) => {
++    const RECENT_PATH = "/profiles/d112-recent-and-first-open.yaml";
++    const FAILING_PATH = "/profiles/d112-failing-open.yaml";
++
++    await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        get_settings: [resolveWith(settingsWith([RECENT_PATH]))],
++        "plugin:dialog|open": [resolveWith(RECENT_PATH), resolveWith(FAILING_PATH)],
++        load_profile: [resolveWith(loadedDoc(emptyRulesProfile)), resolveWith(failedLoadDoc())],
++        validate_profile_model: [resolveWith(cleanReport)],
++        // `set_settings` deliberately NOT mocked: `e2e/mocks.ts`'s own
++        // fallback answers it, the same fixture shape the shipped recents
++        // cases in `e2e/smoke.spec.ts` already rely on. The model is never
++        // edited in this flow, so `dirty` stays false throughout.
++      },
++    });
++
++    await page.goto("/");
++    await page.getByTestId("nav-editor").click();
++    const editor = page.getByTestId("view-editor");
++    await expect(editor).toBeVisible();
++
++    // Leg 1 (absence check P2's FIRE): nothing opened or created yet.
++    await expect(editor.getByTestId("editor-empty")).toBeVisible();
++    await expect(editor.getByTestId("editor-recents")).toHaveCount(1);
++
++    // Leg 2: a successful open closes the gate (Task 3's own shipped
++    // behaviour), asserted so leg 3 below cannot be mistaken for covering
++    // it.
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: RECENT_PATH }))).toBeVisible();
++    await expect(editor.getByTestId("editor-empty")).toHaveCount(0);
++    await expect(editor.getByTestId("editor-recents")).toHaveCount(0);
++
++    // Leg 3 (P2's zero): a failing open keeps the gate closed even though
++    // the load failed and the model is gone -- the path line names the
++    // failing file and the panel carries the parse error instead.
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("editor-empty")).toHaveCount(0);
++    await expect(editor.getByTestId("editor-recents")).toHaveCount(0);
++    await expect(editor.getByText(en("batch-profile-current", { path: FAILING_PATH }))).toBeVisible();
++    await expect(
++      editor.getByText(
++        en("batch-diagnostic-line", {
++          severity: en("severity-error"),
++          message: en("parse-error", { detail: "unknown field" }),
++        }),
++      ),
++    ).toBeVisible();
++  });
++});
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index cda48a5..7cb0069 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -858,21 +858,21 @@ test.describe("german locale", () => {
+ // "the fixture drifted from the real registry shape". Accessible names come
+ // from `en(id)` over the real labelKey exactly as the rest of this file
+ // does; SELECT/keywordOrBlock option tokens are asserted as the RAW domain
+ // values (`COLLISION_POLICIES`/`CHAPTERS_KEYWORDS`), never translated --
+ // D45's own rule that widget option tokens render as profile-format
+ // tokens, not via new Fluent keys. `list`/`propertyMap`'s generic
+ // add/remove-row buttons use the two dedicated `editor-action-add`/
+ // `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
+ // NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
+ // the AttachmentRule fields they are the registry labels for. Catalog
+-// budget is 49 (42 labels + 1 save-surface note + 2 generic action keys +
++// budget is 51 (42 labels + 1 save-surface note + 4 generic action keys +
+ // 1 rule-grid ordinal + 3 profile-creation keys).
+ test.describe("editor widgets: mount-harness rendering", () => {
+   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {
+     await mountComponent(page, {
+       component: "FieldWidgetDispatcher",
+       props: { spec: inputFields.recursive, modelValue: true },
+     });
+     const field = page.getByRole("checkbox", name("editor-input-recursive"));
+     await expect(field).toBeChecked();
+     await field.uncheck();
+diff --git a/eslint.config.js b/eslint.config.js
+index 9d2f9ad..17076e2 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -44,20 +44,38 @@ export default defineConfig(
+         parser: tseslint.parser,
+       },
+     },
+   },
+   {
+     files: ["**/*.vue"],
+     plugins: {
+       "@intlify/vue-i18n": vueI18n,
+     },
+     rules: {
++      // D112 (owner ruling 2026-07-31): the pre-session state is ONE named
++      // computed, `nothingOpenedOrCreated`, and a render gate that asks
++      // `!model` directly is the defect that decision exists to remove --
++      // that expression is also true after a load that failed to parse,
++      // where the editor must NOT offer its pre-session surfaces. Scoped by
++      // directive name to `v-if`/`v-else-if`, so the `:disabled="!model ||
++      // !canUndo"` bindings D108 decision 10 requires stay legal: those gate
++      // an ACTION on whether there is content, not a RENDER on whether
++      // anything was ever opened or created.
++      "vue/no-restricted-syntax": [
++        "error",
++        {
++          selector:
++            "VAttribute[directive=true][key.name.name=/^(if|else-if)$/] UnaryExpression[operator='!'] > Identifier[name='model']",
++          message:
++            "A render gate must not read `!model` directly: the pre-session state is `nothingOpenedOrCreated` (D112).",
++        },
++      ],
+       // `attributes` defaults to none checked (the rule only scans text
+       // nodes out of the box); D29 requires accessible names/tooltips to
+       // come from Fluent too, so a STATIC (non-`:`-bound) title/aria-label/
+       // placeholder/alt is flagged like any other raw string. A `:title=`/
+       // `:aria-label=` binding (the correct form, used throughout this
+       // codebase) is a directive and outside this rule's reach regardless
+       // -- this option only closes the "forgot to bind it" gap.
+       "@intlify/vue-i18n/no-raw-text": [
+         "error",
+         {
+diff --git a/locales/de/gui-editor.ftl b/locales/de/gui-editor.ftl
+index aa8d16f..02e2d6c 100644
+--- a/locales/de/gui-editor.ftl
++++ b/locales/de/gui-editor.ftl
+@@ -134,20 +134,22 @@ editor-match-expr-not = Nicht
+     .tooltip = Teilausdrücke, von denen keiner zutreffen darf: schließt Spuren aus, die sonst passen würden.
+ 
+ ## Save surface (D41)
+ 
+ editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kommentare, Schlüsselreihenfolge und Formatierung bleiben dabei nicht erhalten, und Felder, die auf ihrem Standardwert stehen, werden nicht zurückgeschrieben.
+ 
+ ## Generic list/map actions
+ 
+ editor-action-add = Hinzufügen
+ editor-action-remove = Entfernen
++editor-action-undo = Rückgängig
++editor-action-redo = Wiederholen
+ 
+ ## Rule grid ordinal (D59)
+ 
+ # Presentation-only 1-based index column; not a registry label, so no
+ # .tooltip. The digit itself is locale-neutral data rendered in the cell.
+ editor-track-rule-order = Reihenfolge
+ 
+ ## Profilerstellung und der Zustand vor dem Öffnen
+ 
+ editor-action-new = Neues Profil
+diff --git a/locales/en/gui-editor.ftl b/locales/en/gui-editor.ftl
+index 6e1a5cc..97d5330 100644
+--- a/locales/en/gui-editor.ftl
++++ b/locales/en/gui-editor.ftl
+@@ -130,20 +130,22 @@ editor-match-expr-not = Not
+     .tooltip = Sub-expressions of which none may hold: excludes tracks that would otherwise match.
+ 
+ ## Save surface (D41)
+ 
+ editor-save-note = Saving rewrites the file from the model: comments, key order and formatting are not preserved, and fields left at their default are not written back.
+ 
+ ## Generic list/map actions
+ 
+ editor-action-add = Add
+ editor-action-remove = Remove
++editor-action-undo = Undo
++editor-action-redo = Redo
+ 
+ ## Rule grid ordinal (D59)
+ 
+ # Presentation-only 1-based index column; not a registry label, so no
+ # .tooltip. The digit itself is locale-neutral data rendered in the cell.
+ editor-track-rule-order = Order
+ 
+ ## Profile creation and the pre-session state
+ 
+ editor-action-new = New profile
+diff --git a/src/views/EditorView.vue b/src/views/EditorView.vue
+index ea799f3..adba6a0 100644
+--- a/src/views/EditorView.vue
++++ b/src/views/EditorView.vue
+@@ -115,29 +115,139 @@ import type { Diagnostic, IpcError } from "../ipc";
+ import { rememberRecentProfile } from "../recentProfiles";
+ 
+ const model = defineModel<Profile>();
+ 
+ const fluent = useFluent();
+ 
+ // --- Task 13: open/save/validate state ----------------------------------
+ 
+ const currentPath = ref<string | null>(null);
+ 
++// --- Task 4 (D108): undo/redo history, and the derived save state -------
++//
++// One history, driven by the single existing mutation funnel below
++// (`watch(model)`): every profile write already passes through it
++// (measured at plan authoring: seven whole-value assignments, no in-place
++// mutation, no external writer), so one funnel can serialize the model
++// into one undo history instead of each mutation site keeping its own. A
++// history entry is the WHOLE serialized model (`JSON.stringify`), never a
++// diff (D108 decision 1).
++const history = ref<string[]>([]);
++const position = ref(-1);
++// The serialization of the profile last WRITTEN to disk -- not the live
++// model and not the live history entry (D108 decision 3; Step 1c below,
++// in `doSave`, is the only writer besides `resetHistory`). `null` before
++// any profile has ever been opened or created, or after a load that
++// failed to parse (decision 9).
++const savedSnapshot = ref<string | null>(null);
++// The coalescing boundary for "one entry per editing burst" (decision 2):
++// while true, the push rule below REPLACES the entry at `position`
++// instead of appending one. Cleared by a focus change inside the editor
++// (`@focusout` on the root section, Step 2) and, explicitly, by every
++// discrete grid operation (`addRule`, `removeSelectedRule`, `onDrop`)
++// before it mutates -- focus alone is not enough, since two consecutive
++// clicks of the same button never move focus.
++let coalesce = false;
++// D108 decision 5: on a push past this cap the oldest entry is dropped
++// and `position` decremented. Measured in the form an entry actually
++// takes (compact JSON of the serde-normalized model, defaults omitted per
++// D48): the New seed is 101 bytes and the README's four-rule example 419
++// bytes, so 100 entries of a realistic profile stays well under 50 KB and
++// a pathological 20 KB profile still bounds the history at 2 MB.
++// `savedSnapshot` is a value, not an index, so truncation cannot corrupt
++// the dirty computation below -- dropping the saved snapshot out of the
++// history only means undo cannot walk back that far.
++const HISTORY_DEPTH = 100;
++
+ // D107: a profile entered the editor through one of its own funnels,
+ // `openPath` or `createBlank`. It exists rather than the gates below
+ // reusing `currentPath` because a CREATED profile has no path at all --
+ // gating validation on `currentPath` would leave a new profile
+ // unvalidated until its first save. It is also not `model`: the bare
+ // mount-harness case (a spec injects `modelValue` and installs no IPC
+ // mock) must keep firing no IPC, which is a safeguard bought deliberately
+ // in plan 6 and preserved here rather than dropped.
+-const sessionActive = ref(false);
++//
++// Task 4 (D108 decision 4): now DERIVED from `savedSnapshot` rather than a
++// ref both funnels set directly. "A profile is in the editor" and "there
++// is a clean baseline to compare it against" are the same fact,
++// established at the same two moments -- `resetHistory`, below, called
++// from `openPath` and `createBlank` -- by construction, so a second flag
++// could only ever disagree with the first through a bug.
++const sessionActive = computed(() => savedSnapshot.value !== null);
++
++// D112 (owner ruling 2026-07-31): the pre-session state -- nothing has
++// been opened or created at all -- and the ONE definition both surfaces
++// that may appear only in that state read. Two terms, because two facts
++// have to be absent at once: `model` carries "the editor holds
++// something", `currentPath` carries "a file has been bound to the
++// editor". A load that resolves but fails to parse leaves the second set
++// and clears the first (`openPath` sets `currentPath`, then assigns
++// `doc.profile ?? undefined`), and that state is the one the ruling is
++// about: the path line names the failing file and the panel carries the
++// parse error, so a second sentence saying no profile is open, plus a
++// recents list offering a fresh start, contradict what is already on
++// screen.
++//
++// NOT `sessionActive`: this task derives it from `savedSnapshot`, which
++// the failed-load branch nulls (D108 decision 9), so `!sessionActive` is
++// TRUE in exactly the state these two surfaces must stay hidden in. NOT
++// `!model` alone: that is the gate Task 3 shipped, and it is what renders
++// both surfaces over a failed load today.
++const nothingOpenedOrCreated = computed(
++  () => !model.value && currentPath.value === null,
++);
++
++// D108 decision 4: the save state is DERIVED and there is no second
++// mechanism -- a value comparison, not an index comparison. Its failure
++// direction is annoyance, never data loss: a spurious `dirty` warns where
++// nothing was at risk, where a hand-set boolean a mutation path forgets
++// would silently fail to warn where something was. That direction holds
++// only because `savedSnapshot` marks the profile that was WRITTEN (Step
++// 1c in `doSave`) rather than the live history entry -- marking the live
++// entry would invert it exactly, reporting clean over content the file
++// does not hold.
++//
++// Produced here, consumed by Tasks 5-6's discard guards (D109) -- this
++// task's own Interfaces section names it as the boundary, and nothing in
++// this file reads it yet.
++// eslint-disable-next-line @typescript-eslint/no-unused-vars -- see above
++const dirty = computed(
++  () => savedSnapshot.value !== null && history.value[position.value] !== savedSnapshot.value,
++);
++
++const canUndo = computed(() => position.value > 0);
++const canRedo = computed(() => position.value < history.value.length - 1);
++
++// D108 decisions 8-9, the reset sibling of the funnel below: given a
++// profile, the history becomes a single clean entry holding it; given
++// `undefined` -- the failed-load branch, where `doc.profile` is null and
++// the diagnostic carries the parse error -- the history is CLEARED
++// instead of left standing, so `sessionActive`/`dirty`/`canUndo`/
++// `canRedo` are all false over a profile that never entered the editor,
++// and undo cannot resurrect the previous one into a path that just failed
++// to parse. `openPath` calls this with `doc.profile ?? undefined` on the
++// exact value it assigns to the model, so the two can never disagree.
++function resetHistory(profile: Profile | undefined): void {
++  if (profile === undefined) {
++    history.value = [];
++    position.value = -1;
++    savedSnapshot.value = null;
++    coalesce = false;
++    return;
++  }
++  const serialized = JSON.stringify(profile);
++  history.value = [serialized];
++  position.value = 0;
++  savedSnapshot.value = serialized;
++  coalesce = false;
++}
+ 
+ const diagnostics = ref<Diagnostic[]>([]);
+ const opening = ref(false);
+ const saving = ref(false);
+ const ipcErrorCode = ref<string | null>(null);
+ const ipcErrorParams = ref<Record<string, string | number>>({});
+ 
+ // Task 13c (spec 8.2, whole-branch Finding 1): the shared recents memory
+ // (`src/recentProfiles.ts`), fed on every open below and rendered in the
+ // pre-Open empty state (template). The read is tolerant, mirroring
+@@ -211,20 +321,41 @@ let validationGeneration = 0;
+ // [key]: value }`, mirrored at every level up to this component's own
+ // `setFieldValue`/`setTracksUnmatched`/`onDrop` below), so a shallow watch
+ // (no `deep: true`) reliably fires on every leaf edit. `validationGeneration`
+ // discards a stale response: `validate_profile_model` runs on a Tauri
+ // blocking-task thread pool (D42's own doc on why it is `async` at all),
+ // so rapid edits can resolve out of order.
+ watch(model, async (value) => {
+   if (!sessionActive.value || !value) {
+     return;
+   }
++  // D108 decision 1: a COMPARISON, not a flag. An undo-driven assignment
++  // sets `model.value` to `history[position]` itself (`undo`/`redo`
++  // below), so this comparison matches and the write cannot push -- no
++  // "applying history" latch exists anywhere in this file to forget to
++  // set or clear. The same comparison incidentally dedupes a widget that
++  // re-emits an identical value.
++  const serialized = JSON.stringify(value);
++  if (serialized !== history.value[position.value]) {
++    if (coalesce) {
++      history.value = [...history.value.slice(0, position.value), serialized];
++    } else {
++      history.value = [...history.value.slice(0, position.value + 1), serialized];
++      position.value = history.value.length - 1;
++      if (history.value.length > HISTORY_DEPTH) {
++        history.value = history.value.slice(1);
++        position.value -= 1;
++      }
++      coalesce = true;
++    }
++  }
++
+   const generation = ++validationGeneration;
+   try {
+     const result = await validateProfileModel(value);
+     if (generation === validationGeneration) {
+       diagnostics.value = result.config_diagnostics;
+     }
+   } catch (e) {
+     // Background, per-edit validation; a genuine failure here is an
+     // internal-task panic (D42's own doc on `validate_profile_model`), not
+     // a user action to react to -- mirrors BatchView's identical
+@@ -238,21 +369,21 @@ watch(model, async (value) => {
+ // recents-click through `selectProfile` (T10).
+ async function openPath(path: string): Promise<void> {
+   if (opening.value || saving.value) {
+     return;
+   }
+   opening.value = true;
+   ipcErrorCode.value = null;
+   try {
+     const doc = await loadProfile(path);
+     currentPath.value = path;
+-    sessionActive.value = true;
++    resetHistory(doc.profile ?? undefined);
+     diagnostics.value = doc.config_diagnostics;
+     model.value = doc.profile ?? undefined;
+     // Background bookkeeping only (mirrors BatchView's identical
+     // tolerance): `rememberRecentProfile` swallows and returns `null` on
+     // failure, so a recents-write failure never reaches this `catch` and
+     // never surfaces as an open error.
+     const persisted = await rememberRecentProfile(path);
+     if (persisted) {
+       recents.value = persisted.recent_profiles;
+     }
+@@ -308,58 +439,65 @@ function blankProfile(): Profile {
+ // it only refuses to run while one of those round trips is in flight, the
+ // same guard `pickAndOpen` uses.
+ //
+ // While the body stays fully synchronous, the statement order inside it
+ // does not matter. `watch(model)` above runs at Vue's default
+ // `flush: "pre"` -- the callback is QUEUED, not run at the assignment -- so
+ // by the time it reads `sessionActive` this entire body has finished and
+ // every write is visible to it whichever order they were made in. The same
+ // fact covers `diagnostics`: no render happens between two synchronous ref
+ // writes, so a previous profile's findings cannot paint against the new
+-// model from any position. Measured: swapping `sessionActive` and `model`,
+-// and moving the `diagnostics` clear after the model assignment, each leave
+-// the whole suite green.
++// model from any position. Measured: swapping `resetHistory`'s call and
++// `model`'s assignment, and moving the `diagnostics` clear after the model
++// assignment, each leave the whole suite green.
+ //
+ // What IS load-bearing is the RELATIVE ORDER of those two, and it becomes
+ // load-bearing exactly when the synchronicity above stops holding:
+-// `sessionActive` is established BEFORE `model`. Measured, all three
++// `resetHistory` runs BEFORE `model` is assigned. Measured, all three
+ // configurations -- gate first with an `await` between gate and model: 79
+ // passed. Gate first with the `await` after both: 79 passed. Model first
+ // with an `await` between them: 3 failed (the first three cases of the New
+ // describe in `e2e/smoke.spec.ts`). Setting the gate first makes this
+-// function await-proof: at the moment `model` is written the gate is
++// function await-proof: at the moment `model` is written, `resetHistory`
++// has already run and `sessionActive` (now derived from `savedSnapshot`) is
+ // already true, so the callback that write queues cannot observe anything
+ // else, wherever it later flushes. The reverse order breaks as soon as an
+ // `await` lands between the two -- the watcher runs at that microtask
+ // boundary, reads a still-false gate, returns early, and the seed is never
+-// validated.
++// validated. `resetHistory` takes the place of the plain `sessionActive.
++// value = true` assignment Task 3 put here; it must stay in that same
++// position for the reasons above, plus one of its own -- `history[0]` must
++// already equal the serialized model, or the push rule sees a difference
++// and appends a second entry, so a freshly created profile would start one
++// step deep and dirty.
+ //
+ // Which is the case this funnel is walking into: the discard guard (D109)
+ // makes it `async` and puts an `await` in front of the seed. Keep the gate
+ // above the model assignment there. This comment has been wrong about this
+ // function twice, in opposite directions -- first that every statement's
+ // order was load-bearing, then that none of it was and that the constraint
+ // was gate and model sharing one synchronous block -- so do not reconstruct
+ // either claim from the code's shape.
+ //
+ // The seeded rule is selected (index 0) so the detail panel opens on the one
+ // field the warning is about, mirroring Add's own behaviour (D67, D107
+ // decision 9).
+ function createBlank(): void {
+   if (opening.value || saving.value) {
+     return;
+   }
+   ipcErrorCode.value = null;
+   currentPath.value = null;
+   diagnostics.value = [];
+-  sessionActive.value = true;
+-  model.value = blankProfile();
++  const profile = blankProfile();
++  resetHistory(profile);
++  model.value = profile;
+   selectedIndex.value = 0;
+ }
+ 
+ async function doSave(): Promise<void> {
+   if (saveDisabled.value || !model.value) {
+     return;
+   }
+   // Captured before the dialog gap: the native save dialog can stay open
+   // indefinitely, and the model may change underneath it -- what gets
+   // written must be the profile that was in the editor when Save was
+@@ -381,20 +519,35 @@ async function doSave(): Promise<void> {
+       const picked = await saveDialog({
+         defaultPath: "profile.yaml",
+         filters: [{ name: fluent.$t("batch-profile-filter-name"), extensions: ["yaml", "yml"] }],
+       });
+       if (typeof picked !== "string") {
+         return;
+       }
+       path = picked;
+     }
+     await saveProfile(path, profile);
++    // D108 decision 3: mark the profile that was WRITTEN -- the captured
++    // `profile`, never `history.value[position.value]` and never
++    // `model.value`. Two awaits sit between the `profile` capture above
++    // and this point (the save dialog on the needs-path branch, and the
++    // write itself), and the editing surface stays live through both
++    // (`saving.value` disables only `editor-save`/`editor-new`/
++    // `editor-open`, not the widgets), so `model`/history can move inside
++    // either window -- marking anything read HERE could name a state that
++    // was never written. The mkvtoolnix-gui precedent this shape borrows
++    // (`updateConfigFromControlValues(); p.config.save(); p.savedState =
++    // currentState();`) is fully synchronous, so `currentState()` there IS
++    // what was written; carrying that shape across an `await` means
++    // carrying the captured value forward explicitly instead of re-reading
++    // "the current one" at the far end.
++    savedSnapshot.value = JSON.stringify(profile);
+     currentPath.value = path;
+     if (needsPath) {
+       // A profile that just acquired a path is exactly what the recents
+       // memory is for; an already-pathed save leaves it alone, as before.
+       const persisted = await rememberRecentProfile(path);
+       if (persisted) {
+         recents.value = persisted.recent_profiles;
+       }
+     }
+   } catch (e) {
+@@ -532,21 +685,27 @@ function setRuleValue(value: unknown) {
+   next[selectedIndex.value] = value as TrackRule;
+   model.value = { ...model.value, tracks: { ...model.value.tracks, rules: next } };
+ }
+ 
+ let dragIndex: number | null = null;
+ 
+ function onDragStart(index: number) {
+   dragIndex = index;
+ }
+ 
++// D108 decision 2: every discrete grid operation (this function, `addRule`,
++// `removeSelectedRule`) clears the coalescing boundary itself, as its first
++// statement, rather than relying on the `@focusout` listener (Step 2) alone
++// -- two consecutive clicks of the same button never move focus, so
++// `@focusout` alone would silently merge them into one undo step.
+ function onDrop(index: number) {
++  coalesce = false;
+   if (dragIndex === null || dragIndex === index || !model.value) {
+     dragIndex = null;
+     return;
+   }
+   const nextRules = [...rules.value];
+   const [moved] = nextRules.splice(dragIndex, 1);
+   nextRules.splice(index, 0, moved);
+   model.value = {
+     ...model.value,
+     tracks: { ...model.value.tracks, rules: nextRules },
+@@ -568,87 +727,194 @@ function onDragEnd() {
+ 
+ // --- Plan 7.5 (D65-D70, D72): Add/Remove for track rules -----------------
+ //
+ // Add appends the EMPTY SKELETON `{ match: {} }` (D65) -- invalid-until-
+ // filled, guided by the existing diagnostics plumbing rather than by a
+ // prefilled guess; it auto-selects the new rule, so the detail panel opens
+ // purely reactively (`v-if="selectedRule"`), with no focus call anywhere
+ // (D67). Both mutations are the same immutable whole-model rebuild every
+ // other mutation in this view performs.
+ function addRule() {
++  // D108 decision 2: same reasoning as `onDrop` above.
++  coalesce = false;
+   if (!model.value) return;
+   const next = [...rules.value, { match: {} }];
+   model.value = {
+     ...model.value,
+     tracks: { ...model.value.tracks, rules: next },
+   };
+   selectedIndex.value = next.length - 1;
+ }
+ 
+ // Selection clears after removal, same rationale as `onDrop` above: indices
+ // after the removed rule shift by one, so a retained index would silently
+ // point at a different rule -- selection maps to an identity, not a
+ // position. Remove works down to zero rules; the zero-rule state is legal
+ // and surfaced by core's own diagnostics (D69), so the editor holds no
+ // guard against it.
+ function removeSelectedRule() {
++  // D108 decision 2: same reasoning as `onDrop` above.
++  coalesce = false;
+   if (selectedIndex.value === null || !model.value) return;
+   const next = [...rules.value];
+   next.splice(selectedIndex.value, 1);
+   model.value = {
+     ...model.value,
+     tracks: { ...model.value.tracks, rules: next },
+   };
+   selectedIndex.value = null;
+ }
++
++// --- Task 4 (D108): undo, redo, and the keyboard binding -----------------
++
++// D108 decision 10: gated on `model.value` in the function itself, not only
++// in the buttons' `:disabled` -- both the action row and the keyboard
++// handler below sit outside `<template v-if="model">`, so either could
++// otherwise apply a history entry while the editor holds nothing. Clearing
++// `selectedIndex` follows the same rule `onDrop`/`removeSelectedRule`
++// already do: a selection maps to a rule identity, not a position, and the
++// applied entry may not even have a rule at that index. `coalesce = false`
++// bounds the residual named in the plan's own behavioural-gap note: any
++// edit right after an undo/redo starts a fresh burst rather than silently
++// merging into whatever burst was in progress before it.
++function undo(): void {
++  if (!canUndo.value || !model.value) {
++    return;
++  }
++  position.value -= 1;
++  model.value = JSON.parse(history.value[position.value]) as Profile;
++  selectedIndex.value = null;
++  coalesce = false;
++}
++
++function redo(): void {
++  if (!canRedo.value || !model.value) {
++    return;
++  }
++  position.value += 1;
++  model.value = JSON.parse(history.value[position.value]) as Profile;
++  selectedIndex.value = null;
++  coalesce = false;
++}
++
++// D108 decision 6: the exact set of `<input>` types the browser itself
++// treats as free-text entry, so a text-entry control keeps its native
++// character-level undo while typing (model-level undo takes over once
++// focus leaves it, via `@focusout` above clearing the coalescing flag).
++const TEXT_ENTRY_INPUT_TYPES = new Set([
++  "text",
++  "search",
++  "url",
++  "tel",
++  "password",
++  "email",
++  "number",
++]);
++
++function isTextEntryTarget(target: EventTarget | null): boolean {
++  if (!(target instanceof HTMLElement)) {
++    return false;
++  }
++  if (target.tagName === "TEXTAREA") {
++    return true;
++  }
++  return target.tagName === "INPUT" && TEXT_ENTRY_INPUT_TYPES.has((target as HTMLInputElement).type);
++}
++
++// D108 decision 6: one binding set for all three platforms, accepting both
++// modifiers -- no per-OS branch, at the stated cost that the shortcut needs
++// focus inside the editor (the visible Undo/Redo buttons, Step 4, cover
++// that). A document-level listener is deliberately not used: the root
++// section's own `@keydown` cannot fire while another view is active and
++// needs no lifecycle teardown.
++function onEditorKeydown(event: KeyboardEvent): void {
++  if (isTextEntryTarget(event.target)) {
++    return;
++  }
++  const mod = event.ctrlKey || event.metaKey;
++  if (!mod) {
++    return;
++  }
++  const key = event.key.toLowerCase();
++  if (key === "z" && !event.shiftKey) {
++    event.preventDefault();
++    undo();
++  } else if ((key === "z" && event.shiftKey) || key === "y") {
++    event.preventDefault();
++    redo();
++  }
++}
+ </script>
+ 
+ <template>
++  <!-- D108 decisions 2 and 6: `@focusout` (not `@blur`) is the coalescing
++       boundary because it bubbles to this ancestor, measured, where `blur`
++       does not; `@keydown` is the undo/redo keyboard channel -- see
++       `onEditorKeydown`'s own doc for the no-per-OS-branch reasoning and
++       the text-entry exemption. -->
+   <section
+     data-testid="view-editor"
+     data-help-id="view-editor"
++    @focusout="coalesce = false"
++    @keydown="onEditorKeydown"
+   >
+     <button
+       type="button"
+       data-testid="editor-new"
+       :disabled="opening || saving"
+       @click="createBlank"
+     >
+       {{ $t("editor-action-new") }}
+     </button>
+     <button
+       type="button"
+       data-testid="editor-open"
+       :disabled="opening || saving"
+       :aria-busy="opening"
+       @click="pickAndOpen"
+     >
+       {{ $t("batch-profile-pick") }}
+     </button>
++    <button
++      type="button"
++      data-testid="editor-undo"
++      :disabled="!model || !canUndo"
++      @click="undo"
++    >
++      {{ $t("editor-action-undo") }}
++    </button>
++    <button
++      type="button"
++      data-testid="editor-redo"
++      :disabled="!model || !canRedo"
++      @click="redo"
++    >
++      {{ $t("editor-action-redo") }}
++    </button>
+     <p v-if="currentPath">
+       {{ $t("batch-profile-current", { path: currentPath }) }}
+     </p>
+     <p
+       v-else-if="sessionActive"
+       data-testid="editor-unsaved"
+     >
+       {{ $t("editor-unsaved") }}
+     </p>
+     <p
+-      v-if="!model"
++      v-if="nothingOpenedOrCreated"
+       data-testid="editor-empty"
+     >
+       {{ $t("editor-empty") }}
+     </p>
+ 
+     <section
+-      v-if="!model && recents.length"
++      v-if="nothingOpenedOrCreated && recents.length"
+       aria-labelledby="editor-recents-heading"
+       data-testid="editor-recents"
+     >
+       <h4 id="editor-recents-heading">
+         {{ $t("batch-recents-heading") }}
+       </h4>
+       <ul>
+         <li
+           v-for="path in recents"
+           :key="path"

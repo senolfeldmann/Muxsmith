@@ -1,0 +1,110 @@
+# Review package: 5ba09e3..57bcc41
+
+## Commits
+57bcc41 editor: cover Esc-cancel on the discard guard, correct a false Esc-semantics citation
+
+## Files changed
+ e2e/smoke.spec.ts                | 40 ++++++++++++++++++++++++++++++++++++++++
+ src/components/ConfirmDialog.vue |  9 +++++----
+ 2 files changed, 45 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/e2e/smoke.spec.ts b/e2e/smoke.spec.ts
+index b8afa54..425dca9 100644
+--- a/e2e/smoke.spec.ts
++++ b/e2e/smoke.spec.ts
+@@ -2114,20 +2114,60 @@ test.describe("editor view: discard guards (Task 5, D109)", () => {
+     await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+     await editor.getByTestId("confirm-dialog-cancel").click();
+     await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+ 
+     // Still just the one dialog call from the first, successful open.
+     expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
+     await expect(pattern).toHaveValue("edited-before-cancel");
+     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+   });
+ 
++  // Fix round 1 (task-5-verdict.md Finding A): Esc is an explicit part of
++  // Step 1's `ask()` contract ("resolved `false`... by `close` and by
++  // Esc") and had no producer anywhere in this package -- the reviewer's
++  // own instrument confirmed the mechanism works, which is not the same
++  // as this suite covering it. Same scenario as Case 2, same outcome,
++  // different channel: Esc is the dialog's native cancel action, not a
++  // click on `confirm-dialog-cancel`.
++  test("Esc cancels the guard the same way the cancel button does -- Step 1's own contract", async ({
++    page,
++  }) => {
++    const recorded = await installTauriMocks(page, {
++      commands: {
++        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
++        "plugin:dialog|open": [resolveWith(PATH_A)],
++        load_profile: [resolveWith(loadedDoc(profileA))],
++        validate_profile_model: [resolveWith(cleanReport)],
++      },
++    });
++
++    const editor = await gotoEditor(page);
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
++
++    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
++    await pattern.fill("edited-before-esc");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++
++    await editor.getByTestId("editor-open").click();
++    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
++    await page.keyboard.press("Escape");
++    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
++
++    // Same three assertions Case 2 makes for the cancel button, unchanged
++    // in shape: the file dialog never opened, the edit survived, dirty is
++    // still true.
++    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
++    await expect(pattern).toHaveValue("edited-before-esc");
++    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
++  });
++
+   test("Case 3(i): Open with no unsaved changes reaches the file dialog directly, no confirm", async ({
+     page,
+   }) => {
+     const recorded = await installTauriMocks(page, {
+       commands: {
+         detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+         "plugin:dialog|open": [resolveWith(PATH_A), resolveWith(PATH_B)],
+         load_profile: [resolveWith(loadedDoc(profileA)), resolveWith(loadedDoc(profileB))],
+         validate_profile_model: [resolveWith(cleanReport)],
+       },
+diff --git a/src/components/ConfirmDialog.vue b/src/components/ConfirmDialog.vue
+index ac41c15..5eddad3 100644
+--- a/src/components/ConfirmDialog.vue
++++ b/src/components/ConfirmDialog.vue
+@@ -45,24 +45,25 @@ function onCancel() {
+   // No explicit settle here: `.close()` fires the native `close` event
+   // below regardless of how the dialog closes, and that handler is the one
+   // place `false` is actually resolved -- see its own doc comment.
+   dialogEl.value?.close();
+ }
+ 
+ // The single path that resolves `false`, for every way the dialog can
+ // close other than the confirm button: the cancel button's own `.close()`
+ // call above, and Esc -- whose native default action (the `cancel` event,
+ // left unhandled and therefore not prevented) closes the dialog the same
+-// way and fires this same `close` event, exactly the Esc-consumed-by-the-
+-// native-cancel semantics `SettingsDialog.vue` documents for its own
+-// dialog. A no-op once `onConfirm` already settled `true` and nulled
+-// `settleAsk`.
++// way and fires this same `close` event. Esc reading as cancel is the
++// safe "do not discard" direction, per D109 decision 6
++// (docs/superpowers/specs/2026-07-30-plan-12-decisions.md): "Esc closes
++// it, which reads as cancel: the safe direction." A no-op once
++// `onConfirm` already settled `true` and nulled `settleAsk`.
+ function onClose() {
+   settleAsk?.(false);
+   settleAsk = null;
+ }
+ 
+ defineExpose({ ask });
+ </script>
+ 
+ <template>
+   <dialog
