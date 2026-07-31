@@ -4,7 +4,7 @@ The Editor edits a profile as a structured model, not as YAML text. Start a new 
 
 ## Creating a profile
 
-New starts a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
+The New profile button starts a profile with one candidate extension and one empty rule; validation flags the empty rule as a warning rather than an error, so the profile is incomplete, not wrong.
 
 The editor holds one profile at a time. Replacing it, whether by creating another or by opening one, warns first while the current profile has unsaved changes; declining leaves it untouched. Switching to another view and back never touches it. Quitting the app with unsaved changes warns as well.
 

@@ -4,7 +4,7 @@ Der Editor bearbeitet ein Profil als strukturiertes Modell, nicht als YAML-Text.
 
 ## Ein Profil erstellen
 
-Neues Profil legt ein Profil mit einer Kandidaten-Dateiendung und einer leeren Regel an; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
+Neues Profil legt ein Profil mit einer Kandidaten-Erweiterung und einer leeren Regel an; die Prüfung meldet die leere Regel als Warnung, nicht als Fehler - das Profil ist damit unvollständig, nicht falsch.
 
 Der Editor hält jeweils ein Profil. Ersetzt du es, sei es durch Anlegen eines neuen oder durch Öffnen eines vorhandenen, warnt der Editor zuerst, solange das aktuelle Profil nicht gespeicherte Änderungen hat; lehnst du das ab, bleibt es unverändert. Ein Wechsel zu einer anderen Ansicht und zurück rührt es nie an. Auch beim Beenden der Anwendung wird bei nicht gespeicherten Änderungen gewarnt.
 
