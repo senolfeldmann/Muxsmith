@@ -4780,8 +4780,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-4 fix round (.superpowers/sdd/plan-12/task-4-report.md, self-reported): mutation testing built from deliberately broken source, and the restore that followed did not rebuild, so a later full-suite run measured the broken bundle and produced unrelated failures. Caught by the implementer, rebuilt, re-verified green before the commit. The sharpening this instance adds: the entry's statement reads as a false-GREEN rule (a mutation that never reaches the bundle proves nothing), and the same mechanism produces a false RED in the other direction - a RESTORE is an edit too, and an unrebuilt one leaves a tree that reads clean in git while the suite measures the broken build. Mechanism re-verified by the controller at playwright.config.ts, whose webServer serves the built dist/ and runs no build of its own"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5: the implementer's report pastes two BatchView.vue mutation runs with no intervening build (.superpowers/sdd/plan-9/task-5-report.md). The reported colours were nonetheless correct - the reviewer reproduced both independently WITH explicit rebuilds and says so in its evidence appendix - so the defect is in the evidence as written rather than in the conclusion; the same invocation copied into a case where the colours differ would silently measure the stale bundle"}
 - id: a-remedy-preference-in-a-verdict-is-measured-or-stated-without-the-comparative
   kind: pattern
