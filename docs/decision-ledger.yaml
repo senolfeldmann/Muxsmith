@@ -5682,3 +5682,17 @@ entries:
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-2 review I-1 (.superpowers/sdd/plan-12/amendment-2-verdict.md): widening Task 5's guarded-case set falsified a decision's sensitivity clause and a step's parenthetical, both of which describe the set without naming any member. Three sweeps across three amendment rounds all keyed on the set's own terms and none of them found either sentence; the reviewer named three greppable sensitivity phrases, none of which any of the three sweeps had run"}
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-2 review I-2 (.superpowers/sdd/plan-12/amendment-2-verdict.md): the amendment was raised in part to remove a Files-list-versus-step ambiguity about one file's budget comment, and its rewrite of that step deleted the only live instruction for the SIBLING file's budget comment, replacing it with a citation to a step that carries no budget, recount or figure at all. The repair migrated its own defect to the other member of the pair"}
+- id: a-statement-living-in-two-documents-is-diffed-against-its-twin-not-swept
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A sweep answers what ELSE says this. It cannot answer whether the two things you just wrote still say the SAME thing, and when one statement lives in two artifacts - a plan and its ADR, a comment and the test that quotes it, two sibling Files-list pointers - the second question is the one that fails. No expression can express the defect: both halves were touched in the same round, nothing is missing, the vocabulary matches at both ends, and only the CONTENT disagrees. Trigger is readable: you are editing a statement that exists in two documents, or repointing one of two sibling references. Handle: put the two passages side by side and compare them sentence by sentence, as a step distinct from any sweep - and note that the append-only record is the half that can least afford it, since its whole job is keeping a reversal reconstructible."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-2 delta review N-1 and N-2 (.superpowers/sdd/plan-12/amendment-2-delta-verdict.md): the round that closed the missed-neighbour class produced two instances of its twin by hand. The rewritten sensitivity clause disagrees between the plan and the decisions document about which original claims were falsified, with the ADR form refuted two clauses earlier by its own figure; and one of two sibling Files-list pointers was repointed to the new owning step while the other still points at a step that now explicitly disclaims instructing. Both surfaced by the reviewer's own pair comparison, which the round's six sweep shapes could not have found"}
