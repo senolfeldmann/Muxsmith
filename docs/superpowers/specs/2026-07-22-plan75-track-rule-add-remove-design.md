@@ -100,6 +100,13 @@ writing back immutably via `setRuleValue`. Open/save/validate state:
 `!model`/`!currentPath`/`saving`/`opening`; the shallow `watch(model)`
 revalidates every model swap through `validateProfileModel` (gated on
 `currentPath`, so the bare mount harness never fires IPC).
+**Both halves of this description are superseded by D107 decisions 3(a)
+and 3(b)** (`docs/superpowers/specs/2026-07-30-plan-12-decisions.md`):
+`saveDisabled` no longer reads `!currentPath.value` (it is
+`!model.value || hasErrors.value || saving.value || opening.value`,
+`EditorView.vue:330-332`), and the `watch(model)` revalidation gate moved
+from `currentPath` to `sessionActive` (`EditorView.vue:349`). The
+paragraph stands as the record of the mechanism as this task shipped it.
 
 **The ListWidget add/remove precedent**
 (`src/editor/widgets/ListWidget.vue`). `addItem()` appends `{}`
