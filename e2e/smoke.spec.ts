@@ -865,7 +865,7 @@ test.describe("german locale", () => {
 // `-remove` keys ("Add"/"Remove", owner Ruling 1, amended 2026-07-16) --
 // NOT `editor-attachment-rule-add`/`-drop` any more, which now caption only
 // the AttachmentRule fields they are the registry labels for. Catalog
-// budget is 49 (42 labels + 1 save-surface note + 2 generic action keys +
+// budget is 51 (42 labels + 1 save-surface note + 4 generic action keys +
 // 1 rule-grid ordinal + 3 profile-creation keys).
 test.describe("editor widgets: mount-harness rendering", () => {
   test("the widget dispatcher renders the widget matching a field's kind", async ({ page }) => {

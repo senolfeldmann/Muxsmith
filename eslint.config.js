@@ -51,6 +51,24 @@ export default defineConfig(
       "@intlify/vue-i18n": vueI18n,
     },
     rules: {
+      // D112 (owner ruling 2026-07-31): the pre-session state is ONE named
+      // computed, `nothingOpenedOrCreated`, and a render gate that asks
+      // `!model` directly is the defect that decision exists to remove --
+      // that expression is also true after a load that failed to parse,
+      // where the editor must NOT offer its pre-session surfaces. Scoped by
+      // directive name to `v-if`/`v-else-if`, so the `:disabled="!model ||
+      // !canUndo"` bindings D108 decision 10 requires stay legal: those gate
+      // an ACTION on whether there is content, not a RENDER on whether
+      // anything was ever opened or created.
+      "vue/no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "VAttribute[directive=true][key.name.name=/^(if|else-if)$/] UnaryExpression[operator='!'] > Identifier[name='model']",
+          message:
+            "A render gate must not read `!model` directly: the pre-session state is `nothingOpenedOrCreated` (D112).",
+        },
+      ],
       // `attributes` defaults to none checked (the rule only scans text
       // nodes out of the box); D29 requires accessible names/tooltips to
       // come from Fluent too, so a STATIC (non-`:`-bound) title/aria-label/

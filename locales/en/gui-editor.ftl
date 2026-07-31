@@ -137,6 +137,8 @@ editor-save-note = Saving rewrites the file from the model: comments, key order 
 
 editor-action-add = Add
 editor-action-remove = Remove
+editor-action-undo = Undo
+editor-action-redo = Redo
 
 ## Rule grid ordinal (D59)
 

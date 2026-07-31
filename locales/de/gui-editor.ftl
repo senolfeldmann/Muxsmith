@@ -141,6 +141,8 @@ editor-save-note = Speichern schreibt die Datei komplett aus dem Modell neu: Kom
 
 editor-action-add = Hinzufügen
 editor-action-remove = Entfernen
+editor-action-undo = Rückgängig
+editor-action-redo = Wiederholen
 
 ## Rule grid ordinal (D59)
 

@@ -122,6 +122,42 @@ const fluent = useFluent();
 
 const currentPath = ref<string | null>(null);
 
+// --- Task 4 (D108): undo/redo history, and the derived save state -------
+//
+// One history, driven by the single existing mutation funnel below
+// (`watch(model)`): every profile write already passes through it
+// (measured at plan authoring: seven whole-value assignments, no in-place
+// mutation, no external writer), so one funnel can serialize the model
+// into one undo history instead of each mutation site keeping its own. A
+// history entry is the WHOLE serialized model (`JSON.stringify`), never a
+// diff (D108 decision 1).
+const history = ref<string[]>([]);
+const position = ref(-1);
+// The serialization of the profile last WRITTEN to disk -- not the live
+// model and not the live history entry (D108 decision 3; Step 1c below,
+// in `doSave`, is the only writer besides `resetHistory`). `null` before
+// any profile has ever been opened or created, or after a load that
+// failed to parse (decision 9).
+const savedSnapshot = ref<string | null>(null);
+// The coalescing boundary for "one entry per editing burst" (decision 2):
+// while true, the push rule below REPLACES the entry at `position`
+// instead of appending one. Cleared by a focus change inside the editor
+// (`@focusout` on the root section, Step 2) and, explicitly, by every
+// discrete grid operation (`addRule`, `removeSelectedRule`, `onDrop`)
+// before it mutates -- focus alone is not enough, since two consecutive
+// clicks of the same button never move focus.
+let coalesce = false;
+// D108 decision 5: on a push past this cap the oldest entry is dropped
+// and `position` decremented. Measured in the form an entry actually
+// takes (compact JSON of the serde-normalized model, defaults omitted per
+// D48): the New seed is 101 bytes and the README's four-rule example 419
+// bytes, so 100 entries of a realistic profile stays well under 50 KB and
+// a pathological 20 KB profile still bounds the history at 2 MB.
+// `savedSnapshot` is a value, not an index, so truncation cannot corrupt
+// the dirty computation below -- dropping the saved snapshot out of the
+// history only means undo cannot walk back that far.
+const HISTORY_DEPTH = 100;
+
 // D107: a profile entered the editor through one of its own funnels,
 // `openPath` or `createBlank`. It exists rather than the gates below
 // reusing `currentPath` because a CREATED profile has no path at all --
@@ -130,7 +166,81 @@ const currentPath = ref<string | null>(null);
 // mount-harness case (a spec injects `modelValue` and installs no IPC
 // mock) must keep firing no IPC, which is a safeguard bought deliberately
 // in plan 6 and preserved here rather than dropped.
-const sessionActive = ref(false);
+//
+// Task 4 (D108 decision 4): now DERIVED from `savedSnapshot` rather than a
+// ref both funnels set directly. "A profile is in the editor" and "there
+// is a clean baseline to compare it against" are the same fact,
+// established at the same two moments -- `resetHistory`, below, called
+// from `openPath` and `createBlank` -- by construction, so a second flag
+// could only ever disagree with the first through a bug.
+const sessionActive = computed(() => savedSnapshot.value !== null);
+
+// D112 (owner ruling 2026-07-31): the pre-session state -- nothing has
+// been opened or created at all -- and the ONE definition both surfaces
+// that may appear only in that state read. Two terms, because two facts
+// have to be absent at once: `model` carries "the editor holds
+// something", `currentPath` carries "a file has been bound to the
+// editor". A load that resolves but fails to parse leaves the second set
+// and clears the first (`openPath` sets `currentPath`, then assigns
+// `doc.profile ?? undefined`), and that state is the one the ruling is
+// about: the path line names the failing file and the panel carries the
+// parse error, so a second sentence saying no profile is open, plus a
+// recents list offering a fresh start, contradict what is already on
+// screen.
+//
+// NOT `sessionActive`: this task derives it from `savedSnapshot`, which
+// the failed-load branch nulls (D108 decision 9), so `!sessionActive` is
+// TRUE in exactly the state these two surfaces must stay hidden in. NOT
+// `!model` alone: that is the gate Task 3 shipped, and it is what renders
+// both surfaces over a failed load today.
+const nothingOpenedOrCreated = computed(
+  () => !model.value && currentPath.value === null,
+);
+
+// D108 decision 4: the save state is DERIVED and there is no second
+// mechanism -- a value comparison, not an index comparison. Its failure
+// direction is annoyance, never data loss: a spurious `dirty` warns where
+// nothing was at risk, where a hand-set boolean a mutation path forgets
+// would silently fail to warn where something was. That direction holds
+// only because `savedSnapshot` marks the profile that was WRITTEN (Step
+// 1c in `doSave`) rather than the live history entry -- marking the live
+// entry would invert it exactly, reporting clean over content the file
+// does not hold.
+//
+// Produced here, consumed by Tasks 5-6's discard guards (D109) -- this
+// task's own Interfaces section names it as the boundary, and nothing in
+// this file reads it yet.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- see above
+const dirty = computed(
+  () => savedSnapshot.value !== null && history.value[position.value] !== savedSnapshot.value,
+);
+
+const canUndo = computed(() => position.value > 0);
+const canRedo = computed(() => position.value < history.value.length - 1);
+
+// D108 decisions 8-9, the reset sibling of the funnel below: given a
+// profile, the history becomes a single clean entry holding it; given
+// `undefined` -- the failed-load branch, where `doc.profile` is null and
+// the diagnostic carries the parse error -- the history is CLEARED
+// instead of left standing, so `sessionActive`/`dirty`/`canUndo`/
+// `canRedo` are all false over a profile that never entered the editor,
+// and undo cannot resurrect the previous one into a path that just failed
+// to parse. `openPath` calls this with `doc.profile ?? undefined` on the
+// exact value it assigns to the model, so the two can never disagree.
+function resetHistory(profile: Profile | undefined): void {
+  if (profile === undefined) {
+    history.value = [];
+    position.value = -1;
+    savedSnapshot.value = null;
+    coalesce = false;
+    return;
+  }
+  const serialized = JSON.stringify(profile);
+  history.value = [serialized];
+  position.value = 0;
+  savedSnapshot.value = serialized;
+  coalesce = false;
+}
 
 const diagnostics = ref<Diagnostic[]>([]);
 const opening = ref(false);
@@ -218,6 +328,27 @@ watch(model, async (value) => {
   if (!sessionActive.value || !value) {
     return;
   }
+  // D108 decision 1: a COMPARISON, not a flag. An undo-driven assignment
+  // sets `model.value` to `history[position]` itself (`undo`/`redo`
+  // below), so this comparison matches and the write cannot push -- no
+  // "applying history" latch exists anywhere in this file to forget to
+  // set or clear. The same comparison incidentally dedupes a widget that
+  // re-emits an identical value.
+  const serialized = JSON.stringify(value);
+  if (serialized !== history.value[position.value]) {
+    if (coalesce) {
+      history.value = [...history.value.slice(0, position.value), serialized];
+    } else {
+      history.value = [...history.value.slice(0, position.value + 1), serialized];
+      position.value = history.value.length - 1;
+      if (history.value.length > HISTORY_DEPTH) {
+        history.value = history.value.slice(1);
+        position.value -= 1;
+      }
+      coalesce = true;
+    }
+  }
+
   const generation = ++validationGeneration;
   try {
     const result = await validateProfileModel(value);
@@ -245,7 +376,7 @@ async function openPath(path: string): Promise<void> {
   try {
     const doc = await loadProfile(path);
     currentPath.value = path;
-    sessionActive.value = true;
+    resetHistory(doc.profile ?? undefined);
     diagnostics.value = doc.config_diagnostics;
     model.value = doc.profile ?? undefined;
     // Background bookkeeping only (mirrors BatchView's identical
@@ -315,23 +446,29 @@ function blankProfile(): Profile {
 // every write is visible to it whichever order they were made in. The same
 // fact covers `diagnostics`: no render happens between two synchronous ref
 // writes, so a previous profile's findings cannot paint against the new
-// model from any position. Measured: swapping `sessionActive` and `model`,
-// and moving the `diagnostics` clear after the model assignment, each leave
-// the whole suite green.
+// model from any position. Measured: swapping `resetHistory`'s call and
+// `model`'s assignment, and moving the `diagnostics` clear after the model
+// assignment, each leave the whole suite green.
 //
 // What IS load-bearing is the RELATIVE ORDER of those two, and it becomes
 // load-bearing exactly when the synchronicity above stops holding:
-// `sessionActive` is established BEFORE `model`. Measured, all three
+// `resetHistory` runs BEFORE `model` is assigned. Measured, all three
 // configurations -- gate first with an `await` between gate and model: 79
 // passed. Gate first with the `await` after both: 79 passed. Model first
 // with an `await` between them: 3 failed (the first three cases of the New
 // describe in `e2e/smoke.spec.ts`). Setting the gate first makes this
-// function await-proof: at the moment `model` is written the gate is
+// function await-proof: at the moment `model` is written, `resetHistory`
+// has already run and `sessionActive` (now derived from `savedSnapshot`) is
 // already true, so the callback that write queues cannot observe anything
 // else, wherever it later flushes. The reverse order breaks as soon as an
 // `await` lands between the two -- the watcher runs at that microtask
 // boundary, reads a still-false gate, returns early, and the seed is never
-// validated.
+// validated. `resetHistory` takes the place of the plain `sessionActive.
+// value = true` assignment Task 3 put here; it must stay in that same
+// position for the reasons above, plus one of its own -- `history[0]` must
+// already equal the serialized model, or the push rule sees a difference
+// and appends a second entry, so a freshly created profile would start one
+// step deep and dirty.
 //
 // Which is the case this funnel is walking into: the discard guard (D109)
 // makes it `async` and puts an `await` in front of the seed. Keep the gate
@@ -351,8 +488,9 @@ function createBlank(): void {
   ipcErrorCode.value = null;
   currentPath.value = null;
   diagnostics.value = [];
-  sessionActive.value = true;
-  model.value = blankProfile();
+  const profile = blankProfile();
+  resetHistory(profile);
+  model.value = profile;
   selectedIndex.value = 0;
 }
 
@@ -388,6 +526,21 @@ async function doSave(): Promise<void> {
       path = picked;
     }
     await saveProfile(path, profile);
+    // D108 decision 3: mark the profile that was WRITTEN -- the captured
+    // `profile`, never `history.value[position.value]` and never
+    // `model.value`. Two awaits sit between the `profile` capture above
+    // and this point (the save dialog on the needs-path branch, and the
+    // write itself), and the editing surface stays live through both
+    // (`saving.value` disables only `editor-save`/`editor-new`/
+    // `editor-open`, not the widgets), so `model`/history can move inside
+    // either window -- marking anything read HERE could name a state that
+    // was never written. The mkvtoolnix-gui precedent this shape borrows
+    // (`updateConfigFromControlValues(); p.config.save(); p.savedState =
+    // currentState();`) is fully synchronous, so `currentState()` there IS
+    // what was written; carrying that shape across an `await` means
+    // carrying the captured value forward explicitly instead of re-reading
+    // "the current one" at the far end.
+    savedSnapshot.value = JSON.stringify(profile);
     currentPath.value = path;
     if (needsPath) {
       // A profile that just acquired a path is exactly what the recents
@@ -539,7 +692,13 @@ function onDragStart(index: number) {
   dragIndex = index;
 }
 
+// D108 decision 2: every discrete grid operation (this function, `addRule`,
+// `removeSelectedRule`) clears the coalescing boundary itself, as its first
+// statement, rather than relying on the `@focusout` listener (Step 2) alone
+// -- two consecutive clicks of the same button never move focus, so
+// `@focusout` alone would silently merge them into one undo step.
 function onDrop(index: number) {
+  coalesce = false;
   if (dragIndex === null || dragIndex === index || !model.value) {
     dragIndex = null;
     return;
@@ -575,6 +734,8 @@ function onDragEnd() {
 // (D67). Both mutations are the same immutable whole-model rebuild every
 // other mutation in this view performs.
 function addRule() {
+  // D108 decision 2: same reasoning as `onDrop` above.
+  coalesce = false;
   if (!model.value) return;
   const next = [...rules.value, { match: {} }];
   model.value = {
@@ -591,6 +752,8 @@ function addRule() {
 // and surfaced by core's own diagnostics (D69), so the editor holds no
 // guard against it.
 function removeSelectedRule() {
+  // D108 decision 2: same reasoning as `onDrop` above.
+  coalesce = false;
   if (selectedIndex.value === null || !model.value) return;
   const next = [...rules.value];
   next.splice(selectedIndex.value, 1);
@@ -600,12 +763,99 @@ function removeSelectedRule() {
   };
   selectedIndex.value = null;
 }
+
+// --- Task 4 (D108): undo, redo, and the keyboard binding -----------------
+
+// D108 decision 10: gated on `model.value` in the function itself, not only
+// in the buttons' `:disabled` -- both the action row and the keyboard
+// handler below sit outside `<template v-if="model">`, so either could
+// otherwise apply a history entry while the editor holds nothing. Clearing
+// `selectedIndex` follows the same rule `onDrop`/`removeSelectedRule`
+// already do: a selection maps to a rule identity, not a position, and the
+// applied entry may not even have a rule at that index. `coalesce = false`
+// bounds the residual named in the plan's own behavioural-gap note: any
+// edit right after an undo/redo starts a fresh burst rather than silently
+// merging into whatever burst was in progress before it.
+function undo(): void {
+  if (!canUndo.value || !model.value) {
+    return;
+  }
+  position.value -= 1;
+  model.value = JSON.parse(history.value[position.value]) as Profile;
+  selectedIndex.value = null;
+  coalesce = false;
+}
+
+function redo(): void {
+  if (!canRedo.value || !model.value) {
+    return;
+  }
+  position.value += 1;
+  model.value = JSON.parse(history.value[position.value]) as Profile;
+  selectedIndex.value = null;
+  coalesce = false;
+}
+
+// D108 decision 6: the exact set of `<input>` types the browser itself
+// treats as free-text entry, so a text-entry control keeps its native
+// character-level undo while typing (model-level undo takes over once
+// focus leaves it, via `@focusout` above clearing the coalescing flag).
+const TEXT_ENTRY_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "url",
+  "tel",
+  "password",
+  "email",
+  "number",
+]);
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.tagName === "TEXTAREA") {
+    return true;
+  }
+  return target.tagName === "INPUT" && TEXT_ENTRY_INPUT_TYPES.has((target as HTMLInputElement).type);
+}
+
+// D108 decision 6: one binding set for all three platforms, accepting both
+// modifiers -- no per-OS branch, at the stated cost that the shortcut needs
+// focus inside the editor (the visible Undo/Redo buttons, Step 4, cover
+// that). A document-level listener is deliberately not used: the root
+// section's own `@keydown` cannot fire while another view is active and
+// needs no lifecycle teardown.
+function onEditorKeydown(event: KeyboardEvent): void {
+  if (isTextEntryTarget(event.target)) {
+    return;
+  }
+  const mod = event.ctrlKey || event.metaKey;
+  if (!mod) {
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (key === "z" && !event.shiftKey) {
+    event.preventDefault();
+    undo();
+  } else if ((key === "z" && event.shiftKey) || key === "y") {
+    event.preventDefault();
+    redo();
+  }
+}
 </script>
 
 <template>
+  <!-- D108 decisions 2 and 6: `@focusout` (not `@blur`) is the coalescing
+       boundary because it bubbles to this ancestor, measured, where `blur`
+       does not; `@keydown` is the undo/redo keyboard channel -- see
+       `onEditorKeydown`'s own doc for the no-per-OS-branch reasoning and
+       the text-entry exemption. -->
   <section
     data-testid="view-editor"
     data-help-id="view-editor"
+    @focusout="coalesce = false"
+    @keydown="onEditorKeydown"
   >
     <button
       type="button"
@@ -624,6 +874,22 @@ function removeSelectedRule() {
     >
       {{ $t("batch-profile-pick") }}
     </button>
+    <button
+      type="button"
+      data-testid="editor-undo"
+      :disabled="!model || !canUndo"
+      @click="undo"
+    >
+      {{ $t("editor-action-undo") }}
+    </button>
+    <button
+      type="button"
+      data-testid="editor-redo"
+      :disabled="!model || !canRedo"
+      @click="redo"
+    >
+      {{ $t("editor-action-redo") }}
+    </button>
     <p v-if="currentPath">
       {{ $t("batch-profile-current", { path: currentPath }) }}
     </p>
@@ -634,14 +900,14 @@ function removeSelectedRule() {
       {{ $t("editor-unsaved") }}
     </p>
     <p
-      v-if="!model"
+      v-if="nothingOpenedOrCreated"
       data-testid="editor-empty"
     >
       {{ $t("editor-empty") }}
     </p>
 
     <section
-      v-if="!model && recents.length"
+      v-if="nothingOpenedOrCreated && recents.length"
       aria-labelledby="editor-recents-heading"
       data-testid="editor-recents"
     >

@@ -5,7 +5,7 @@
  * - Cases 1-5 use the component mount harness (`mount.ts`, the Task 11/13b
  *   sibling pattern): the model is injected as a prop and read back via
  *   `readModel`, and `EditorView`'s `watch(model)` revalidation is gated on
- *   `currentPath`, which a bare mount never sets -- so these cases exercise
+ *   `sessionActive`, which a bare mount never sets -- so these cases exercise
  *   the grid, the selection and the two mutations with no IPC mock at all.
  * - Cases 6-8 drive the real served app with `installTauriMocks` (the
  *   `editor-markers.spec.ts` pattern): they pin the WIRE truth (what
