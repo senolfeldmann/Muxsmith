@@ -518,83 +518,247 @@ pub fn get_job_log(run_id: String, index: usize) -> Result<serde_json::Value, Ip
 /// read.
 const GUI_COMMON_FTL: &str = include_str!("../../locales/en/gui-common.ftl");
 
-/// Minimal single-line Fluent-message lookup over [`GUI_COMMON_FTL`]:
-/// finds the `key = value` line and returns the trimmed value.
-/// Deliberately NOT a Fluent parser: the shell only ever consumes simple
-/// one-line messages (the `.ftl` carries a comment pinning that
-/// constraint, and `close_abort_strings_resolve` tests each key), and a
-/// full Fluent stack in the shell would duplicate the frontend's loader
-/// for four strings. A missing key degrades to the key itself -- a stable
-/// code, not a panic, matching the shell's prose-free posture.
-fn ftl_message(key: &'static str) -> &'static str {
-    GUI_COMMON_FTL
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix(key)?
-                .trim_start()
-                .strip_prefix('=')
-                .map(str::trim)
-        })
-        .unwrap_or(key)
+/// The German GUI catalog, embedded at build time (D110), beside
+/// [`GUI_COMMON_FTL`] in the same [`LOCALES`] table.
+const DE_GUI_COMMON: &str = include_str!("../../locales/de/gui-common.ftl");
+
+/// The shell's locale table (D110 decision 1), in the shape
+/// `crates/muxsmith-cli/src/i18n.rs`'s own `LOCALES` table already uses --
+/// one row per locale, primary subtag paired with its `include_str!`ed
+/// catalog -- for the same reason that table is hand-written:
+/// `include_str!` is compile-time and has no glob form. Two-tuple rather
+/// than the CLI's three: the shell reads one catalog (`gui-common.ftl`)
+/// per locale, not two.
+const LOCALES: &[(&str, &str)] = &[("en", GUI_COMMON_FTL), ("de", DE_GUI_COMMON)];
+
+/// The row-level lookup: finds the `key = value` line in `catalog` and
+/// returns the trimmed value, `None` when the catalog has no such line.
+/// Single-line, column-0, never prefix-matching -- this is
+/// [`ftl_message`]'s entire former body with its `unwrap_or` removed
+/// (D110 decision 4), split out so a test can assert on one catalog row
+/// DIRECTLY: an assertion made through `ftl_message`'s own
+/// `[requested, en]` chain is green under every mutation upstream of the
+/// en fallback, which is exactly the blind spot the shell parity test
+/// (`close_abort_strings_resolve_from_the_ftl_catalog`'s neighbours,
+/// below) exists to avoid.
+fn lookup_in(catalog: &'static str, key: &str) -> Option<&'static str> {
+    catalog.lines().find_map(|line| {
+        line.strip_prefix(key)?
+            .trim_start()
+            .strip_prefix('=')
+            .map(str::trim)
+    })
 }
 
-/// What a `CloseRequested` event should do, decided from the run slot.
+/// Locale-aware single-line Fluent-message lookup (D110 decision 1):
+/// collapses `locale` to its primary subtag (everything before the first
+/// `-`, lowercased) and walks the per-message fallback chain
+/// `[requested, en]` over [`lookup_in`]'s per-row lookup, then falls back
+/// to the raw key. Deliberately NOT a Fluent parser: the shell only ever
+/// consumes simple one-line messages (the `.ftl` carries a comment
+/// pinning that constraint, and `close_abort_strings_resolve_from_the_ftl_
+/// catalog` tests each key), and a full Fluent stack in the shell would
+/// duplicate the frontend's loader for a handful of strings -- unchanged
+/// by adding the second locale. A missing key degrades to the key itself
+/// -- a stable code, not a panic, matching the shell's prose-free
+/// posture.
+fn ftl_message(key: &'static str, locale: &str) -> &'static str {
+    let primary = locale.split('-').next().unwrap_or(locale).to_lowercase();
+    let mut chain: Vec<&str> = vec![primary.as_str(), "en"];
+    chain.dedup(); // adjacent dedup suffices: the only duplicate is ["en", "en"]
+    for tag in chain {
+        let Some(row) = LOCALES.iter().find(|(t, _)| *t == tag) else {
+            continue;
+        };
+        if let Some(value) = lookup_in(row.1, key) {
+            return value;
+        }
+    }
+    key
+}
+
+/// What a `CloseRequested` event should do (D109 decision 5's four-row
+/// table): the run slot and the editor's mirrored save state
+/// (`AppState::editor_dirty`, D109 decision 4) combine into four
+/// decisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CloseDecision {
-    /// No active run: let the window close normally (D31 unchanged path).
+    /// No active run, no unsaved changes: let the window close normally
+    /// (D31 unchanged path).
     Close,
-    /// A run is active (planning or running): prevent the close and ask
-    /// whether to abort the batch.
+    /// A run is active (planning or running), the editor is clean:
+    /// prevent the close and ask whether to abort the batch (D31,
+    /// unchanged wording and mechanism).
     ConfirmAbort,
+    /// No active run, the editor holds unsaved changes: prevent the close
+    /// and ask whether to discard them (D109 decision 5).
+    ConfirmDiscard,
+    /// A run is active AND the editor holds unsaved changes: prevent the
+    /// close and ask ONE combined question naming both facts (D109
+    /// decision 5: one prompt covers a coinciding close, never two
+    /// sequential ones).
+    ConfirmAbortAndDiscard,
 }
 
-/// The close-vs-ask decision (D31), factored off the Tauri types so it is
-/// unit-testable: any occupant of the slot (Reserved or Running) means
-/// "confirm first".
+/// The close-vs-ask decision (D109 decision 5), factored off the Tauri
+/// types so it is unit-testable: reads both the run slot and the
+/// frontend-mirrored editor save state and returns the matching row of
+/// decision 5's four-row table. `close_decision_lets_an_idle_window_
+/// close_normally`/`close_decision_confirms_while_planning_and_while_
+/// running` (D31) already cover this function's first two rows with the
+/// editor clean by construction (`AppState::default`); the two new tests
+/// beside them cover the two rows a dirty editor adds.
 fn close_decision(state: &AppState) -> CloseDecision {
-    if lock_active(state).is_some() {
-        CloseDecision::ConfirmAbort
-    } else {
-        CloseDecision::Close
+    let run_active = lock_active(state).is_some();
+    let dirty = state.editor_dirty.load(Ordering::SeqCst);
+    match (run_active, dirty) {
+        (false, false) => CloseDecision::Close,
+        (true, false) => CloseDecision::ConfirmAbort,
+        (false, true) => CloseDecision::ConfirmDiscard,
+        (true, true) => CloseDecision::ConfirmAbortAndDiscard,
     }
 }
 
-/// Window-close handling (D31, supersedes D23's bare cancel_all): with no
-/// active run the window closes normally; with an active run the close is
-/// prevented and a native, non-blocking confirmation dialog asks whether
-/// to abort the running batch (mkvtoolnix-gui parity, SI-3). Yes runs
-/// [`abort_and_quit`] (cancel everything, exit after teardown completes);
-/// No does nothing -- the window stays open and the run continues.
+/// Whether a confirmed close still needs asking about (D109 decision 9).
+/// `Some(current)` when the state now carries a fact the dialog the user
+/// answered did not state, `None` when nothing was added - the state
+/// weakened, or did not move. One re-read only: the caller acts on the
+/// answer to the prompt this returns and never reads again.
+fn reconfirm_decision(answered: CloseDecision, current: CloseDecision) -> Option<CloseDecision> {
+    // Each variant stands for a (run-abort, discard) fact pair -- decision
+    // 5's table, read as booleans instead of matched as a row.
+    fn facts(decision: CloseDecision) -> (bool, bool) {
+        match decision {
+            CloseDecision::Close => (false, false),
+            CloseDecision::ConfirmAbort => (true, false),
+            CloseDecision::ConfirmDiscard => (false, true),
+            CloseDecision::ConfirmAbortAndDiscard => (true, true),
+        }
+    }
+    let (answered_run, answered_dirty) = facts(answered);
+    let (current_run, current_dirty) = facts(current);
+    // A strengthening: `current` asserts a fact that is true now but was
+    // NOT stated by the dialog the user already answered. A weakening or
+    // an unchanged state never satisfies either clause.
+    let strengthened = (current_run && !answered_run) || (current_dirty && !answered_dirty);
+    strengthened.then_some(current)
+}
+
+/// Reads `AppState::dialog_locale` (D110 decision 2) into an owned
+/// `String`, so the lock is released before a dialog callback runs. The
+/// shell never resolves a locale itself; a failed frontend sync just
+/// leaves the previous value here, never a missing dialog.
+fn dialog_locale(state: &AppState) -> String {
+    state.dialog_locale.lock().unwrap().clone()
+}
+
+/// Builds and shows the confirmation dialog for one of the three
+/// confirming [`CloseDecision`] variants (D109 decisions 5/6): `Close`
+/// shows nothing -- callers only reach this for a decision that has a
+/// dialog, and this arm exists for the match's exhaustiveness. Every
+/// variant shares `close-abort-dismiss` as its cancel label (D109 decision
+/// 5's own sentence), and every string is looked up through [`ftl_message`]
+/// against `locale`, so the dialog renders in whatever language the shell
+/// was last told (D110). `on_confirm` runs only when the user confirms;
+/// declining costs nothing further.
+fn show_close_dialog(
+    app: &AppHandle,
+    decision: CloseDecision,
+    locale: &str,
+    on_confirm: impl FnOnce(&AppHandle) + Send + 'static,
+) {
+    let (title, message, confirm) = match decision {
+        CloseDecision::Close => return,
+        CloseDecision::ConfirmAbort => (
+            ftl_message("close-abort-title", locale),
+            ftl_message("close-abort-message", locale),
+            ftl_message("close-abort-confirm", locale),
+        ),
+        CloseDecision::ConfirmDiscard => (
+            ftl_message("close-discard-title", locale),
+            ftl_message("close-discard-message", locale),
+            ftl_message("close-discard-confirm", locale),
+        ),
+        CloseDecision::ConfirmAbortAndDiscard => (
+            ftl_message("close-abort-discard-title", locale),
+            ftl_message("close-abort-discard-message", locale),
+            ftl_message("close-abort-discard-confirm", locale),
+        ),
+    };
+    let dismiss = ftl_message("close-abort-dismiss", locale).to_string();
+    let app = app.clone();
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            confirm.to_string(),
+            dismiss,
+        ))
+        .show(move |confirmed| {
+            if confirmed {
+                on_confirm(&app);
+            }
+        });
+}
+
+/// The confirmed action for one close-decision variant (D109 decision 5's
+/// table, right-hand column). `Close` never reaches here: it takes
+/// `on_close_requested`'s early return and shows no dialog, so this arm
+/// too exists only for the match's exhaustiveness.
+fn confirm_close(decision: CloseDecision, app: &AppHandle) {
+    match decision {
+        CloseDecision::Close => {}
+        CloseDecision::ConfirmDiscard => app.exit(0),
+        CloseDecision::ConfirmAbort | CloseDecision::ConfirmAbortAndDiscard => {
+            abort_and_quit(&app.state::<AppState>(), |code| app.exit(code));
+        }
+    }
+}
+
+/// Window-close handling (D31/D109/D110, supersedes D23's bare
+/// cancel_all): [`close_decision`] picks one of four outcomes from the run
+/// slot and the editor's mirrored save state. `Close` lets the window
+/// close normally; the other three prevent the close and show
+/// [`show_close_dialog`]'s matching confirmation (mkvtoolnix-gui parity
+/// for the run-only case, SI-3; D109 for the two save-state-aware ones),
+/// rendered in whatever locale the shell was last told (D110).
+/// Confirming runs [`confirm_close`] -- but first, D109 decision 9: the
+/// decision is RE-READ once, and a second prompt fires only when the
+/// re-read names a fact the first dialog never stated (a strengthening,
+/// via [`reconfirm_decision`]). Declining either dialog does nothing --
+/// the window stays open and nothing already true changes.
 ///
-/// Everything on the event-loop thread is O(1): the slot check is a
-/// pointer read and `show` only schedules the dialog, its callback firing
-/// later. The dialog itself carries the [`ftl_message`] strings, the one
-/// place the shell hands prose to the OS (sourced from the `.ftl`, not
-/// hardcoded).
+/// Everything on the event-loop thread up to `show` is O(1): the slot
+/// check is a pointer read, the dirty/locale reads are an atomic load and
+/// a mutex lock-and-clone, and `show` only schedules the dialog, its
+/// callback firing later.
 pub fn on_close_requested(window: &Window, event: &WindowEvent) {
     let WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };
     let app = window.app_handle();
-    if close_decision(&app.state::<AppState>()) == CloseDecision::Close {
+    let decision = close_decision(&app.state::<AppState>());
+    if decision == CloseDecision::Close {
         return;
     }
     api.prevent_close();
 
+    let locale = dialog_locale(&app.state::<AppState>());
     let app = app.clone();
-    app.dialog()
-        .message(ftl_message("close-abort-message"))
-        .title(ftl_message("close-abort-title"))
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            ftl_message("close-abort-confirm").to_string(),
-            ftl_message("close-abort-dismiss").to_string(),
-        ))
-        .show(move |abort| {
-            if abort {
-                abort_and_quit(&app.state::<AppState>(), |code| app.exit(code));
+    show_close_dialog(&app, decision, &locale, move |app| {
+        // D109 decision 9: re-read once, on the confirming branch, before
+        // the action. A strengthening shows the re-read variant's own
+        // dialog, terminal on its own confirm/decline; anything else
+        // proceeds exactly as the first dialog promised.
+        match reconfirm_decision(decision, close_decision(&app.state::<AppState>())) {
+            Some(v) => {
+                let locale = dialog_locale(&app.state::<AppState>());
+                show_close_dialog(app, v, &locale, move |app| confirm_close(v, app));
             }
-        });
+            None => confirm_close(decision, app),
+        }
+    });
 }
 
 /// The dialog's Yes path (D31): requests quit-after-finished, then cancels
@@ -1208,7 +1372,16 @@ mod tests {
         assert_eq!(exits, 0, "no quit was pending; teardown must not exit");
     }
 
-    // -- D31: close decision + quit-after-finished ----------------------------
+    // -- D31/D109: close decision + quit-after-finished ------------------------
+    //
+    // D109 decision 5's four-row table (run slot occupied x editor dirty),
+    // one case per row: the two below are idle-and-clean (`Close`) and
+    // run-and-clean (`ConfirmAbort`), both true by construction since
+    // `AppState::default` starts with `editor_dirty` false and neither
+    // touches it -- the D31-era assertions already cover their row
+    // unchanged. `close_decision_confirms_discard_while_idle_and_dirty`
+    // and `close_decision_confirms_abort_and_discard_while_running_and_
+    // dirty`, further down, cover the two rows a dirty editor adds.
 
     #[test]
     fn close_decision_lets_an_idle_window_close_normally() {
@@ -1231,6 +1404,99 @@ mod tests {
         let control = ctl(1);
         reservation.commit(Arc::clone(&control));
         assert_eq!(close_decision(&state), CloseDecision::ConfirmAbort);
+    }
+
+    #[test]
+    fn close_decision_confirms_discard_while_idle_and_dirty() {
+        let state = AppState::default();
+        state.editor_dirty.store(true, Ordering::SeqCst);
+        assert_eq!(close_decision(&state), CloseDecision::ConfirmDiscard);
+    }
+
+    #[test]
+    fn close_decision_confirms_abort_and_discard_while_running_and_dirty() {
+        let state = AppState::default();
+        let control = ctl(1);
+        *state.active.lock().unwrap() = Some(running(&control));
+        state.editor_dirty.store(true, Ordering::SeqCst);
+        assert_eq!(
+            close_decision(&state),
+            CloseDecision::ConfirmAbortAndDiscard
+        );
+    }
+
+    // -- D109 decision 9: the re-read on the confirming branch -----------------
+    //
+    // Exhaustive over the three dialog-producing `answered` variants x all
+    // four `current` variants (Close never produces a dialog, so it is
+    // never `answered`): twelve cells. `Some` cells are the ones where a
+    // second prompt must appear; `None` cells are the silent-no-prompt
+    // ones a broken strengthening rule would let slip through, so both
+    // halves are named explicitly rather than inferred from the four
+    // `Some`s alone.
+    #[test]
+    fn reconfirm_decision_fires_exactly_on_a_strengthening() {
+        use CloseDecision::{Close, ConfirmAbort, ConfirmAbortAndDiscard, ConfirmDiscard};
+
+        // answered = ConfirmAbort (run only)
+        assert_eq!(
+            reconfirm_decision(ConfirmAbort, Close),
+            None,
+            "run ended, still clean: a pure weakening"
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmAbort, ConfirmAbort),
+            None,
+            "unchanged"
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmAbort, ConfirmDiscard),
+            Some(ConfirmDiscard),
+            "run ended AND the editor went dirty: dirty is a new, unstated fact"
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmAbort, ConfirmAbortAndDiscard),
+            Some(ConfirmAbortAndDiscard),
+            "still running, editor also went dirty: dirty is new"
+        );
+
+        // answered = ConfirmDiscard (dirty only)
+        assert_eq!(
+            reconfirm_decision(ConfirmDiscard, Close),
+            None,
+            "saved, still no run: a pure weakening"
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmDiscard, ConfirmAbort),
+            Some(ConfirmAbort),
+            "saved AND a run started: run-abort is a new, unstated fact"
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmDiscard, ConfirmDiscard),
+            None,
+            "unchanged"
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmDiscard, ConfirmAbortAndDiscard),
+            Some(ConfirmAbortAndDiscard),
+            "still dirty, a run also started: run-abort is new"
+        );
+
+        // answered = ConfirmAbortAndDiscard (both facts already on screen):
+        // no further strengthening exists, so every cell is None.
+        assert_eq!(reconfirm_decision(ConfirmAbortAndDiscard, Close), None);
+        assert_eq!(
+            reconfirm_decision(ConfirmAbortAndDiscard, ConfirmAbort),
+            None
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmAbortAndDiscard, ConfirmDiscard),
+            None
+        );
+        assert_eq!(
+            reconfirm_decision(ConfirmAbortAndDiscard, ConfirmAbortAndDiscard),
+            None
+        );
     }
 
     /// The D31 happy path: Yes on the dialog while the queue runs cancels
@@ -1316,17 +1582,33 @@ mod tests {
         );
     }
 
-    // -- D31: dialog strings from the .ftl -------------------------------------
+    // -- D31/D109: dialog strings from the .ftl ---------------------------------
 
     #[test]
     fn close_abort_strings_resolve_from_the_ftl_catalog() {
+        // The enumeration IS the point of this test (a named region): every
+        // id the shell's own close dialogs consume, D31's original four
+        // plus D109's six. `close_abort_strings_resolve_from_the_ftl_
+        // catalog`'s loop passes each id through a variable, not a literal,
+        // so (like the two probes in `ftl_message_falls_back_to_the_key_
+        // and_never_prefix_matches` below) it never contributes to the
+        // shell parity test's regex-derived key set further down -- with
+        // NIL consequence here too, since every one of these ten also
+        // appears at a literal-argument ftl_message call site in
+        // `show_close_dialog`'s production match arms.
         for key in [
             "close-abort-title",
             "close-abort-message",
             "close-abort-confirm",
             "close-abort-dismiss",
+            "close-discard-title",
+            "close-discard-message",
+            "close-discard-confirm",
+            "close-abort-discard-title",
+            "close-abort-discard-message",
+            "close-abort-discard-confirm",
         ] {
-            let value = ftl_message(key);
+            let value = ftl_message(key, "en");
             assert_ne!(
                 value, key,
                 "{key} must resolve to a real message, not fall back to the key"
@@ -1337,14 +1619,149 @@ mod tests {
         // an accidental .ftl edit that breaks the line-parser contract
         // (multiline, attributes) fails here instead of shipping a key as
         // the dialog title.
-        assert_eq!(ftl_message("close-abort-title"), "Abort running jobs");
+        assert_eq!(ftl_message("close-abort-title", "en"), "Abort running jobs");
     }
 
     #[test]
     fn ftl_message_falls_back_to_the_key_and_never_prefix_matches() {
-        assert_eq!(ftl_message("no-such-key"), "no-such-key");
+        // Bound to a variable, not passed as a literal-argument ftl_message
+        // call: both probes below name a key the catalog must NEVER carry,
+        // and the shell parity test further down derives its consumed-key
+        // set by scanning this very file for exactly that literal shape. A
+        // literal here would enter that derived set and could never
+        // resolve `Some` in any row -- in the correct state as much as a
+        // broken one.
+        let unknown_key = "no-such-key";
+        assert_eq!(ftl_message(unknown_key, "en"), unknown_key);
         // A key that is a strict prefix of a real entry must not match it.
-        assert_eq!(ftl_message("close-abort"), "close-abort");
+        let prefix_of_a_real_key = "close-abort";
+        assert_eq!(
+            ftl_message(prefix_of_a_real_key, "en"),
+            prefix_of_a_real_key
+        );
+    }
+
+    // -- D110 decision 4: the shell locale parity check -------------------------
+    //
+    // Split three ways so the assertions sit BELOW the `[requested, en]`
+    // fallback chain `ftl_message` composes: an assertion made through
+    // that chain is green under every mutation upstream of the en
+    // fallback (the earlier draft's own mistake, per D110's rationale),
+    // so parts (a)/(b) call `LOCALES`/`lookup_in` directly and only part
+    // (c) goes through `ftl_message` at all -- and even there, to pin a
+    // concrete value on the far side of the chain, never a merely
+    // non-empty non-key result a fallback could also produce.
+
+    /// The shell's own source, embedded at test time: part (b) below scans
+    /// this for literal-argument `ftl_message` calls. Self-referential by
+    /// construction (`include_str!` reads the file it is compiled into) --
+    /// deliberately the CURRENT file, not a stale snapshot, so a key added
+    /// to a later `ftl_message` call site joins the derived set with no
+    /// test edit.
+    const RUN_RS_SOURCE: &str = include_str!("run.rs");
+
+    /// Part (b)'s derivation instrument: every key literally passed as
+    /// `ftl_message`'s first argument in `source`, in order of appearance,
+    /// duplicates included. A hand-rolled scan over `str::find` rather
+    /// than the `regex` crate: `src-tauri` has no such dependency today
+    /// (D110 leaves it that way, matching the shell's own narrow,
+    /// no-real-parser posture -- `lookup_in`'s doc comment states the same
+    /// reasoning for not being a Fluent parser), and the one pattern
+    /// needed is a fixed marker plus the following quote, well within
+    /// what `str::find` expresses without one. A NON-literal argument
+    /// (`ftl_message(key, ...)` over a variable) has no `"` directly after
+    /// `ftl_message(` and is invisible here by construction -- the
+    /// documented residual both `close_abort_strings_resolve_from_the_ftl_
+    /// catalog`'s loop and `ftl_message_falls_back_to_the_key_and_never_
+    /// prefix_matches`'s two probes above rely on to stay out of the
+    /// derived set, and the same shape D110 itself found already present
+    /// in this file's `#[cfg(test)]` module before this package -- nil
+    /// consequence there too, per this function's own doc-comment sibling
+    /// above.
+    fn ftl_message_key_literals(source: &str) -> Vec<&str> {
+        let marker = "ftl_message(\"";
+        let mut keys = Vec::new();
+        let mut rest = source;
+        while let Some(start) = rest.find(marker) {
+            let after_marker = &rest[start + marker.len()..];
+            let Some(end) = after_marker.find('"') else {
+                break;
+            };
+            keys.push(&after_marker[..end]);
+            rest = &after_marker[end + 1..];
+        }
+        keys
+    }
+
+    /// Part (a): every `locales/<tag>/` directory has a row in the
+    /// shell's own `LOCALES` table. Red state (D110 decision 4): delete
+    /// the `de` row from `LOCALES` -- this fails, and part (c) fails with
+    /// it (the chain then finds no `de` row and falls through to en, so
+    /// the pinned German value is never returned); part (b) stays green,
+    /// since it iterates only the rows that exist. Two failures from one
+    /// mutation is a property of the design, not a defect.
+    #[test]
+    fn every_locales_directory_has_a_row_in_the_shell_locales_table() {
+        let locales_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../locales");
+        let mut found_any = false;
+        for entry in fs::read_dir(&locales_root).unwrap() {
+            let entry = entry.unwrap();
+            if !entry.path().is_dir() {
+                continue;
+            }
+            found_any = true;
+            let tag = entry.file_name().to_string_lossy().into_owned();
+            assert!(
+                LOCALES.iter().any(|(t, _)| *t == tag),
+                "locales/{tag} has no row in run.rs's LOCALES table"
+            );
+        }
+        assert!(
+            found_any,
+            "locales/ must carry at least one locale directory"
+        );
+    }
+
+    /// Part (b): every key the shell's own source literally looks up
+    /// resolves, in EVERY row of `LOCALES`, called on `lookup_in`
+    /// directly -- never through `ftl_message`, whose en fallback would
+    /// mask a missing row-level entry. Red state (D110 decision 4):
+    /// delete `close-discard-title` from `locales/de/gui-common.ftl` --
+    /// this key is named because it is one this package adds (exercising
+    /// the new surface) and is deliberately NOT the key part (c) pins;
+    /// this fails while (a) and (c) stay green. Deleting the pinned key
+    /// instead would also fail (c).
+    #[test]
+    fn every_row_carries_every_key_the_shell_source_literally_looks_up() {
+        let keys = ftl_message_key_literals(RUN_RS_SOURCE);
+        assert!(
+            !keys.is_empty(),
+            "the derivation must find at least the close-* keys"
+        );
+        for &(tag, catalog) in LOCALES {
+            for &key in &keys {
+                let value = lookup_in(catalog, key);
+                assert!(
+                    value.is_some_and(|v| !v.is_empty()),
+                    "locale {tag:?} has no non-empty value for key {key:?} \
+                     (shell-consumed, per a literal ftl_message call in run.rs)"
+                );
+            }
+        }
+    }
+
+    /// Part (c): the German mirror of the existing pinned en wording,
+    /// through the full `ftl_message` chain -- the one part of this group
+    /// that actually proves a de user reads de. Red state (D110 decision
+    /// 4): point the `de` row at the en catalog -- this fails; (a) and
+    /// (b) stay green, since the row exists and the en catalog holds
+    /// every key.
+    #[test]
+    fn ftl_message_de_row_renders_the_pinned_german_close_abort_title() {
+        assert_eq!(
+            ftl_message("close-abort-title", "de"),
+            "Laufende Jobs abbrechen"
+        );
     }
 
     // -- finalize_joblog ------------------------------------------------------

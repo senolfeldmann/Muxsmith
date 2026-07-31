@@ -813,10 +813,17 @@ test.describe("german locale", () => {
     const recorded = await installTauriMocks(page, {
       commands: {
         detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        set_shell_locale: [resolveWith(null)],
       },
     });
 
     await page.goto("/");
+
+    // Task 6 (D110 decision 2): `App.vue`'s locale watcher is `immediate`,
+    // so mounting alone pushes the startup value -- determined, not open:
+    // this scenario's `get_settings` falls through to `installMockIPC`'s
+    // own default (`locale: "en"`), so `effectiveLocale("en")` is `"en"`.
+    await expect.poll(() => recorded.filter((r) => r.cmd === "set_shell_locale").length).toBe(1);
 
     await page.getByTestId("open-settings").click();
     const dialog = page.getByTestId("settings-dialog");
@@ -832,6 +839,15 @@ test.describe("german locale", () => {
     const settingsWrites = recorded.filter((r) => r.cmd === "set_settings");
     expect(settingsWrites).toHaveLength(1);
     expect((settingsWrites[0].args as { settings: AppSettings }).settings.locale).toBe("de");
+
+    // The live half is what makes the pair non-vacuous: a shell told once
+    // at startup and never again would still pass the check above and
+    // fail the user the moment they switch languages without restarting.
+    // `SettingsDialog.save()` calls `applyLocale` synchronously right
+    // after `setSettings` resolves, which is what drives this second push.
+    await expect.poll(() => recorded.filter((r) => r.cmd === "set_shell_locale").length).toBe(2);
+    const localeCalls = recorded.filter((r) => r.cmd === "set_shell_locale");
+    expect(localeCalls.map((c) => (c.args as { locale: string }).locale)).toEqual(["en", "de"]);
 
     await page.addInitScript(installMockIPC, {
       commands: {
@@ -1311,6 +1327,7 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
         load_profile: [resolveWith(loadedDoc)],
         validate_profile_model: [resolveWith(cleanDoc), resolveWith(errorDoc), resolveWith(cleanDoc)],
         save_profile: [resolveWith(null)],
+        set_editor_dirty: [resolveWith(null)],
       },
     });
 
@@ -1372,11 +1389,24 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
       ),
     ).toBeVisible();
 
+    // Task 6 (D109 decision 4): the first edit is what makes the editor
+    // dirty, and the shell is told so.
+    await expect.poll(() => recorded.filter((r) => r.cmd === "set_editor_dirty").length).toBe(1);
+    expect((recorded.find((r) => r.cmd === "set_editor_dirty")?.args as { dirty: boolean }).dirty).toBe(
+      true,
+    );
+
     await assertNoSeriousA11yViolations(page);
 
     // A further edit triggers the third queued (clean) response, clearing
-    // the error.
-    await patternField.fill(".*");
+    // the error. Deliberately NOT the original ".*" (`editorProfile.input.
+    // pattern`, above): typing back to the exact original value would
+    // coincidentally re-serialize identically to `savedSnapshot` and flip
+    // `dirty` false right here, before Save ever runs -- the assertion
+    // below would then pass on a Save that never actually clears the save
+    // state. ".+" keeps the editor genuinely dirty across this edit, so
+    // the only mechanism that can produce the `false` sync is Save's own.
+    await patternField.fill(".+");
     await expect(saveButton).toBeEnabled();
 
     await saveButton.click();
@@ -1384,7 +1414,16 @@ test.describe("editor view: open/save (Task 13, D45/D41)", () => {
     expect(saveCalls).toHaveLength(1);
     const saveArgs = saveCalls[0].args as { path: string; profile: Profile };
     expect(saveArgs.path).toBe(PROFILE_PATH);
-    expect(saveArgs.profile.input.pattern).toBe(".*");
+    expect(saveArgs.profile.input.pattern).toBe(".+");
+
+    // ...and a successful Save is what clears it (both halves: a flag
+    // that only ever sets is worse than none). Exactly one true then one
+    // false, in that order -- not just "a false exists somewhere", which
+    // the coincidental-round-trip edit above would have satisfied for the
+    // wrong reason.
+    await expect.poll(() => recorded.filter((r) => r.cmd === "set_editor_dirty").length).toBe(2);
+    const dirtyCalls = recorded.filter((r) => r.cmd === "set_editor_dirty");
+    expect(dirtyCalls.map((c) => (c.args as { dirty: boolean }).dirty)).toEqual([true, false]);
   });
 
   test("the editor tab stays mounted across a switch to Jobs and back (v-show, not v-if); Case 6 (D109 decision 3): the same round trip with unsaved changes warns not at all", async ({

@@ -115,7 +115,7 @@ import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { editorDiagnosticsByPath, worstSeverity } from "../editor/diagAnchor";
 import { diagnosticFluentParams } from "../diagnosticFluentParams";
 import DiagnosticsPanel from "../components/DiagnosticsPanel.vue";
-import { getSettings, loadProfile, saveProfile, validateProfileModel } from "../ipc";
+import { getSettings, loadProfile, saveProfile, setEditorDirty, validateProfileModel } from "../ipc";
 import type { Diagnostic, IpcError } from "../ipc";
 import { rememberRecentProfile } from "../recentProfiles";
 
@@ -218,6 +218,19 @@ const nothingOpenedOrCreated = computed(
 const dirty = computed(
   () => savedSnapshot.value !== null && history.value[position.value] !== savedSnapshot.value,
 );
+
+// Task 6 (D109 decision 4): mirrors `dirty` into the shell's `AppState` so
+// `on_close_requested` can warn before an app quit that would lose these
+// changes. Background bookkeeping only, mirroring this view's own
+// tolerance for its recents write (`openPath`, above): a failed sync is
+// swallowed, never surfaced as an editor error, and its named consequence
+// is a stale shell flag -- a close warning that fails to fire, not a
+// missing dialog on a clean editor.
+watch(dirty, (value) => {
+  void setEditorDirty(value).catch(() => {
+    /* background bookkeeping */
+  });
+});
 
 const canUndo = computed(() => position.value > 0);
 const canRedo = computed(() => position.value < history.value.length - 1);

@@ -25,7 +25,7 @@ mod settings;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use muxsmith_core::capability::runtime::Mkvmerge;
 use muxsmith_core::identify::{Identification, IdentifyCache};
@@ -81,12 +81,13 @@ pub(crate) async fn on_blocking<T: Send + 'static>(
         .map_err(|e| IpcError::new("internal-task-failed").with("detail", e.to_string()))?
 }
 
-/// Tauri-managed application state (D23), unified across both tasks that
-/// contribute IPC commands to this shell: T7's settings persistence and
-/// T8's run lifecycle. There is exactly one `AppState` value, `.manage`d
-/// once in [`run()`] -- Tauri resolves `State<AppState>` for every command
-/// regardless of which task's module declares it, so the fields cannot be
-/// split across two managed structs.
+/// Tauri-managed application state (D23), unified across the tasks that
+/// contribute IPC commands to this shell: T7's settings persistence, T8's
+/// run lifecycle, and Plan 12's close-state mirrors (D109/D110). There is
+/// exactly one `AppState` value, `.manage`d once in [`run()`] -- Tauri
+/// resolves `State<AppState>` for every command regardless of which
+/// task's module declares it, so the fields cannot be split across two
+/// managed structs.
 pub struct AppState {
     /// The resolved settings file path (T7, D27); `None` if the platform
     /// config directory itself could not be resolved (e.g. no `HOME`), in
@@ -105,6 +106,24 @@ pub struct AppState {
     /// callback itself when the run already tore down while the dialog
     /// was open.
     quit_after_finished: AtomicBool,
+    /// D109 decision 4: mirrors the editor's derived `dirty` state
+    /// (`src/views/EditorView.vue`), written only by [`set_editor_dirty`]
+    /// -- the frontend is this field's only writer, the shell never
+    /// derives it itself. `run::close_decision` (private to that module, so
+    /// not an intra-doc link here) reads it alongside the run slot to pick
+    /// the close dialog. A failed sync leaves it stale: the
+    /// close-with-unsaved-changes warning can be missed, never shown where
+    /// nothing is at risk.
+    editor_dirty: AtomicBool,
+    /// D110 decision 2: mirrors the locale the frontend applied
+    /// (`currentLocale`), written only by [`set_shell_locale`] -- the
+    /// shell does not resolve a locale of its own, `effectiveLocale`
+    /// stays the product's single resolution rule. `run::ftl_message`
+    /// (private to that module, so not an intra-doc link here) reads it to
+    /// pick the catalog row a close dialog renders from. A failed sync
+    /// leaves the previous value: a dialog renders in a stale language,
+    /// never a missing dialog.
+    dialog_locale: Mutex<String>,
 }
 
 impl Default for AppState {
@@ -113,6 +132,8 @@ impl Default for AppState {
             settings_path: settings::settings_path(),
             active: Mutex::new(None),
             quit_after_finished: AtomicBool::new(false),
+            editor_dirty: AtomicBool::new(false),
+            dialog_locale: Mutex::new("en".to_string()),
         }
     }
 }
@@ -495,6 +516,30 @@ fn set_settings(state: State<AppState>, settings: AppSettings) -> Result<(), Ipc
     state.save_settings(&settings)
 }
 
+/// `set_editor_dirty` IPC command (D109 decision 4): mirrors the editor's
+/// derived save state into `AppState::editor_dirty`, read by
+/// `run::close_decision` (private to that module, so not an intra-doc link
+/// here) to pick the close-confirmation dialog. An atomic store cannot
+/// fail, so this returns nothing to fail with; the frontend's own call
+/// site is still wrapped in a tolerant `.catch()` (`src/views/EditorView.
+/// vue`) against the generic IPC transport.
+#[tauri::command]
+fn set_editor_dirty(dirty: bool, state: State<AppState>) {
+    state.editor_dirty.store(dirty, Ordering::SeqCst);
+}
+
+/// `set_shell_locale` IPC command (D110 decision 2): mirrors the locale
+/// the frontend applied into `AppState::dialog_locale`, read by
+/// `run::ftl_message` (private to that module, so not an intra-doc link
+/// here) to pick the catalog row a close dialog renders from. The shell
+/// does not resolve a locale of its own -- `effectiveLocale` stays the
+/// product's single resolution rule. A mutex assignment cannot fail for
+/// the same reason [`set_editor_dirty`] returns nothing.
+#[tauri::command]
+fn set_shell_locale(locale: String, state: State<AppState>) {
+    *state.dialog_locale.lock().unwrap() = locale;
+}
+
 /// Builds and runs the Tauri application: registers the `dialog`,
 /// `clipboard-manager`, `os`, and `fs` plugins (capabilities in
 /// `capabilities/default.json` gate what each grants to the *frontend*; the
@@ -552,6 +597,8 @@ pub fn run() {
             apply_suggestion,
             get_settings,
             set_settings,
+            set_editor_dirty,
+            set_shell_locale,
             run::start_run,
             run::cancel_run,
             run::cancel_job,

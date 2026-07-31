@@ -2,17 +2,23 @@
 ### the source of truth; keys mirror it (id parity enforced by
 ### scripts/check-i18n.mjs); placeables and selector structure mirror it by
 ### convention (reviewed manually, not machine-checked). NOTE: the native
-### close-confirmation dialog reads the EN catalog directly
-### (src-tauri/src/run.rs include_str!s locales/en/gui-common.ftl), so the
-### close-abort-* strings below are not yet shown to a de user; kept
-### single-line and translated for parity and a later shell i18n. The
-### IpcError-code keys mirror their en wording.
+### close-confirmation dialogs are locale-aware (D110, src-tauri/src/run.rs's
+### LOCALES table): the close-abort-*/close-discard-*/close-abort-discard-*
+### strings below are read through that lookup and shown to a de user, kept
+### single-line by the same shell-parser constraint. The IpcError-code keys
+### mirror their en wording.
 app-title = Muxsmith
 
 close-abort-title = Laufende Jobs abbrechen
 close-abort-message = Derzeit läuft ein Job. Möchtest du wirklich alle laufenden Jobs abbrechen und beenden?
 close-abort-confirm = Jobs abbrechen und beenden
 close-abort-dismiss = Abbrechen
+close-discard-title = Nicht gespeicherte Änderungen
+close-discard-message = Das Profil im Editor hat nicht gespeicherte Änderungen. Beenden und verwerfen?
+close-discard-confirm = Änderungen verwerfen und beenden
+close-abort-discard-title = Laufende Jobs und nicht gespeicherte Änderungen
+close-abort-discard-message = Derzeit läuft ein Job und das Profil im Editor hat nicht gespeicherte Änderungen. Alle laufenden Jobs abbrechen, die Änderungen verwerfen und beenden?
+close-abort-discard-confirm = Jobs abbrechen, Änderungen verwerfen und beenden
 
 nav-label = Hauptnavigation
 nav-batch = Stapel

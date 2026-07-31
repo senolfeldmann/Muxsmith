@@ -111,14 +111,21 @@ const LOCALES_ROOT = join(ROOT, "locales");
 const LOCALES_EN = join(LOCALES_ROOT, "en");
 const SRC = join(ROOT, "src");
 
-// D31: src-tauri/src/run.rs's `ftl_message()` include_str!s gui-common.ftl
-// directly for the native close-confirmation dialog; the frontend never
-// calls $t() for these four.
+// D31/D109/D110: src-tauri/src/run.rs's `ftl_message()` include_str!s
+// gui-common.ftl directly for the shell's native close-confirmation
+// dialogs; the frontend never calls $t() for these ten -- shell-consumed,
+// not just the original D31 four.
 const RUST_ONLY_IDS = new Set([
   "close-abort-title",
   "close-abort-message",
   "close-abort-confirm",
   "close-abort-dismiss",
+  "close-discard-title",
+  "close-discard-message",
+  "close-discard-confirm",
+  "close-abort-discard-title",
+  "close-abort-discard-message",
+  "close-abort-discard-confirm",
 ]);
 
 // PARSING CONSTRAINT (deliberate, line-based -- not a Fluent parser,

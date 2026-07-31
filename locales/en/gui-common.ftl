@@ -11,6 +11,12 @@ close-abort-title = Abort running jobs
 close-abort-message = There is currently a job running. Do you really want to abort all currently running jobs and quit?
 close-abort-confirm = Abort jobs and quit
 close-abort-dismiss = Cancel
+close-discard-title = Unsaved changes
+close-discard-message = The profile in the editor has unsaved changes. Quit and lose them?
+close-discard-confirm = Discard changes and quit
+close-abort-discard-title = Running jobs and unsaved changes
+close-abort-discard-message = A job is running and the profile in the editor has unsaved changes. Abort all running jobs, discard the changes and quit?
+close-abort-discard-confirm = Abort jobs, discard changes and quit
 
 ## T9: app shell navigation (single window, three views + first-run +
 ## settings, spec 8.2). aria-current="page" on the active tab is set in

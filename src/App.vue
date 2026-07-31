@@ -7,8 +7,9 @@ import FirstRun from "./views/FirstRun.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import HelpSidebar from "./components/HelpSidebar.vue";
 import { helpMode, hoverId, pinnedId, VIEW_TOPICS } from "./help/state";
-import { detectMkvmerge } from "./ipc";
+import { detectMkvmerge, setShellLocale } from "./ipc";
 import type { IpcError, RunRequest } from "./ipc";
+import { currentLocale } from "./i18n/fluent";
 import "./style.css";
 
 type View = "batch" | "jobs" | "editor";
@@ -158,6 +159,25 @@ async function checkMkvmerge() {
 }
 
 onMounted(checkMkvmerge);
+
+// Task 6 (D110 decision 2): pushes the applied locale into the shell so its
+// native close dialogs render in the same language as the rest of the UI.
+// `immediate` is load-bearing: `main.ts` calls `applyLocale` before this
+// component ever mounts, so without it the shell would hold its "en"
+// default until the user changed the language in Settings. Background
+// bookkeeping only, the same tolerance class as `EditorView`'s dirty sync
+// (D109 decision 4) and its own recents write: a failed push is swallowed,
+// never surfaced to the user, and its named consequence is a stale shell
+// dialog language, never a missing dialog.
+watch(
+  currentLocale,
+  (locale) => {
+    void setShellLocale(locale).catch(() => {
+      /* background bookkeeping */
+    });
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

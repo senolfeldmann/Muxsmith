@@ -307,6 +307,31 @@ export function applySuggestion(
   return invoke<Profile>("apply_suggestion", { profile, configPath, edit });
 }
 
+// --- shell close-state sync (plan 12, D109/D110) ------------------------
+//
+// Both mirror a frontend-owned value into `AppState` so the native close
+// dialog (`src-tauri/src/run.rs::on_close_requested`) can pick the right
+// variant and language without the shell resolving either itself. Neither
+// call can meaningfully fail (an atomic/mutex store, no I/O), so both
+// return `void`; a rejection is still possible at the generic IPC
+// transport level, which is why every caller still wraps the call in its
+// own tolerant `.catch()` (D109 decision 4, D110 decision 2).
+
+/** `set_editor_dirty` IPC command (D109 decision 4): mirrors the editor's
+ * derived save state so a window close while it holds unsaved changes
+ * warns before the app quits. */
+export function setEditorDirty(dirty: boolean): Promise<void> {
+  return invoke<void>("set_editor_dirty", { dirty });
+}
+
+/** `set_shell_locale` IPC command (D110 decision 2): mirrors
+ * `currentLocale` so the shell's native dialogs render in the language the
+ * rest of the UI is using. The shell never resolves a locale on its own --
+ * `effectiveLocale` stays the product's single resolution rule. */
+export function setShellLocale(locale: string): Promise<void> {
+  return invoke<void>("set_shell_locale", { locale });
+}
+
 /**
  * The Plan 5 wave-5 shell contract (controller-defined, T10/T11 briefs):
  * what BatchView's `start-run` emit hands to App, which stores it and
