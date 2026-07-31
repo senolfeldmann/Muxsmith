@@ -652,38 +652,64 @@ fn dialog_locale(state: &AppState) -> String {
     state.dialog_locale.lock().unwrap().clone()
 }
 
+/// The dialog's (title, message, confirm) strings for one of the three
+/// confirming [`CloseDecision`] variants (D109 decisions 5/6's own
+/// wording), resolved through [`ftl_message`] against `locale`; `None` for
+/// `Close`, which shows no dialog. Factored out of `show_close_dialog` for
+/// the same reason [`close_decision`] was factored off
+/// `on_close_requested`: this mapping depends on nothing but the decision
+/// and the locale, so -- unlike the `AppHandle` that actually builds and
+/// shows the dialog -- it is unit-testable on its own
+/// (`close_dialog_strings_map_each_decision_to_its_own_wording`), which
+/// closes the gap the whole-branch review found: the four-state decision
+/// itself was covered per cell, but the variant-to-strings mapping one
+/// function away was reachable by no test (I-4). Every key stays a
+/// LITERAL argument to `ftl_message` here, in the exact shape
+/// `every_row_carries_every_key_the_shell_source_literally_looks_up`'s
+/// scan depends on -- moving the match into its own function does not
+/// remove these calls from the file; `RUN_RS_SOURCE` is the whole file's
+/// text regardless of which function nests a call, so the derivation
+/// that finds these keys and checks every locale row resolves them stays
+/// intact.
+fn close_dialog_strings(
+    decision: CloseDecision,
+    locale: &str,
+) -> Option<(&'static str, &'static str, &'static str)> {
+    match decision {
+        CloseDecision::Close => None,
+        CloseDecision::ConfirmAbort => Some((
+            ftl_message("close-abort-title", locale),
+            ftl_message("close-abort-message", locale),
+            ftl_message("close-abort-confirm", locale),
+        )),
+        CloseDecision::ConfirmDiscard => Some((
+            ftl_message("close-discard-title", locale),
+            ftl_message("close-discard-message", locale),
+            ftl_message("close-discard-confirm", locale),
+        )),
+        CloseDecision::ConfirmAbortAndDiscard => Some((
+            ftl_message("close-abort-discard-title", locale),
+            ftl_message("close-abort-discard-message", locale),
+            ftl_message("close-abort-discard-confirm", locale),
+        )),
+    }
+}
+
 /// Builds and shows the confirmation dialog for one of the three
 /// confirming [`CloseDecision`] variants (D109 decisions 5/6): `Close`
 /// shows nothing -- callers only reach this for a decision that has a
-/// dialog, and this arm exists for the match's exhaustiveness. Every
-/// variant shares `close-abort-dismiss` as its cancel label (D109 decision
-/// 5's own sentence), and every string is looked up through [`ftl_message`]
-/// against `locale`, so the dialog renders in whatever language the shell
-/// was last told (D110). `on_confirm` runs only when the user confirms;
-/// declining costs nothing further.
+/// dialog, and [`close_dialog_strings`] returning `None` there is what
+/// this early-returns on. Every variant shares `close-abort-dismiss` as
+/// its cancel label (D109 decision 5's own sentence). `on_confirm` runs
+/// only when the user confirms; declining costs nothing further.
 fn show_close_dialog(
     app: &AppHandle,
     decision: CloseDecision,
     locale: &str,
     on_confirm: impl FnOnce(&AppHandle) + Send + 'static,
 ) {
-    let (title, message, confirm) = match decision {
-        CloseDecision::Close => return,
-        CloseDecision::ConfirmAbort => (
-            ftl_message("close-abort-title", locale),
-            ftl_message("close-abort-message", locale),
-            ftl_message("close-abort-confirm", locale),
-        ),
-        CloseDecision::ConfirmDiscard => (
-            ftl_message("close-discard-title", locale),
-            ftl_message("close-discard-message", locale),
-            ftl_message("close-discard-confirm", locale),
-        ),
-        CloseDecision::ConfirmAbortAndDiscard => (
-            ftl_message("close-abort-discard-title", locale),
-            ftl_message("close-abort-discard-message", locale),
-            ftl_message("close-abort-discard-confirm", locale),
-        ),
+    let Some((title, message, confirm)) = close_dialog_strings(decision, locale) else {
+        return;
     };
     let dismiss = ftl_message("close-abort-dismiss", locale).to_string();
     let app = app.clone();
@@ -702,15 +728,45 @@ fn show_close_dialog(
         });
 }
 
-/// The confirmed action for one close-decision variant (D109 decision 5's
-/// table, right-hand column). `Close` never reaches here: it takes
-/// `on_close_requested`'s early return and shows no dialog, so this arm
-/// too exists only for the match's exhaustiveness.
-fn confirm_close(decision: CloseDecision, app: &AppHandle) {
+/// The confirmed effect for one [`CloseDecision`] variant (D109 decision
+/// 5's table, right-hand column, as a closed set of three effects rather
+/// than the two literal statements [`confirm_close`] used to pick between
+/// inline). `Close` never reaches here: it takes `on_close_requested`'s
+/// early return and shows no dialog, so `None` too exists only for match
+/// exhaustiveness on the caller side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseAction {
+    /// Nothing further: `Close` shows no dialog to confirm.
+    None,
+    /// The run slot is idle (`ConfirmDiscard`): exit immediately, nothing
+    /// to tear down.
+    ExitDiscard,
+    /// A run is active (`ConfirmAbort`/`ConfirmAbortAndDiscard`): abort it
+    /// before the app exits.
+    AbortAndExit,
+}
+
+/// The decision-to-effect mapping, factored out of [`confirm_close`] for
+/// the same reason [`close_dialog_strings`] was: nothing here depends on
+/// `AppHandle` either, only on which of the three effects the decision
+/// picks, so it is unit-testable
+/// (`close_action_maps_each_decision_to_its_own_effect`) without one --
+/// the other half of I-4's gap, alongside the strings mapping above.
+fn close_action(decision: CloseDecision) -> CloseAction {
     match decision {
-        CloseDecision::Close => {}
-        CloseDecision::ConfirmDiscard => app.exit(0),
+        CloseDecision::Close => CloseAction::None,
+        CloseDecision::ConfirmDiscard => CloseAction::ExitDiscard,
         CloseDecision::ConfirmAbort | CloseDecision::ConfirmAbortAndDiscard => {
+            CloseAction::AbortAndExit
+        }
+    }
+}
+
+fn confirm_close(decision: CloseDecision, app: &AppHandle) {
+    match close_action(decision) {
+        CloseAction::None => {}
+        CloseAction::ExitDiscard => app.exit(0),
+        CloseAction::AbortAndExit => {
             abort_and_quit(&app.state::<AppState>(), |code| app.exit(code));
         }
     }
@@ -1422,6 +1478,66 @@ mod tests {
         assert_eq!(
             close_decision(&state),
             CloseDecision::ConfirmAbortAndDiscard
+        );
+    }
+
+    // -- I-4 (whole-branch review, plan 12): the two mappings one function
+    // past `close_decision` -----------------------------------------------
+    //
+    // `close_decision` picks the right variant and every cell above is
+    // pinned; nothing reached the mapping FROM that variant TO its dialog
+    // strings and its confirmed effect, both left inside the
+    // `AppHandle`-taking functions. `close_dialog_strings`/`close_action`
+    // extract exactly those two mappings, the same way `close_decision`
+    // was already factored off `on_close_requested`, and these two tests
+    // reproduce the review's own mutation: pointing `ConfirmDiscard` at
+    // the `close-abort-*` keys instead of `close-discard-*` reddens the
+    // first, and swapping `ExitDiscard`/`AbortAndExit` between the wrong
+    // rows reddens the second.
+
+    #[test]
+    fn close_dialog_strings_map_each_decision_to_its_own_wording() {
+        assert_eq!(close_dialog_strings(CloseDecision::Close, "en"), None);
+        assert_eq!(
+            close_dialog_strings(CloseDecision::ConfirmAbort, "en"),
+            Some((
+                "Abort running jobs",
+                "There is currently a job running. Do you really want to abort all currently running jobs and quit?",
+                "Abort jobs and quit",
+            ))
+        );
+        assert_eq!(
+            close_dialog_strings(CloseDecision::ConfirmDiscard, "en"),
+            Some((
+                "Unsaved changes",
+                "The profile in the editor has unsaved changes. Quit and lose them?",
+                "Discard changes and quit",
+            ))
+        );
+        assert_eq!(
+            close_dialog_strings(CloseDecision::ConfirmAbortAndDiscard, "en"),
+            Some((
+                "Running jobs and unsaved changes",
+                "A job is running and the profile in the editor has unsaved changes. Abort all running jobs, discard the changes and quit?",
+                "Abort jobs, discard changes and quit",
+            ))
+        );
+    }
+
+    #[test]
+    fn close_action_maps_each_decision_to_its_own_effect() {
+        assert_eq!(close_action(CloseDecision::Close), CloseAction::None);
+        assert_eq!(
+            close_action(CloseDecision::ConfirmDiscard),
+            CloseAction::ExitDiscard
+        );
+        assert_eq!(
+            close_action(CloseDecision::ConfirmAbort),
+            CloseAction::AbortAndExit
+        );
+        assert_eq!(
+            close_action(CloseDecision::ConfirmAbortAndDiscard),
+            CloseAction::AbortAndExit
         );
     }
 
