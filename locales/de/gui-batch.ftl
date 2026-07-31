@@ -10,7 +10,7 @@ batch-profile-heading = Profil
 batch-profile-pick = Profil auswählen...
     .tooltip = Eine Muxsmith-Profil-YAML-Datei zum Prüfen und Starten auswählen.
 batch-profile-filter-name = Muxsmith-Profile
-batch-profile-none = Noch kein Profil ausgewählt. Wähle unten eines aus, um es zu prüfen und einen Stapel zu starten.
+batch-profile-none = Noch kein Profil ausgewählt. Wähle unten eines aus, um es zu prüfen und einen Stapel zu starten, oder erstelle eines in der Editor-Ansicht.
 batch-profile-current = Ausgewähltes Profil: { $path }
 
 batch-recents-heading = Zuletzt verwendete Profile

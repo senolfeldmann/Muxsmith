@@ -14,7 +14,7 @@ batch-profile-heading = Profile
 batch-profile-pick = Choose profile...
     .tooltip = Pick a Muxsmith profile YAML file to validate and run.
 batch-profile-filter-name = Muxsmith profiles
-batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch.
+batch-profile-none = No profile selected yet. Choose one below to validate it and start a batch, or create one in the Editor view.
 batch-profile-current = Selected profile: { $path }
 
 batch-recents-heading = Recent profiles
