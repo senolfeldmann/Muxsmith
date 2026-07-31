@@ -152,7 +152,7 @@ Re-derive rather than trusting these lines: `git log --oneline -1`,
 - **The full eleven-part gate is green on the committed state** - 507 Rust tests
   over 39 suites, 79 e2e cases, all eleven parts exit 0, exit codes captured per
   command rather than through a pipeline.
-- **House knowledge is at 570 entries**, up from 566, `ledger-lint` green. One
+- **House knowledge is at 571 entries**, up from 566, `ledger-lint` green. One
   entry was PROMOTED to tier 2 on its third strict-fit event
   (`gitignored-paths-need-command-grep`).
 - **Plan 12's scratch holds 32 artifacts** including two controller rulings and
