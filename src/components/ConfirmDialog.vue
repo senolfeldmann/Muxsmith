@@ -52,10 +52,11 @@ function onCancel() {
 // close other than the confirm button: the cancel button's own `.close()`
 // call above, and Esc -- whose native default action (the `cancel` event,
 // left unhandled and therefore not prevented) closes the dialog the same
-// way and fires this same `close` event, exactly the Esc-consumed-by-the-
-// native-cancel semantics `SettingsDialog.vue` documents for its own
-// dialog. A no-op once `onConfirm` already settled `true` and nulled
-// `settleAsk`.
+// way and fires this same `close` event. Esc reading as cancel is the
+// safe "do not discard" direction, per D109 decision 6
+// (docs/superpowers/specs/2026-07-30-plan-12-decisions.md): "Esc closes
+// it, which reads as cancel: the safe direction." A no-op once
+// `onConfirm` already settled `true` and nulled `settleAsk`.
 function onClose() {
   settleAsk?.(false);
   settleAsk = null;

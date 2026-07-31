@@ -2121,6 +2121,46 @@ test.describe("editor view: discard guards (Task 5, D109)", () => {
     await expect(editor.getByTestId("editor-undo")).toBeEnabled();
   });
 
+  // Fix round 1 (task-5-verdict.md Finding A): Esc is an explicit part of
+  // Step 1's `ask()` contract ("resolved `false`... by `close` and by
+  // Esc") and had no producer anywhere in this package -- the reviewer's
+  // own instrument confirmed the mechanism works, which is not the same
+  // as this suite covering it. Same scenario as Case 2, same outcome,
+  // different channel: Esc is the dialog's native cancel action, not a
+  // click on `confirm-dialog-cancel`.
+  test("Esc cancels the guard the same way the cancel button does -- Step 1's own contract", async ({
+    page,
+  }) => {
+    const recorded = await installTauriMocks(page, {
+      commands: {
+        detect_mkvmerge: [resolveWith(MKVMERGE_INFO)],
+        "plugin:dialog|open": [resolveWith(PATH_A)],
+        load_profile: [resolveWith(loadedDoc(profileA))],
+        validate_profile_model: [resolveWith(cleanReport)],
+      },
+    });
+
+    const editor = await gotoEditor(page);
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByText(en("batch-profile-current", { path: PATH_A }))).toBeVisible();
+
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("edited-before-esc");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(editor.getByTestId("confirm-dialog")).toBeHidden();
+
+    // Same three assertions Case 2 makes for the cancel button, unchanged
+    // in shape: the file dialog never opened, the edit survived, dirty is
+    // still true.
+    expect(recorded.filter((r) => r.cmd === "plugin:dialog|open")).toHaveLength(1);
+    await expect(pattern).toHaveValue("edited-before-esc");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+  });
+
   test("Case 3(i): Open with no unsaved changes reaches the file dialog directly, no confirm", async ({
     page,
   }) => {
