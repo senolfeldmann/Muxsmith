@@ -5652,3 +5652,18 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-4 review finding 2 (.superpowers/sdd/plan-12/task-4-verdict.md): the failed-open case asserts Undo and Redo are disabled as its proof that the load cleared the history, but the buttons bind :disabled to a disjunction whose first term is the no-model term, and a failed load clears the model. The reviewer mutated the reset branch to leave history and position untouched while still clearing the saved snapshot, and the case still passed - a live instance of the fallback trap the plan itself names generically, in a case the plan did not name"}
+- id: a-normative-sentence-naming-a-set-is-discharged-member-by-member
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A normative sentence that names a SET - these two files, exactly these cases, each of the following sites - is satisfied member by member and never as a unit, and it binds in both directions. WRITING: adding a member to the underlying set falsifies every enumeration that counted it, so whoever causes the growth owns the sweep of the documents that enumerate it, and the durable repair is the CRITERION rather than the count, because a criterion narrower than the mandate it serves regenerates the defect on the next addition. GRADING: a step naming N sites is checked at each site, not by asking whether the step was performed, because the work is usually done at the site the grader looks at first. Trigger is readable in both roles: the sentence in front of you contains a list or a count over one."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12, controller side: amendment 1 fixed Task 5's repair set at two cases in e2e/editor-undo-redo.spec.ts under a criterion scoped to a second Open click. The controller then ruled a third case into Task 4's fix round - it builds history and clicks New, which Task 5 guards identically - and did not revisit the enumeration that counted the set. Task 5's implementer met the collision at code contact, returned NEEDS_CONTEXT with a memo rather than resolving it, and amendment 2 repaired the CRITERION rather than the count"}
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12, reviewer side: Task 4's Step 7 named two budget comments to correct, in src/views/EditorView.vue and e2e/smoke.spec.ts. Only the second was corrected; the first still read 49 two packages later, found by Task 5's implementer at code contact. Task 4's task review and its delta re-review both graded spec compliance MET, because the step was graded as performed rather than at each site it names"}
