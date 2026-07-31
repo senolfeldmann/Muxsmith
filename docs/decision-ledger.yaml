@@ -5711,3 +5711,31 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-2 fix round 2 (.superpowers/sdd/plan-12/amendment-2-delta-verdict-2.md, pair J): one D112 rejected alternative closed with an ordinal reference that resolved to a different number in each document, each correct locally. Repaired to a description in both; the reviewer confirmed the ordinal form now returns nothing in either document with its control firing, and ruled that a description rather than a renumbering is the only repair true on both sides"}
+- id: a-concurrency-note-asks-whether-the-function-defends-itself-not-whether-callers-are-safe
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: gui
+  statement: "When a design note or a review answers a concurrency question with the reachability of the current callers - the modal makes the page inert, the busy flag covers it, no user input can get there twice - it has answered a weaker question than the one that matters. Ask instead whether the GUARDED FUNCTION defends itself, because the reachability answer expires the moment a second caller exists, and a component whose own doc comment says it was built for a second caller has that expiry written into it. Trigger is readable: your answer to a reentrancy question names a caller, a UI state or an input path rather than the function's own state. Handle: state both answers separately - safe today because of X, undefended in itself - and register the second as a deferral with the arrival of a second caller as its event."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-5 review, Q1 and its harvest (.superpowers/sdd/plan-12/task-5-verdict.md): the implementer answered the forward note on the now-async creation funnel with the native modal's inertness, which the reviewer verified true for every real-input path down to browser hit-testing - and false as a universal claim, because the confirm component itself has no reentrancy guard and a script-level entry silently steals the confirmation from the first caller. Practically correct, universally wrong, and the gap only surfaces below the level of the test framework's own click API"}
+- id: a-comment-citing-a-sibling-artifact-is-verified-at-that-artifact
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: process
+  statement: "A source comment that cites another file as establishing something - X documents this, Y already handles that, see Z for the precedent - is a checkable claim about that file, and it is checked there before it ships. The quote-and-figure discipline applies to source comments citing siblings exactly as it applies to review prose citing evidence, and the failure is quiet: the comment reads as grounding, nobody opens the cited file, and the claim outlives every scratch artifact because it is in the tree. Sharpest instance to watch for: the premise arrived in the BRIEF's own required-reading line, so the implementer inherited it rather than inventing it, and an unchecked brief premise became a false statement in shipped code."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-5 review, low finding (.superpowers/sdd/plan-12/task-5-verdict.md): the new confirm component's own comment claims a sibling dialog component documents its Esc-cancel semantics. The reviewer grepped that file and its git history and found no such documentation. The premise came from the task brief's Read-first line, which described the sibling as carrying an Esc note"}
