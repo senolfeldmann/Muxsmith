@@ -5609,3 +5609,45 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "session-31 close, the /tmp archival run: the first fire-test round reported a clean pass because the restore never happened and the deletion test never fired - both were the aliased interactive forms. Caught when the archiving agent checked the post-state rather than the exit codes, and re-run with `command cp` / `command rm`, after which all four deliberate breakages fired as designed"}
+- id: a-sentence-that-characterises-an-artifact-is-a-second-claim
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A measurement protects the number it produced and nothing else. The sentence written ABOUT the artifact once the instrument is put down - the fenced set is complete, its two locators, ONE write site, three cases, no existing check part - is a SECOND claim with its own truth conditions, and it is the one that goes wrong, because the author is describing what they believe they wrote rather than what is on the page. Trigger is readable: you are writing an adjective or a count about an artifact rather than a value out of a run - fenced, complete, exactly one, the only place, all of them. Handle: run that sentence too, deriving its terms from the artifact instead of from recall."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-1 review, harvest plus M-1, M-2, M-4, M-5 (.superpowers/sdd/plan-12/amendment-1-verdict.md): every figure the amendment stated reproduced exactly - 43 requirements, 73 acceptance halves split 10/16/22/23/2, the sweep at 11 then 24, the D-number ceiling at D111, the typography zero - and five characterising sentences about those same artifacts were wrong, among them the fenced mock set over a region containing no fence at all, and a Read-first pointer naming a testid with zero hits anywhere under e2e/"}
+- id: a-normative-claim-is-scoped-down-to-its-producers-reach
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Where a document states a claim and names the check that guards it, the two must have the same reach; where they differ, the CHECK wins and the claim is narrowed to it, never the reverse. A universal sentence over a narrow producer ships a guarantee nothing enforces, and the asymmetry is what makes the direction non-negotiable: the claim is what a later reader trusts, the check is what actually runs. Trigger is readable: you wrote the claim and its producer in the same paragraph. The same defect appears one level up when a BRIEF commissions a walk broader than the producer it also commissions - the states enumerated in the walk are the states the prescribed case must drive, or the two requirements meet on paper and not in the test."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-1 review I-1 and M-3 (.superpowers/sdd/plan-12/amendment-1-verdict.md): the same defect at two altitudes in one document - an appended ADR sentence claimed that no gate in the view reads a bare negated model term, while its producer greps only the one literal render-gate spelling and the plan's own vocabulary calls the two disabled-bindings the same task prescribes a gate on that term; and an acceptance row claimed the condition exists in exactly one place against the identical narrow grep. The reviewer's harvest carried the brief-level instance too: the brief demanded a state walk including the failed open reached from the pre-session state, and separately demanded acceptance halves, and nothing joined them, so the prescribed case drives that failed open only after a successful one"}
+- id: a-boundary-that-forbids-an-edit-names-where-the-finding-goes-instead
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A brief that fences an agent out of an edit surface - documents only, do not touch config, read-only on the tree - names in the same sentence where a finding that lands OUTSIDE that surface is reported. Without the route the agent fills the gap the way agents fill gaps, by concluding that no vehicle exists: that reads as analysis, is unfalsifiable inside the fenced round, and converts what should have been a surfaced controller item into a recorded no-work-needed conclusion. Trigger is readable: you are writing a boundary clause into a brief. Handle: append the destination to the prohibition rather than leaving it to the general report contract."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-1 review, over-restriction harvest (.superpowers/sdd/plan-12/amendment-1-verdict.md): the amendment brief's documents-only boundary was correct for the plan and the ADR and was also the reason the author could not act on the round's one real fork, a standing guard for its own declared residual costing one line on an already-installed lint plugin. The brief named no route for a safeguard lying outside the edit surface, so the author asserted instead that no vehicle existed. Surfaced by the reviewer under the over-restriction clause the brief itself asks reviewers to run"}
