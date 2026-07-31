@@ -5739,3 +5739,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-5 review, low finding (.superpowers/sdd/plan-12/task-5-verdict.md): the new confirm component's own comment claims a sibling dialog component documents its Esc-cancel semantics. The reviewer grepped that file and its git history and found no such documentation. The premise came from the task brief's Read-first line, which described the sibling as carrying an Esc note"}
+- id: a-fire-test-on-a-two-direction-surface-attacks-the-direction-not-the-presence
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A mutation can discriminate perfectly and still prove only that the mechanism is PRESENT, not that it points the safe way. On any surface with a dangerous direction and a safe one - confirm versus cancel, discard versus keep, allow versus deny, retry versus abort - breaking the mechanism outright reddens the case and proves nothing about which way it fails when it is subtly wrong. The mutation that earns the claim is the one that leaves the mechanism working and INVERTS it. Trigger is readable: the behaviour under test has two outcomes and one of them loses data or grants access. Handle: mutate the resolved VALUE rather than the wiring - make the cancel path resolve as a confirm - and check that the case reddens on that."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: reinforced, ref: "plan-12 task-5 delta review, harvest (.superpowers/sdd/plan-12/task-5-delta-verdict.md): the fix round proved its new Esc case with a mutation that suppressed the dialog's native cancel event, which shows only that Escape does something. The reviewer attacked the direction instead - the close handler resolving as a confirm rather than as a cancel - and that reddened the new case plus two downstream cases, establishing that the case protects the safe-direction contract rather than the mere presence of a listener"}
