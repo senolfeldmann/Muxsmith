@@ -5667,3 +5667,18 @@ entries:
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12, controller side: amendment 1 fixed Task 5's repair set at two cases in e2e/editor-undo-redo.spec.ts under a criterion scoped to a second Open click. The controller then ruled a third case into Task 4's fix round - it builds history and clicks New, which Task 5 guards identically - and did not revisit the enumeration that counted the set. Task 5's implementer met the collision at code contact, returned NEEDS_CONTEXT with a memo rather than resolving it, and amendment 2 repaired the CRITERION rather than the count"}
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12, reviewer side: Task 4's Step 7 named two budget comments to correct, in src/views/EditorView.vue and e2e/smoke.spec.ts. Only the second was corrected; the first still read 49 two packages later, found by Task 5's implementer at code contact. Task 4's task review and its delta re-review both graded spec compliance MET, because the step was graded as performed rather than at each site it names"}
+- id: an-edit-to-a-set-walks-to-its-neighbours-not-only-to-its-enumerations
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "Changing what belongs to a set falsifies more than the passages that ENUMERATE it, and the others are the ones sweeps miss. Two neighbour classes, both real: a sentence describing the set's SENSITIVITY without naming a member - if the owner strikes this one test moves, nothing else in the package depends on it, the only change is X - which shares no vocabulary with the set, so a sweep keyed on the set's own terms is structurally blind to it and a review repeating that sweep is blind the same way; and the SIBLING INSTANCE of the very defect being repaired, where a fix aimed at one member re-creates the defect at the other. Trigger is readable: you just changed what belongs to a set, or you just repaired one instance of a paired defect. Handle: sweep by FUNCTION rather than by words - grep the sensitivity phrases themselves, and list the pair before fixing either half."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 2
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-2 review I-1 (.superpowers/sdd/plan-12/amendment-2-verdict.md): widening Task 5's guarded-case set falsified a decision's sensitivity clause and a step's parenthetical, both of which describe the set without naming any member. Three sweeps across three amendment rounds all keyed on the set's own terms and none of them found either sentence; the reviewer named three greppable sensitivity phrases that would have"}
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 amendment-2 review I-2 (.superpowers/sdd/plan-12/amendment-2-verdict.md): the amendment was raised in part to remove a Files-list-versus-step ambiguity about one file's budget comment, and its rewrite of that step deleted the only live instruction for the SIBLING file's budget comment, replacing it with a citation to a step that carries no budget, recount or figure at all. The repair migrated its own defect to the other member of the pair"}
