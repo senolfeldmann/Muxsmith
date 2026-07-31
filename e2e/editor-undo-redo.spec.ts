@@ -399,7 +399,53 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     await expect(editor.getByTestId("editor-redo")).toBeDisabled();
   });
 
-  test("a failed open clears rather than keeps (D108 decisions 9-10): with Undo enabled, opening a path that fails to parse disables both and removes the editing surface", async ({
+  // task-4-verdict.md Finding 3 (low-moderate): `createBlank` is the eighth
+  // whole-value-assignment site the re-derived sweep found (see
+  // task-4-report.md), correctly excluded from the six-function mutation
+  // table as a session-start funnel like `openPath` -- but nothing in this
+  // file exercised it together with PRE-BUILT undo/redo state, so a
+  // regression dropping its own `resetHistory(profile)` call went uncaught
+  // by every one of this file's other cases (a fresh session with no prior
+  // history already has `canUndo` false, so a bare "click New, assert Undo
+  // disabled" case would not discriminate the same regression -- it takes
+  // the "open resets" shape, mirrored through the OTHER funnel). Unlike the
+  // failed-open case above (Finding 2), `createBlank` always ends with a
+  // truthy `model.value` (a freshly seeded Profile), so `:disabled="!model
+  // || !canUndo"` never short-circuits on `!model` here -- checked, not
+  // assumed: `canUndo`/`canRedo`'s real values are what these asserts read.
+  test("createBlank resets: New after edited history clears both Undo and Redo", async ({ page }) => {
+    const { editor } = await openProfile(page, "/profiles/create-blank-resets.yaml", emptyRulesProfile);
+
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+    await pattern.fill("edited");
+    await expect(editor.getByTestId("editor-undo")).toBeEnabled();
+
+    await editor.getByTestId("editor-new").click();
+    await expect(editor.getByTestId("editor-undo")).toBeDisabled();
+    await expect(editor.getByTestId("editor-redo")).toBeDisabled();
+  });
+
+  // task-4-verdict.md Finding 2 (moderate): this case's name and its two
+  // `:disabled` asserts below used to read as proving D108 decision 9
+  // clears `history`/`position` on a failed load. They do not, and cannot:
+  // `:disabled="!model || !canUndo"` short-circuits on `!model` once the
+  // failed load clears `model.value`, so `canUndo`'s real value is never
+  // consulted here. Reproduced (scratch mutation, not just quoted from the
+  // review): mutating `resetHistory`'s `profile === undefined` branch to
+  // leave `history`/`position` standing, only nulling `savedSnapshot`,
+  // does NOT fail this test -- it still passes unchanged. No surface in
+  // the shipped product reads `canUndo`/`canRedo`/`history`/`position`
+  // while `model` is falsy: `undo()`/`redo()` carry the identical
+  // `!model.value` short-circuit (D108 decision 10), no other template
+  // binding consumes them, and the mount harness exposes only `model`
+  // (`__muxsmithModel__`) -- never these internal refs. So the actual
+  // history-clearing this case is named for is UNOBSERVABLE by this
+  // suite's existing surfaces, and per the controller's ruling this is not
+  // invented around (no `defineExpose`, no internal-state reflection): the
+  // name and the assertions below are scoped down to what they actually
+  // prove -- the OBSERVABLE consequence (the buttons read disabled via the
+  // model gate, the editing surface is gone, the diagnostic explains why).
+  test("a failed open hides the editing surface and the Undo/Redo buttons read disabled through the model gate -- whether history/position were actually cleared is unobservable here (D108 decisions 9-10)", async ({
     page,
   }) => {
     const PATH_A = "/profiles/failed-open-a.yaml";
@@ -429,8 +475,10 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     await editor.getByTestId("editor-open").click();
 
     // In this order, per the brief: the diagnostic still renders (the
-    // panel explains a failed open), then Undo/Redo are both disabled,
-    // then the editing surface is gone.
+    // panel explains a failed open), then Undo/Redo read disabled (via the
+    // model gate -- see the header comment above for why this does not
+    // discriminate `canUndo`/`canRedo`'s real cleared value), then the
+    // editing surface is gone.
     await expect(
       editor.getByText(
         en("batch-diagnostic-line", {
