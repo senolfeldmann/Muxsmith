@@ -3994,3 +3994,39 @@ authoring time.
 - Six worktrees from plans 7.5 and 8 are still undeleted; all six branches are
   ancestors of master, verified this session.
 - Framework-side follow-ups are tracked agent-side.
+
+## 2026-07-31 | Session close after the Plan 12 close | session 32 (Peter, Opus 5 1M)
+
+**Scope.** The tail of session 32 after the Plan-12 close entry above: one
+owner-requested release rehearsal, and the sequencing decision for his QA round 4.
+Commit range `de0c72e..HEAD`.
+
+**Decisions and their why.**
+- The owner asked whether a draft release existed for his QA. It did not: the two
+  drafts on the repo were Plan-8 pipeline rehearsals from 2026-07-29, predating every
+  line of Plan 12, so their artifacts could not carry the work his pass is blocked on.
+  Checked rather than assumed, and no tag existed at all.
+- He asked for a current one. Built via the pipeline's own by-hand path
+  (`workflow_dispatch` with the rehearsal switch), which is the route Plan 8 designed
+  for exactly this and which deliberately never creates a tag. Run 30620332948, 6/6
+  jobs green, ~9 min, eight assets. **Its head SHA was compared against master rather
+  than assumed** - both `1b2d623`, the Plan-12 close commit.
+- QA round 4 happens between sessions; its feedback arrives at the Plan-13 kickoff.
+  That keeps the owner ruling that Plan 13 is not authored before the pass returns.
+
+**Process mechanics.** No subagents this stretch. One workflow dispatch, one watch,
+four read-only `gh` queries, all logged in `gh-log.md` with their manual UI
+equivalents per the house rule.
+
+**Friction and failure.**
+- The first leak-scan control this session returned zero and therefore proved nothing
+  about the scan's validity. Discarded and replaced: each pattern was fired against a
+  planted string, and a second surface control returned 32. The empty results only
+  became evidence after that.
+
+**Open threads.**
+- **Owner action, open, not done:** the rehearsal draft is a throwaway artifact and is
+  meant to be deleted after the QA pass. Deleting it is a Releases-page action; no tag
+  is involved.
+- QA round 4 runs on the artifacts of `1b2d623`; its findings are Plan 13's scope input
+  and the plan may not be authored before they land.
