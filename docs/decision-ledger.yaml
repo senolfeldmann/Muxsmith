@@ -5753,3 +5753,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: reinforced, ref: "plan-12 task-5 delta review, harvest (.superpowers/sdd/plan-12/task-5-delta-verdict.md): the fix round proved its new Esc case with a mutation that suppressed the dialog's native cancel event, which shows only that Escape does something. The reviewer attacked the direction instead - the close handler resolving as a confirm rather than as a cancel - and that reddened the new case plus two downstream cases, establishing that the case protects the safe-direction contract rather than the mere presence of a listener"}
+- id: a-failure-cost-comment-does-not-inherit-its-neighbours-guarantee
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: technical-code
+  domain: process
+  statement: "An absolute-safety phrase in a doc comment - never a missing dialog, never shown where nothing is at risk, always the harmless direction - is earned by the STRUCTURE of the mechanism it describes, and it does not transfer to a sibling that merely looks similar. A total fallback really does guarantee its direction; a symmetric retry-less flag guarantees nothing, because its failed transition is stuck in whichever direction it failed. Trigger is readable: you are writing a failure-cost sentence beside another field's failure-cost sentence. Handle: derive each one from its own mechanism, and where the mechanism is symmetric say which direction a failed update leaves it in rather than claiming a benign one."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-6 review finding 2 (.superpowers/sdd/plan-12/task-6-verdict.md): two new shell state fields got failure-cost comments side by side. The locale field's is structurally true - the lookup falls back to the raw key, so a failed sync can never remove a dialog. The dirty flag copied the shape and claimed a failed sync is never shown where nothing is at risk, which is false in one direction: a failed false-transition after a save leaves the flag stuck true and produces exactly the spurious warning the sentence denies"}
