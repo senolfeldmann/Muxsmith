@@ -202,10 +202,19 @@ test.describe("batch view: dry run", () => {
     const batch = page.getByTestId("view-batch");
     await expect(batch.getByRole("heading", name("batch-view-heading"))).toBeVisible();
 
+    // I-1 (whole-branch review, plan 12): `batch-profile-none` is the
+    // empty-state paragraph `BatchView.vue` renders before any profile is
+    // picked (`v-if="!selectedProfile"`) -- reworded by this plan and
+    // otherwise asserted nowhere. It is visible here and gone once a
+    // profile is chosen, the same paired presence/absence shape
+    // `batch-profile-current` below already gets.
+    await expect(batch.getByText(en("batch-profile-none"))).toBeVisible();
+
     await batch.getByRole("button", name("batch-profile-pick")).click();
     await expect(
       batch.getByText(en("batch-profile-current", { path: PROFILE_PATH })),
     ).toBeVisible();
+    await expect(batch.getByText(en("batch-profile-none"))).toBeHidden();
 
     await batch.getByRole("button", name("batch-dry-run")).click();
 
@@ -831,6 +840,20 @@ test.describe("german locale", () => {
 
     const localeSelect = dialog.getByRole("combobox", name("settings-locale-label"));
     await expect(localeSelect).toHaveValue("en");
+
+    // I-7 (whole-branch review, plan 12): the sentence this plan appended
+    // to `settings-locale-label.hint` ("System language follows your
+    // operating system and falls back to English where a translation is
+    // missing.") has no producer anywhere -- `en(id)` cannot read an
+    // attribute at all (`enAttr` is the separate helper for that, per its
+    // own doc comment in `i18n-en.ts`), and the one existing assertion on
+    // this control (`name("settings-locale-label")`, above) reads the
+    // LABEL, never the hint. `#settings-locale-hint` is the `<p>`
+    // `SettingsDialog.vue` renders the hint attribute into.
+    await expect(dialog.locator("#settings-locale-hint")).toHaveText(
+      enAttr("settings-locale-label", "hint"),
+    );
+
     await localeSelect.selectOption("de");
 
     await dialog.getByRole("button", name("settings-save")).click();

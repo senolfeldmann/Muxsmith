@@ -26,7 +26,7 @@
  */
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { installTauriMocks, resolveWith } from "./mocks";
+import { gatedWith, installTauriMocks, releaseGate, resolveWith } from "./mocks";
 import type { MockResult, RecordedInvoke } from "./mocks";
 import { en, name } from "./i18n-en";
 import type { AppSettings, Diagnostic, LoadProfileDocument, MkvmergeInfo, ReportDocument } from "../src/ipc";
@@ -366,6 +366,54 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     await expect(pattern).toHaveValue(".*");
   });
 
+  // I-3 (whole-branch review, plan 12): `doSave` captures `profile`
+  // before the two awaits between click and completion (the save dialog
+  // on the needs-path branch, the write itself) and marks THAT captured
+  // value saved (`EditorView.vue:582`, D108 decision 3's own doc). The
+  // dangerous inversion -- marking whatever the LIVE history entry holds
+  // once the write finally resolves -- reports clean over content the
+  // file was never given, which is why this case must land an edit
+  // strictly INSIDE the save window rather than only before or after it
+  // (the case above, "save marks rather than clears", edits before Save
+  // and so cannot tell the two apart: both configurations agree whenever
+  // nothing changes during the write).
+  test("I-3: an edit made while Save is in flight is not marked saved -- the dirty guard still fires on the next Open", async ({
+    page,
+  }) => {
+    const { editor, recorded } = await openProfile(
+      page,
+      "/profiles/save-window-edit.yaml",
+      emptyRulesProfile,
+      { save_profile: [gatedWith(null, "save-window-edit")] },
+    );
+    const pattern = editor.getByRole("textbox", name("editor-input-pattern"));
+
+    await editor.getByTestId("editor-save").click();
+    await expect.poll(() => recorded.filter((r) => r.cmd === "save_profile").length).toBe(1);
+
+    // `save_profile` is now pending on the gate: the call already carries
+    // its argument (the pre-edit profile, pattern ".*"), and only its
+    // RESOLUTION waits. Editing the live model here is the state the
+    // comment at `EditorView.vue:210-213` names and no existing case
+    // reaches.
+    await pattern.fill("edited-during-save");
+    await releaseGate(page, "save-window-edit");
+    await expect(pattern).toHaveValue("edited-during-save");
+
+    const saveCall = recorded.find((r) => r.cmd === "save_profile");
+    expect((saveCall?.args as { profile: Profile }).profile.input.pattern).toBe(".*");
+
+    // The direction this test exists to pin: the profile actually WRITTEN
+    // had pattern ".*"; the editor now holds "edited-during-save", which
+    // was never written anywhere. Open must therefore still treat the
+    // editor as dirty and ask before discarding it -- the same guard and
+    // the same assertions the discard-guard suite already uses
+    // (`smoke.spec.ts`'s "editor view: discard guards", Case 1).
+    await editor.getByTestId("editor-open").click();
+    await expect(editor.getByTestId("confirm-dialog")).toBeVisible();
+    await expect(editor.getByText(en("editor-discard-message"))).toBeVisible();
+  });
+
   test("open resets: opening a second profile clears both Undo and Redo", async ({ page }) => {
     const PATH_A = "/profiles/open-resets-a.yaml";
     const PATH_B = "/profiles/open-resets-b.yaml";
@@ -582,6 +630,62 @@ test.describe("editor undo/redo: granularity, truncation, save/open, the depth c
     await selectButton.click();
     await selectButton.press("Control+z");
     await expect(rows).toHaveCount(1);
+  });
+
+  // I-2 (whole-branch review, plan 12): `help/{en,de}/view-editor.md`
+  // (both added by this branch) promise "Ctrl+Z (Cmd+Z on macOS) for
+  // Undo, and Ctrl+Shift+Z or Ctrl+Y (Cmd+Shift+Z or Cmd+Y on macOS) for
+  // Redo", but only bare `Control+z` was ever pressed anywhere in this
+  // suite (U1, above, and only inside its text-entry-exemption case).
+  // `onEditorKeydown` (`EditorView.vue`) accepts `ctrlKey || metaKey` for
+  // both directions and treats `z`+shift or a bare `y` as redo -- six
+  // combinations in total, all driven here against the same rule-count
+  // observable U1 and the depth-cap case above already use.
+  test("I-2: every documented modifier key and redo spelling drives undo/redo (Control+z, Meta+z, Control+y, Meta+y, Control+Shift+z, Meta+Shift+z)", async ({
+    page,
+  }) => {
+    const profile: Profile = {
+      profile_version: 1,
+      input: { pattern: ".*", extensions: ["mkv"] },
+      tracks: { rules: [{ match: { exact: { type: "video" } } }] },
+    };
+    const { editor } = await openProfile(page, "/profiles/keyboard-combinations.yaml", profile);
+
+    const rows = editor.getByTestId("editor-rule-row");
+    const add = editor.getByTestId("editor-rule-add");
+    await add.click();
+    await add.click();
+    await add.click();
+    await expect(rows).toHaveCount(4);
+
+    // A plain button, not a text-entry control (U1's own distinction);
+    // `.press()` focuses whichever row's button it currently resolves to
+    // before sending the key, and the listener sits on the whole section,
+    // so which row is irrelevant as long as one still exists.
+    const anyButton = editor.getByTestId("editor-rule-select").first();
+
+    // Undo, both modifier keys.
+    await anyButton.press("Control+z");
+    await expect(rows).toHaveCount(3);
+    await anyButton.press("Meta+z");
+    await expect(rows).toHaveCount(2);
+
+    // Redo, both bare-`y` spellings.
+    await anyButton.press("Control+y");
+    await expect(rows).toHaveCount(3);
+    await anyButton.press("Meta+y");
+    await expect(rows).toHaveCount(4);
+
+    // Back down two, then redo via both `Shift+z` spellings.
+    await anyButton.press("Control+z");
+    await expect(rows).toHaveCount(3);
+    await anyButton.press("Control+z");
+    await expect(rows).toHaveCount(2);
+
+    await anyButton.press("Control+Shift+z");
+    await expect(rows).toHaveCount(3);
+    await anyButton.press("Meta+Shift+z");
+    await expect(rows).toHaveCount(4);
   });
 });
 

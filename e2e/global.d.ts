@@ -35,6 +35,11 @@ declare global {
      * `invoke()` call is forwarded here so tests can assert on real
      * invocation evidence instead of a UI echo. */
     __muxsmithRecordInvoke__?: (cmd: string, args: unknown) => void;
+    /** Set by `installMockIPC` (`mocks.ts`): resolves the pending
+     * `gatedWith(value, gate)` response registered under this name, so a
+     * test can widen an async window (e.g. a save in flight) and then
+     * release it deterministically instead of racing a real timer. */
+    __muxsmithReleaseGate__?: (gate: string) => void;
     /** Set by `mount-entry.ts` (bundled by `vite.mount.config.ts`, wave-3
      * amendment): mounts one editor component in isolation onto `#mount`,
      * round-tripping its `modelValue`/`update:modelValue` v-model. See

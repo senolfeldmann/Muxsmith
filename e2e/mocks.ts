@@ -25,7 +25,8 @@ const HARNESS_PATH = resolve(import.meta.dirname, ".generated/tauri-mock-harness
 
 export type MockResult =
   | { kind: "resolve"; value: unknown }
-  | { kind: "reject"; error: { code: string; params?: Record<string, string | number> } };
+  | { kind: "reject"; error: { code: string; params?: Record<string, string | number> } }
+  | { kind: "gated"; value: unknown; gate: string };
 
 export function resolveWith(value: unknown): MockResult {
   return { kind: "resolve", value };
@@ -33,6 +34,20 @@ export function resolveWith(value: unknown): MockResult {
 
 export function rejectWith(code: string, params: Record<string, string | number> = {}): MockResult {
   return { kind: "reject", error: { code, params } };
+}
+
+/** A response that does not resolve until the test calls `releaseGate`
+ *  with the same `gate` name (below). Widens the window between a
+ *  command's call and its resolution wide enough to interleave a real,
+ *  driven Playwright action (e.g. an edit made while a save is in
+ *  flight) -- the same-tick microtask gap an immediately-resolving mock
+ *  leaves is too narrow for any driven UI action to land inside, and this
+ *  repo's test suite otherwise has no timing-based wait (`waitForTimeout`)
+ *  to fall back on, deliberately: a fixed real-world sleep is exactly the
+ *  kind of flaky, hardware-speed-dependent mechanism this gate replaces
+ *  with a deterministic one. */
+export function gatedWith(value: unknown, gate: string): MockResult {
+  return { kind: "gated", value, gate };
 }
 
 export interface MockScenario {
@@ -97,13 +112,30 @@ export function installMockIPC(scenario: MockScenario): void {
   window.__muxsmithE2E__.mockWindows("main");
   window.__TAURI_OS_PLUGIN_INTERNALS__ = { platform: scenario.platform ?? "linux" };
 
+  // Resolvers for any `gatedWith` response this scenario queued, keyed by
+  // gate name; `releaseGate` (Node side, below) triggers one via
+  // `window.__muxsmithReleaseGate__`.
+  const gateResolvers = new Map<string, () => void>();
+  window.__muxsmithReleaseGate__ = (gate: string) => {
+    gateResolvers.get(gate)?.();
+    gateResolvers.delete(gate);
+  };
+
   window.__muxsmithE2E__.mockIPC(
     (cmd, args) => {
       window.__muxsmithRecordInvoke__?.(cmd, args ?? null);
 
       const result = nextResult(cmd);
       if (result) {
-        return result.kind === "reject" ? Promise.reject(result.error) : result.value;
+        if (result.kind === "reject") {
+          return Promise.reject(result.error);
+        }
+        if (result.kind === "gated") {
+          return new Promise((resolve) => {
+            gateResolvers.set(result.gate, () => resolve(result.value));
+          });
+        }
+        return result.value;
       }
       // Incidental background commands every scenario touches regardless
       // of what it is actually testing: both views mount eagerly at
@@ -166,4 +198,12 @@ export async function emitEvent(page: Page, channel: string, payload: unknown): 
     ({ channel, payload }) => window.__muxsmithE2E__.emit(channel, payload),
     { channel, payload },
   );
+}
+
+/** Resolves a `gatedWith(value, gate)` response queued for this `gate`,
+ *  letting the awaited `invoke()` call it stands in for finally settle.
+ *  Call it after driving whatever real UI action needed to happen while
+ *  that call was still in flight. */
+export async function releaseGate(page: Page, gate: string): Promise<void> {
+  await page.evaluate((g) => window.__muxsmithReleaseGate__?.(g), gate);
 }
