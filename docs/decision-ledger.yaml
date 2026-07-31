@@ -4795,8 +4795,9 @@ entries:
   blocked_on: null
   status: settled
   promoted_at: null
-  count: 1
+  count: 2
   occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 whole-branch fix re-review, ruling 2 (.superpowers/sdd/plan-12/whole-branch-fix-verdict.md): the verdict had proposed a specific extraction shape - return key names, call the message lookup at the site - and the fixer deviated with a measurement. The reviewer then BUILT its own proposed shape and ran an existing guard prescribed red state under it: 88 passed where the shipped shape gives 87 passed and 1 failed with the expected message. Its own remedy would have silently disabled that guard, because moving the lookups out of the function removes them from a source-literal scan another test derives its key set from. The reviewer ruled against itself on the measurement"}
     - {date: "2026-07-28", kind: violated-corrected, ref: "plan-9 Task 5: LOW-3 offered two remedies and preferred one because it would `close the load-failure path at the same assertion instead of relying on the next one`. False, and it contradicted a correct sentence two lines earlier in the same finding. The fix round implemented it faithfully; the reviewer measured the real profile-load-failure document in the delta pass and found it satisfies the new assertion, so the added guard rules out no reachable emitter shape. Recorded by the reviewer as its own defect (.superpowers/sdd/plan-9/task-5-verdict.md, Delta review LOW-4 and HARVEST 1)"}
 - id: a-fired-check-still-needs-a-reachable-failing-input
   kind: pattern
@@ -5797,3 +5798,17 @@ entries:
   count: 1
   occurrences:
     - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 task-7, three rounds of the same shape one class at a time (.superpowers/sdd/plan-12/task-7-verdict.md, task-7-delta-verdict.md and the fix-round-2 report): first a collision the review caught, then a second collision in a paragraph the fix round own sweep never reached, then two synonym instances the widened sweep surfaced - a German verb and its English mirror, both naming an affordance the shipped catalog already names with another word. The controller stopped routing members at that point and wrote this clause instead, per the convergence rule; the two synonym instances went to the whole-branch fix wave as concrete work"}
+- id: a-glyph-denylist-is-built-from-code-points-and-self-tested-before-it-scans
+  kind: pattern
+  tier: 1
+  source: agent-emergent
+  nature: process
+  domain: process
+  statement: "A checker whose pattern is a set of literal GLYPHS - typography denylists, whitespace rules, invisible-character scans - can be broken by the very pipeline that carries it: a non-breaking space pasted into a script becomes an ordinary space, a curly quote gets normalised, and the check then either matches everything or matches nothing while looking correct in the source. Both failures are silent and the second is worse, because an empty result reads as a clean tree. Trigger is readable: your pattern contains characters you cannot see. Handle: build the set from CODE POINTS rather than from pasted characters, and run a self-test that constructs one string per member and proves each is detected, BEFORE scanning anything real."
+  steelman: null
+  blocked_on: null
+  status: settled
+  promoted_at: null
+  count: 1
+  occurrences:
+    - {date: "2026-07-31", kind: violated-corrected, ref: "plan-12 whole-branch review, the reviewer reporting its own instrument (.superpowers/sdd/plan-12/whole-branch-fix-verdict.md): its typography detector held its bad-glyph set as literal characters and one of them had normalised to a plain space, so on the fix diff it false-positived on every line - and in the FIRST whole-branch verdict the same detector had reported the branch clean without ever having been shown able to fire. Rebuilt from code points with a self-test proving all eleven glyphs detectable, after which both the delta and the whole branch came back genuinely clean"}
