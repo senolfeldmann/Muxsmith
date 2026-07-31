@@ -1140,6 +1140,27 @@ this session produced a live argument for that last entry - a reviewer's own det
 reported a clean tree while being structurally unable to fire - which is evidence for
 the entry when its phase arrives, not a condition that clears it.
 
+### Close executed (2026-07-31)
+
+Eleven-part gate green on the close state, each exit code captured from its own
+command rather than through a pipeline: 515 Rust tests across the workspace, 103
+Playwright cases, all eleven parts exit 0.
+
+**Milestone discipline before the irreversible step.** The salvage publishes 83 process
+artifacts to a public repository, so a leak and cross-project scan ran first - secrets
+and token patterns, email addresses, and other-project names. All came back empty, and
+**the empty results were made to mean something**: the first surface control returned
+zero and was therefore discarded as worthless, and each pattern was then fired against
+a planted string and a second surface control that returns 32. Only `noreply@anthropic.com`
+and the project's own already-published agent paths appear.
+
+Pushed `bd3aa34..de0c72e`, 58 commits over sessions 31 and 32, logged in `gh-log.md`.
+Working tree clean, nothing local ahead.
+
+**This ledger's own last write is this section, and the salvage was re-run after it** -
+`diff -r` between the scratch and its salvaged copy is the trigger the doctrine names,
+and it was run rather than remembered.
+
 ### Deferred minor, Task 7 (for the whole-branch triage)
 
 - The fix-round-2 sweep table is framed as covering every content word and lists a
