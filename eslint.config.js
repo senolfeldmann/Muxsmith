@@ -56,15 +56,20 @@ export default defineConfig(
       // `!model` directly is the defect that decision exists to remove --
       // that expression is also true after a load that failed to parse,
       // where the editor must NOT offer its pre-session surfaces. Scoped by
-      // directive name to `v-if`/`v-else-if`, so the `:disabled="!model ||
-      // !canUndo"` bindings D108 decision 10 requires stay legal: those gate
-      // an ACTION on whether there is content, not a RENDER on whether
+      // directive name to `v-if`/`v-else-if`/`v-show` (O-1, whole-branch
+      // review: `v-show` is the directive this codebase actually uses for
+      // view gating, `App.vue`, and was the one render-gate spelling this
+      // selector missed), so the `:disabled="!model || !canUndo"` bindings
+      // D108 decision 10 requires stay legal regardless: those match on the
+      // ATTRIBUTE NAME (`disabled`, not `if`/`else-if`/`show`), so widening
+      // the directive-name list here does not touch them -- they gate an
+      // ACTION on whether there is content, not a RENDER on whether
       // anything was ever opened or created.
       "vue/no-restricted-syntax": [
         "error",
         {
           selector:
-            "VAttribute[directive=true][key.name.name=/^(if|else-if)$/] UnaryExpression[operator='!'] > Identifier[name='model']",
+            "VAttribute[directive=true][key.name.name=/^(if|else-if|show)$/] UnaryExpression[operator='!'] > Identifier[name='model']",
           message:
             "A render gate must not read `!model` directly: the pre-session state is `nothingOpenedOrCreated` (D112).",
         },
