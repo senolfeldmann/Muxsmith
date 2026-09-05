@@ -10,12 +10,12 @@ name = "muxsmith"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.6.1", features = ["derive"] }
+clap = { version = "4.6.6", features = ["derive"] }
 ctrlc = "3.5.2"
 fluent-bundle = "0.16.0"
 muxsmith-core = { path = "../muxsmith-core" }
-schemars = "1.2.1"
-serde_json = "1.0.150"
+schemars = "1.2.2"
+serde_json = "1.0.151"
 sys-locale = "0.3.2"
 unic-langid = "0.9.6"
 
@@ -31,5 +31,5 @@ insta = { version = "=1.48.0", features = ["filters"] }
 # Already pinned identically in muxsmith-core; reused here (not a new
 # dependency in the resolved tree) only for `regex::escape` when building
 # a per-test tempdir filter (tests/support/mod.rs).
-regex = "1.12.4"
+regex = "1.13.1"
 tempfile = "3.27.0"
