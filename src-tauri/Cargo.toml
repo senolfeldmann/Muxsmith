@@ -14,19 +14,19 @@ name = "muxsmith-gui"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
 dirs = "6.0.0"
 muxsmith-core = { path = "../crates/muxsmith-core" }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-tauri = { version = "2.11.5", features = [] }
-tauri-plugin-clipboard-manager = "2.3.2"
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-fs = "2.5.1"
-tauri-plugin-os = "2.3.2"
-time = { version = "0.3.53", features = ["formatting"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tauri = { version = "2.12.2", features = [] }
+tauri-plugin-clipboard-manager = "2.4.1"
+tauri-plugin-dialog = "2.8.1"
+tauri-plugin-fs = "2.6.0"
+tauri-plugin-os = "2.4.0"
+time = { version = "0.3.55", features = ["formatting"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
