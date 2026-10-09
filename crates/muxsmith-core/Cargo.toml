@@ -8,14 +8,14 @@ publish = false
 [dependencies]
 dirs = "6.0.0"
 language-tags = "0.3.2"
-regex = "1.12.4"
-schemars = "1.2.1"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
+regex = "1.13.1"
+schemars = "1.2.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 serde_path_to_error = "0.1.20"
-time = { version = "0.3.53", features = ["formatting", "parsing"] }
+time = { version = "0.3.55", features = ["formatting", "parsing"] }
 ts-rs = { version = "12.0.1", optional = true }
-yaml_serde = "0.10.4"
+yaml_serde = "0.10.7"
 
 [features]
 # D44: TypeScript bindings for the IPC wire, feature-gated so ts-rs never
